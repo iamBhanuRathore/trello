@@ -1,0 +1,160 @@
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import * as schema from '../../db/schema/index';
+import type { Database } from '../../db/index';
+import { eq, inArray } from 'drizzle-orm';
+import { signUp } from '../auth/service';
+import { createProject } from '../projects/service';
+import { importTrelloBoard, importGenericTasks } from './service';
+import { listLists } from '../lists/service';
+import { listCards } from '../cards/service';
+
+const TEST_DB_URL =
+  process.env['DATABASE_TEST_URL'] ??
+  'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
+
+describe('Importers Service', () => {
+  let client: ReturnType<typeof postgres>;
+  let db: Database;
+  let orgId: string;
+  let projectId: string;
+  let importedBoardId: string;
+  let genericBoardId: string;
+
+  beforeAll(async () => {
+    client = postgres(TEST_DB_URL, { max: 1 });
+    db = drizzle(client, { schema });
+
+    const email = `import_${Date.now()}@example.com`;
+    const slug = `import-org-${Date.now()}`;
+
+    const { organization } = await signUp(db, {
+      name: 'Import Admin',
+      email,
+      password: 'pass',
+      orgName: 'Import Org',
+      orgSlug: slug,
+    });
+    orgId = organization.id;
+
+    const [workspace] = await db
+      .insert(schema.workspaces)
+      .values({ organizationId: orgId, name: 'Import WS' })
+      .returning();
+
+    const project = await createProject(db, {
+      organizationId: orgId,
+      workspaceId: workspace!.id,
+      name: 'Import Project',
+    });
+    projectId = project!.id;
+  });
+
+  afterAll(async () => {
+    const boardIds = [importedBoardId, genericBoardId].filter(Boolean);
+    await db.delete(schema.cardLabels);
+    await db.delete(schema.checklistItems);
+    await db.delete(schema.checklists);
+    await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
+    if (boardIds.length > 0) {
+      await db.delete(schema.lists).where(inArray(schema.lists.boardId, boardIds));
+      await db.delete(schema.labels).where(inArray(schema.labels.boardId, boardIds));
+      await db.delete(schema.boards).where(inArray(schema.boards.id, boardIds));
+    }
+    await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
+    await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
+    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
+    await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await client.end();
+  });
+
+  it('should import a Trello board JSON export', async () => {
+    const mockTrelloExport = {
+      name: 'Migrated Marketing Board',
+      prefs: { backgroundColor: '#3b82f6' },
+      labels: [
+        { id: 't_lbl_1', name: 'Urgent', color: 'red' },
+        { id: 't_lbl_2', name: 'Design', color: 'purple' },
+      ],
+      lists: [
+        { id: 't_list_1', name: 'Backlog', pos: 1000, closed: false },
+        { id: 't_list_2', name: 'Done', pos: 2000, closed: false },
+        { id: 't_list_3', name: 'Archived List', pos: 3000, closed: true },
+      ],
+      cards: [
+        {
+          id: 't_card_1',
+          idList: 't_list_1',
+          name: 'Homepage Banner',
+          desc: 'Create new Q3 marketing banner',
+          pos: 1000,
+          due: '2026-09-01T00:00:00.000Z',
+          closed: false,
+          idLabels: ['t_lbl_1', 't_lbl_2'],
+        },
+        {
+          id: 't_card_2',
+          idList: 't_list_2',
+          name: 'Social Media Strategy',
+          desc: 'Completed review',
+          pos: 2000,
+          closed: false,
+          idLabels: ['t_lbl_2'],
+        },
+      ],
+      checklists: [
+        {
+          id: 't_chk_1',
+          idCard: 't_card_1',
+          name: 'Design Deliverables',
+          checkItems: [
+            { id: 't_item_1', name: 'Desktop mockup', state: 'complete', pos: 1000 },
+            { id: 't_item_2', name: 'Mobile version', state: 'incomplete', pos: 2000 },
+          ],
+        },
+      ],
+    };
+
+    const result = await importTrelloBoard(db, orgId, projectId, mockTrelloExport);
+    expect(result.board.name).toBe('Migrated Marketing Board');
+    expect(result.stats.listsCount).toBe(2); // closed list excluded
+    expect(result.stats.cardsCount).toBe(2);
+    expect(result.stats.labelsCount).toBe(2);
+    expect(result.stats.checklistsCount).toBe(1);
+
+    importedBoardId = result.board.id;
+
+    const lists = await listLists(db, importedBoardId, orgId);
+    expect(lists.length).toBe(2);
+
+    const cards = await listCards(db, lists[0]!.id, orgId);
+    expect(cards.length).toBe(1);
+    expect(cards[0]!.title).toBe('Homepage Banner');
+  });
+
+  it('should import structured task lists into a new board', async () => {
+    const genericTasksData = {
+      boardName: 'Quick Tasks Board',
+      lists: [
+        {
+          name: 'To Do',
+          tasks: [
+            { title: 'Task Alpha', description: 'Alpha description', storyPoints: 2 },
+            { title: 'Task Beta', description: 'Beta description', storyPoints: 3 },
+          ],
+        },
+        {
+          name: 'Done',
+          tasks: [{ title: 'Task Gamma', storyPoints: 1 }],
+        },
+      ],
+    };
+
+    const result = await importGenericTasks(db, orgId, projectId, genericTasksData);
+    expect(result.board.name).toBe('Quick Tasks Board');
+    expect(result.stats.listsCount).toBe(2);
+    expect(result.stats.cardsCount).toBe(3);
+    genericBoardId = result.board.id;
+  });
+});

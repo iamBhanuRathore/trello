@@ -1,0 +1,47 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+dist
+.next
+.vinxi
+out
+build
+
+# Turbo cache
+.turbo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+bun-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea
+.vscode/settings.json
+*.swp
+*.swo
+
+# Test coverage
+coverage
+
+# Playwright
+playwright-report
+test-results
+
+# Docker volumes (local)
+postgres_data
+
+# TypeScript build info
+*.tsbuildinfo

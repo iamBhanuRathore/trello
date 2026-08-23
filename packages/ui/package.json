@@ -1,0 +1,32 @@
+{
+  "name": "@boardly/ui",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./utils": "./src/utils.ts",
+    "./button": "./src/components/button.tsx",
+    "./card": "./src/components/card.tsx",
+    "./dialog": "./src/components/dialog.tsx",
+    "./input": "./src/components/input.tsx",
+    "./label": "./src/components/label.tsx",
+    "./avatar": "./src/components/avatar.tsx",
+    "./dropdown-menu": "./src/components/dropdown-menu.tsx",
+    "./sidebar": "./src/components/sidebar.tsx",
+    "./switch": "./src/components/switch.tsx"
+  },
+  "peerDependencies": {
+    "@base-ui/react": ">=1.0.0",
+    "class-variance-authority": ">=0.7.0",
+    "clsx": ">=2.0.0",
+    "lucide-react": ">=0.400.0",
+    "react": ">=19.0.0",
+    "react-dom": ">=19.0.0",
+    "tailwind-merge": ">=3.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "typescript": "~6.0.3"
+  }
+}

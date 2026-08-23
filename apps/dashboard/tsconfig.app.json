@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client", "react", "react-dom"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "ignoreDeprecations": "5.0",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@boardly/ui": ["../../packages/ui/src/index.ts"],
+      "@boardly/ui/utils": ["../../packages/ui/src/utils.ts"],
+      "@boardly/ui/button": ["../../packages/ui/src/components/button.tsx"],
+      "@boardly/ui/card": ["../../packages/ui/src/components/card.tsx"],
+      "@boardly/ui/dialog": ["../../packages/ui/src/components/dialog.tsx"],
+      "@boardly/ui/input": ["../../packages/ui/src/components/input.tsx"],
+      "@boardly/ui/label": ["../../packages/ui/src/components/label.tsx"],
+      "@boardly/ui/avatar": ["../../packages/ui/src/components/avatar.tsx"],
+      "@boardly/ui/dropdown-menu": ["../../packages/ui/src/components/dropdown-menu.tsx"],
+      "@boardly/ui/sidebar": ["../../packages/ui/src/components/sidebar.tsx"],
+      "@boardly/ui/switch": ["../../packages/ui/src/components/switch.tsx"]
+    }
+  },
+  "include": ["src"]
+}

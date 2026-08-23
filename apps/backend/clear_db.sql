@@ -1,0 +1,1 @@
+DELETE FROM cards; DELETE FROM lists; DELETE FROM boards; DELETE FROM projects; DELETE FROM workspaces; DELETE FROM organization_members; DELETE FROM organizations; DELETE FROM users WHERE email = 'bhanu2@123gmail.com';

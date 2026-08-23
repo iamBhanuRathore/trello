@@ -1,0 +1,111 @@
+import { eq, or, ilike, and, desc } from 'drizzle-orm';
+import type { Database } from '../../db/index';
+import { savedSearches, cards, boards, projects, workspaces, lists } from '../../db/schema/index';
+
+export function httpError(status: number, message: string): Error & { status: number } {
+  const err = new Error(message) as Error & { status: number };
+  err.status = status;
+  return err;
+}
+
+export async function performSearch(db: Database, organizationId: string, query: string) {
+  const searchTerm = `%${query}%`;
+
+  // Search Cards
+  const matchedCards = await db
+    .select({
+      id: cards.id,
+      title: cards.title,
+      boardId: lists.boardId
+    })
+    .from(cards)
+    .innerJoin(lists, eq(lists.id, cards.listId))
+    .innerJoin(boards, eq(boards.id, lists.boardId))
+    .innerJoin(projects, eq(projects.id, boards.projectId))
+    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+    .where(
+      and(
+        eq(workspaces.organizationId, organizationId),
+        or(ilike(cards.title, searchTerm), ilike(cards.description, searchTerm))
+      )
+    )
+    .limit(10);
+
+  // Search Boards
+  const matchedBoards = await db
+    .select({
+      id: boards.id,
+      title: boards.name
+    })
+    .from(boards)
+    .innerJoin(projects, eq(projects.id, boards.projectId))
+    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+    .where(
+      and(
+        eq(workspaces.organizationId, organizationId),
+        ilike(boards.name, searchTerm)
+      )
+    )
+    .limit(5);
+
+  // Search Projects
+  const matchedProjects = await db
+    .select({
+      id: projects.id,
+      title: projects.name
+    })
+    .from(projects)
+    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+    .where(
+      and(
+        eq(workspaces.organizationId, organizationId),
+        ilike(projects.name, searchTerm)
+      )
+    )
+    .limit(5);
+
+  return [
+    ...matchedCards.map(c => ({ ...c, type: 'card' })),
+    ...matchedBoards.map(b => ({ ...b, type: 'board' })),
+    ...matchedProjects.map(p => ({ ...p, type: 'project' }))
+  ];
+}
+
+export async function listSavedSearches(db: Database, userId: string) {
+  return db
+    .select()
+    .from(savedSearches)
+    .where(eq(savedSearches.userId, userId))
+    .orderBy(desc(savedSearches.createdAt));
+}
+
+export async function createSavedSearch(
+  db: Database,
+  userId: string,
+  input: {
+    name: string;
+    query: string;
+    filters?: any;
+  }
+) {
+  const [savedSearch] = await db
+    .insert(savedSearches)
+    .values({
+      userId,
+      name: input.name,
+      query: input.query,
+      filters: input.filters || {}
+    })
+    .returning();
+  return savedSearch;
+}
+
+export async function deleteSavedSearch(db: Database, userId: string, id: string) {
+  const [deleted] = await db
+    .delete(savedSearches)
+    .where(and(eq(savedSearches.id, id), eq(savedSearches.userId, userId)))
+    .returning();
+  
+  if (!deleted) throw httpError(404, 'Saved search not found');
+  return deleted;
+}

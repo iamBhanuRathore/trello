@@ -1,0 +1,250 @@
+import { useState, useEffect } from 'react';
+import { useAuthStore } from '../../store/authStore';
+import { getWebhooks, createWebhook, updateWebhook, deleteWebhook } from '../../lib/api';
+import { Button } from '@boardly/ui/button';
+import { Switch } from '@boardly/ui/switch';
+import { Trash, Plus, Eye, EyeOff } from 'lucide-react';
+
+const AVAILABLE_EVENTS = [
+  { id: 'card.created', label: 'Card Created' },
+  { id: 'card.updated', label: 'Card Updated' },
+  { id: 'card.moved', label: 'Card Moved' },
+  { id: 'card.archived', label: 'Card Archived' },
+  { id: 'card.commented', label: 'Card Commented' },
+  { id: 'card.assigned', label: 'Card Assigned' },
+  { id: 'card.labeled', label: 'Card Labeled' },
+];
+
+export function WebhookSettings() {
+  const { user } = useAuthStore();
+  const [webhooks, setWebhooks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // New webhook form
+  const [isAdding, setIsAdding] = useState(false);
+  const [newUrl, setNewUrl] = useState('');
+  const [newEvents, setNewEvents] = useState<string[]>([]);
+
+  // UI state
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (user?.organizationId) {
+      loadWebhooks();
+    }
+  }, [user]);
+
+  const loadWebhooks = async () => {
+    try {
+      const data = await getWebhooks(user!.organizationId);
+      setWebhooks(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newUrl) return;
+    try {
+      await createWebhook(user!.organizationId, {
+        url: newUrl,
+        events: newEvents.length > 0 ? newEvents : ['*'],
+      });
+      setNewUrl('');
+      setNewEvents([]);
+      setIsAdding(false);
+      loadWebhooks();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this webhook?')) return;
+    try {
+      await deleteWebhook(user!.organizationId, id);
+      loadWebhooks();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleEvent = (eventId: string) => {
+    setNewEvents((prev) =>
+      prev.includes(eventId) ? prev.filter((e) => e !== eventId) : [...prev, eventId]
+    );
+  };
+
+  const toggleStatus = async (id: string, isEnabled: boolean) => {
+    try {
+      await updateWebhook(user!.organizationId, id, { isEnabled });
+      loadWebhooks();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleSecret = (id: string) => {
+    setRevealedSecrets((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  if (loading) return <div className="p-8">Loading webhooks...</div>;
+
+  return (
+    <div className="max-w-4xl mx-auto py-8 px-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Webhooks</h1>
+        <Button onClick={() => setIsAdding(!isAdding)}>
+          {isAdding ? (
+            'Cancel'
+          ) : (
+            <>
+              <Plus className="h-4 w-4 mr-2" /> Add Webhook
+            </>
+          )}
+        </Button>
+      </div>
+
+      {isAdding && (
+        <div className="bg-card rounded-lg border p-6 mb-8 shadow-sm">
+          <h2 className="text-xl font-semibold mb-4">New Webhook</h2>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Payload URL</label>
+              <input
+                type="url"
+                value={newUrl}
+                onChange={(e) => setNewUrl(e.target.value)}
+                placeholder="https://example.com/webhook"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Events to send</label>
+              <div className="grid grid-cols-2 gap-2 bg-muted/30 p-4 rounded-md">
+                {AVAILABLE_EVENTS.map((ev) => (
+                  <label key={ev.id} className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={newEvents.includes(ev.id)}
+                      onChange={() => handleToggleEvent(ev.id)}
+                      className="rounded border-gray-300"
+                    />
+                    {ev.label}
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Leave all unchecked to send all events ('*').
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <Button onClick={handleCreate} disabled={!newUrl}>
+                Create Webhook
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {webhooks.length === 0 && !isAdding ? (
+          <div className="text-center py-12 bg-muted/20 rounded-lg border border-dashed">
+            <p className="text-muted-foreground">No webhooks configured for this organization.</p>
+          </div>
+        ) : (
+          webhooks.map((hook) => (
+            <div
+              key={hook.id}
+              className="bg-card rounded-lg border p-5 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-start"
+            >
+              <div className="flex-1 space-y-3">
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${hook.isEnabled ? 'bg-green-500' : 'bg-gray-400'}`}
+                  ></span>
+                  <h3 className="font-semibold truncate max-w-[300px]" title={hook.url}>
+                    {hook.url}
+                  </h3>
+                </div>
+
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium uppercase mb-1">Events</p>
+                  <div className="flex flex-wrap gap-1">
+                    {hook.events.includes('*') || hook.events.length === 0 ? (
+                      <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                        All Events
+                      </span>
+                    ) : (
+                      hook.events.map((e: string) => (
+                        <span
+                          key={e}
+                          className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full"
+                        >
+                          {e}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium uppercase mb-1">
+                    Secret (HMAC-SHA256)
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs bg-muted px-2 py-1 rounded w-64 truncate">
+                      {revealedSecrets[hook.id] ? hook.secret : '••••••••••••••••••••••••••••••••'}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => toggleSecret(hook.id)}
+                    >
+                      {revealedSecrets[hook.id] ? (
+                        <EyeOff className="h-3 w-3" />
+                      ) : (
+                        <Eye className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 border-t md:border-t-0 pt-4 md:pt-0 w-full md:w-auto">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={hook.isEnabled}
+                    onCheckedChange={(c) => toggleStatus(hook.id, c)}
+                    id={`status-${hook.id}`}
+                  />
+                  <label
+                    htmlFor={`status-${hook.id}`}
+                    className="text-sm font-medium text-muted-foreground"
+                  >
+                    {hook.isEnabled ? 'Active' : 'Disabled'}
+                  </label>
+                </div>
+                <div className="h-8 w-px bg-border hidden md:block"></div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => handleDelete(hook.id)}
+                >
+                  <Trash className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}

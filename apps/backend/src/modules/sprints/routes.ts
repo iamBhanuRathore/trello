@@ -1,0 +1,82 @@
+import { Elysia, t } from 'elysia';
+import { db } from '../../db/index';
+import { authPlugin } from '../../middleware/auth';
+import { 
+  listSprints,
+  getSprint,
+  createSprint,
+  updateSprint,
+  deleteSprint,
+  addCardToSprint,
+  removeCardFromSprint,
+  listSprintCards
+} from './service';
+
+export const sprintRoutes = new Elysia({ prefix: '/sprints' })
+  .use(authPlugin)
+
+  // Note: /projects/:projectId/sprints conceptually belongs under a projects module or similar.
+  // We'll define it here but the path is just a bit flat for MVP.
+  .get('/projects/:projectId', async ({ params: { projectId } }) => {
+    return listSprints(db, projectId);
+  }, {
+    params: t.Object({ projectId: t.String() })
+  })
+
+  .post('/projects/:projectId', async ({ params: { projectId }, body }) => {
+    return createSprint(db, projectId, body as any);
+  }, {
+    params: t.Object({ projectId: t.String() }),
+    body: t.Object({
+      name: t.String(),
+      type: t.Union([t.Literal('weekly'), t.Literal('biweekly'), t.Literal('monthly'), t.Literal('custom')]),
+      startDate: t.String(),
+      endDate: t.String(),
+      goal: t.Optional(t.String())
+    })
+  })
+
+  .get('/:id', async ({ params: { id } }) => {
+    return getSprint(db, id);
+  }, {
+    params: t.Object({ id: t.String() })
+  })
+
+  .patch('/:id', async ({ params: { id }, body }) => {
+    return updateSprint(db, id, body as any);
+  }, {
+    params: t.Object({ id: t.String() }),
+    body: t.Object({
+      name: t.Optional(t.String()),
+      type: t.Optional(t.Union([t.Literal('weekly'), t.Literal('biweekly'), t.Literal('monthly'), t.Literal('custom')])),
+      startDate: t.Optional(t.String()),
+      endDate: t.Optional(t.String()),
+      goal: t.Optional(t.String()),
+      status: t.Optional(t.Union([t.Literal('planned'), t.Literal('active'), t.Literal('completed')]))
+    })
+  })
+
+  .delete('/:id', async ({ params: { id } }) => {
+    return deleteSprint(db, id);
+  }, {
+    params: t.Object({ id: t.String() })
+  })
+
+  .get('/:id/cards', async ({ params: { id } }) => {
+    return listSprintCards(db, id);
+  }, {
+    params: t.Object({ id: t.String() })
+  })
+
+  .post('/:id/cards', async ({ params: { id }, body }) => {
+    return addCardToSprint(db, id, body.cardId);
+  }, {
+    params: t.Object({ id: t.String() }),
+    body: t.Object({ cardId: t.String() })
+  })
+
+  .delete('/:id/cards/:cardId', async ({ params: { id, cardId } }) => {
+    return removeCardFromSprint(db, id, cardId);
+  }, {
+    params: t.Object({ id: t.String(), cardId: t.String() })
+  });

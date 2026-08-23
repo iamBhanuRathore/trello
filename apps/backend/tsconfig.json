@@ -1,0 +1,13 @@
+{
+  "extends": "../../packages/config/tsconfig/node.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@boardly/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@boardly/shared-types/*": ["../../packages/shared-types/src/*"]
+    },
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage"]
+}

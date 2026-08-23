@@ -1,0 +1,100 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import * as schema from '../../db/schema/index';
+import type { Database } from '../../db/index';
+import { eq } from 'drizzle-orm';
+import { signUp } from '../auth/service';
+import { createWorkspace } from '../workspaces/service';
+import { createProject } from '../projects/service';
+import { createBoard, listBoards, getBoard, updateBoard, archiveBoard } from './service';
+
+const TEST_DB_URL =
+  process.env['DATABASE_TEST_URL'] ?? 'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
+
+let client: ReturnType<typeof postgres>;
+let db: Database;
+
+beforeAll(() => {
+  client = postgres(TEST_DB_URL, { max: 1 });
+  db = drizzle(client, { schema });
+});
+
+afterAll(async () => {
+  await client.end();
+});
+
+beforeEach(async () => {
+  const existingOrg = await db.select().from(schema.organizations).where(eq(schema.organizations.slug, 'board-org')).then(r => r[0]);
+  if (existingOrg) {
+    const orgBoards = await db.select().from(schema.boards).where(eq(schema.boards.organizationId, existingOrg.id));
+    for (const b of orgBoards) {
+      await db.delete(schema.cardLabels);
+      await db.delete(schema.labels).where(eq(schema.labels.boardId, b.id));
+      await db.delete(schema.automations).where(eq(schema.automations.boardId, b.id));
+      await db.delete(schema.intakeForms).where(eq(schema.intakeForms.boardId, b.id));
+    }
+    await db.delete(schema.boards).where(eq(schema.boards.organizationId, existingOrg.id));
+    await db.delete(schema.projects).where(eq(schema.projects.organizationId, existingOrg.id));
+    await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, existingOrg.id));
+    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, existingOrg.id));
+    await db.delete(schema.organizations).where(eq(schema.organizations.id, existingOrg.id));
+  }
+  const user = await db.select().from(schema.users).where(eq(schema.users.email, 'owner@board.com')).then(r => r[0]);
+  if (user) {
+    await db.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, user.id));
+    await db.delete(schema.users).where(eq(schema.users.id, user.id));
+  }
+});
+
+describe('Boards Service', () => {
+  it('should create and list boards', async () => {
+    const { organization } = await signUp(db, {
+      name: 'Owner',
+      email: 'owner@board.com',
+      password: 'pass',
+      orgName: 'Board Org',
+      orgSlug: 'board-org',
+    });
+
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
+    const proj = await createProject(db, { organizationId: organization.id, workspaceId: ws!.id, name: 'App' });
+
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Sprint 1',
+    });
+
+    expect(board!.name).toBe('Sprint 1');
+
+    const list = await listBoards(db, proj!.id, organization.id);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.id).toBe(board!.id);
+  });
+
+  it('should update and archive a board', async () => {
+    const { organization } = await signUp(db, {
+      name: 'Owner',
+      email: 'owner@board.com',
+      password: 'pass',
+      orgName: 'Board Org',
+      orgSlug: 'board-org',
+    });
+
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
+    const proj = await createProject(db, { organizationId: organization.id, workspaceId: ws!.id, name: 'App' });
+    const board = await createBoard(db, { organizationId: organization.id, projectId: proj!.id, name: 'Sprint 1' });
+    
+    const updated = await updateBoard(db, board!.id, organization.id, { name: 'Sprint 2' });
+    expect(updated.name).toBe('Sprint 2');
+
+    await archiveBoard(db, board!.id, organization.id);
+
+    const fetched = await getBoard(db, board!.id, organization.id);
+    expect(fetched.isArchived).toBe(true);
+
+    const list = await listBoards(db, proj!.id, organization.id);
+    expect(list).toHaveLength(0); // Excludes archived
+  });
+});
