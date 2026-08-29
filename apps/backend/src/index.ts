@@ -6,7 +6,7 @@ import { logger } from './lib/logger';
 import { db } from './db/index';
 import { healthRoutes } from './modules/health/routes';
 import { authRoutes } from './modules/auth/routes';
-import { orgRoutes } from './modules/organizations/routes';
+import { orgRoutes, inviteRoutes } from './modules/organizations/routes';
 import { workspaceRoutes } from './modules/workspaces/routes';
 import { projectRoutes } from './modules/projects/routes';
 import { boardRoutes } from './modules/boards/routes';
@@ -36,19 +36,44 @@ import { ssoRoutes } from './modules/sso/routes';
 import { developerRoutes } from './modules/developer/routes';
 import { trashRoutes } from './modules/trash/routes';
 
+import { formatErrorResponse } from './lib/errors';
+import { sql } from 'drizzle-orm';
+
+// Ensure enum values and schema columns are up to date in the database on boot
+db.execute(sql`ALTER TYPE "org_member_role" ADD VALUE IF NOT EXISTS 'viewer'`).catch(() => {});
+db.execute(sql`ALTER TABLE IF EXISTS "sso_configurations" ADD COLUMN IF NOT EXISTS "workos_organization_id" varchar(255)`).catch(() => {});
+db.execute(sql`ALTER TABLE IF EXISTS "sso_configurations" ADD COLUMN IF NOT EXISTS "workos_connection_id" varchar(255)`).catch(() => {});
+
 // Setup event listeners
 setupNotificationListeners(db);
 setupWebhookDispatcher(db);
 setupAutomationEngine(db);
 
+const allowedOrigins = [
+  ...(env.DASHBOARD_URL?.split(',').map((s) => s.trim()) || [])
+];
+
+const isAllowedOrigin = (origin: string | null): boolean => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  // Always permit local development hosts regardless of port/protocol/127.0.0.1 vs localhost
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  return false;
+};
+
 const app = new Elysia()
   // ── Global middleware ──────────────────────────────────────────────────────
   .use(
     cors({
-      origin: env.DASHBOARD_URL,
+      origin: (request: Request): boolean => {
+        const origin = request.headers.get('origin');
+        return isAllowedOrigin(origin);
+      },
       credentials: true,
-      allowedHeaders: ['Content-Type', 'Authorization'],
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+      allowedHeaders: true,
+      exposeHeaders: true,
+      maxAge: 86400,
     })
   )
   .use(
@@ -77,8 +102,6 @@ const app = new Elysia()
 
   // ── Global error handler ───────────────────────────────────────────────────
   .onError(({ error, code, set }) => {
-    logger.error({ err: error, code }, 'Request error');
-
     if (code === 'VALIDATION') {
       set.status = 422;
       return {
@@ -89,16 +112,12 @@ const app = new Elysia()
 
     if (code === 'NOT_FOUND') {
       set.status = 404;
-      return { error: 'Not found' };
+      return { error: 'Resource not found' };
     }
 
-    if ('status' in error && typeof (error as any).status === 'number') {
-      set.status = (error as any).status;
-      return { error: error.message };
-    }
-
-    set.status = 500;
-    return { error: 'Internal server error' };
+    const { status, body } = formatErrorResponse(error);
+    set.status = status;
+    return body;
   })
 
   // ── Request logging ────────────────────────────────────────────────────────
@@ -111,6 +130,7 @@ const app = new Elysia()
   .group('/v1', (app) =>
     app
       .use(authRoutes)
+      .use(inviteRoutes)
       .use(orgRoutes)
       .use(workspaceRoutes)
       .use(projectRoutes)

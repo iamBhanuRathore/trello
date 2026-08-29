@@ -9,10 +9,10 @@ import {
   Download,
   Layers,
   TrashIcon,
-  Filter,
 } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { EnterpriseDataGrid, type ColumnDef } from '../components/common/EnterpriseDataGrid';
+import { SearchableSelect } from '../components/ui/SearchableSelect';
 
 export function Timesheets() {
   const queryClient = useQueryClient();
@@ -237,41 +237,49 @@ export function Timesheets() {
         </div>
 
         {/* Global Range & Filter Controls */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5 p-1 bg-muted/40 rounded-xl border">
-            <Filter className="w-3.5 h-3.5 ml-2 text-muted-foreground" />
-            <select
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="w-36">
+            <SearchableSelect
+              options={[
+                { value: '7days', label: 'Last 7 Days' },
+                { value: '30days', label: 'Last 30 Days' },
+                { value: 'all', label: 'All Time' },
+              ]}
               value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
-              className="bg-transparent border-0 text-xs font-medium text-foreground py-1 pr-3 pl-1 outline-none"
-            >
-              <option value="7days">Last 7 Days</option>
-              <option value="30days">Last 30 Days</option>
-              <option value="all">All Time</option>
-            </select>
-
-            {timesheetData?.byUser && timesheetData.byUser.length > 0 && (
-              <select
-                value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-                className="bg-transparent border-0 text-xs font-medium text-foreground py-1 pr-3 pl-1 outline-none border-l border-border ml-1"
-              >
-                <option value="">All Team Members</option>
-                {timesheetData.byUser.map((u: any) => (
-                  <option key={u.userId} value={u.userId}>
-                    {u.user?.name || 'Member'}
-                  </option>
-                ))}
-              </select>
-            )}
+              onChange={setDateRange}
+              placeholder="Select Range"
+              size="sm"
+              triggerClassName="h-8 text-xs bg-muted/40"
+            />
           </div>
+
+          {timesheetData?.byUser && timesheetData.byUser.length > 0 && (
+            <div className="w-48">
+              <SearchableSelect
+                options={[
+                  { value: '', label: 'All Team Members' },
+                  ...timesheetData.byUser.map((u: any) => ({
+                    value: u.userId,
+                    label: u.user?.name || 'Member',
+                    sublabel: u.user?.email,
+                    avatarUrl: u.user?.avatarUrl,
+                  })),
+                ]}
+                value={selectedUserId}
+                onChange={setSelectedUserId}
+                placeholder="All Members"
+                size="sm"
+                triggerClassName="h-8 text-xs bg-muted/40"
+              />
+            </div>
+          )}
 
           <Button
             variant="outline"
             size="sm"
             onClick={exportCSV}
             disabled={entries.length === 0}
-            className="gap-1.5"
+            className="gap-1.5 ml-auto"
           >
             <Download className="w-4 h-4" /> Export CSV
           </Button>

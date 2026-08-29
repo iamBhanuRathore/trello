@@ -1,36 +1,92 @@
 import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
-import { getOrg, updateOrg, listMembers, inviteMember, updateMemberRole, removeMember } from './service';
+import { handleRouteError } from '../../lib/errors';
+import {
+  getOrg,
+  updateOrg,
+  listMembers,
+  inviteMember,
+  bulkInviteMembers,
+  listPendingInvitations,
+  resendInvitation,
+  revokeInvitation,
+  updateMemberRole,
+  deactivateMember,
+  reactivateMember,
+  forceLogoutUser,
+  getMemberActivitySummary,
+  removeMember,
+  previewInvitation,
+  acceptInvitation,
+} from './service';
+
+/** Public invite routes (no auth required) */
+export const inviteRoutes = new Elysia({ prefix: '/invite', tags: ['Invitations'] })
+
+  // GET /v1/invite/preview/:token
+  .get(
+    '/preview/:token',
+    async ({ params, set }) => {
+      try {
+        return await previewInvitation(db, params.token);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    }
+  )
+
+  // POST /v1/invite/accept
+  .post(
+    '/accept',
+    async ({ body, set }) => {
+      try {
+        return await acceptInvitation(db, body.token, body.name, body.password);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        token: t.String(),
+        name: t.Optional(t.String()),
+        password: t.Optional(t.String()),
+      }),
+    }
+  );
+
 
 /** Organization routes — /v1/orgs/* */
 export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] })
   .use(authPlugin)
 
   // GET /v1/orgs/:orgId
-  .use(requirePermission('org.read'))
-  .get('/:orgId', async ({ params, set }) => {
-    try {
-      return await getOrg(db, params.orgId);
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .get(
+    '/:orgId',
+    async ({ params, set }) => {
+      try {
+        return await getOrg(db, params.orgId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('org.read'),
     }
-  })
+  )
 
   // PATCH /v1/orgs/:orgId
-  .use(requirePermission('org.update'))
   .patch(
     '/:orgId',
     async ({ params, body, set }) => {
       try {
         return await updateOrg(db, params.orgId, body);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('org.update'),
       body: t.Object({
         name: t.Optional(t.String()),
         logoUrl: t.Optional(t.Nullable(t.String())),
@@ -40,7 +96,6 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
   )
 
   // GET /v1/orgs/:orgId/members
-  .use(requirePermission('org.read'))
   .get(
     '/:orgId/members',
     async ({ params, query, set }) => {
@@ -50,26 +105,27 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
           limit: query?.limit ? parseInt(query.limit, 10) : undefined,
           offset: query?.offset ? parseInt(query.offset, 10) : undefined,
           role: query?.role,
+          status: query?.status,
         });
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('org.read'),
       query: t.Optional(
         t.Object({
           search: t.Optional(t.String()),
           limit: t.Optional(t.String()),
           offset: t.Optional(t.String()),
           role: t.Optional(t.String()),
+          status: t.Optional(t.String()),
         })
       ),
     }
   )
 
   // POST /v1/orgs/:orgId/members/invite
-  .use(requirePermission('member.invite'))
   .post(
     '/:orgId/members/invite',
     async ({ params, body, user, set }) => {
@@ -84,11 +140,11 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
           body.workspaceIds
         );
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('member.invite'),
       body: t.Object({
         email: t.String({ format: 'email' }),
         role: t.String(),
@@ -98,31 +154,169 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     }
   )
 
-  // PATCH /v1/orgs/:orgId/members/:memberId
-  .use(requirePermission('member.role.update'))
-  .patch(
-    '/:orgId/members/:memberId',
-    async ({ params, body, set }) => {
+  // POST /v1/orgs/:orgId/members/bulk-invite
+  .post(
+    '/:orgId/members/bulk-invite',
+    async ({ params, body, user, set }) => {
       try {
-        return await updateMemberRole(db, params.orgId, params.memberId, body.role);
+        return await bulkInviteMembers(db, params.orgId, body.invites, user.userId);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('member.invite'),
+      body: t.Object({
+        invites: t.Array(
+          t.Object({
+            email: t.String({ format: 'email' }),
+            name: t.Optional(t.String()),
+            role: t.Optional(t.String()),
+            workspaceIds: t.Optional(t.Array(t.String())),
+          })
+        ),
+      }),
+    }
+  )
+
+  // GET /v1/orgs/:orgId/invitations
+  .get(
+    '/:orgId/invitations',
+    async ({ params, set }) => {
+      try {
+        return await listPendingInvitations(db, params.orgId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('org.read'),
+    }
+  )
+
+  // POST /v1/orgs/:orgId/invitations/:invitationId/resend
+  .post(
+    '/:orgId/invitations/:invitationId/resend',
+    async ({ params, user, set }) => {
+      try {
+        return await resendInvitation(db, params.orgId, params.invitationId, user.userId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('member.invite'),
+    }
+  )
+
+  // DELETE /v1/orgs/:orgId/invitations/:invitationId
+  .delete(
+    '/:orgId/invitations/:invitationId',
+    async ({ params, user, set }) => {
+      try {
+        return await revokeInvitation(db, params.orgId, params.invitationId, user.userId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('member.invite'),
+    }
+  )
+
+  // PATCH /v1/orgs/:orgId/members/:memberId
+  .patch(
+    '/:orgId/members/:memberId',
+    async ({ params, body, user, set }) => {
+      try {
+        return await updateMemberRole(db, params.orgId, params.memberId, body.role, user.userId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('member.role.update'),
       body: t.Object({ role: t.String() }),
     }
   )
 
-  // DELETE /v1/orgs/:orgId/members/:memberId
-  .use(requirePermission('member.remove'))
-  .delete('/:orgId/members/:memberId', async ({ params, set }) => {
-    try {
-      await removeMember(db, params.orgId, params.memberId);
-      return { success: true };
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  // POST /v1/orgs/:orgId/members/:memberId/deactivate
+  .post(
+    '/:orgId/members/:memberId/deactivate',
+    async ({ params, body, user, set }) => {
+      try {
+        return await deactivateMember(db, params.orgId, params.memberId, user.userId, body?.reason);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('member.remove'),
+      body: t.Optional(
+        t.Object({
+          reason: t.Optional(t.String()),
+        })
+      ),
     }
-  });
+  )
+
+  // POST /v1/orgs/:orgId/members/:memberId/reactivate
+  .post(
+    '/:orgId/members/:memberId/reactivate',
+    async ({ params, user, set }) => {
+      try {
+        return await reactivateMember(db, params.orgId, params.memberId, user.userId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('member.role.update'),
+    }
+  )
+
+  // POST /v1/orgs/:orgId/members/:memberId/force-logout
+  .post(
+    '/:orgId/members/:memberId/force-logout',
+    async ({ params, user, set }) => {
+      try {
+        return await forceLogoutUser(db, params.orgId, params.memberId, user.userId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('member.remove'),
+    }
+  )
+
+  // GET /v1/orgs/:orgId/members/:memberId/summary
+  .get(
+    '/:orgId/members/:memberId/summary',
+    async ({ params, set }) => {
+      try {
+        return await getMemberActivitySummary(db, params.orgId, params.memberId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('org.read'),
+    }
+  )
+
+  // DELETE /v1/orgs/:orgId/members/:memberId
+  .delete(
+    '/:orgId/members/:memberId',
+    async ({ params, user, set }) => {
+      try {
+        await removeMember(db, params.orgId, params.memberId, user.userId);
+        return { success: true };
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('member.remove'),
+    }
+  );

@@ -64,6 +64,13 @@
       "when": 1786902456234,
       "tag": "0008_confused_stick",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788031895626,
+      "tag": "0009_rich_turbo",
+      "breakpoints": true
     }
   ]
 }

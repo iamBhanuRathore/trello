@@ -1,17 +1,26 @@
 import Elysia, { t } from 'elysia';
 import { authPlugin } from '../../middleware/auth';
 import { db } from '../../db/index';
+import { handleRouteError } from '../../lib/errors';
 import { listAutomations, createAutomation, updateAutomation, deleteAutomation } from './service';
 
 export const automationRoutes = new Elysia({ prefix: '/boards/:id/automations', tags: ['Automations'] })
   .use(authPlugin)
 
-  .get('/', async ({ params }) => {
-    return await listAutomations(db, params.id);
+  .get('/', async ({ params, set }) => {
+    try {
+      return await listAutomations(db, params.id);
+    } catch (err: any) {
+      return handleRouteError(err, set);
+    }
   })
 
-  .post('/', async ({ params, body }) => {
-    return await createAutomation(db, params.id, body);
+  .post('/', async ({ params, body, set }) => {
+    try {
+      return await createAutomation(db, params.id, body);
+    } catch (err: any) {
+      return handleRouteError(err, set);
+    }
   }, {
     body: t.Object({
       name: t.String(),
@@ -24,8 +33,7 @@ export const automationRoutes = new Elysia({ prefix: '/boards/:id/automations', 
     try {
       return await updateAutomation(db, params.id, params.automationId, body);
     } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+      return handleRouteError(err, set);
     }
   }, {
     body: t.Object({
@@ -40,7 +48,6 @@ export const automationRoutes = new Elysia({ prefix: '/boards/:id/automations', 
     try {
       return await deleteAutomation(db, params.id, params.automationId);
     } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+      return handleRouteError(err, set);
     }
   });

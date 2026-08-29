@@ -43,6 +43,8 @@ export const users = pgTable('users', {
   twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
   twoFactorSecret: varchar('two_factor_secret', { length: 255 }),
   timezone: varchar('timezone', { length: 100 }).default('UTC'),
+  lastLoginAt: timestamp('last_login_at'),
+  deactivatedAt: timestamp('deactivated_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   deletedAt: timestamp('deleted_at'),
@@ -52,7 +54,7 @@ export const users = pgTable('users', {
 ### `organization_members`
 ```typescript
 export const organizationMemberRoleEnum = pgEnum('org_member_role', [
-  'org_owner', 'org_admin', 'billing_manager', 'workspace_admin', 'member'
+  'org_owner', 'org_admin', 'billing_manager', 'workspace_admin', 'member', 'viewer'
 ]);
 
 export const organizationMemberStatusEnum = pgEnum('org_member_status', [
@@ -66,6 +68,9 @@ export const organizationMembers = pgTable('organization_members', {
   role: organizationMemberRoleEnum('role').notNull().default('member'),
   status: organizationMemberStatusEnum('status').notNull().default('invited'),
   invitedBy: uuid('invited_by').references(() => users.id),
+  lastActiveAt: timestamp('last_active_at'),
+  deactivationReason: varchar('deactivation_reason', { length: 500 }),
+  deactivatedBy: uuid('deactivated_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   deletedAt: timestamp('deleted_at'),
@@ -236,8 +241,10 @@ export const projects = pgTable('projects', {
   organizationId: uuid('organization_id').notNull().references(() => organizations.id),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id),
   name: varchar('name', { length: 255 }).notNull(),
+  key: varchar('key', { length: 10 }), // e.g. 'BCW', 'CFP', 'ENG'
   description: text('description'),
   status: projectStatusEnum('status').notNull().default('active'),
+  taskCounter: integer('task_counter').notNull().default(0), // atomic incremental ticket counter
   startDate: date('start_date'),
   endDate: date('end_date'),
   isArchived: boolean('is_archived').notNull().default(false),
@@ -343,6 +350,8 @@ export const cards = pgTable('cards', {
   organizationId: uuid('organization_id').notNull().references(() => organizations.id),
   listId: uuid('list_id').notNull().references(() => lists.id),
   parentCardId: uuid('parent_card_id'),  // self-reference for subtasks
+  taskNumber: integer('task_number'),    // sequential issue number (1, 2, 3...)
+  key: varchar('key', { length: 30 }),   // human-readable ticket ID (e.g. 'BCW-1', 'CFP-14')
   title: varchar('title', { length: 500 }).notNull(),
   description: text('description'),      // rich text (TipTap JSON stored as text or jsonb)
   position: real('position').notNull(),  // fractional indexing

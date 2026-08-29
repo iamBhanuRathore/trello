@@ -3,8 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { getAuditLogs } from '../../lib/api';
 import {
   FileText,
-  Download,
-  Filter,
   Eye,
   ShieldCheck,
   Globe,
@@ -18,9 +16,9 @@ import {
   DialogDescription,
 } from '@boardly/ui/dialog';
 import { EnterpriseDataGrid, type ColumnDef } from '../../components/common/EnterpriseDataGrid';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 
 export function AuditLogs() {
-  const [selectedAction, setSelectedAction] = useState<string>('');
   const [dateRange, setDateRange] = useState<string>('30days');
   const [inspectMetadata, setInspectMetadata] = useState<any>(null);
 
@@ -48,10 +46,9 @@ export function AuditLogs() {
   const dates = getDates();
 
   const { data: auditData, isLoading } = useQuery({
-    queryKey: ['auditLogs', selectedAction, dateRange],
+    queryKey: ['auditLogs', dateRange],
     queryFn: () =>
       getAuditLogs({
-        action: selectedAction || undefined,
         startDate: dates.startDate,
         endDate: dates.endDate,
         limit: 100,
@@ -59,32 +56,6 @@ export function AuditLogs() {
   });
 
   const logs = auditData?.logs || [];
-
-  const exportCSV = () => {
-    if (logs.length === 0) return;
-
-    const headers = ['Timestamp', 'Actor', 'Action', 'Target', 'IP Address', 'User Agent'];
-    const rows = logs.map((log: any) => [
-      `"${new Date(log.createdAt).toISOString()}"`,
-      `"${log.actor?.name || 'System / Service'}"`,
-      `"${log.action}"`,
-      `"${log.target || ''}"`,
-      `"${log.ipAddress || ''}"`,
-      `"${(log.userAgent || '').replace(/"/g, '""')}"`,
-    ]);
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `boardly_audit_trail_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   // ─── Columns for EnterpriseDataGrid ───
   const columns: ColumnDef<any>[] = useMemo(
@@ -203,41 +174,24 @@ export function AuditLogs() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 p-1 bg-muted/40 rounded-xl border">
-            <Filter className="w-3.5 h-3.5 ml-2 text-muted-foreground" />
-            <select
-              className="bg-transparent border-0 text-xs font-medium text-foreground py-1 pr-3 pl-1 outline-none"
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground font-medium hidden sm:inline-block">
+            Time Range:
+          </span>
+          <div className="w-36">
+            <SearchableSelect
+              options={[
+                { value: '7days', label: 'Last 7 Days' },
+                { value: '30days', label: 'Last 30 Days' },
+                { value: 'all', label: 'All Time' },
+              ]}
               value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
-            >
-              <option value="7days">Last 7 Days</option>
-              <option value="30days">Last 30 Days</option>
-              <option value="all">All Time</option>
-            </select>
-
-            <select
-              className="bg-transparent border-0 text-xs font-medium text-foreground py-1 pr-3 pl-1 outline-none border-l border-border ml-1"
-              value={selectedAction}
-              onChange={(e) => setSelectedAction(e.target.value)}
-            >
-              <option value="">All Actions</option>
-              <option value="board.deleted">Board Deleted</option>
-              <option value="role.updated">Role Updated</option>
-              <option value="user.invited">User Invited</option>
-              <option value="settings.changed">Settings Changed</option>
-            </select>
+              onChange={setDateRange}
+              placeholder="Select Range"
+              size="sm"
+              triggerClassName="h-9 text-xs bg-card"
+            />
           </div>
-
-          <Button
-            onClick={exportCSV}
-            disabled={logs.length === 0}
-            variant="outline"
-            size="sm"
-            className="gap-2 bg-card hover:bg-muted"
-          >
-            <Download className="w-4 h-4 text-blue-600" /> Export CSV
-          </Button>
         </div>
       </div>
 
@@ -257,20 +211,35 @@ export function AuditLogs() {
 
       {/* JSON Metadata Inspector Dialog */}
       <Dialog open={!!inspectMetadata} onOpenChange={(open) => !open && setInspectMetadata(null)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-base font-semibold">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
+          {/* ─── Fixed Header ─── */}
+          <DialogHeader className="p-5 sm:px-6 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">
+            <DialogTitle className="text-base font-bold pr-8">
               Event Metadata: {inspectMetadata?.action}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs text-muted-foreground">
               Recorded on {inspectMetadata && new Date(inspectMetadata.createdAt).toLocaleString()} by{' '}
               {inspectMetadata?.actor?.name || 'System'}.
             </DialogDescription>
           </DialogHeader>
-          <div className="pt-2">
-            <pre className="p-3.5 rounded-xl bg-muted/60 border text-xs font-mono overflow-x-auto max-h-80 text-foreground">
+
+          {/* ─── Scrollable Body ─── */}
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6">
+            <pre className="p-4 rounded-xl bg-muted/60 border border-border text-xs font-mono overflow-x-auto text-foreground leading-relaxed">
               {inspectMetadata ? JSON.stringify(inspectMetadata.metadata, null, 2) : ''}
             </pre>
+          </div>
+
+          {/* ─── Fixed Bottom Footer ─── */}
+          <div className="p-4 sm:px-6 border-t border-border/80 bg-card/90 backdrop-blur-md shrink-0 flex items-center justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setInspectMetadata(null)}
+              className="cursor-pointer text-xs px-5"
+            >
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

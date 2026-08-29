@@ -17,6 +17,7 @@ import { sql } from 'drizzle-orm';
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 export const planTierEnum = pgEnum('plan_tier', ['free', 'pro', 'business', 'enterprise']);
+export const invitationStatusEnum = pgEnum('invitation_status', ['pending', 'accepted', 'revoked', 'expired']);
 export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'active',
   'past_due',
@@ -29,6 +30,7 @@ export const orgMemberRoleEnum = pgEnum('org_member_role', [
   'billing_manager',
   'workspace_admin',
   'member',
+  'viewer',
 ]);
 export const orgMemberStatusEnum = pgEnum('org_member_status', [
   'active',
@@ -133,6 +135,8 @@ export const users = pgTable('users', {
   twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
   twoFactorSecret: varchar('two_factor_secret', { length: 255 }),
   timezone: varchar('timezone', { length: 100 }).default('UTC'),
+  lastLoginAt: timestamp('last_login_at'),
+  deactivatedAt: timestamp('deactivated_at'),
   ...timestamps,
 });
 
@@ -150,6 +154,9 @@ export const organizationMembers = pgTable(
     role: orgMemberRoleEnum('role').notNull().default('member'),
     status: orgMemberStatusEnum('status').notNull().default('invited'),
     invitedBy: uuid('invited_by').references(() => users.id),
+    lastActiveAt: timestamp('last_active_at'),
+    deactivationReason: varchar('deactivation_reason', { length: 500 }),
+    deactivatedBy: uuid('deactivated_by').references(() => users.id),
     ...timestamps,
   },
   (t) => [uniqueIndex('org_members_org_user_idx').on(t.organizationId, t.userId)]
@@ -164,6 +171,9 @@ export const invitations = pgTable('invitations', {
   email: varchar('email', { length: 255 }).notNull(),
   role: orgMemberRoleEnum('role').notNull().default('member'),
   token: varchar('token', { length: 255 }).notNull().unique(),
+  status: invitationStatusEnum('status').notNull().default('pending'),
+  invitedByUserId: uuid('invited_by_user_id').references(() => users.id),
+  invitedByName: varchar('invited_by_name', { length: 255 }),
   expiresAt: timestamp('expires_at').notNull(),
   ...timestamps,
 });
@@ -237,8 +247,10 @@ export const projects = pgTable('projects', {
     .notNull()
     .references(() => workspaces.id),
   name: varchar('name', { length: 255 }).notNull(),
+  key: varchar('key', { length: 10 }),
   description: text('description'),
   status: projectStatusEnum('status').notNull().default('active'),
+  taskCounter: integer('task_counter').notNull().default(0),
   startDate: date('start_date'),
   endDate: date('end_date'),
   isArchived: boolean('is_archived').notNull().default(false),
@@ -349,6 +361,8 @@ export const cards = pgTable('cards', {
     .notNull()
     .references(() => lists.id),
   parentCardId: uuid('parent_card_id'), // self-ref FK added in migration
+  taskNumber: integer('task_number'),
+  key: varchar('key', { length: 30 }),
   title: varchar('title', { length: 500 }).notNull(),
   description: text('description'),
   position: real('position').notNull(),
@@ -793,6 +807,8 @@ export const ssoConfigurations = pgTable('sso_configurations', {
   idpMetadataUrl: varchar('idp_metadata_url', { length: 2048 }),
   clientId: varchar('client_id', { length: 255 }),
   clientSecret: varchar('client_secret', { length: 255 }),
+  workosOrganizationId: varchar('workos_organization_id', { length: 255 }),
+  workosConnectionId: varchar('workos_connection_id', { length: 255 }),
   scimEnabled: boolean('scim_enabled').notNull().default(false),
   scimToken: varchar('scim_token', { length: 255 }),
   enforceSSO: boolean('enforce_sso').notNull().default(false),

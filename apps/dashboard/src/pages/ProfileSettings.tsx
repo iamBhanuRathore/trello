@@ -96,7 +96,7 @@ export function ProfileSettings() {
 
   // Update Profile Mutation
   const updateProfileMutation = useMutation({
-    mutationFn: async (data: { name: string; avatarUrl?: string | null; timezone?: string; email?: string }) => {
+    mutationFn: async (data: { name: string; avatarUrl?: string | null; timezone?: string }) => {
       const res = await api.patch('/auth/profile', data);
       return res.data;
     },
@@ -113,14 +113,15 @@ export function ProfileSettings() {
     },
   });
 
-  // Change Password Mutation
+  // Change / Set Password Mutation
   const changePasswordMutation = useMutation({
     mutationFn: async (data: { currentPassword?: string; newPassword: string }) => {
       const res = await api.post('/auth/change-password', data);
       return res.data;
     },
-    onSuccess: () => {
-      setPasswordSuccessMsg('Password changed successfully!');
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+      setPasswordSuccessMsg(data.message || 'Password updated successfully!');
       setPasswordErrorMsg('');
       setCurrentPassword('');
       setNewPassword('');
@@ -128,7 +129,7 @@ export function ProfileSettings() {
       setTimeout(() => setPasswordSuccessMsg(''), 4000);
     },
     onError: (err: any) => {
-      setPasswordErrorMsg(err.response?.data?.error || 'Failed to change password.');
+      setPasswordErrorMsg(err.response?.data?.error || 'Failed to update password.');
       setPasswordSuccessMsg('');
     },
   });
@@ -141,7 +142,6 @@ export function ProfileSettings() {
     }
     updateProfileMutation.mutate({
       name: name.trim(),
-      email: email.trim() || undefined,
       avatarUrl: avatarUrl.trim() || null,
       timezone: timezone || 'UTC',
     });
@@ -158,7 +158,7 @@ export function ProfileSettings() {
       return;
     }
     changePasswordMutation.mutate({
-      currentPassword: currentPassword || undefined,
+      currentPassword: currentPassword.trim() || undefined,
       newPassword,
     });
   };
@@ -255,7 +255,14 @@ export function ProfileSettings() {
             </span>
           </div>
 
-          <p className="text-sm text-muted-foreground">{email}</p>
+          <div className="flex items-center justify-center sm:justify-start gap-2">
+            <p className="text-sm text-muted-foreground">{email}</p>
+            {profile?.avatarUrl?.includes('workos') || !profile?.hasPassword ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.2 rounded-full border border-emerald-500/20">
+                <Check className="w-2.5 h-2.5" /> Google OAuth
+              </span>
+            ) : null}
+          </div>
 
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 pt-1 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
@@ -313,17 +320,32 @@ export function ProfileSettings() {
             </div>
 
             <div>
-              <Label className="text-xs font-semibold mb-1.5 block">Email Address</Label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                className="h-9 text-xs"
-                required
-              />
+              <div className="flex items-center justify-between mb-1.5">
+                <Label className="text-xs font-semibold">Email Address</Label>
+                {profile?.avatarUrl?.includes('workos') || !profile?.hasPassword ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    <Lock className="w-2.5 h-2.5" /> Google OAuth
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border">
+                    <Lock className="w-2.5 h-2.5" /> Primary Account
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <Input
+                  type="email"
+                  value={email}
+                  readOnly
+                  disabled
+                  className="h-9 text-xs bg-muted/40 text-muted-foreground border-border/80 cursor-not-allowed pr-8 font-medium select-all"
+                />
+                <Lock className="w-3.5 h-3.5 text-muted-foreground/60 absolute right-2.5 top-2.5 pointer-events-none" />
+              </div>
               <p className="text-[11px] text-muted-foreground mt-1">
-                Used for account authentication and notifications.
+                {profile?.avatarUrl?.includes('workos') || !profile?.hasPassword
+                  ? 'Your email is verified and managed by your Google account.'
+                  : 'Your email address is your verified account identifier and cannot be changed here.'}
               </p>
             </div>
 
@@ -362,7 +384,7 @@ export function ProfileSettings() {
                       key={idx}
                       type="button"
                       onClick={() => setAvatarUrl(preset)}
-                      className={`relative w-8 h-8 rounded-full overflow-hidden border-2 transition-all ${
+                      className={`relative w-8 h-8 rounded-full overflow-hidden border-2 transition-all cursor-pointer ${
                         avatarUrl === preset
                           ? 'border-primary ring-2 ring-primary/30 scale-105'
                           : 'border-border/80 hover:border-primary/50'
@@ -380,7 +402,7 @@ export function ProfileSettings() {
                     <button
                       type="button"
                       onClick={() => setAvatarUrl('')}
-                      className="text-[11px] text-muted-foreground hover:text-destructive hover:underline ml-2"
+                      className="text-[11px] text-muted-foreground hover:text-destructive hover:underline ml-2 cursor-pointer"
                     >
                       Clear
                     </button>
@@ -394,7 +416,7 @@ export function ProfileSettings() {
                 type="submit"
                 size="sm"
                 disabled={updateProfileMutation.isPending}
-                className="w-full h-9 text-xs font-semibold gap-1.5"
+                className="w-full h-9 text-xs font-semibold gap-1.5 cursor-pointer"
               >
                 <Save className="w-3.5 h-3.5" />
                 {updateProfileMutation.isPending ? 'Saving changes...' : 'Save Profile Changes'}
@@ -405,13 +427,20 @@ export function ProfileSettings() {
 
         {/* Right Column: Security & RBAC Permissions Matrix */}
         <div className="space-y-6">
-          {/* Change Password Card */}
-          <div className="p-6 rounded-2xl border border-border bg-card/60 backdrop-blur-sm space-y-6 shadow-sm">
-            <div className="flex items-center gap-2.5 border-b border-border pb-3">
-              <Key className="w-4 h-4 text-primary" />
-              <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
-                Security & Password
-              </h3>
+          {/* Change / Set Password Card */}
+          <div className="p-6 rounded-2xl border border-border bg-card/60 backdrop-blur-sm space-y-5 shadow-sm">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2.5">
+                <Key className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
+                  {profile?.hasPassword ? 'Security & Password' : 'Set Up Password'}
+                </h3>
+              </div>
+              {!profile?.hasPassword && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                  <Sparkles className="w-2.5 h-2.5" /> OAuth Account
+                </span>
+              )}
             </div>
 
             {passwordSuccessMsg && (
@@ -428,20 +457,36 @@ export function ProfileSettings() {
               </div>
             )}
 
-            <form onSubmit={handleChangePassword} className="space-y-4">
-              <div>
-                <Label className="text-xs font-semibold mb-1.5 block">Current Password</Label>
-                <Input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="Enter current password"
-                  className="h-9 text-xs"
-                />
+            {!profile?.hasPassword && (
+              <div className="p-3 rounded-xl bg-primary/5 border border-primary/15 text-xs text-muted-foreground space-y-1">
+                <p className="font-semibold text-foreground flex items-center gap-1.5 text-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" /> Google OAuth Authentication Active
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  You currently log in using your Google account without a password. If you would like to also sign in directly using email and password, you can set a password below.
+                </p>
               </div>
+            )}
+
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              {profile?.hasPassword && (
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">Current Password</Label>
+                  <Input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    className="h-9 text-xs"
+                    required
+                  />
+                </div>
+              )}
 
               <div>
-                <Label className="text-xs font-semibold mb-1.5 block">New Password</Label>
+                <Label className="text-xs font-semibold mb-1.5 block">
+                  {profile?.hasPassword ? 'New Password' : 'Create Password'}
+                </Label>
                 <Input
                   type="password"
                   value={newPassword}
@@ -453,12 +498,14 @@ export function ProfileSettings() {
               </div>
 
               <div>
-                <Label className="text-xs font-semibold mb-1.5 block">Confirm New Password</Label>
+                <Label className="text-xs font-semibold mb-1.5 block">
+                  {profile?.hasPassword ? 'Confirm New Password' : 'Confirm Password'}
+                </Label>
                 <Input
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter new password"
+                  placeholder="Re-enter password"
                   className="h-9 text-xs"
                   required
                 />
@@ -470,10 +517,19 @@ export function ProfileSettings() {
                   variant="outline"
                   size="sm"
                   disabled={changePasswordMutation.isPending}
-                  className="w-full h-9 text-xs font-semibold gap-1.5"
+                  className="w-full h-9 text-xs font-semibold gap-1.5 cursor-pointer"
                 >
-                  <Lock className="w-3.5 h-3.5" />
-                  {changePasswordMutation.isPending ? 'Updating password...' : 'Update Password'}
+                  {profile?.hasPassword ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5" />
+                      {changePasswordMutation.isPending ? 'Updating password...' : 'Update Password'}
+                    </>
+                  ) : (
+                    <>
+                      <Key className="w-3.5 h-3.5 text-primary" />
+                      {changePasswordMutation.isPending ? 'Setting password...' : 'Set Account Password'}
+                    </>
+                  )}
                 </Button>
               </div>
             </form>
@@ -555,18 +611,18 @@ export function ProfileSettings() {
         <Dialog open={isPermissionsModalOpen} onOpenChange={setIsPermissionsModalOpen}>
           <DialogContent className="sm:max-w-2xl w-[92vw] max-h-[85vh] p-0 overflow-hidden flex flex-col bg-card border border-border rounded-2xl shadow-2xl">
             {/* Header */}
-            <div className="p-5 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-primary/10 text-primary">
+            <div className="p-5 pr-14 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
-                <div>
-                  <DialogTitle className="text-base font-bold text-foreground">
+                <div className="min-w-0">
+                  <DialogTitle className="text-base font-bold text-foreground truncate">
                     Role &amp; Permissions Matrix
                   </DialogTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
                     Detailed breakdown of your capabilities as{' '}
-                    <strong className="text-foreground">
+                    <strong className="text-foreground font-semibold">
                       {permissionsData?.user?.roleTitle || getRoleLabel(profile?.role)}
                     </strong>
                     .
@@ -574,7 +630,7 @@ export function ProfileSettings() {
                 </div>
               </div>
 
-              <div className="text-xs font-mono font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 self-start sm:self-auto">
+              <div className="text-xs font-mono font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 self-start sm:self-auto shrink-0">
                 {permissionsData?.totalGranted} of {permissionsData?.totalPermissions} granted
               </div>
             </div>

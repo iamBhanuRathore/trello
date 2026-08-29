@@ -23,6 +23,7 @@ export enum OrgMemberRole {
   BillingManager = 'billing_manager',
   WorkspaceAdmin = 'workspace_admin',
   Member = 'member',
+  Viewer = 'viewer',
 }
 
 export enum OrgMemberStatus {

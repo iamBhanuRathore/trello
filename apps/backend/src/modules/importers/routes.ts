@@ -1,24 +1,24 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
+import { handleRouteError } from '../../lib/errors';
 import { importTrelloBoard, importGenericTasks } from './service';
 
 export const importerRoutes = new Elysia({ prefix: '/import', tags: ['Importers'] })
   .use(authPlugin)
 
   // POST /v1/import/projects/:projectId/trello
-  .use(requirePermission('board.create'))
   .post(
     '/projects/:projectId/trello',
     async ({ params: { projectId }, body, user, set }) => {
       try {
         return await importTrelloBoard(db, user.organizationId, projectId, body.trelloData);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('board.create'),
       params: t.Object({ projectId: t.String() }),
       body: t.Object({
         trelloData: t.Any(),
@@ -27,18 +27,17 @@ export const importerRoutes = new Elysia({ prefix: '/import', tags: ['Importers'
   )
 
   // POST /v1/import/projects/:projectId/tasks
-  .use(requirePermission('board.create'))
   .post(
     '/projects/:projectId/tasks',
     async ({ params: { projectId }, body, user, set }) => {
       try {
         return await importGenericTasks(db, user.organizationId, projectId, body);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('board.create'),
       params: t.Object({ projectId: t.String() }),
       body: t.Object({
         boardName: t.String(),

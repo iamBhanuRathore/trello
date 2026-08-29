@@ -7,18 +7,42 @@ export interface CreateProjectInput {
   organizationId: string;
   workspaceId: string;
   name: string;
+  key?: string | undefined;
   description?: string | undefined;
   startDate?: string | undefined;
   endDate?: string | undefined;
 }
 
+export function generateProjectKey(name: string): string {
+  const cleanWords = name
+    .replace(/[^a-zA-Z0-9\s]/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (cleanWords.length >= 2) {
+    return cleanWords
+      .slice(0, 3)
+      .map((w) => (w.charAt(0) || '').toUpperCase())
+      .join('');
+  }
+  const firstWord = cleanWords[0];
+  if (firstWord && firstWord.length >= 2) {
+    return firstWord.slice(0, 3).toUpperCase();
+  }
+  return 'PRJ';
+}
+
 export async function createProject(db: Database, input: CreateProjectInput) {
+  const projectKey = input.key?.trim().toUpperCase() || generateProjectKey(input.name);
+
   const [project] = await db
     .insert(projects)
     .values({
       organizationId: input.organizationId,
       workspaceId: input.workspaceId,
       name: input.name,
+      key: projectKey,
       description: input.description,
       startDate: input.startDate,
       endDate: input.endDate,

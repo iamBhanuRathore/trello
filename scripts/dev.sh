@@ -76,8 +76,9 @@ bun run --cwd "$ROOT_DIR/apps/backend" db:migrate >/dev/null 2>&1 || true
 bun run --cwd "$ROOT_DIR/apps/backend" db:seed >/dev/null 2>&1 || true
 echo -e "${GREEN}✅ Database ready.${NC}"
 
-# 7. Check for conflicting port processes
-for PORT in 3001 5173; do
+# 7. Check for conflicting port processes and clean stale Vite caches
+rm -rf "$ROOT_DIR/node_modules/.vite" "$ROOT_DIR/apps/dashboard/node_modules/.vite" "$ROOT_DIR/apps/super-admin/node_modules/.vite" 2>/dev/null || true
+for PORT in 3001 5173 5174; do
   PID=$(lsof -ti :$PORT 2>/dev/null || true)
   if [ -n "$PID" ]; then
     echo -e "${YELLOW}⚠️  Port $PORT in use by PID $PID. Terminating old process...${NC}"
@@ -89,18 +90,20 @@ done
 echo -e "\n${BOLD}${GREEN}================================================================${NC}"
 echo -e "${BOLD}${GREEN}               ✨ ALL SERVICES READY ✨                         ${NC}"
 echo -e "${BOLD}${GREEN}================================================================${NC}"
-echo -e "  ${BOLD}🌐 Web Dashboard:${NC}   ${CYAN}http://localhost:5173${NC}"
-echo -e "  ${BOLD}⚡ Backend API:${NC}     ${CYAN}http://localhost:3001${NC}"
-echo -e "  ${BOLD}📚 Swagger Docs:${NC}    ${CYAN}http://localhost:3001/docs${NC}"
-echo -e "  ${BOLD}🩺 Health Check:${NC}    ${CYAN}http://localhost:3001/health${NC}"
-echo -e "  ${BOLD}💾 PostgreSQL:${NC}      ${CYAN}localhost:5432${NC} (db: boardly_dev)"
-echo -e "  ${BOLD}⚡ Redis:${NC}           ${CYAN}localhost:6379${NC}"
+echo -e "  ${BOLD}🌐 User Dashboard:${NC}   ${CYAN}http://localhost:5173${NC}"
+echo -e "  ${BOLD}👑 Super Admin Portal:${NC} ${MAGENTA}http://localhost:5174${NC}"
+echo -e "  ${BOLD}⚡ Backend API:${NC}       ${CYAN}http://localhost:3001${NC}"
+echo -e "  ${BOLD}📚 Swagger Docs:${NC}      ${CYAN}http://localhost:3001/docs${NC}"
+echo -e "  ${BOLD}🩺 Health Check:${NC}      ${CYAN}http://localhost:3001/health${NC}"
+echo -e "  ${BOLD}💾 PostgreSQL:${NC}        ${CYAN}localhost:5432${NC} (db: boardly_dev)"
+echo -e "  ${BOLD}⚡ Redis:${NC}             ${CYAN}localhost:6379${NC}"
 echo -e "${BOLD}${GREEN}================================================================${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop all services.${NC}\n"
 
-# 9. Concurrently run Backend & Dashboard with clean termination trap
+# 9. Concurrently run Backend, Dashboard & Super Admin with clean termination trap
 BACKEND_PID=""
 DASHBOARD_PID=""
+SUPERADMIN_PID=""
 
 cleanup() {
   echo -e "\n\n${YELLOW}🛑 Shutting down development servers...${NC}"
@@ -109,6 +112,9 @@ cleanup() {
   fi
   if [ -n "$DASHBOARD_PID" ]; then
     kill "$DASHBOARD_PID" 2>/dev/null || true
+  fi
+  if [ -n "$SUPERADMIN_PID" ]; then
+    kill "$SUPERADMIN_PID" 2>/dev/null || true
   fi
   echo -e "${GREEN}✅ Dev servers stopped. (Database containers remain running; use 'bun run stop' or './scripts/stop.sh' to stop them).${NC}"
   exit 0
@@ -124,5 +130,9 @@ BACKEND_PID=$!
 bun run --cwd "$ROOT_DIR/apps/dashboard" dev &
 DASHBOARD_PID=$!
 
-# Wait for both processes
-wait $BACKEND_PID $DASHBOARD_PID
+# Start Super Admin Portal Web
+bun run --cwd "$ROOT_DIR/apps/super-admin" dev &
+SUPERADMIN_PID=$!
+
+# Wait for all processes
+wait $BACKEND_PID $DASHBOARD_PID $SUPERADMIN_PID

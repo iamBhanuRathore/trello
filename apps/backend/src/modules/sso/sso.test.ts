@@ -77,7 +77,8 @@ describe('Enterprise SSO & SCIM Service', () => {
     const login = await generateSSOLoginUrl(db, domain);
     expect(login.provider).toBe('okta');
     expect(login.loginUrl).toContain(domain);
-    expect(login.loginUrl).toContain('client_id=okta_client_123');
+    expect(login.loginUrl).toContain('response_type=code');
+    expect(login.loginUrl).toContain('state=');
   });
 
   it('should authenticate and auto-provision user on SSO callback', async () => {

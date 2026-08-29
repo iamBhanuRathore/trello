@@ -1,29 +1,32 @@
 import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
+import { handleRouteError } from '../../lib/errors';
 import { createBoard, listBoards, getBoard, updateBoard, deleteBoard, archiveBoard } from './service';
-import { getBoardLabels, createBoardLabel } from '../cards/service';
+import { getBoardLabels, createBoardLabel, updateBoardLabel, deleteBoardLabel } from '../cards/service';
 
 /** Board routes — /v1/boards/* */
 export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
   .use(authPlugin)
 
   // GET /v1/boards?projectId=...
-  .use(requirePermission('board.read'))
-  .get('/', async ({ query, user, set }) => {
-    try {
-      if (!query.projectId) throw new Error('projectId query parameter is required');
-      return await listBoards(db, query.projectId, user.organizationId);
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .get(
+    '/',
+    async ({ query, user, set }) => {
+      try {
+        if (!query.projectId) throw new Error('projectId query parameter is required');
+        return await listBoards(db, query.projectId, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('board.read'),
+      query: t.Object({ projectId: t.String() }),
     }
-  }, {
-    query: t.Object({ projectId: t.String() })
-  })
+  )
 
   // POST /v1/boards
-  .use(requirePermission('board.create'))
   .post(
     '/',
     async ({ body, user, set }) => {
@@ -35,11 +38,11 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
           background: body.background,
         });
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('board.create'),
       body: t.Object({
         projectId: t.String({ format: 'uuid' }),
         name: t.String(),
@@ -49,66 +52,126 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
   )
 
   // GET /v1/boards/:id
-  .use(requirePermission('board.read'))
-  .get('/:id', async ({ params, user, set }) => {
-    try {
-      return await getBoard(db, params.id, user.organizationId);
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .get(
+    '/:id',
+    async ({ params, user, set }) => {
+      try {
+        return await getBoard(db, params.id, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('board.read'),
     }
-  })
+  )
 
   // PATCH /v1/boards/:id
-  .use(requirePermission('board.update'))
   .patch(
     '/:id',
     async ({ params, body, user, set }) => {
       try {
         return await updateBoard(db, params.id, user.organizationId, body);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('board.update'),
       body: t.Object({ name: t.Optional(t.String()), background: t.Optional(t.String()) }),
     }
   )
 
   // DELETE /v1/boards/:id
-  .use(requirePermission('board.delete'))
-  .delete('/:id', async ({ params, user, set }) => {
-    try {
-      await deleteBoard(db, params.id, user.organizationId);
-      return { success: true };
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .delete(
+    '/:id',
+    async ({ params, user, set }) => {
+      try {
+        await deleteBoard(db, params.id, user.organizationId);
+        return { success: true };
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('board.delete'),
     }
-  })
+  )
 
   // POST /v1/boards/:id/archive
-  .use(requirePermission('board.archive'))
-  .post('/:id/archive', async ({ params, user, set }) => {
-    try {
-      return await archiveBoard(db, params.id, user.organizationId);
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .post(
+    '/:id/archive',
+    async ({ params, user, set }) => {
+      try {
+        return await archiveBoard(db, params.id, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('board.delete'),
     }
-  })
+  )
 
   // GET /v1/boards/:id/labels
-  .use(requirePermission('board.read'))
-  .get('/:id/labels', async ({ params }) => {
-    return await getBoardLabels(db, params.id);
-  })
+  .get(
+    '/:id/labels',
+    async ({ params, set }) => {
+      try {
+        return await getBoardLabels(db, params.id);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('board.read'),
+    }
+  )
 
   // POST /v1/boards/:id/labels
-  .use(requirePermission('board.update'))
-  .post('/:id/labels', async ({ params, body }) => {
-    return await createBoardLabel(db, params.id, body.name, body.color);
-  }, {
-    body: t.Object({ name: t.String(), color: t.String() })
-  });
+  .post(
+    '/:id/labels',
+    async ({ params, body, set }) => {
+      try {
+        return await createBoardLabel(db, params.id, body.name, body.color);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('board.update'),
+      body: t.Object({ name: t.String(), color: t.String() }),
+    }
+  )
+
+  // PATCH /v1/boards/:id/labels/:labelId
+  .patch(
+    '/:id/labels/:labelId',
+    async ({ params, body, set }) => {
+      try {
+        return await updateBoardLabel(db, params.labelId, body.name, body.color);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('label.update'),
+      body: t.Object({ name: t.Optional(t.String()), color: t.Optional(t.String()) }),
+    }
+  )
+
+  // DELETE /v1/boards/:id/labels/:labelId
+  .delete(
+    '/:id/labels/:labelId',
+    async ({ params, set }) => {
+      try {
+        await deleteBoardLabel(db, params.labelId);
+        return { success: true };
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('label.update'),
+    }
+  );

@@ -65,6 +65,45 @@ Checkable version of the Build Order from `trello-clone-architecture.md` §12. A
 
 ---
 
+## Phase 4 — Workspace Collaboration & All-in-One Expansion (Huly Parity)
+
+### 4.1 Interactive Calendar & Time-Blocking (Motion / Cron Parity)
+- [ ] Interactive Calendar View (Month, Week, 3-Day, Day grid) with task scheduling
+- [ ] Drag-and-drop task time-blocking and duration resizing
+- [ ] 2-way Google Calendar & Microsoft Outlook synchronization
+- [ ] Milestone & Sprint schedule overlay on calendar
+
+### 4.2 Team Chat & Real-Time Messaging (Slack / Discord Parity)
+- [ ] Real-time 1-on-1 Direct Messages (DMs) & Team Channels (public/private)
+- [ ] Message threads, reactions, file attachments, and rich markdown formatting
+- [ ] Channel-to-Project linking with automated activity feed
+- [ ] Real-time typing indicators and online presence across channels
+
+### 4.3 Bi-Directional Git & Developer Automations (Linear / GitHub Engine)
+- [ ] Native GitHub / GitLab App integration with automatic repo syncing
+- [ ] Auto-link branches, commits, and Pull Requests to ticket keys (e.g. `BCW-12`)
+- [ ] Automated card movement on PR events (Opened → In Review, Merged → Done)
+- [ ] Card PR review status badges and branch creation CLI/copy helper
+
+### 4.4 Real-Time Collaborative Multi-Cursor Docs (Notion / CRDT Parity)
+- [ ] Upgrade Project Docs with CRDT-based real-time simultaneous co-authoring (Yjs / Tiptap)
+- [ ] Live multi-user cursors, selection highlights, and presence halos in documents
+- [ ] Dynamic embeddable blocks: live interactive cards, boards, diagrams, and code runners
+
+### 4.5 Live Audio/Video Huddles & Virtual Rooms (WebRTC)
+- [ ] Lightweight WebRTC voice & video huddle rooms per project and channel
+- [ ] Screen sharing for agile standups, sprint reviews, and card triage
+- [ ] Floating mini-huddle overlay while navigating boards and docs
+
+### 4.6 Universal Triage Inbox & Inbound Email Integration
+- [ ] Unified Triage Inbox across task mentions, review requests, comments, and DMs
+- [ ] Inbound email processor (create cards via email forwarding, reply to comment via email)
+- [ ] Quick triage action keys (`E` to archive, `S` to snooze, `I` to create subtask)
+
+---
+
 ## Backlog (not yet phased — park ideas here instead of losing them)
 
-- _(add items here as they come up mid-session; move into a phase above once prioritized)_
+- [ ] AI Copilot assistant for task summarization, sprint velocity forecasting, and PR description generation
+- [ ] Virtual Office 2D interactive floor plan with avatar desk presence
+- [ ] Native Desktop App packaging with Electron / Tauri (global hotkeys, tray menu)

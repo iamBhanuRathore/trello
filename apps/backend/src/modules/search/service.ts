@@ -15,8 +15,13 @@ export async function performSearch(db: Database, organizationId: string, query:
   const matchedCards = await db
     .select({
       id: cards.id,
+      key: cards.key,
+      taskNumber: cards.taskNumber,
       title: cards.title,
-      boardId: lists.boardId
+      boardId: lists.boardId,
+      boardName: boards.name,
+      projectName: projects.name,
+      projectKey: projects.key,
     })
     .from(cards)
     .innerJoin(lists, eq(lists.id, cards.listId))
@@ -26,7 +31,11 @@ export async function performSearch(db: Database, organizationId: string, query:
     .where(
       and(
         eq(workspaces.organizationId, organizationId),
-        or(ilike(cards.title, searchTerm), ilike(cards.description, searchTerm))
+        or(
+          ilike(cards.title, searchTerm),
+          ilike(cards.description, searchTerm),
+          ilike(cards.key, searchTerm)
+        )
       )
     )
     .limit(10);

@@ -1,18 +1,42 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { orgService } from '../../lib/orgService';
 import { Button } from '@boardly/ui/button';
-import { CreditCard, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@boardly/ui/dialog';
+import { CreditCard, CheckCircle2, AlertCircle, Sparkles, ShieldCheck, Zap } from 'lucide-react';
+import { toast } from 'sonner';
 
 export const Billing = () => {
   const { user } = useAuthStore();
   const orgId = user?.organizationId;
+  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<'pro' | 'enterprise'>('pro');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: org, isLoading } = useQuery({
     queryKey: ['org', orgId],
     queryFn: () => orgService.getOrg(orgId!),
     enabled: !!orgId,
   });
+
+  const handleUpgradeSubmit = async () => {
+    setIsSubmitting(true);
+    // Simulate processing upgrade request
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    setIsSubmitting(false);
+    setIsUpgradeOpen(false);
+    toast.success(
+      `Upgrade request submitted for ${selectedPlan === 'pro' ? 'Pro' : 'Enterprise'} plan! Our team will contact you shortly.`
+    );
+  };
 
   if (isLoading) {
     return <div className="p-8 text-center text-muted-foreground">Loading billing information...</div>;
@@ -70,7 +94,9 @@ export const Billing = () => {
             </li>
           </ul>
 
-          <Button className="w-full">Upgrade Plan</Button>
+          <Button className="w-full cursor-pointer" onClick={() => setIsUpgradeOpen(true)}>
+            Upgrade Plan
+          </Button>
         </div>
 
         {/* Usage Card */}
@@ -103,6 +129,123 @@ export const Billing = () => {
           </div>
         </div>
       </div>
+
+      {/* Upgrade Plan Dialog Modal */}
+      <Dialog open={isUpgradeOpen} onOpenChange={setIsUpgradeOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <DialogTitle>Upgrade Your Workspace</DialogTitle>
+            </div>
+            <DialogDescription>
+              Scale your team with more seats, unlimited workspaces, custom workflows, and enterprise compliance.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-3 sm:grid-cols-2">
+            {/* Pro Tier Option */}
+            <div
+              onClick={() => setSelectedPlan('pro')}
+              className={`cursor-pointer rounded-xl border p-4 transition-all relative ${
+                selectedPlan === 'pro'
+                  ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                  : 'border-border hover:border-border/80 bg-card'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  <span>Pro</span>
+                </div>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                  Popular
+                </span>
+              </div>
+              <div className="text-2xl font-extrabold tracking-tight mb-1">
+                $12 <span className="text-xs font-normal text-muted-foreground">/ user / mo</span>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">For fast-moving teams needing agility and unlimited boards.</p>
+              <ul className="space-y-1.5 text-xs text-muted-foreground">
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <span>Unlimited boards & lists</span>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <span>Up to 25 team members</span>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <span>50 GB Cloud Storage</span>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <span>Automations & Webhooks</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Enterprise Tier Option */}
+            <div
+              onClick={() => setSelectedPlan('enterprise')}
+              className={`cursor-pointer rounded-xl border p-4 transition-all relative ${
+                selectedPlan === 'enterprise'
+                  ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                  : 'border-border hover:border-border/80 bg-card'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                  <span>Enterprise</span>
+                </div>
+              </div>
+              <div className="text-2xl font-extrabold tracking-tight mb-1">
+                $29 <span className="text-xs font-normal text-muted-foreground">/ user / mo</span>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">For organizations requiring advanced governance, SSO, and audit.</p>
+              <ul className="space-y-1.5 text-xs text-muted-foreground">
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <span>Unlimited members & storage</span>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <span>SAML SSO & SCIM Provisioning</span>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <span>Custom RBAC & Audit Logs</span>
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <span>24/7 Priority Support & SLA</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsUpgradeOpen(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpgradeSubmit}
+              disabled={isSubmitting}
+              className="gap-2"
+            >
+              <Sparkles className="h-4 w-4" />
+              {isSubmitting ? 'Submitting...' : `Upgrade to ${selectedPlan === 'pro' ? 'Pro' : 'Enterprise'}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
+

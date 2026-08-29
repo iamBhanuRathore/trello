@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { CreateDocumentModal } from '../components/docs/CreateDocumentModal';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import {
   getProjectDocs,
   getDoc,
@@ -42,6 +45,8 @@ export function ProjectDocs() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLinkingCard, setIsLinkingCard] = useState(false);
   const [cardSearchQuery, setCardSearchQuery] = useState('');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [docToDelete, setDocToDelete] = useState<{ id: string; title: string } | null>(null);
 
   // 1. Fetch Project Documents
   const { data: docs = [], isLoading: isDocsLoading } = useQuery({
@@ -67,6 +72,11 @@ export function ProjectDocs() {
       queryClient.invalidateQueries({ queryKey: ['projectDocs', projectId] });
       setSelectedDocId(newDoc.id);
       setIsEditing(false);
+      setIsCreateModalOpen(false);
+      toast.success('Document created successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to create document');
     },
   });
 
@@ -77,6 +87,10 @@ export function ProjectDocs() {
       queryClient.invalidateQueries({ queryKey: ['projectDocs', projectId] });
       queryClient.invalidateQueries({ queryKey: ['doc', activeDocId] });
       setIsEditing(false);
+      toast.success('Document updated successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to update document');
     },
   });
 
@@ -85,6 +99,11 @@ export function ProjectDocs() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projectDocs', projectId] });
       setSelectedDocId(null);
+      setDocToDelete(null);
+      toast.success('Document deleted successfully');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to delete document');
     },
   });
 
@@ -94,6 +113,10 @@ export function ProjectDocs() {
       queryClient.invalidateQueries({ queryKey: ['doc', activeDocId] });
       setIsLinkingCard(false);
       setCardSearchQuery('');
+      toast.success('Task card linked to document');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to link task card');
     },
   });
 
@@ -101,17 +124,15 @@ export function ProjectDocs() {
     mutationFn: (cardId: string) => unlinkCardFromDoc(activeDocId!, cardId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['doc', activeDocId] });
+      toast.success('Task card unlinked');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to unlink task card');
     },
   });
 
   const handleStartCreate = () => {
-    const title = prompt('Document Title:', 'New Specification');
-    if (title) {
-      createMutation.mutate({
-        title,
-        content: '# ' + title + '\n\nStart writing your specification or documentation...',
-      });
-    }
+    setIsCreateModalOpen(true);
   };
 
   const handleStartEdit = () => {
@@ -281,11 +302,10 @@ export function ProjectDocs() {
                         size="sm"
                         variant="ghost"
                         onClick={() => {
-                          if (confirm('Delete this document?')) {
-                            deleteMutation.mutate(activeDoc.id);
-                          }
+                          setDocToDelete({ id: activeDoc.id, title: activeDoc.title });
                         }}
-                        className="text-xs text-rose-500 hover:bg-rose-500/10"
+                        className="text-xs text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                        title="Delete Document"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -442,6 +462,34 @@ export function ProjectDocs() {
           )}
         </div>
       </div>
+
+      {/* Create Document Modal */}
+      <CreateDocumentModal
+        open={isCreateModalOpen}
+        onOpenChange={setIsCreateModalOpen}
+        isLoading={createMutation.isPending}
+        onCreate={(doc) => {
+          createMutation.mutate(doc);
+        }}
+      />
+
+      {/* Delete Document Confirmation Dialog */}
+      <ConfirmDialog
+        open={!!docToDelete}
+        onOpenChange={(open) => {
+          if (!open) setDocToDelete(null);
+        }}
+        title="Delete Document"
+        description={`Are you sure you want to permanently delete "${docToDelete?.title || 'this document'}"? This action cannot be undone.`}
+        confirmLabel="Delete Document"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (docToDelete) {
+            deleteMutation.mutate(docToDelete.id);
+          }
+        }}
+      />
     </div>
   );
 }

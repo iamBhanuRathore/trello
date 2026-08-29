@@ -104,6 +104,7 @@ export const StageTemplates = () => {
               placeholder="New Template..." 
               value={newTemplateName} 
               onChange={e => setNewTemplateName(e.target.value)} 
+              maxLength={100}
               className="h-8"
             />
             <Button type="submit" size="sm" className="h-8"><Plus className="h-4 w-4" /></Button>
@@ -166,6 +167,8 @@ export const StageTemplates = () => {
 
                       <Input 
                         value={stage.name} 
+                        maxLength={100}
+                        placeholder="Stage name..."
                         onChange={(e) => {
                           handleUpdateStage(stage.id, 'name', e.target.value);
                         }} 

@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { trashService, type TrashedItem } from '../../lib/trashService';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@boardly/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@boardly/ui/dialog';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
+import { ConfirmDialog } from '../common/ConfirmDialog';
+import { toast } from 'sonner';
 import {
   Trash2,
   RotateCcw,
@@ -13,10 +15,9 @@ import {
   Layout,
   CheckSquare,
   Clock,
-  AlertTriangle,
   Sparkles,
-  Check,
   Info,
+  X,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -31,7 +32,7 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmEmptyOpen, setConfirmEmptyOpen] = useState(false);
   const [itemToDeleteForever, setItemToDeleteForever] = useState<TrashedItem | null>(null);
-  const [restoredToast, setRestoredToast] = useState<string | null>(null);
+  const [itemToRestore, setItemToRestore] = useState<TrashedItem | null>(null);
 
   // Queries
   const { data: trashedItems = [], isLoading } = useQuery({
@@ -46,18 +47,28 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
     onSuccess: (_, item) => {
       queryClient.invalidateQueries({ queryKey: ['trash'] });
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['board'] });
       queryClient.invalidateQueries({ queryKey: ['lists'] });
-      setRestoredToast(`Restored "${item.name}"`);
-      setTimeout(() => setRestoredToast(null), 3000);
+      queryClient.invalidateQueries({ queryKey: ['cards'] });
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+      toast.success(`Successfully restored "${item.name}"`);
+      setItemToRestore(null);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to restore item');
     },
   });
 
   const deleteForeverMutation = useMutation({
     mutationFn: (item: TrashedItem) => trashService.deleteForever(item.itemType, item.id),
-    onSuccess: () => {
+    onSuccess: (_, item) => {
       queryClient.invalidateQueries({ queryKey: ['trash'] });
+      toast.success(`Permanently deleted "${item.name}"`);
       setItemToDeleteForever(null);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to permanently delete item');
     },
   });
 
@@ -65,7 +76,11 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
     mutationFn: trashService.emptyTrash,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trash'] });
+      toast.success('Recycle bin emptied successfully');
       setConfirmEmptyOpen(false);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to empty recycle bin');
     },
   });
 
@@ -101,65 +116,100 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
     }
   };
 
+  const getItemTypeName = (type: string) => {
+    switch (type) {
+      case 'workspace':
+        return 'Workspace';
+      case 'project':
+        return 'Project';
+      case 'board':
+        return 'Board';
+      case 'card':
+        return 'Task Card';
+      default:
+        return 'Item';
+    }
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-3xl w-[92vw] max-h-[85vh] p-0 overflow-hidden flex flex-col bg-card border border-border rounded-2xl shadow-2xl">
-          {/* Header */}
-          <div className="p-5 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-destructive/10 text-destructive">
+        <DialogContent
+          showCloseButton={false}
+          className="sm:max-w-3xl w-[94vw] max-h-[85vh] p-0 overflow-hidden flex flex-col bg-card border border-border/80 rounded-2xl shadow-2xl"
+        >
+          {/* ─── Header ─── */}
+          <div className="p-4 sm:p-5 border-b border-border/70 bg-muted/20 flex items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 rounded-xl bg-destructive/10 text-destructive border border-destructive/20 shrink-0">
                 <Trash2 className="w-5 h-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
-                  <span>Trash & Recycle Bin</span>
-                  <span className="text-xs font-mono font-normal px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+                  <span>Trash &amp; Recycle Bin</span>
+                  <span className="text-xs font-mono font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
                     {trashedItems.length} {trashedItems.length === 1 ? 'item' : 'items'}
                   </span>
                 </DialogTitle>
                 <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" /> Items in trash are automatically purged after 30 days.
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  <span>Items in trash are automatically purged after 30 days.</span>
                 </p>
               </div>
             </div>
 
-            {trashedItems.length > 0 && (
+            <div className="flex items-center gap-2 shrink-0">
+              {trashedItems.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 shrink-0 gap-1.5 h-8 cursor-pointer"
+                  onClick={() => setConfirmEmptyOpen(true)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Empty Trash</span>
+                </Button>
+              )}
+
               <Button
-                variant="outline"
-                size="sm"
-                className="text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 shrink-0 gap-1.5 self-start sm:self-auto"
-                onClick={() => setConfirmEmptyOpen(true)}
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer"
+                onClick={() => onOpenChange(false)}
+                title="Close"
               >
-                <Trash2 className="w-3.5 h-3.5" /> Empty Trash
+                <X className="w-4 h-4" />
               </Button>
-            )}
+            </div>
           </div>
 
-          {/* Info Banner & Search/Filter Controls */}
-          <div className="p-4 border-b border-border space-y-3 bg-card">
-            {restoredToast && (
-              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
-                <Check className="w-4 h-4 shrink-0" />
-                <span className="font-medium">{restoredToast}</span>
-              </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row items-center gap-2.5">
-              <div className="relative flex-1 w-full">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-muted-foreground pointer-events-none" />
+          {/* ─── Search & Segmented Filter Tabs ─── */}
+          <div className="p-4 border-b border-border/70 space-y-3 bg-card shrink-0">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-muted-foreground pointer-events-none" />
                 <Input
                   placeholder="Search deleted items..."
-                  className="pl-9 h-9 text-xs"
+                  className="pl-9 h-8.5 text-xs bg-muted/30 border-border/80 focus-visible:ring-primary/20"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-2 text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
 
-              {/* Tabs */}
-              <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto p-1 bg-muted/40 rounded-xl border border-border">
+              {/* Segmented Filter Tabs */}
+              <div className="flex items-center gap-1 overflow-x-auto p-1 bg-muted/40 rounded-xl border border-border/80 shrink-0">
                 <button
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  type="button"
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     activeTab === 'all'
                       ? 'bg-background text-foreground shadow-2xs font-semibold'
                       : 'text-muted-foreground hover:text-foreground'
@@ -169,7 +219,8 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
                   All ({trashedItems.length})
                 </button>
                 <button
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  type="button"
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     activeTab === 'workspace'
                       ? 'bg-background text-foreground shadow-2xs font-semibold'
                       : 'text-muted-foreground hover:text-foreground'
@@ -179,7 +230,8 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
                   Workspaces ({workspaceCount})
                 </button>
                 <button
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  type="button"
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     activeTab === 'project'
                       ? 'bg-background text-foreground shadow-2xs font-semibold'
                       : 'text-muted-foreground hover:text-foreground'
@@ -189,7 +241,8 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
                   Projects ({projectCount})
                 </button>
                 <button
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  type="button"
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     activeTab === 'board'
                       ? 'bg-background text-foreground shadow-2xs font-semibold'
                       : 'text-muted-foreground hover:text-foreground'
@@ -199,7 +252,8 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
                   Boards ({boardCount})
                 </button>
                 <button
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  type="button"
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     activeTab === 'card'
                       ? 'bg-background text-foreground shadow-2xs font-semibold'
                       : 'text-muted-foreground hover:text-foreground'
@@ -212,14 +266,15 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
             </div>
           </div>
 
-          {/* List of Trashed Items */}
+          {/* ─── List of Trashed Items ─── */}
           <div className="flex-1 overflow-y-auto divide-y divide-border/60">
             {isLoading ? (
-              <div className="p-12 text-center text-xs text-muted-foreground">
+              <div className="py-16 text-center text-xs text-muted-foreground">
+                <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-2" />
                 Loading trash items...
               </div>
             ) : filteredItems.length === 0 ? (
-              <div className="p-12 text-center space-y-2">
+              <div className="py-16 text-center space-y-2 px-4">
                 <div className="w-10 h-10 rounded-full bg-muted/60 flex items-center justify-center mx-auto text-muted-foreground">
                   <Sparkles className="w-5 h-5 text-primary" />
                 </div>
@@ -249,7 +304,7 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
                       </div>
                       <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
                         {item.locationInfo && (
-                          <span className="truncate max-w-[200px]">{item.locationInfo}</span>
+                          <span className="truncate max-w-[240px]">{item.locationInfo}</span>
                         )}
                         <span>•</span>
                         <span>
@@ -273,25 +328,26 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
                       {item.daysRemaining} {item.daysRemaining === 1 ? 'day' : 'days'} left
                     </span>
 
-                    {/* Restore Button */}
+                    {/* Restore Button (Opens Confirmation) */}
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-8 text-xs gap-1 hover:bg-primary hover:text-primary-foreground transition-all"
+                      className="h-8 text-xs gap-1.5 hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all cursor-pointer font-medium"
                       disabled={restoreMutation.isPending}
-                      onClick={() => restoreMutation.mutate(item)}
+                      onClick={() => setItemToRestore(item)}
+                      title={`Restore ${item.name}`}
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
-                      <span className="hidden xs:inline">Restore</span>
+                      <span className="hidden sm:inline">Restore</span>
                     </Button>
 
-                    {/* Delete Forever Button */}
+                    {/* Delete Forever Button (Opens Confirmation) */}
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg cursor-pointer"
                       onClick={() => setItemToDeleteForever(item)}
-                      title="Delete forever"
+                      title="Delete permanently"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
@@ -301,85 +357,67 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
             )}
           </div>
 
-          {/* Footer */}
-          <div className="p-3 border-t border-border bg-muted/20 flex items-center justify-between text-[11px] text-muted-foreground px-5">
-            <span className="flex items-center gap-1">
-              <Info className="w-3.5 h-3.5" /> Restoring an item immediately brings back its child cards and lists.
+          {/* ─── Footer ─── */}
+          <div className="p-3 border-t border-border/70 bg-muted/20 flex items-center justify-between text-[11px] text-muted-foreground px-5 shrink-0">
+            <span className="flex items-center gap-1.5">
+              <Info className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span>Restoring an item immediately brings back its child cards, boards, and lists.</span>
             </span>
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onOpenChange(false)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs cursor-pointer"
+              onClick={() => onOpenChange(false)}
+            >
               Close
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* ─── Confirm Restore Dialog ─── */}
+      {itemToRestore && (
+        <ConfirmDialog
+          open={!!itemToRestore}
+          onOpenChange={(isOpen) => !isOpen && setItemToRestore(null)}
+          title={`Restore ${getItemTypeName(itemToRestore.itemType)}?`}
+          description={`Are you sure you want to restore "${itemToRestore.name}"? It will immediately be reactivated and returned to your workspace along with all associated child elements.`}
+          confirmLabel="Restore Item"
+          cancelLabel="Cancel"
+          variant="success"
+          isLoading={restoreMutation.isPending}
+          onConfirm={() => restoreMutation.mutateAsync(itemToRestore)}
+        />
+      )}
+
       {/* ─── Confirm Delete Forever Dialog ─── */}
       {itemToDeleteForever && (
-        <Dialog open={!!itemToDeleteForever} onOpenChange={() => setItemToDeleteForever(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-destructive flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5" /> Permanently Delete Item
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3 py-2 text-xs text-muted-foreground">
-              <p>
-                Are you sure you want to permanently purge{' '}
-                <strong className="text-foreground">{itemToDeleteForever.name}</strong>?
-              </p>
-              <p className="text-destructive font-medium">
-                This action is irreversible and cannot be undone. All child data will be permanently wiped.
-              </p>
-              <div className="flex justify-end gap-2 pt-3 border-t border-border">
-                <Button variant="ghost" size="sm" onClick={() => setItemToDeleteForever(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  disabled={deleteForeverMutation.isPending}
-                  onClick={() => deleteForeverMutation.mutate(itemToDeleteForever)}
-                >
-                  {deleteForeverMutation.isPending ? 'Purging...' : 'Delete Forever'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <ConfirmDialog
+          open={!!itemToDeleteForever}
+          onOpenChange={(isOpen) => !isOpen && setItemToDeleteForever(null)}
+          title="Permanently Delete Item?"
+          description={`Are you sure you want to permanently purge "${itemToDeleteForever.name}"? This action cannot be undone and all associated child data will be permanently wiped.`}
+          confirmLabel="Delete Forever"
+          cancelLabel="Cancel"
+          variant="destructive"
+          isLoading={deleteForeverMutation.isPending}
+          onConfirm={() => deleteForeverMutation.mutateAsync(itemToDeleteForever)}
+        />
       )}
 
       {/* ─── Confirm Empty Trash Dialog ─── */}
       {confirmEmptyOpen && (
-        <Dialog open={confirmEmptyOpen} onOpenChange={setConfirmEmptyOpen}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-destructive flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5" /> Empty Entire Trash
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3 py-2 text-xs text-muted-foreground">
-              <p>
-                Are you sure you want to permanently purge all <strong className="text-foreground">{trashedItems.length} items</strong> in the recycle bin?
-              </p>
-              <p className="text-destructive font-medium">
-                This cannot be undone. All deleted workspaces, projects, boards, and tasks will be permanently removed.
-              </p>
-              <div className="flex justify-end gap-2 pt-3 border-t border-border">
-                <Button variant="ghost" size="sm" onClick={() => setConfirmEmptyOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  disabled={emptyTrashMutation.isPending}
-                  onClick={() => emptyTrashMutation.mutate()}
-                >
-                  {emptyTrashMutation.isPending ? 'Emptying...' : 'Empty Trash'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <ConfirmDialog
+          open={confirmEmptyOpen}
+          onOpenChange={setConfirmEmptyOpen}
+          title="Empty Entire Recycle Bin?"
+          description={`Are you sure you want to permanently purge all ${trashedItems.length} items in the recycle bin? All deleted workspaces, projects, boards, and tasks will be completely unrecoverable.`}
+          confirmLabel="Empty Trash"
+          cancelLabel="Cancel"
+          variant="destructive"
+          isLoading={emptyTrashMutation.isPending}
+          onConfirm={() => emptyTrashMutation.mutateAsync()}
+        />
       )}
     </>
   );

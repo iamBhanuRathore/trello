@@ -17,10 +17,12 @@ bun create turbo@latest . --package-manager bun
 ```
 
 When prompted:
+
 - Package manager: **bun**
 - Starter: choose **empty** (blank starter — we'll scaffold manually)
 
 Then clean out any example apps Turbo generated:
+
 ```bash
 rm -rf apps/docs apps/web
 ```
@@ -91,6 +93,7 @@ mkdir -p packages/config
 ```
 
 Create `packages/config/package.json`:
+
 ```json
 {
   "name": "@boardly/config",
@@ -112,6 +115,7 @@ Create `packages/config/package.json`:
 ```
 
 Create `packages/config/tsconfig.base.json`:
+
 ```json
 {
   "$schema": "https://json.schemastore.org/tsconfig",
@@ -138,6 +142,7 @@ mkdir -p packages/shared-types/src
 ```
 
 Create `packages/shared-types/package.json`:
+
 ```json
 {
   "name": "@boardly/shared-types",
@@ -162,6 +167,7 @@ mkdir -p packages/ui/src/components
 ```
 
 Create `packages/ui/package.json`:
+
 ```json
 {
   "name": "@boardly/ui",
@@ -197,6 +203,7 @@ Components live in `packages/ui/src/components/`: `button.tsx`, `card.tsx`, `dia
 The shared `cn()` utility lives in `packages/ui/src/utils.ts`.
 
 In consuming apps, add `"@boardly/ui": "workspace:*"` to dependencies and import like:
+
 ```ts
 import { Button } from '@boardly/ui/button';
 import { cn } from '@boardly/ui/utils';
@@ -209,6 +216,7 @@ mkdir -p packages/test-fixtures/src
 ```
 
 Create `packages/test-fixtures/package.json`:
+
 ```json
 {
   "name": "@boardly/test-fixtures",
@@ -235,6 +243,7 @@ bun add -d drizzle-kit @types/bun
 ```
 
 Create `apps/backend/src/index.ts`:
+
 ```typescript
 import { Elysia } from 'elysia';
 
@@ -262,6 +271,7 @@ bun add tailwindcss @tailwindcss/vite
 ```
 
 After Tailwind is configured, install shadcn:
+
 ```bash
 bunx shadcn@latest init
 ```
@@ -305,6 +315,7 @@ volumes:
 ```
 
 Start services:
+
 ```bash
 docker compose up -d
 ```
@@ -314,6 +325,7 @@ docker compose up -d
 ## Step 7 — Environment files
 
 Create `.env.example` at the project root (committed to git):
+
 ```env
 # Backend
 DATABASE_URL=postgresql://boardly:boardly_dev@localhost:5432/boardly_dev
@@ -339,15 +351,17 @@ STORAGE_ENDPOINT=
 
 # App URLs
 API_URL=http://localhost:3001
-DASHBOARD_URL=http://localhost:5173
+DASHBOARD_URL=http://localhost:5173,http://localhost:5174
 ```
 
 Copy to `.env` (gitignored) and fill real values:
+
 ```bash
 cp .env.example .env
 ```
 
 Add to `.gitignore`:
+
 ```
 .env
 .env.local
@@ -415,11 +429,13 @@ bunx husky init
 ```
 
 Add to `.husky/pre-commit`:
+
 ```bash
 bunx lint-staged
 ```
 
 Add to root `package.json`:
+
 ```json
 {
   "lint-staged": {

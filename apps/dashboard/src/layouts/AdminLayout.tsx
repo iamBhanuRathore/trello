@@ -33,12 +33,19 @@ import {
   Layers,
   KeyRound,
   Code,
+  Tag,
 } from 'lucide-react';
 
 export const AdminLayout: React.FC = () => {
   const { user, logout } = useAuthStore();
   const orgId = user?.organizationId;
   const location = useLocation();
+
+  // ─── Role Guard: Only org owners, org admins, and platform admins can access ───
+  const isAdmin =
+    user?.isPlatformAdmin ||
+    user?.role === 'org_owner' ||
+    user?.role === 'org_admin';
 
   if (!orgId) {
     return (
@@ -55,6 +62,33 @@ export const AdminLayout: React.FC = () => {
     );
   }
 
+  if (!isAdmin) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background text-foreground">
+        <div className="text-center p-10 rounded-2xl border bg-card shadow-lg max-w-lg">
+          <div className="flex items-center justify-center w-16 h-16 rounded-full bg-destructive/10 mx-auto mb-4">
+            <ShieldAlert className="h-8 w-8 text-destructive" />
+          </div>
+          <h2 className="text-2xl font-bold tracking-tight">Admin Access Required</h2>
+          <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
+            You don't have permission to access the Admin Panel.
+            Only <span className="font-semibold text-foreground">Org Owners</span> and{' '}
+            <span className="font-semibold text-foreground">Org Admins</span> can manage organization settings.
+          </p>
+          <p className="text-xs text-muted-foreground/70 mt-2">
+            Your current role: <span className="font-mono font-semibold text-foreground/70">{user?.role ?? 'member'}</span>
+          </p>
+          <Link to="/" className="mt-6 inline-block">
+            <Button size="sm" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const navItems = [
     { name: 'Users', path: `/admin/users`, icon: Users },
     { name: 'Roles & Permissions', path: `/admin/roles`, icon: Shield },
@@ -64,6 +98,7 @@ export const AdminLayout: React.FC = () => {
     { name: 'Billing', path: `/admin/billing`, icon: CreditCard },
     { name: 'Branding', path: `/admin/branding`, icon: Palette },
     { name: 'Stage Templates', path: `/admin/stages`, icon: Workflow },
+    { name: 'Labels & Tags', path: `/admin/labels`, icon: Tag },
     { name: 'Webhooks', path: `/admin/webhooks`, icon: Webhook },
     { name: 'Integrations', path: `/admin/integrations`, icon: Layers },
   ];
@@ -131,7 +166,7 @@ export const AdminLayout: React.FC = () => {
 
         {/* Independently scrollable main content */}
         <SidebarInset className="flex flex-1 flex-col overflow-y-auto bg-muted/20">
-          <div className="max-w-5xl mx-auto p-6 md:p-8 w-full">
+          <div className="w-full max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
             <Outlet />
           </div>
         </SidebarInset>

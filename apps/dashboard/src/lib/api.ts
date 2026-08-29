@@ -272,6 +272,27 @@ export const deleteIntakeForm = async (id: string) => {
   return data;
 };
 
+// WorkOS OAuth & Enterprise SSO
+export const getGoogleAuthUrl = async (redirectUri?: string) => {
+  const { data } = await api.get('/auth/workos/google-url', {
+    params: redirectUri ? { redirectUri } : undefined,
+  });
+  return data;
+};
+
+export const getWorkOSSSOAuthUrl = async (domain: string, redirectUri?: string) => {
+  const { data } = await api.post('/auth/workos/sso-url', {
+    domain,
+    redirectUri,
+  });
+  return data;
+};
+
+export const exchangeWorkOSCode = async (code: string) => {
+  const { data } = await api.post('/auth/workos/callback', { code });
+  return data;
+};
+
 // Enterprise SSO & SCIM
 export const getSSOConfig = async () => {
   const { data } = await api.get('/sso');
@@ -284,6 +305,8 @@ export const updateSSOConfig = async (payload: {
   idpMetadataUrl?: string;
   clientId?: string;
   clientSecret?: string;
+  workosOrganizationId?: string;
+  workosConnectionId?: string;
   scimEnabled?: boolean;
   enforceSSO?: boolean;
 }) => {
@@ -352,6 +375,13 @@ export const uninstallMarketplaceApp = async (installedId: string) => {
 
 // Request interceptor to attach access token
 api.interceptors.request.use((config) => {
+  if (
+    config.url?.includes('/auth/sign-in') ||
+    config.url?.includes('/auth/sign-up') ||
+    config.url?.includes('/auth/refresh')
+  ) {
+    return config;
+  }
   const token = localStorage.getItem('boardly_access_token');
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -364,12 +394,21 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const isAuthRoute =
+      originalRequest?.url?.includes('/auth/sign-in') ||
+      originalRequest?.url?.includes('/auth/sign-up') ||
+      originalRequest?.url?.includes('/auth/refresh') ||
+      originalRequest?.url?.includes('/auth/sign-out');
+
+    if (error.response?.status === 401 && !originalRequest?._retry && !isAuthRoute) {
       originalRequest._retry = true;
       try {
         const refreshToken = localStorage.getItem('boardly_refresh_token');
         if (!refreshToken) throw new Error('No refresh token');
-        const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+        const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, {
+          headers: { 'Content-Type': 'application/json' },
+          withCredentials: true,
+        });
         localStorage.setItem('boardly_access_token', data.accessToken);
         localStorage.setItem('boardly_refresh_token', data.refreshToken);
         
@@ -377,9 +416,11 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(originalRequest);
       } catch (err) {
-        // If refresh fails, usually log out the user
-        useAuthStore.getState().logout();
-        return Promise.reject(err);
+        // If refresh fails, log out the user
+        localStorage.removeItem('boardly_access_token');
+        localStorage.removeItem('boardly_refresh_token');
+        useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+        return Promise.reject(error);
       }
     }
     return Promise.reject(error);

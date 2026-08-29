@@ -32,7 +32,13 @@ export function ProjectReports() {
   const [cfdDays, setCfdDays] = useState<number>(14);
 
   // 1. Project Summary Metrics
-  const { data: summary, isLoading: isSummaryLoading } = useQuery({
+  const {
+    data: summary,
+    isLoading: isSummaryLoading,
+    isError: isSummaryError,
+    error: summaryError,
+    refetch: refetchSummary,
+  } = useQuery({
     queryKey: ['projectReportsSummary', projectId],
     queryFn: () => getProjectSummaryReport(projectId!),
     enabled: !!projectId,
@@ -84,6 +90,25 @@ export function ProjectReports() {
           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-muted-foreground">Loading project analytics...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (isSummaryError) {
+    return (
+      <div className="flex h-96 flex-col items-center justify-center p-8 text-center space-y-4">
+        <div className="p-3 bg-destructive/10 rounded-full text-destructive">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <div className="space-y-1 max-w-sm">
+          <h3 className="font-semibold text-lg text-foreground">Failed to load project analytics</h3>
+          <p className="text-sm text-muted-foreground">
+            {(summaryError as Error)?.message || 'An error occurred while fetching report data.'}
+          </p>
+        </div>
+        <Button onClick={() => refetchSummary()} variant="outline" size="sm" className="cursor-pointer">
+          Try Again
+        </Button>
       </div>
     );
   }

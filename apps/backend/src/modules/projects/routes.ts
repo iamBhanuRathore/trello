@@ -1,6 +1,7 @@
 import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
+import { handleRouteError } from '../../lib/errors';
 import { createProject, listProjects, getProject, updateProject, deleteProject } from './service';
 
 /** Project routes — /v1/projects/* */
@@ -8,21 +9,23 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
   .use(authPlugin)
 
   // GET /v1/projects?workspaceId=...
-  .use(requirePermission('project.read'))
-  .get('/', async ({ query, user, set }) => {
-    try {
-      if (!query.workspaceId) throw new Error('workspaceId query parameter is required');
-      return await listProjects(db, query.workspaceId, user.organizationId);
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .get(
+    '/',
+    async ({ query, user, set }) => {
+      try {
+        if (!query.workspaceId) throw new Error('workspaceId query parameter is required');
+        return await listProjects(db, query.workspaceId, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('project.read'),
+      query: t.Object({ workspaceId: t.String() }),
     }
-  }, {
-    query: t.Object({ workspaceId: t.String() })
-  })
+  )
 
   // POST /v1/projects
-  .use(requirePermission('project.create'))
   .post(
     '/',
     async ({ body, user, set }) => {
@@ -36,11 +39,11 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
           endDate: body.endDate,
         });
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('project.create'),
       body: t.Object({
         workspaceId: t.String({ format: 'uuid' }),
         name: t.String(),
@@ -52,29 +55,32 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
   )
 
   // GET /v1/projects/:id
-  .use(requirePermission('project.read'))
-  .get('/:id', async ({ params, user, set }) => {
-    try {
-      return await getProject(db, params.id, user.organizationId);
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .get(
+    '/:id',
+    async ({ params, user, set }) => {
+      try {
+        return await getProject(db, params.id, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('project.read'),
     }
-  })
+  )
 
   // PATCH /v1/projects/:id
-  .use(requirePermission('project.update'))
   .patch(
     '/:id',
     async ({ params, body, user, set }) => {
       try {
         return await updateProject(db, params.id, user.organizationId, body);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('project.update'),
       body: t.Object({ 
         name: t.Optional(t.String()), 
         status: t.Optional(t.Union([t.Literal('active'), t.Literal('on_hold'), t.Literal('completed'), t.Literal('archived')])),
@@ -84,13 +90,17 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
   )
 
   // DELETE /v1/projects/:id
-  .use(requirePermission('project.delete'))
-  .delete('/:id', async ({ params, user, set }) => {
-    try {
-      await deleteProject(db, params.id, user.organizationId);
-      return { success: true };
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .delete(
+    '/:id',
+    async ({ params, user, set }) => {
+      try {
+        await deleteProject(db, params.id, user.organizationId);
+        return { success: true };
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('project.delete'),
     }
-  });
+  );

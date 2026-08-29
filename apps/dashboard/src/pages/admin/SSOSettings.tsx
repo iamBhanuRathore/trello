@@ -23,6 +23,8 @@ export function SSOSettings() {
   const [idpMetadataUrl, setIdpMetadataUrl] = useState('');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  const [workosOrganizationId, setWorkosOrganizationId] = useState('');
+  const [workosConnectionId, setWorkosConnectionId] = useState('');
   const [scimEnabled, setScimEnabled] = useState(false);
   const [enforceSSO, setEnforceSSO] = useState(false);
 
@@ -42,6 +44,8 @@ export function SSOSettings() {
       setIdpMetadataUrl(config.idpMetadataUrl || '');
       setClientId(config.clientId || '');
       setClientSecret(config.clientSecret || '');
+      setWorkosOrganizationId(config.workosOrganizationId || '');
+      setWorkosConnectionId(config.workosConnectionId || '');
       setScimEnabled(!!config.scimEnabled);
       setEnforceSSO(!!config.enforceSSO);
     }
@@ -62,6 +66,8 @@ export function SSOSettings() {
       idpMetadataUrl,
       clientId,
       clientSecret,
+      workosOrganizationId,
+      workosConnectionId,
       scimEnabled,
       enforceSSO,
     });
@@ -212,6 +218,26 @@ export function SSOSettings() {
                 placeholder="https://dev-123456.okta.com/app/exk123/sso/saml/metadata"
                 value={idpMetadataUrl}
                 onChange={(e) => setIdpMetadataUrl(e.target.value)}
+                className="text-xs h-9 font-mono"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">WorkOS Organization ID (Optional)</Label>
+              <Input
+                placeholder="org_01H..."
+                value={workosOrganizationId}
+                onChange={(e) => setWorkosOrganizationId(e.target.value)}
+                className="text-xs h-9 font-mono"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">WorkOS Connection ID (Optional)</Label>
+              <Input
+                placeholder="conn_01H..."
+                value={workosConnectionId}
+                onChange={(e) => setWorkosConnectionId(e.target.value)}
                 className="text-xs h-9 font-mono"
               />
             </div>

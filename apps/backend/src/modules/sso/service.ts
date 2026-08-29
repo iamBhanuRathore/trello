@@ -7,6 +7,8 @@ import {
   organizationMembers,
 } from '../../db/schema/index';
 import { issueTokenPair } from '../auth/service';
+import { getWorkOS, getRedirectUri } from '../auth/workos.service';
+import { env } from '../../lib/env';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -29,6 +31,8 @@ export async function getSSOConfig(db: Database, organizationId: string) {
       idpMetadataUrl: '',
       clientId: '',
       clientSecret: '',
+      workosOrganizationId: '',
+      workosConnectionId: '',
       scimEnabled: false,
       scimToken: '',
       enforceSSO: false,
@@ -47,6 +51,8 @@ export async function updateSSOConfig(
     idpMetadataUrl?: string;
     clientId?: string;
     clientSecret?: string;
+    workosOrganizationId?: string;
+    workosConnectionId?: string;
     scimEnabled?: boolean;
     enforceSSO?: boolean;
   }
@@ -67,10 +73,12 @@ export async function updateSSOConfig(
       .update(ssoConfigurations)
       .set({
         provider: input.provider ?? existing.provider,
-        domain: input.domain !== undefined ? input.domain.trim().toLowerCase() : existing.domain,
+        domain: input.domain !== undefined ? input.domain.trim().toLowerCase().replace(/^@/, '') : existing.domain,
         idpMetadataUrl: input.idpMetadataUrl ?? existing.idpMetadataUrl,
         clientId: input.clientId ?? existing.clientId,
         clientSecret: input.clientSecret ?? existing.clientSecret,
+        workosOrganizationId: input.workosOrganizationId !== undefined ? input.workosOrganizationId.trim() : existing.workosOrganizationId,
+        workosConnectionId: input.workosConnectionId !== undefined ? input.workosConnectionId.trim() : existing.workosConnectionId,
         scimEnabled: input.scimEnabled ?? existing.scimEnabled,
         scimToken: input.scimEnabled ? scimToken : null,
         enforceSSO: input.enforceSSO ?? existing.enforceSSO,
@@ -98,10 +106,12 @@ export async function updateSSOConfig(
       .values({
         organizationId,
         provider: input.provider || 'okta',
-        domain: input.domain.trim().toLowerCase(),
+        domain: input.domain.trim().toLowerCase().replace(/^@/, ''),
         idpMetadataUrl: input.idpMetadataUrl || null,
         clientId: input.clientId || null,
         clientSecret: input.clientSecret || null,
+        workosOrganizationId: input.workosOrganizationId || null,
+        workosConnectionId: input.workosConnectionId || null,
         scimEnabled: input.scimEnabled ?? false,
         scimToken: input.scimEnabled ? scimToken : null,
         enforceSSO: input.enforceSSO ?? false,
@@ -112,8 +122,8 @@ export async function updateSSOConfig(
   }
 }
 
-export async function generateSSOLoginUrl(db: Database, domain: string) {
-  const cleanDomain = domain.trim().toLowerCase();
+export async function generateSSOLoginUrl(db: Database, domain: string, customRedirectUri?: string) {
+  const cleanDomain = domain.trim().toLowerCase().replace(/^@/, '');
   const [config] = await db
     .select()
     .from(ssoConfigurations)
@@ -124,15 +134,47 @@ export async function generateSSOLoginUrl(db: Database, domain: string) {
     throw httpError(404, `No enterprise Single Sign-On configured for domain @${cleanDomain}`);
   }
 
-  // Generate simulated IdP Redirect URL
-  const state = `sso_${Date.now().toString(36)}`;
-  const loginUrl = `https://login.boardly.com/sso/authorize?provider=${config.provider}&domain=${cleanDomain}&client_id=${config.clientId || 'boardly_enterprise'}&state=${state}`;
+  const redirectUri = getRedirectUri(customRedirectUri);
+  const state = `sso_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+  let loginUrl: string;
+
+  try {
+    const workos = getWorkOS();
+    const clientId = env.WORKOS_CLIENT_ID || 'client_placeholder';
+
+    if (config.workosOrganizationId) {
+      loginUrl = workos.userManagement.getAuthorizationUrl({
+        organizationId: config.workosOrganizationId,
+        redirectUri,
+        clientId,
+        state,
+      });
+    } else if (config.workosConnectionId) {
+      loginUrl = workos.userManagement.getAuthorizationUrl({
+        connectionId: config.workosConnectionId,
+        redirectUri,
+        clientId,
+        state,
+      });
+    } else {
+      loginUrl = workos.userManagement.getAuthorizationUrl({
+        provider: 'authkit',
+        domainHint: cleanDomain,
+        redirectUri,
+        clientId,
+        state,
+      });
+    }
+  } catch (err) {
+    loginUrl = `https://login.boardly.com/sso/authorize?provider=${config.provider}&domain=${cleanDomain}&client_id=${config.clientId || 'boardly_enterprise'}&state=${state}`;
+  }
 
   return {
     provider: config.provider,
     domain: cleanDomain,
     loginUrl,
     state,
+    redirectUri,
   };
 }
 
@@ -144,7 +186,7 @@ export async function processSSOCallback(
     name: string;
   }
 ) {
-  const cleanDomain = input.domain.trim().toLowerCase();
+  const cleanDomain = input.domain.trim().toLowerCase().replace(/^@/, '');
   const cleanEmail = input.email.trim().toLowerCase();
 
   const [config] = await db

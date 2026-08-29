@@ -1,6 +1,7 @@
 import Elysia, { t } from 'elysia';
 import { authPlugin } from '../../middleware/auth';
 import { db } from '../../db/index';
+import { handleRouteError } from '../../lib/errors';
 import {
   listNotifications,
   markAsRead,
@@ -20,8 +21,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
       const res = await listNotifications(db, user.userId, user.organizationId);
       return res;
     } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+      return handleRouteError(err, set);
     }
   })
 
@@ -29,8 +29,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
     try {
       return await markAsRead(db, params.id, user.userId);
     } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+      return handleRouteError(err, set);
     }
   })
 
@@ -38,8 +37,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
     try {
       return await markAllAsRead(db, user.userId, user.organizationId);
     } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+      return handleRouteError(err, set);
     }
   })
 
@@ -47,8 +45,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
     try {
       return await getPreferences(db, user.userId, user.organizationId);
     } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+      return handleRouteError(err, set);
     }
   })
 
@@ -56,8 +53,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
     try {
       return await updatePreferences(db, user.userId, user.organizationId, body.preferences);
     } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+      return handleRouteError(err, set);
     }
   }, {
     body: t.Object({
@@ -76,8 +72,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
     try {
       return await getUserPushDevices(db, user.userId);
     } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+      return handleRouteError(err, set);
     }
   })
 
@@ -87,8 +82,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
       try {
         return await registerPushDevice(db, user.userId, user.organizationId, body);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -104,14 +98,17 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
     try {
       return await unregisterPushDevice(db, user.userId, params.token);
     } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+      return handleRouteError(err, set);
     }
   })
 
-  .post('/digest', async () => {
-    // For testing/mocking the digest cron execution
-    const { processNotificationDigests } = await import('./digest.cron');
-    await processNotificationDigests();
-    return { success: true };
+  .post('/digest', async ({ set }) => {
+    try {
+      // For testing/mocking the digest cron execution
+      const { processNotificationDigests } = await import('./digest.cron');
+      await processNotificationDigests();
+      return { success: true };
+    } catch (err: any) {
+      return handleRouteError(err, set);
+    }
   });

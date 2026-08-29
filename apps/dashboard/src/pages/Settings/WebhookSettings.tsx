@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { getWebhooks, createWebhook, updateWebhook, deleteWebhook } from '../../lib/api';
 import { Button } from '@boardly/ui/button';
 import { Switch } from '@boardly/ui/switch';
 import { Trash, Plus, Eye, EyeOff } from 'lucide-react';
+import { toast } from 'sonner';
+import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 
 const AVAILABLE_EVENTS = [
   { id: 'card.created', label: 'Card Created' },
@@ -24,26 +26,28 @@ export function WebhookSettings() {
   const [isAdding, setIsAdding] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [newEvents, setNewEvents] = useState<string[]>([]);
+  const [webhookToDelete, setWebhookToDelete] = useState<{ id: string; url: string } | null>(null);
 
   // UI state
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    if (user?.organizationId) {
-      loadWebhooks();
-    }
-  }, [user]);
-
-  const loadWebhooks = async () => {
+  const loadWebhooks = useCallback(async () => {
+    if (!user?.organizationId) return;
     try {
-      const data = await getWebhooks(user!.organizationId);
+      const data = await getWebhooks(user.organizationId);
       setWebhooks(data);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.organizationId]);
+
+  useEffect(() => {
+    if (user?.organizationId) {
+      loadWebhooks();
+    }
+  }, [user?.organizationId, loadWebhooks]);
 
   const handleCreate = async () => {
     if (!newUrl) return;
@@ -56,18 +60,22 @@ export function WebhookSettings() {
       setNewEvents([]);
       setIsAdding(false);
       loadWebhooks();
-    } catch (err) {
+      toast.success('Webhook created successfully');
+    } catch (err: any) {
       console.error(err);
+      toast.error(err?.response?.data?.message || 'Failed to create webhook');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this webhook?')) return;
     try {
       await deleteWebhook(user!.organizationId, id);
+      setWebhookToDelete(null);
       loadWebhooks();
-    } catch (err) {
+      toast.success('Webhook deleted successfully');
+    } catch (err: any) {
       console.error(err);
+      toast.error(err?.response?.data?.message || 'Failed to delete webhook');
     }
   };
 
@@ -235,8 +243,9 @@ export function WebhookSettings() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => handleDelete(hook.id)}
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                  title="Delete Webhook"
+                  onClick={() => setWebhookToDelete({ id: hook.id, url: hook.url })}
                 >
                   <Trash className="h-4 w-4" />
                 </Button>
@@ -245,6 +254,23 @@ export function WebhookSettings() {
           ))
         )}
       </div>
+
+      {/* Delete Webhook Confirmation Dialog */}
+      <ConfirmDialog
+        open={!!webhookToDelete}
+        onOpenChange={(open) => {
+          if (!open) setWebhookToDelete(null);
+        }}
+        title="Delete Webhook"
+        description={`Are you sure you want to delete the webhook "${webhookToDelete?.url || ''}"? This organization will stop receiving event notifications to this URL.`}
+        confirmLabel="Delete Webhook"
+        variant="destructive"
+        onConfirm={() => {
+          if (webhookToDelete) {
+            handleDelete(webhookToDelete.id);
+          }
+        }}
+      />
     </div>
   );
 }

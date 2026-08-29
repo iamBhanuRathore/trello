@@ -154,3 +154,5 @@ import { seedFullOrganization } from './seedOrganization';
 await seedFullOrganization();
 
 await client.end();
+process.exit(0);
+

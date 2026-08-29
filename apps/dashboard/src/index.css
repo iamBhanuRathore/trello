@@ -18,6 +18,7 @@
   }
   html {
     @apply font-sans;
+    scrollbar-gutter: stable;
   }
 
   /* Remove spin buttons on number inputs for clean consistent styling across themes */

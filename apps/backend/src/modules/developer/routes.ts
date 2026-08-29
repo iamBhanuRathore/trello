@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
+import { handleRouteError } from '../../lib/errors';
 import {
   generateApiKey,
   listApiKeys,
@@ -17,42 +18,40 @@ export const developerRoutes = new Elysia()
 
   // ── Developer API Keys ──────────────────────────────────────────────────────
   .group('/developer/keys', (app) =>
-    app
-      .use(requirePermission('org.update'))
-      .get('/', async ({ user, set }) => {
-        try {
-          return await listApiKeys(db, user.organizationId);
-        } catch (err: any) {
-          set.status = err.status || 500;
-          return { error: err.message };
-        }
-      })
-      .post(
-        '/',
-        async ({ body, user, set }) => {
+    app.guard({ beforeHandle: requirePermission('org.update') }, (app) =>
+      app
+        .get('/', async ({ user, set }) => {
           try {
-            return await generateApiKey(db, user.organizationId, body);
+            return await listApiKeys(db, user.organizationId);
           } catch (err: any) {
-            set.status = err.status || 500;
-            return { error: err.message };
+            return handleRouteError(err, set);
           }
-        },
-        {
-          body: t.Object({
-            name: t.String(),
-            scopes: t.Optional(t.Array(t.String())),
-            expiresInDays: t.Optional(t.Number()),
-          }),
-        }
-      )
-      .delete('/:id', async ({ params, user, set }) => {
-        try {
-          return await revokeApiKey(db, user.organizationId, params.id);
-        } catch (err: any) {
-          set.status = err.status || 500;
-          return { error: err.message };
-        }
-      })
+        })
+        .post(
+          '/',
+          async ({ body, user, set }) => {
+            try {
+              return await generateApiKey(db, user.organizationId, body);
+            } catch (err: any) {
+              return handleRouteError(err, set);
+            }
+          },
+          {
+            body: t.Object({
+              name: t.String(),
+              scopes: t.Optional(t.Array(t.String())),
+              expiresInDays: t.Optional(t.Number()),
+            }),
+          }
+        )
+        .delete('/:id', async ({ params, user, set }) => {
+          try {
+            return await revokeApiKey(db, user.organizationId, params.id);
+          } catch (err: any) {
+            return handleRouteError(err, set);
+          }
+        })
+    )
   )
 
   // ── Marketplace & Power-Ups ─────────────────────────────────────────────────
@@ -65,19 +64,16 @@ export const developerRoutes = new Elysia()
             search: query.search,
           });
         } catch (err: any) {
-          set.status = err.status || 500;
-          return { error: err.message };
+          return handleRouteError(err, set);
         }
       })
       .get('/:id', async ({ params, user, set }) => {
         try {
           return await getMarketplaceApp(db, user.organizationId, params.id);
         } catch (err: any) {
-          set.status = err.status || 500;
-          return { error: err.message };
+          return handleRouteError(err, set);
         }
       })
-      .use(requirePermission('board.update'))
       .post(
         '/:id/install',
         async ({ params, body, user, set }) => {
@@ -88,11 +84,11 @@ export const developerRoutes = new Elysia()
               config: body?.config,
             });
           } catch (err: any) {
-            set.status = err.status || 500;
-            return { error: err.message };
+            return handleRouteError(err, set);
           }
         },
         {
+          beforeHandle: requirePermission('board.update'),
           body: t.Optional(
             t.Object({
               boardId: t.Optional(t.String()),
@@ -107,23 +103,28 @@ export const developerRoutes = new Elysia()
           try {
             return await updateInstalledApp(db, user.organizationId, params.id, body);
           } catch (err: any) {
-            set.status = err.status || 500;
-            return { error: err.message };
+            return handleRouteError(err, set);
           }
         },
         {
+          beforeHandle: requirePermission('board.update'),
           body: t.Object({
             config: t.Optional(t.Record(t.String(), t.Any())),
             isEnabled: t.Optional(t.Boolean()),
           }),
         }
       )
-      .delete('/installed/:id', async ({ params, user, set }) => {
-        try {
-          return await uninstallMarketplaceApp(db, user.organizationId, params.id);
-        } catch (err: any) {
-          set.status = err.status || 500;
-          return { error: err.message };
+      .delete(
+        '/installed/:id',
+        async ({ params, user, set }) => {
+          try {
+            return await uninstallMarketplaceApp(db, user.organizationId, params.id);
+          } catch (err: any) {
+            return handleRouteError(err, set);
+          }
+        },
+        {
+          beforeHandle: requirePermission('board.update'),
         }
-      })
+      )
   );

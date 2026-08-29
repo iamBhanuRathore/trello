@@ -1,18 +1,32 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { searchService } from '../lib/searchService';
+import { api } from '../lib/api';
+import { useAuthStore } from '../store/authStore';
 import {
   Dialog,
   DialogContent,
   DialogTrigger,
 } from '@boardly/ui/dialog';
-import { Input } from '@boardly/ui/input';
-import { Button } from '@boardly/ui/button';
-import { Search, SearchIcon, X, Bookmark, Folder, Layout, CreditCard } from 'lucide-react';
-// import { useDebounce } from '../hooks/useDebounce'; // Assuming we have this, or I will create a simple debounce logic
+import {
+  Search,
+  SearchIcon,
+  X,
+  Bookmark,
+  Folder,
+  LayoutDashboard,
+  CreditCard,
+  CheckSquare,
+  Clock,
+  Sparkles,
+  Columns,
+  BookOpen,
+  Shield,
+  CornerDownLeft,
+  Plus,
+} from 'lucide-react';
 
-// Helper hook for debouncing search query
 function useDebounceValue<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
   useEffect(() => {
@@ -24,24 +38,51 @@ function useDebounceValue<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
+interface SearchItem {
+  id: string;
+  title: string;
+  subtitle?: string;
+  type: 'navigation' | 'board' | 'card' | 'project' | 'action';
+  icon: React.ComponentType<{ className?: string }>;
+  iconColor?: string;
+  onSelect: () => void;
+}
+
 export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const debouncedQuery = useDebounceValue(query, 300);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const debouncedQuery = useDebounceValue(query, 200);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch search results
-  const { data: results, isLoading } = useQuery({
+  const isAdmin =
+    user?.isPlatformAdmin ||
+    user?.role === 'org_owner' ||
+    user?.role === 'org_admin';
+
+  // 1. Fetch remote search results for cards/boards/projects
+  const { data: serverResults = [], isLoading } = useQuery({
     queryKey: ['search', debouncedQuery],
     queryFn: () => searchService.search(debouncedQuery),
-    enabled: debouncedQuery.length > 1,
+    enabled: debouncedQuery.trim().length > 1,
   });
 
-  // Fetch saved searches
-  const { data: savedSearches } = useQuery({
+  // 2. Fetch saved searches
+  const { data: savedSearches = [] } = useQuery({
     queryKey: ['savedSearches'],
     queryFn: () => searchService.getSavedSearches(),
+  });
+
+  // 3. Fetch workspaces to build instant board & project suggestions
+  const { data: workspaces = [] } = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: async () => {
+      const res = await api.get('/workspaces');
+      return res.data;
+    },
   });
 
   const saveSearchMutation = useMutation({
@@ -54,36 +95,227 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['savedSearches'] }),
   });
 
-  // Global hotkey Cmd+K
+  // Global hotkey Cmd+K or Ctrl+K
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setOpen((open) => !open);
+        setOpen((prev) => !prev);
       }
     };
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
   }, []);
 
-  const handleSelect = (item: any) => {
-    setOpen(false);
-    if (item.type === 'project') navigate(`/`);
-    if (item.type === 'board') navigate(`/b/${item.id}`);
-    if (item.type === 'card') navigate(`/b/${item.boardId}?card=${item.id}`);
+  // Reset selected index when query or results change
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query, serverResults]);
+
+  // Focus input on open
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    } else {
+      setQuery('');
+      setSelectedIndex(0);
+    }
+  }, [open]);
+
+  // Static Quick Navigation Items
+  const quickNavItems: SearchItem[] = useMemo(() => {
+    const items: SearchItem[] = [
+      {
+        id: 'nav-workspaces',
+        title: 'Workspaces & Overview',
+        subtitle: 'Main dashboard & teams',
+        type: 'navigation',
+        icon: LayoutDashboard,
+        iconColor: 'text-sky-500',
+        onSelect: () => navigate('/'),
+      },
+      {
+        id: 'nav-mytasks',
+        title: 'My Tasks',
+        subtitle: 'Assigned tickets and action items',
+        type: 'navigation',
+        icon: CheckSquare,
+        iconColor: 'text-emerald-500',
+        onSelect: () => navigate('/my-tasks'),
+      },
+      {
+        id: 'nav-timesheets',
+        title: 'Timesheets & Work Logs',
+        subtitle: 'Log and track billable hours',
+        type: 'navigation',
+        icon: Clock,
+        iconColor: 'text-amber-500',
+        onSelect: () => navigate('/timesheets'),
+      },
+      {
+        id: 'nav-marketplace',
+        title: 'Power-Ups & App Marketplace',
+        subtitle: 'Integrations, add-ons, and bots',
+        type: 'navigation',
+        icon: Sparkles,
+        iconColor: 'text-purple-500',
+        onSelect: () => navigate('/marketplace'),
+      },
+    ];
+
+    if (isAdmin) {
+      items.push({
+        id: 'nav-admin',
+        title: 'Admin Panel',
+        subtitle: 'Users, roles, SSO, and billing',
+        type: 'navigation',
+        icon: Shield,
+        iconColor: 'text-rose-500',
+        onSelect: () => navigate('/admin/users'),
+      });
+    }
+
+    return items;
+  }, [isAdmin, navigate]);
+
+  // Dynamic Workspace Boards Items
+  const boardItems: SearchItem[] = useMemo(() => {
+    const items: SearchItem[] = [];
+    workspaces.forEach((ws: any) => {
+      ws.projects?.forEach((proj: any) => {
+        proj.boards?.forEach((b: any) => {
+          items.push({
+            id: `board-${b.id}`,
+            title: b.title,
+            subtitle: `${ws.name} > ${proj.name}`,
+            type: 'board',
+            icon: Columns,
+            iconColor: 'text-teal-500',
+            onSelect: () => navigate(`/b/${b.id}`),
+          });
+        });
+      });
+    });
+    return items;
+  }, [workspaces, navigate]);
+
+  // Quick Action Items
+  const quickActions: SearchItem[] = useMemo(() => [
+    {
+      id: 'action-create-ws',
+      title: 'Create New Workspace',
+      subtitle: 'Set up a new team environment',
+      type: 'action',
+      icon: Plus,
+      iconColor: 'text-primary',
+      onSelect: () => navigate('/'),
+    },
+    {
+      id: 'action-docs',
+      title: 'Docs & Knowledge Base',
+      subtitle: 'Browse specifications and wikis',
+      type: 'action',
+      icon: BookOpen,
+      iconColor: 'text-teal-500',
+      onSelect: () => {
+        const firstProj = workspaces[0]?.projects?.[0];
+        if (firstProj) navigate(`/projects/${firstProj.id}/docs`);
+        else navigate('/');
+      },
+    },
+  ], [workspaces, navigate]);
+
+  // Format remote search results into SearchItems
+  const formattedServerResults: SearchItem[] = useMemo(() => {
+    return serverResults.map((r: any) => {
+      if (r.type === 'card') {
+        const ticketKey = r.key || (r.taskNumber ? `#${r.taskNumber}` : 'Task');
+        return {
+          id: `card-${r.id}`,
+          title: r.title,
+          subtitle: `${ticketKey} · ${r.boardName || 'Kanban Board'}`,
+          type: 'card',
+          icon: CreditCard,
+          iconColor: 'text-emerald-500',
+          onSelect: () => navigate(`/b/${r.boardId}?card=${r.id}`),
+        };
+      }
+      if (r.type === 'board') {
+        return {
+          id: `board-${r.id}`,
+          title: r.title,
+          subtitle: 'Kanban Board',
+          type: 'board',
+          icon: Columns,
+          iconColor: 'text-teal-500',
+          onSelect: () => navigate(`/b/${r.id}`),
+        };
+      }
+      return {
+        id: `project-${r.id}`,
+        title: r.title,
+        subtitle: 'Project Folder',
+        type: 'project',
+        icon: Folder,
+        iconColor: 'text-amber-500',
+        onSelect: () => navigate('/'),
+      };
+    });
+  }, [serverResults, navigate]);
+
+  // All active items to display
+  const activeItems: SearchItem[] = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      // Empty query default suggestions
+      return [
+        ...quickNavItems,
+        ...boardItems.slice(0, 4),
+        ...quickActions,
+      ];
+    }
+
+    // Filter local navigation items by query
+    const matchedNav = quickNavItems.filter(
+      (item) => item.title.toLowerCase().includes(q) || item.subtitle?.toLowerCase().includes(q)
+    );
+
+    const matchedBoards = boardItems.filter(
+      (item) => item.title.toLowerCase().includes(q) || item.subtitle?.toLowerCase().includes(q)
+    );
+
+    // Combine local matches + server results
+    const combined = [...formattedServerResults, ...matchedNav, ...matchedBoards];
+
+    // Deduplicate by ID
+    const seen = new Set<string>();
+    return combined.filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }, [query, quickNavItems, boardItems, quickActions, formattedServerResults]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev < activeItems.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : activeItems.length - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const selectedItem = activeItems[selectedIndex];
+      if (selectedItem) {
+        selectedItem.onSelect();
+        setOpen(false);
+      }
+    }
   };
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'project':
-        return <Folder className="h-4 w-4" />;
-      case 'board':
-        return <Layout className="h-4 w-4" />;
-      case 'card':
-        return <CreditCard className="h-4 w-4" />;
-      default:
-        return <SearchIcon className="h-4 w-4" />;
-    }
+  const handleItemClick = (item: SearchItem) => {
+    item.onSelect();
+    setOpen(false);
   };
 
   return (
@@ -91,109 +323,218 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
       {triggerContext === 'navbar' ? (
         <DialogTrigger
           render={
-            <button className="inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-input bg-background text-muted-foreground shadow-xs w-[200px] lg:w-[300px] justify-start relative h-8 px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-border/80 bg-background/60 hover:bg-muted text-muted-foreground hover:text-foreground shadow-2xs w-[180px] sm:w-[220px] lg:w-[280px] justify-between relative h-8 px-3 text-xs font-medium transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-2 truncate">
+                <SearchIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="hidden sm:inline-flex truncate">Search boards, cards...</span>
+                <span className="inline-flex sm:hidden">Search...</span>
+              </div>
+              <kbd className="pointer-events-none hidden h-4.5 select-none items-center gap-0.5 rounded border border-border/80 bg-muted px-1.5 font-mono text-[10px] font-semibold text-muted-foreground sm:flex">
+                <span>⌘</span>K
+              </kbd>
+            </button>
           }
-        >
-          <SearchIcon className="mr-2 h-4 w-4" />
-          <span className="hidden lg:inline-flex">Search boards, cards...</span>
-          <span className="inline-flex lg:hidden">Search...</span>
-          <kbd className="pointer-events-none absolute right-1.5 top-1.5 hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
-            <span className="text-xs">⌘</span>K
-          </kbd>
-        </DialogTrigger>
+        />
       ) : (
         <DialogTrigger
           render={
-            <button className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring h-9 w-9" />
+            <button
+              type="button"
+              className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors hover:bg-muted text-muted-foreground hover:text-foreground h-8 w-8 cursor-pointer"
+            >
+              <SearchIcon className="h-4 w-4" />
+            </button>
           }
-        >
-          <SearchIcon className="h-5 w-5" />
-        </DialogTrigger>
+        />
       )}
-      <DialogContent className="p-0 overflow-hidden sm:max-w-[600px]">
-        <div className="flex items-center border-b px-3 h-14">
-          <Search className="mr-2 h-5 w-5 shrink-0 opacity-50" />
-          <Input
-            autoFocus
-            className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground border-0 focus-visible:ring-0"
-            placeholder="Type a command or search..."
+
+      <DialogContent
+        showCloseButton={false}
+        className="sm:max-w-2xl p-0 overflow-hidden bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl"
+      >
+        {/* ─── Search Input Header ─── */}
+        <div className="flex items-center gap-3 px-4 h-14 border-b border-border/70 bg-card shrink-0">
+          <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0 border border-primary/20">
+            <Search className="w-4 h-4" />
+          </div>
+
+          <input
+            ref={inputRef}
+            type="text"
+            className="flex-1 bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground/70 outline-none h-full"
+            placeholder="Type a command or search boards, tasks, projects..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
-          {query.length > 2 && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 text-xs shrink-0 px-2"
-              onClick={() => saveSearchMutation.mutate(`Search: ${query}`)}
+
+          {query.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              title="Clear search"
             >
-              <Bookmark className="h-3 w-3 mr-1" /> Save
-            </Button>
+              <X className="w-4 h-4" />
+            </button>
+          )}
+
+          <kbd className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md bg-muted text-[11px] font-mono font-semibold text-muted-foreground border border-border">
+            ESC
+          </kbd>
+        </div>
+
+        {/* ─── Results & Quick Commands Body ─── */}
+        <div className="max-h-[360px] overflow-y-auto p-2 space-y-1">
+          {isLoading && query.length > 1 && (
+            <div className="py-8 text-center text-xs text-muted-foreground">
+              <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-2" />
+              Searching workspace...
+            </div>
+          )}
+
+          {/* Render Active Items */}
+          {activeItems.length > 0 ? (
+            <div>
+              <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                {query.trim() ? 'Matching Results' : 'Suggestions & Quick Jump'}
+              </div>
+
+              <div className="space-y-0.5 mt-1">
+                {activeItems.map((item, idx) => {
+                  const isSelected = idx === selectedIndex;
+                  const Icon = item.icon;
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => handleItemClick(item)}
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-primary/10 text-primary font-semibold shadow-2xs'
+                          : 'text-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`p-1.5 rounded-lg shrink-0 ${
+                            isSelected
+                              ? 'bg-primary/20 text-primary'
+                              : item.iconColor ? `${item.iconColor} bg-muted/60` : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 truncate">
+                          <p className="truncate leading-tight font-medium text-foreground">
+                            {item.title}
+                          </p>
+                          {item.subtitle && (
+                            <p className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
+                              {item.subtitle}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground font-semibold">
+                          {item.type}
+                        </span>
+                        {isSelected && (
+                          <CornerDownLeft className="w-3.5 h-3.5 text-primary opacity-80" />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            !isLoading && query.length > 0 && (
+              <div className="py-10 text-center text-xs text-muted-foreground space-y-1">
+                <SearchIcon className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
+                <p className="font-semibold text-foreground">No matches found for &quot;{query}&quot;</p>
+                <p className="text-[11px]">Try searching for task titles, board names, or projects.</p>
+              </div>
+            )
+          )}
+
+          {/* Saved Searches Section */}
+          {!query.trim() && savedSearches?.length > 0 && (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 flex items-center justify-between">
+                <span>Saved Searches</span>
+                <span className="text-[9px] font-normal text-muted-foreground">Click to run</span>
+              </div>
+              <div className="space-y-0.5 mt-1">
+                {savedSearches.map((ss: any) => (
+                  <div
+                    key={ss.id}
+                    className="group flex items-center justify-between px-3 py-2 rounded-xl text-xs hover:bg-muted/50 cursor-pointer transition-colors"
+                  >
+                    <div
+                      className="flex items-center gap-2.5 flex-1 min-w-0"
+                      onClick={() => setQuery(ss.query)}
+                    >
+                      <Bookmark className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="truncate font-medium">{ss.name}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono truncate">
+                        ({ss.query})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSavedSearchMutation.mutate(ss.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose-500 rounded-md transition-all"
+                      title="Delete saved search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
-        <div className="max-h-[300px] overflow-y-auto p-2">
-          {isLoading && query.length > 1 && (
-            <div className="p-4 text-center text-sm text-muted-foreground">Searching...</div>
-          )}
+        {/* ─── Footer: Keyboard Shortcuts & Save ─── */}
+        <div className="p-3 px-4 bg-muted/30 border-t border-border/70 flex items-center justify-between text-[11px] text-muted-foreground shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">↑</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">↓</kbd>
+              <span className="text-[10px] ml-0.5">navigate</span>
+            </span>
 
-          {!isLoading && results?.length > 0 && (
-            <div className="mb-4">
-              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Results</div>
-              {results.map((r: any) => (
-                <div
-                  key={`${r.type}-${r.id}`}
-                  className="flex cursor-pointer items-center rounded-sm px-2 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => handleSelect(r)}
-                >
-                  <span className="mr-2 opacity-50">{getIcon(r.type)}</span>
-                  <span className="font-medium mr-2">{r.title}</span>
-                  <span className="text-xs text-muted-foreground uppercase opacity-75 ml-auto">
-                    {r.type}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">↵</kbd>
+              <span className="text-[10px] ml-0.5">select</span>
+            </span>
 
-          {!isLoading && query.length > 1 && results?.length === 0 && (
-            <div className="p-4 text-center text-sm text-muted-foreground">No results found.</div>
-          )}
+            <span className="flex items-center gap-1 hidden sm:inline-flex">
+              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">esc</kbd>
+              <span className="text-[10px] ml-0.5">close</span>
+            </span>
+          </div>
 
-          {query.length === 0 && savedSearches?.length > 0 && (
-            <div>
-              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                Saved Searches
-              </div>
-              {savedSearches.map((ss: any) => (
-                <div
-                  key={ss.id}
-                  className="group flex cursor-pointer items-center justify-between rounded-sm px-2 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
-                >
-                  <div className="flex items-center flex-1" onClick={() => setQuery(ss.query)}>
-                    <Bookmark className="mr-2 h-4 w-4 opacity-50" />
-                    <span>{ss.name}</span>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteSavedSearchMutation.mutate(ss.id);
-                    }}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {query.length === 0 && (!savedSearches || savedSearches.length === 0) && (
-            <div className="p-4 text-center text-sm text-muted-foreground">
-              Start typing to search across your workspace...
-            </div>
+          {query.trim().length > 1 && (
+            <button
+              type="button"
+              onClick={() => saveSearchMutation.mutate(`Search: ${query}`)}
+              disabled={saveSearchMutation.isPending}
+              className="flex items-center gap-1 text-[11px] text-primary hover:underline font-medium cursor-pointer"
+            >
+              <Bookmark className="w-3 h-3" />
+              <span>{saveSearchMutation.isPending ? 'Saving...' : 'Save search'}</span>
+            </button>
           )}
         </div>
       </DialogContent>

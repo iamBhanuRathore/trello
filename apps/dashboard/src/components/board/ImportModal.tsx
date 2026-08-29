@@ -122,21 +122,24 @@ export function ImportModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
+        {/* ─── Fixed Header ─── */}
+        <DialogHeader className="p-5 sm:px-6 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">
+          <div className="flex items-center gap-2.5 pr-8">
+            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500">
               <UploadCloud className="w-5 h-5" />
             </div>
-            <DialogTitle className="text-lg">Migrate / Import Board</DialogTitle>
+            <div>
+              <DialogTitle className="text-base font-bold">Migrate / Import Board</DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Import a Trello board or JSON export into <strong>{projectName || 'your project'}</strong>.
+              </DialogDescription>
+            </div>
           </div>
-          <DialogDescription>
-            Import an existing Trello board or structured task list into{' '}
-            <strong>{projectName || 'your project'}</strong>.
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 pt-2">
+        {/* ─── Scrollable Body ─── */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
           {/* Dropzone */}
           <div
             onDragOver={(e) => e.preventDefault()}
@@ -233,35 +236,36 @@ export function ImportModal({
               </div>
             </div>
           )}
+        </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              disabled={isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
-              onClick={handleStartImport}
-              disabled={!parsedData || isPending}
-            >
-              {isPending ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Importing...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" /> Start Migration <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </Button>
-          </div>
+        {/* ─── Fixed Bottom Footer ─── */}
+        <div className="p-4 sm:px-6 border-t border-border/80 bg-card/90 backdrop-blur-md shrink-0 flex items-center justify-end gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+            className="cursor-pointer text-xs"
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer text-xs"
+            onClick={handleStartImport}
+            disabled={!parsedData || isPending}
+          >
+            {isPending ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Importing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" /> Start Migration <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

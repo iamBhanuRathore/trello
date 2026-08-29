@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
+import { handleRouteError } from '../../lib/errors';
 import {
   logTime,
   getCardTimeLogs,
@@ -12,7 +13,6 @@ export const timeTrackingRoutes = new Elysia({ prefix: '/time-tracking', tags: [
   .use(authPlugin)
 
   // POST /v1/time-tracking/cards/:cardId
-  .use(requirePermission('card.time_log.create'))
   .post(
     '/cards/:cardId',
     async ({ params: { cardId }, body, user, set }) => {
@@ -25,11 +25,11 @@ export const timeTrackingRoutes = new Elysia({ prefix: '/time-tracking', tags: [
           isBillable: body.isBillable,
         });
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.time_log.create'),
       params: t.Object({ cardId: t.String() }),
       body: t.Object({
         minutes: t.Number(),
@@ -41,41 +41,38 @@ export const timeTrackingRoutes = new Elysia({ prefix: '/time-tracking', tags: [
   )
 
   // GET /v1/time-tracking/cards/:cardId
-  .use(requirePermission('card.read'))
   .get(
     '/cards/:cardId',
     async ({ params: { cardId }, user, set }) => {
       try {
         return await getCardTimeLogs(db, user.organizationId, cardId);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.read'),
       params: t.Object({ cardId: t.String() }),
     }
   )
 
   // DELETE /v1/time-tracking/logs/:id
-  .use(requirePermission('card.time_log.delete'))
   .delete(
     '/logs/:id',
     async ({ params: { id }, user, set }) => {
       try {
         return await deleteTimeLog(db, user.organizationId, user.userId, id);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.time_log.delete'),
       params: t.Object({ id: t.String() }),
     }
   )
 
   // GET /v1/time-tracking/timesheet
-  .use(requirePermission('org.read'))
   .get(
     '/timesheet',
     async ({ query, user, set }) => {
@@ -87,11 +84,11 @@ export const timeTrackingRoutes = new Elysia({ prefix: '/time-tracking', tags: [
           endDate: query.endDate,
         });
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('org.read'),
       query: t.Object({
         userId: t.Optional(t.String()),
         projectId: t.Optional(t.String()),

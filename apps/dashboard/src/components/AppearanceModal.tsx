@@ -46,31 +46,33 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({ open, onOpenCh
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto p-6 sm:p-8">
-        <DialogHeader className="space-y-1">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+      <DialogContent className="sm:max-w-3xl max-h-[88vh] h-[88vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
+        {/* ─── Fixed Header ─── */}
+        <DialogHeader className="p-5 sm:px-8 sm:py-5 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">
+          <div className="flex items-center justify-between pr-8">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary">
                 <Palette className="h-5 w-5" />
               </div>
-              <DialogTitle className="text-2xl font-bold">Theme & Appearance</DialogTitle>
+              <DialogTitle className="text-xl font-bold tracking-tight">Theme & Appearance</DialogTitle>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={handleReset}
-              className="text-xs text-muted-foreground hover:text-foreground gap-1.5"
+              className="text-xs text-muted-foreground hover:text-foreground gap-1.5 cursor-pointer"
             >
               <RotateCcw className="h-3.5 w-3.5" /> Reset Defaults
             </Button>
           </div>
-          <DialogDescription className="text-muted-foreground">
+          <DialogDescription className="text-xs text-muted-foreground">
             Personalize your workspace experience with custom themes, surface contrast, and accent
             colors.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-8 mt-6">
+        {/* ─── Scrollable Body ─── */}
+        <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-8">
           {/* 1. Brightness / Mode Section */}
           <div className="space-y-3">
             <Label className="text-sm font-semibold flex items-center gap-2">
@@ -299,8 +301,28 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({ open, onOpenCh
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 mt-8 pt-4 border-t">
-          <Button onClick={() => onOpenChange(false)}>Done</Button>
+        {/* ─── Fixed Bottom Action Footer ─── */}
+        <div className="p-4 sm:px-8 border-t border-border/80 bg-card/90 backdrop-blur-md shrink-0 flex items-center justify-between">
+          <div className="text-xs text-muted-foreground hidden sm:block">
+            Changes are saved automatically to your workspace.
+          </div>
+          <div className="flex items-center gap-3 ml-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              className="cursor-pointer"
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => onOpenChange(false)}
+              size="sm"
+              className="px-6 cursor-pointer"
+            >
+              Save &amp; Apply
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -20,13 +20,16 @@ import {
   Copy,
   UserPlus,
   ArrowLeft,
-  Check,
   Bold,
   Italic,
   Code,
   List as ListIcon,
   Quote,
   AlertCircle,
+  AlertTriangle,
+  Save,
+  Edit3,
+  FileText,
   X,
   ExternalLink,
   Layers,
@@ -34,37 +37,68 @@ import {
   Eye,
   EyeOff,
   User,
+  MoreHorizontal,
+  Share2,
+  CopyPlus,
+  PlusCircle,
+  GitBranch,
+  Tag,
+  Archive,
 } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@boardly/ui/dropdown-menu';
 import { MemberPicker } from './MemberPicker';
 import { LabelPicker } from './LabelPicker';
 import { MentionCommentBox } from './MentionCommentBox';
 import { MarkdownRenderer } from '../MarkdownRenderer';
+import { SearchableSelect, ListSearchableSelect } from '../ui/SearchableSelect';
+import { ShareTaskModal } from './ShareTaskModal';
+import { ConfirmDialog } from '../common/ConfirmDialog';
+import { toast } from 'sonner';
+import { usePageMetadata } from '../../hooks/usePageMetadata';
+import {
+  getTaskIdentifier,
+  getGitBranchName,
+  copyTextToClipboard,
+} from '../../utils/taskIdentifier';
+
+export interface TaskDetailViewHandle {
+  requestClose: () => void;
+  isDirty: () => boolean;
+}
 
 interface TaskDetailViewProps {
   cardId: string;
   mode?: 'modal' | 'page';
   onClose?: () => void;
   onSelectCard?: (id: string) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
-export function TaskDetailView({
-  cardId,
-  mode = 'modal',
-  onClose,
-  onSelectCard,
-}: TaskDetailViewProps) {
+export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewProps>(
+  function TaskDetailView(
+    { cardId, mode = 'modal', onClose, onSelectCard, onDirtyChange }: TaskDetailViewProps,
+    ref
+  ) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const orgId = user?.organizationId;
 
   // Local UI States
-  const [descTab, setDescTab] = useState<'write' | 'preview'>('write');
+  const [descTab, setDescTab] = useState<'write' | 'preview'>('preview');
   const [descriptionValue, setDescriptionValue] = useState<string>('');
   const [isDescDirty, setIsDescDirty] = useState<boolean>(false);
+  const [showUnsavedPrompt, setShowUnsavedPrompt] = useState<boolean>(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [isLoggingTime, setIsLoggingTime] = useState<boolean>(false);
   const [logHours, setLogHours] = useState<string>('');
   const [logMinutes, setLogMinutes] = useState<string>('');
@@ -81,16 +115,34 @@ export function TaskDetailView({
   const [newSubtaskAssigneeId, setNewSubtaskAssigneeId] = useState<string>('');
   const [subtaskFilter, setSubtaskFilter] = useState<'all' | 'mine'>('all');
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [showShareModal, setShowShareModal] = useState<boolean>(false);
+  const [copiedId, setCopiedId] = useState<boolean>(false);
+  const [copiedBranch, setCopiedBranch] = useState<boolean>(false);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState<boolean>(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
 
   // Queries
   const { data: card, isLoading: isCardLoading } = useQuery({
     queryKey: ['card', cardId],
     queryFn: async () => {
       const res = await api.get(`/cards/${cardId}`);
-      setDescriptionValue(res.data.description || '');
+      if (!isDescDirty) {
+        setDescriptionValue(res.data.description || '');
+      }
       return res.data;
     },
     enabled: !!cardId,
+  });
+
+  const taskIdentifier = getTaskIdentifier(card);
+
+  // Dynamic OpenGraph / Teams / Slack metadata and title
+  usePageMetadata({
+    title: card ? `${taskIdentifier}: ${card.title} · ${card.boardName || 'Boardly'}` : 'Task Details · Boardly',
+    description: card?.description
+      ? `${card.description.slice(0, 200)} [Status: ${card.listName || 'In Progress'}]`
+      : `View task ${taskIdentifier} on Boardly enterprise workspace.`,
+    url: typeof window !== 'undefined' ? `${window.location.origin}/cards/${cardId}` : undefined,
   });
 
   // Smart-default subtask assignee to primary ticket owner or current user
@@ -184,12 +236,32 @@ export function TaskDetailView({
   const deleteCardMutation = useMutation({
     mutationFn: async () => await api.delete(`/cards/${cardId}`),
     onSuccess: () => {
+      toast.success('Task card permanently deleted');
       queryClient.invalidateQueries({ queryKey: ['lists', card?.boardId] });
       if (mode === 'page') {
         navigate(`/b/${card?.boardId}`);
       } else {
         onClose?.();
       }
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to delete task card');
+    },
+  });
+
+  const archiveCardMutation = useMutation({
+    mutationFn: async () => await api.post(`/cards/${cardId}/archive`),
+    onSuccess: () => {
+      toast.success('Task card archived');
+      queryClient.invalidateQueries({ queryKey: ['lists', card?.boardId] });
+      if (mode === 'page') {
+        navigate(`/b/${card?.boardId}`);
+      } else {
+        onClose?.();
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to archive task card');
     },
   });
 
@@ -349,6 +421,107 @@ export function TaskDetailView({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId, 'time-logs'] }),
   });
 
+  const cloneCardMutation = useMutation({
+    mutationFn: async (vars: { parentCardId?: string; title?: string }) => {
+      const res = await api.post(`/cards/${cardId}/clone`, {
+        listId: card?.listId,
+        parentCardId: vars.parentCardId,
+        title: vars.title,
+      });
+      return res.data;
+    },
+    onSuccess: (clonedCard, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+      if (card?.boardId) {
+        queryClient.invalidateQueries({ queryKey: ['lists', card.boardId] });
+      }
+      if (vars.parentCardId) {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'subtasks'] });
+      }
+      if (!vars.parentCardId && clonedCard?.id) {
+        if (onSelectCard) {
+          onSelectCard(clonedCard.id);
+        } else if (mode === 'page') {
+          navigate(`/cards/${clonedCard.id}`);
+        }
+      }
+    },
+  });
+
+  const handleCloneTask = () => {
+    cloneCardMutation.mutate({
+      title: `${card?.title || 'Task'} (Copy)`,
+    });
+  };
+
+  const handleCloneAsSubtask = () => {
+    cloneCardMutation.mutate({
+      parentCardId: cardId,
+      title: `Subtask: ${card?.title || 'Task'}`,
+    });
+  };
+
+  const handleCreateSubtask = () => {
+    const input = document.getElementById('new-subtask-input') as HTMLInputElement;
+    if (input) {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => input.focus(), 250);
+    }
+  };
+
+  // Save description helper
+  const handleSaveDescription = async () => {
+    if (descriptionValue !== (card?.description || '')) {
+      await updateCardMutation.mutateAsync({ description: descriptionValue });
+    }
+    setIsDescDirty(false);
+    onDirtyChange?.(false);
+    setDescTab('preview');
+  };
+
+  // Discard description helper
+  const handleDiscardDescription = () => {
+    setDescriptionValue(card?.description || '');
+    setIsDescDirty(false);
+    onDirtyChange?.(false);
+    setDescTab('preview');
+  };
+
+  // Intercept navigation or closing if dirty
+  const handleAttemptAction = useCallback((action: () => void) => {
+    if (isDescDirty) {
+      setPendingAction(() => action);
+      setShowUnsavedPrompt(true);
+    } else {
+      action();
+    }
+  }, [isDescDirty]);
+
+  const handleAttemptClose = useCallback(() => {
+    handleAttemptAction(() => onClose?.());
+  }, [handleAttemptAction, onClose]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      requestClose: handleAttemptClose,
+      isDirty: () => isDescDirty,
+    }),
+    [handleAttemptClose, isDescDirty]
+  );
+
+  // Protect browser tab reload / close
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDescDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDescDirty]);
+
   // Markdown format helper
   const insertMarkdown = (prefix: string, suffix: string = '') => {
     const textarea = document.getElementById('card-description-editor') as HTMLTextAreaElement;
@@ -360,7 +533,9 @@ export function TaskDetailView({
     const replacement = `${prefix}${selected || 'text'}${suffix}`;
     const nextVal = current.substring(0, start) + replacement + current.substring(end);
     setDescriptionValue(nextVal);
-    setIsDescDirty(true);
+    const dirty = nextVal !== (card?.description || '');
+    setIsDescDirty(dirty);
+    onDirtyChange?.(dirty);
     setTimeout(() => {
       textarea.focus();
       textarea.setSelectionRange(
@@ -445,14 +620,14 @@ export function TaskDetailView({
 
   return (
     <div
-      className={`flex flex-col h-full bg-card text-foreground overflow-hidden ${
+      className={`relative flex flex-col h-full bg-card text-foreground overflow-hidden ${
         mode === 'page' ? 'max-w-6xl mx-auto rounded-2xl shadow-sm border border-border' : ''
       }`}
     >
       {/* ─── Top Bar: Navigation & Action Header (Fixed at top) ─── */}
-      <div className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3.5 border-b border-border shrink-0 bg-card/90 backdrop-blur-md z-10">
-        {/* Left: Breadcrumbs / Path */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-border shrink-0 bg-card/90 backdrop-blur-md z-10">
+        {/* Left: Breadcrumbs / Path & Friendly Task ID */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground overflow-hidden flex-wrap">
           {mode === 'page' && (
             <Button
               variant="ghost"
@@ -460,14 +635,14 @@ export function TaskDetailView({
               className="h-7 px-2 text-xs font-semibold gap-1 text-muted-foreground hover:text-foreground"
               onClick={() => (card.boardId ? navigate(`/b/${card.boardId}`) : navigate(-1))}
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back to Board
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
             </Button>
           )}
 
           {card.boardName && (
             <>
               <span
-                className="font-semibold text-foreground/80 hover:text-foreground cursor-pointer truncate max-w-[200px]"
+                className="font-semibold text-foreground/80 hover:text-foreground cursor-pointer truncate max-w-[180px]"
                 onClick={() => navigate(`/b/${card.boardId}`)}
               >
                 {card.boardName}
@@ -478,46 +653,171 @@ export function TaskDetailView({
 
           {/* List switcher dropdown */}
           <div className="relative inline-flex items-center">
-            <select
-              className="bg-muted/50 hover:bg-muted font-medium text-foreground text-xs rounded-md border border-border px-2 py-0.5 outline-none cursor-pointer"
+            <ListSearchableSelect
+              lists={lists || []}
               value={card.listId}
-              onChange={(e) => moveCardMutation.mutate(e.target.value)}
-            >
-              {lists?.map((l: any) => (
-                <option key={l.id} value={l.id}>
-                  {l.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => moveCardMutation.mutate(val)}
+              size="sm"
+              triggerClassName="h-6 py-0 px-2 text-xs bg-muted/50 hover:bg-muted font-medium"
+              className="w-auto min-w-[110px]"
+            />
+          </div>
+
+          {/* User-Friendly Task Identifier Pill */}
+          <div
+            onClick={async () => {
+              const ok = await copyTextToClipboard(taskIdentifier);
+              if (ok) {
+                setCopiedId(true);
+                setTimeout(() => setCopiedId(false), 2000);
+              }
+            }}
+            className="px-2 py-0.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 font-mono font-bold text-xs cursor-pointer transition-all flex items-center gap-1 shrink-0 select-none"
+            title={`Click to copy Task ID (${taskIdentifier})`}
+          >
+            <Tag className="w-3 h-3 opacity-70" />
+            <span>{copiedId ? 'Copied ID!' : taskIdentifier}</span>
           </div>
         </div>
 
-        {/* Right: Quick Action Controls */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Right: Quick Action Controls & Three-Dot Dropdown */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Share Button (Rich Modal) */}
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5"
-            onClick={handleCopyLink}
-            title="Copy direct task link"
+            className="h-8 px-2.5 text-xs text-foreground gap-1.5 cursor-pointer hover:bg-muted font-medium"
+            onClick={() => setShowShareModal(true)}
+            title="Share task & copy links"
           >
-            {copiedLink ? (
-              <Check className="w-3.5 h-3.5 text-emerald-500" />
-            ) : (
-              <Copy className="w-3.5 h-3.5" />
-            )}
-            <span>{copiedLink ? 'Copied!' : 'Share'}</span>
+            <Share2 className="w-3.5 h-3.5 text-primary" />
+            <span>Share</span>
           </Button>
+
+          {/* Three-Dot Menu with All Task Actions */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                  title="Task options & actions"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-56 p-1.5">
+              <div className="px-2 py-1.5 bg-muted/50 rounded-md border border-border/60 mb-1 flex items-center justify-between">
+                <span className="text-[11px] font-mono font-bold text-foreground">{taskIdentifier}</span>
+                <span className="text-[10px] text-muted-foreground uppercase font-semibold">Identifier</span>
+              </div>
+
+              <DropdownMenuItem
+                onClick={async () => {
+                  await copyTextToClipboard(taskIdentifier);
+                  setCopiedId(true);
+                  setTimeout(() => setCopiedId(false), 2000);
+                }}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <Tag className="w-3.5 h-3.5 text-primary" />
+                <span>Copy Task ID</span>
+                <span className="ml-auto font-mono text-[10px] text-muted-foreground">{taskIdentifier}</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={handleCopyLink}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <Copy className="w-3.5 h-3.5 text-primary" />
+                <span>{copiedLink ? 'Copied Link!' : 'Copy Task Link'}</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={async () => {
+                  const branch = getGitBranchName(taskIdentifier, card.title);
+                  await copyTextToClipboard(`git checkout -b ${branch}`);
+                  setCopiedBranch(true);
+                  setTimeout(() => setCopiedBranch(false), 2000);
+                }}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <GitBranch className="w-3.5 h-3.5 text-primary" />
+                <span>{copiedBranch ? 'Copied Branch!' : 'Copy Git Branch'}</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                onClick={handleCloneTask}
+                disabled={cloneCardMutation.isPending}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <CopyPlus className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Clone Task</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={handleCreateSubtask}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Create Subtask</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={handleCloneAsSubtask}
+                disabled={cloneCardMutation.isPending}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <Layers className="w-3.5 h-3.5 text-amber-500" />
+                <span>Clone & Create Subtask</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                onClick={() => setShowShareModal(true)}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <Share2 className="w-3.5 h-3.5 text-sky-500" />
+                <span>Share & Embed Links...</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                onClick={() => setShowArchiveConfirm(true)}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <Archive className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Archive Task</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() => setShowDeleteConfirm(true)}
+                variant="destructive"
+                className="cursor-pointer text-xs gap-2"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Task</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {mode === 'modal' ? (
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-muted-foreground hover:text-foreground"
-              onClick={() => {
-                onClose?.();
-                navigate(`/cards/${cardId}`);
-              }}
+              className="h-8 px-2 text-muted-foreground hover:text-foreground cursor-pointer"
+              onClick={() =>
+                handleAttemptAction(() => {
+                  onClose?.();
+                  navigate(`/cards/${cardId}`);
+                })
+              }
               title="Open as full screen page"
             >
               <Maximize2 className="w-4 h-4" />
@@ -526,8 +826,8 @@ export function TaskDetailView({
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-muted-foreground hover:text-foreground"
-              onClick={() => navigate(`/b/${card.boardId}`)}
+              className="h-8 px-2 text-muted-foreground hover:text-foreground cursor-pointer"
+              onClick={() => handleAttemptAction(() => navigate(`/b/${card.boardId}`))}
               title="Return to Kanban view"
             >
               <Minimize2 className="w-4 h-4" />
@@ -538,8 +838,8 @@ export function TaskDetailView({
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-muted-foreground hover:text-foreground"
-              onClick={onClose}
+              className="h-8 px-2 text-muted-foreground hover:text-foreground cursor-pointer"
+              onClick={handleAttemptClose}
             >
               <X className="w-4 h-4" />
             </Button>
@@ -593,34 +893,47 @@ export function TaskDetailView({
               <div className="flex items-center gap-2">
                 <Label className="text-sm font-semibold">Description</Label>
                 {isDescDirty && (
-                  <span className="text-[11px] text-amber-500 font-medium animate-pulse">
-                    Unsaved changes
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[11px] font-semibold flex items-center gap-1.5 border border-amber-500/20 animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Unsaved changes
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1 bg-muted/40 p-0.5 rounded-lg border border-border">
-                <button
-                  type="button"
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                    descTab === 'write'
-                      ? 'bg-background text-foreground shadow-xs'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  onClick={() => setDescTab('write')}
-                >
-                  Write
-                </button>
-                <button
-                  type="button"
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                    descTab === 'preview'
-                      ? 'bg-background text-foreground shadow-xs'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  onClick={() => setDescTab('preview')}
-                >
-                  Preview
-                </button>
+              <div className="flex items-center gap-1.5">
+                {descTab === 'preview' && descriptionValue?.trim() && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs px-2 gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                    onClick={() => setDescTab('write')}
+                  >
+                    <Edit3 className="w-3 h-3" /> Edit
+                  </Button>
+                )}
+                <div className="flex items-center gap-1 bg-muted/40 p-0.5 rounded-lg border border-border">
+                  <button
+                    type="button"
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                      descTab === 'write'
+                        ? 'bg-background text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    onClick={() => setDescTab('write')}
+                  >
+                    Write
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                      descTab === 'preview'
+                        ? 'bg-background text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    onClick={() => setDescTab('preview')}
+                  >
+                    Preview
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -708,40 +1021,80 @@ export function TaskDetailView({
                   value={descriptionValue}
                   onChange={(e) => {
                     setDescriptionValue(e.target.value);
-                    setIsDescDirty(true);
+                    const dirty = e.target.value !== (card?.description || '');
+                    setIsDescDirty(dirty);
+                    onDirtyChange?.(dirty);
                   }}
-                  onBlur={() => {
-                    if (descriptionValue !== (card.description || '')) {
-                      updateCardMutation.mutate({ description: descriptionValue });
-                      setIsDescDirty(false);
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveDescription();
                     }
                   }}
                 />
-                <div className="flex items-center justify-between px-3 py-2 bg-muted/20 border-t border-border/50 text-xs text-muted-foreground">
-                  <span>Markdown supported</span>
-                  {isDescDirty && (
+                <div className="flex items-center justify-between px-3.5 py-2.5 bg-muted/30 border-t border-border/60 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    Markdown supported • <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border text-[10px] font-mono">⌘/Ctrl+Enter</kbd> to save
+                  </span>
+                  <div className="flex items-center gap-2">
                     <Button
+                      type="button"
+                      variant="ghost"
                       size="sm"
-                      className="h-6 text-xs px-2.5"
-                      onClick={() => {
-                        updateCardMutation.mutate({ description: descriptionValue });
-                        setIsDescDirty(false);
-                      }}
+                      className="h-7 text-xs px-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                      onClick={handleDiscardDescription}
                     >
-                      Save description
+                      Cancel
                     </Button>
-                  )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 text-xs px-3 gap-1.5 cursor-pointer font-semibold"
+                      disabled={updateCardMutation.isPending}
+                      onClick={handleSaveDescription}
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      {updateCardMutation.isPending ? 'Saving...' : 'Save description'}
+                    </Button>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-xl border border-border bg-muted/20 min-h-[140px] text-sm text-foreground">
-                <MarkdownRenderer
-                  content={descriptionValue}
-                  onToggleTask={(newContent) => {
-                    setDescriptionValue(newContent);
-                    updateCardMutation.mutate({ description: newContent });
-                  }}
-                />
+              <div className="min-h-[140px]">
+                {descriptionValue?.trim() ? (
+                  <div
+                    className="p-4 rounded-xl border border-border bg-muted/20 min-h-[140px] text-sm text-foreground hover:border-border/80 transition-colors cursor-text"
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (target.tagName !== 'A' && target.tagName !== 'INPUT' && target.tagName !== 'BUTTON') {
+                        setDescTab('write');
+                      }
+                    }}
+                  >
+                    <MarkdownRenderer
+                      content={descriptionValue}
+                      onToggleTask={(newContent) => {
+                        setDescriptionValue(newContent);
+                        updateCardMutation.mutate({ description: newContent });
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => setDescTab('write')}
+                    className="p-6 rounded-xl border border-dashed border-border/80 bg-muted/10 hover:bg-muted/20 hover:border-primary/50 transition-all cursor-pointer flex flex-col items-center justify-center gap-2 group text-center select-none"
+                  >
+                    <FileText className="w-6 h-6 text-muted-foreground/60 group-hover:text-primary transition-colors" />
+                    <div>
+                      <p className="text-xs font-semibold text-foreground/80 group-hover:text-foreground">
+                        No description provided
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Click here to add acceptance criteria, technical requirements, or notes...
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -990,6 +1343,7 @@ export function TaskDetailView({
               <div className="p-3 bg-muted/25 rounded-xl border border-border/80 space-y-2">
                 <div className="flex gap-2">
                   <Input
+                    id="new-subtask-input"
                     placeholder="Add a new subtask..."
                     className="h-8 text-xs bg-background"
                     value={newSubtaskTitle}
@@ -1393,18 +1747,33 @@ export function TaskDetailView({
               Stage / Status
             </Label>
             {stageTemplates && stageTemplates.length > 0 && stageTemplates[0].stages ? (
-              <select
-                className="w-full h-8 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground outline-none"
+              <SearchableSelect
+                options={[
+                  { value: '', label: 'No Stage Assigned' },
+                  ...stageTemplates[0].stages.map((stg: any) => ({
+                    value: stg.id,
+                    label: stg.name,
+                    sublabel: stg.category,
+                    badge: stg.color ? (
+                      <span
+                        className="px-1.5 py-0.2 rounded text-[10px] font-semibold border"
+                        style={{
+                          backgroundColor: `${stg.color}20`,
+                          color: stg.color,
+                          borderColor: `${stg.color}35`,
+                        }}
+                      >
+                        {stg.category}
+                      </span>
+                    ) : undefined,
+                  })),
+                ]}
                 value={card.stageId || ''}
-                onChange={(e) => updateCardMutation.mutate({ stageId: e.target.value || null })}
-              >
-                <option value="">No Stage Assigned</option>
-                {stageTemplates[0].stages.map((stg: any) => (
-                  <option key={stg.id} value={stg.id}>
-                    {stg.name} ({stg.category})
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => updateCardMutation.mutate({ stageId: val || null })}
+                placeholder="Select Stage..."
+                size="sm"
+                triggerClassName="h-8 bg-background text-xs"
+              />
             ) : (
               <p className="text-xs text-muted-foreground">No stage templates defined.</p>
             )}
@@ -1802,22 +2171,24 @@ export function TaskDetailView({
                   <Label className="text-[11px] text-muted-foreground mb-1 block">
                     Active Sprint
                   </Label>
-                  <select
-                    className="w-full h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground outline-none"
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) sprintsService.addCardToSprint(e.target.value, cardId);
+                  <SearchableSelect
+                    options={sprints.map((sp: any) => ({
+                      value: sp.id,
+                      label: sp.name,
+                      badge: (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-medium bg-muted text-muted-foreground">
+                          {sp.status}
+                        </span>
+                      ),
+                    }))}
+                    value=""
+                    onChange={(val) => {
+                      if (val) sprintsService.addCardToSprint(val, cardId);
                     }}
-                  >
-                    <option value="" disabled>
-                      Select sprint...
-                    </option>
-                    {sprints.map((sp: any) => (
-                      <option key={sp.id} value={sp.id}>
-                        {sp.name} ({sp.status})
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Assign to sprint..."
+                    size="sm"
+                    triggerClassName="h-8 bg-background text-xs"
+                  />
                 </div>
               )}
 
@@ -1826,22 +2197,19 @@ export function TaskDetailView({
                   <Label className="text-[11px] text-muted-foreground mb-1 block">
                     Project Phase
                   </Label>
-                  <select
-                    className="w-full h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground outline-none"
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) phasesService.addCardToPhase(e.target.value, cardId);
+                  <SearchableSelect
+                    options={phases.map((ph: any) => ({
+                      value: ph.id,
+                      label: `${ph.name} (Phase ${ph.position})`,
+                    }))}
+                    value=""
+                    onChange={(val) => {
+                      if (val) phasesService.addCardToPhase(val, cardId);
                     }}
-                  >
-                    <option value="" disabled>
-                      Select phase...
-                    </option>
-                    {phases.map((ph: any) => (
-                      <option key={ph.id} value={ph.id}>
-                        {ph.name} (Phase {ph.position})
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Assign to phase..."
+                    size="sm"
+                    triggerClassName="h-8 bg-background text-xs"
+                  />
                 </div>
               )}
             </div>
@@ -1856,28 +2224,16 @@ export function TaskDetailView({
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full text-xs justify-start text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  if (confirm('Archive this card?')) {
-                    api.post(`/cards/${cardId}/archive`).then(() => {
-                      queryClient.invalidateQueries({ queryKey: ['lists', card.boardId] });
-                      if (mode === 'page') navigate(`/b/${card.boardId}`);
-                      else onClose?.();
-                    });
-                  }
-                }}
+                className="w-full text-xs justify-start text-muted-foreground hover:text-foreground cursor-pointer"
+                onClick={() => setShowArchiveConfirm(true)}
               >
                 Archive Card
               </Button>
               <Button
                 variant="destructive"
                 size="sm"
-                className="w-full text-xs justify-start gap-1.5"
-                onClick={() => {
-                  if (confirm('Permanently delete this task card?')) {
-                    deleteCardMutation.mutate();
-                  }
-                }}
+                className="w-full text-xs justify-start gap-1.5 cursor-pointer"
+                onClick={() => setShowDeleteConfirm(true)}
               >
                 <Trash2 className="w-3.5 h-3.5" /> Delete Card
               </Button>
@@ -1885,6 +2241,124 @@ export function TaskDetailView({
           </div>
         </div>
       </div>
+
+      {/* ─── In-Modal Unsaved Changes Confirmation Dialog (Industry Standard) ─── */}
+      {showUnsavedPrompt && (
+        <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in-50 duration-150">
+          <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col">
+            <div className="p-6 space-y-4">
+              <div className="flex items-start gap-4">
+                <div className="p-3 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0 border border-amber-500/20">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-foreground tracking-tight">Unsaved Changes</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    You have unsaved modifications in the task description. If you close this ticket without saving, your edits will be discarded.
+                  </p>
+                </div>
+              </div>
+
+              {descriptionValue && (
+                <div className="p-3 rounded-xl bg-muted/40 border border-border/80 text-xs font-mono text-muted-foreground max-h-24 overflow-y-auto whitespace-pre-wrap">
+                  {descriptionValue}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-muted/30 border-t border-border flex flex-col sm:flex-row items-center justify-end gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full sm:w-auto text-xs cursor-pointer"
+                onClick={() => {
+                  setShowUnsavedPrompt(false);
+                  setPendingAction(null);
+                }}
+              >
+                Keep Editing
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full sm:w-auto text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 cursor-pointer"
+                onClick={() => {
+                  setDescriptionValue(card?.description || '');
+                  setIsDescDirty(false);
+                  onDirtyChange?.(false);
+                  setDescTab('preview');
+                  setShowUnsavedPrompt(false);
+                  if (pendingAction) {
+                    const action = pendingAction;
+                    setPendingAction(null);
+                    action();
+                  } else {
+                    onClose?.();
+                  }
+                }}
+              >
+                Discard Changes
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="w-full sm:w-auto text-xs gap-1.5 cursor-pointer font-semibold"
+                disabled={updateCardMutation.isPending}
+                onClick={async () => {
+                  await updateCardMutation.mutateAsync({ description: descriptionValue });
+                  setIsDescDirty(false);
+                  onDirtyChange?.(false);
+                  setDescTab('preview');
+                  setShowUnsavedPrompt(false);
+                  if (pendingAction) {
+                    const action = pendingAction;
+                    setPendingAction(null);
+                    action();
+                  } else {
+                    onClose?.();
+                  }
+                }}
+              >
+                <Save className="w-3.5 h-3.5" />
+                {updateCardMutation.isPending ? 'Saving...' : 'Save & Close'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Share Task & Rich Links Modal ─── */}
+      <ShareTaskModal
+        card={card}
+        open={showShareModal}
+        onClose={() => setShowShareModal(false)}
+      />
+
+      {/* ─── Archive Task Confirmation Dialog ─── */}
+      <ConfirmDialog
+        open={showArchiveConfirm}
+        onOpenChange={setShowArchiveConfirm}
+        title="Archive Task Card"
+        description={`Are you sure you want to archive "${card?.title || 'this task card'}"? It can be retrieved or restored from the board archive at any time.`}
+        confirmLabel="Archive Card"
+        variant="warning"
+        isLoading={archiveCardMutation.isPending}
+        onConfirm={() => archiveCardMutation.mutate()}
+      />
+
+      {/* ─── Delete Task Confirmation Dialog ─── */}
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        title="Permanently Delete Task Card"
+        description={`Are you sure you want to permanently delete "${card?.title || 'this task card'}"? This action cannot be undone and will delete all attachments, comments, and logged time.`}
+        confirmLabel="Delete Card"
+        variant="destructive"
+        isLoading={deleteCardMutation.isPending}
+        onConfirm={() => deleteCardMutation.mutate()}
+      />
     </div>
   );
-}
+});

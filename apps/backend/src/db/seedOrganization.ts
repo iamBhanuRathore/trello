@@ -518,15 +518,16 @@ export const SEED_USERS: UserPersona[] = [
 ];
 
 export async function seedFullOrganization() {
-  console.log('═══════════════════════════════════════════════════════════════');
-  console.log('🚀  Seeding Enterprise Organization: Acme Technologies (50 Members)');
-  console.log('═══════════════════════════════════════════════════════════════\n');
+  try {
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('🚀  Seeding Enterprise Organization: Acme Technologies (50 Members)');
+    console.log('═══════════════════════════════════════════════════════════════\n');
 
-  // Pre-calculate hash for Password123!
-  const passwordHash = await Bun.password.hash('Password123!', { algorithm: 'bcrypt', cost: 10 });
+    // Pre-calculate hash for Password123!
+    const passwordHash = await Bun.password.hash('Password123!', { algorithm: 'bcrypt', cost: 10 });
 
-  // 1. Ensure Enterprise Plan
-  console.log('📦  Setting up Enterprise Plan...');
+    // 1. Ensure Enterprise Plan
+    console.log('📦  Setting up Enterprise Plan...');
   let [enterprisePlan] = await db
     .select()
     .from(plans)
@@ -742,6 +743,7 @@ export async function seedFullOrganization() {
   const projectDefs = [
     {
       name: 'Boardly Core Web App (v2.0)',
+      key: 'BCW',
       workspaceName: 'Engineering & Cloud Infrastructure',
       description: 'Next-gen reactive project management platform featuring real-time WebSockets, micro-interactions, and glassmorphic UI.',
       status: 'active' as const,
@@ -750,6 +752,7 @@ export async function seedFullOrganization() {
     },
     {
       name: 'Cloud Infrastructure & Kubernetes Architecture',
+      key: 'CIK',
       workspaceName: 'Engineering & Cloud Infrastructure',
       description: 'Multi-region AWS EKS deployment, Redis caching cluster, and Postgres read replicas.',
       status: 'active' as const,
@@ -758,6 +761,7 @@ export async function seedFullOrganization() {
     },
     {
       name: 'Mobile Apps Suite (iOS & Android)',
+      key: 'MAS',
       workspaceName: 'Engineering & Cloud Infrastructure',
       description: 'Cross-platform native mobile experience built with React Native, offline SQLite cache, and push notifications.',
       status: 'active' as const,
@@ -766,6 +770,7 @@ export async function seedFullOrganization() {
     },
     {
       name: 'Design System & Glassmorphic UI 2.0',
+      key: 'DSG',
       workspaceName: 'Product Management & UX',
       description: 'Unified React component library, accessibility audits (WCAG AAA), and custom theme tokens.',
       status: 'active' as const,
@@ -774,6 +779,7 @@ export async function seedFullOrganization() {
     },
     {
       name: 'Customer Feedback & Product Roadmap Q3/Q4',
+      key: 'CFP',
       workspaceName: 'Product Management & UX',
       description: 'Customer discovery insights, user interviews, feature scoring matrix, and executive roadmap.',
       status: 'active' as const,
@@ -782,6 +788,7 @@ export async function seedFullOrganization() {
     },
     {
       name: 'Q3 Global Product Launch Campaign',
+      key: 'QGP',
       workspaceName: 'Growth & Product Marketing',
       description: 'Multi-channel product launch on Product Hunt, Hacker News, social ads, press releases, and partner webinars.',
       status: 'active' as const,
@@ -790,6 +797,7 @@ export async function seedFullOrganization() {
     },
     {
       name: 'SOC 2 Type II Security Certification',
+      key: 'S2T',
       workspaceName: 'Security, Compliance & People Ops',
       description: 'Enterprise security posture assessment, KMS encryption keys rotation, and external compliance audit.',
       status: 'active' as const,
@@ -798,6 +806,7 @@ export async function seedFullOrganization() {
     },
     {
       name: 'Enterprise Tier Onboarding & SLA Desk',
+      key: 'ETO',
       workspaceName: 'Customer Success & Enterprise Support',
       description: 'White-glove customer migration pipelines, automated SLA breach escalations, and customer health dashboards.',
       status: 'active' as const,
@@ -806,7 +815,7 @@ export async function seedFullOrganization() {
     },
   ];
 
-  const projMap = new Map<string, { id: string; boardId: string; listMap: Map<string, string>; labelMap: Map<string, string> }>();
+  const projMap = new Map<string, { id: string; key: string; boardId: string; listMap: Map<string, string>; labelMap: Map<string, string>; taskCounter: number }>();
 
   for (const pDef of projectDefs) {
     const wsId = wsMap.get(pDef.workspaceName)!;
@@ -824,6 +833,7 @@ export async function seedFullOrganization() {
           organizationId: org!.id,
           workspaceId: wsId,
           name: pDef.name,
+          key: pDef.key,
           description: pDef.description,
           status: pDef.status,
           startDate: pDef.startDate,
@@ -926,9 +936,11 @@ export async function seedFullOrganization() {
 
     projMap.set(pDef.name, {
       id: proj!.id,
+      key: pDef.key,
       boardId: board!.id,
       listMap,
       labelMap,
+      taskCounter: 0,
     });
   }
 
@@ -1430,11 +1442,17 @@ export async function seedFullOrganization() {
 
     if (!card) {
       totalCardsCount++;
+      pInfo.taskCounter += 1;
+      const taskNumber = pInfo.taskCounter;
+      const cardKey = `${pInfo.key}-${taskNumber}`;
+
       [card] = await db
         .insert(cards)
         .values({
           organizationId: org!.id,
           listId,
+          taskNumber,
+          key: cardKey,
           title: cInput.title,
           description: cInput.description,
           position: totalCardsCount * 1000,
@@ -1584,12 +1602,18 @@ export async function seedFullOrganization() {
 
       if (existingCard.length === 0) {
         totalCardsCount++;
+        pInfo.taskCounter += 1;
+        const taskNumber = pInfo.taskCounter;
+        const cardKey = `${pInfo.key}-${taskNumber}`;
+
         const randomDays = Math.floor(Math.random() * 50) + 1;
         const [c] = await db
           .insert(cards)
           .values({
             organizationId: org!.id,
             listId,
+            taskNumber,
+            key: cardKey,
             title: cardTitle,
             description: `Automated task breakdown for ${projName}.\n\n### Requirements\n- Ensure unit test coverage.\n- Verified against production load tests.`,
             position: totalCardsCount * 1000,
@@ -1620,6 +1644,14 @@ export async function seedFullOrganization() {
         }
       }
     }
+  }
+
+  // Update taskCounter on all seeded projects
+  for (const pInfo of projMap.values()) {
+    await db
+      .update(projects)
+      .set({ taskCounter: pInfo.taskCounter, key: pInfo.key })
+      .where(eq(projects.id, pInfo.id));
   }
 
   // 9. Docs & Wikis
@@ -1732,10 +1764,14 @@ export async function seedFullOrganization() {
   console.log(`• Cards: 120+ Detailed Cards with Checklists & Time Tracking`);
   console.log(`• Standard Password: Password123!`);
   console.log('═══════════════════════════════════════════════════════════════\n');
+  } finally {
+    await client.end();
+  }
 }
 
 // Direct execution
 if (import.meta.main) {
   await seedFullOrganization();
-  await client.end();
+  process.exit(0);
 }
+

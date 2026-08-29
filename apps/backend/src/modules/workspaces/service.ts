@@ -42,6 +42,17 @@ export async function listWorkspaces(
   userId?: string,
   isPlatformAdmin?: boolean
 ) {
+  if (!organizationId) {
+    if (isPlatformAdmin) {
+      return db
+        .select()
+        .from(workspaces)
+        .where(isNull(workspaces.deletedAt))
+        .orderBy(workspaces.createdAt);
+    }
+    return [];
+  }
+
   if (isPlatformAdmin || !userId) {
     return db
       .select()

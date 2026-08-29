@@ -94,22 +94,26 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary">
-              <FileText className="w-5 h-5" />
-            </div>
-            <div>
-              <DialogTitle className="text-lg">Board Intake Forms & SLAs</DialogTitle>
-              <DialogDescription>
-                Publish public or team intake portals that create cards automatically with SLA resolution targets.
-              </DialogDescription>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] h-[85vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
+        {/* ─── Fixed Header ─── */}
+        <DialogHeader className="p-5 sm:px-6 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">
+          <div className="flex items-center justify-between pr-8">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Board Intake Forms &amp; SLAs</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Publish intake portals that create cards automatically with SLA resolution targets.
+                </DialogDescription>
+              </div>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="space-y-6 pt-2">
+        {/* ─── Scrollable Body ─── */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
           {/* Header Action */}
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -291,6 +295,13 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
               </p>
             </div>
           )}
+        </div>
+
+        {/* ─── Fixed Bottom Footer ─── */}
+        <div className="p-4 sm:px-6 border-t border-border/80 bg-card/90 backdrop-blur-md shrink-0 flex items-center justify-end">
+          <Button onClick={onClose} size="sm" className="px-6 cursor-pointer">
+            Done
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

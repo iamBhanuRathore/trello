@@ -226,8 +226,8 @@ const Sidebar = React.forwardRef<
       <aside
         ref={ref}
         className={cn(
-          "relative hidden md:flex h-full flex-col bg-sidebar text-sidebar-foreground transition-all duration-200 ease-in-out shrink-0 border-r border-sidebar-border",
-          state === "collapsed" ? "w-(--sidebar-width-icon)" : "w-(--sidebar-width)",
+          "group/sidebar relative hidden md:flex h-full flex-col bg-sidebar text-sidebar-foreground transition-all duration-200 ease-in-out shrink-0 border-r border-sidebar-border overflow-hidden",
+          state === "collapsed" ? "w-14" : "w-64",
           className
         )}
         data-state={state}

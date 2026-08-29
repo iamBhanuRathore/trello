@@ -1,35 +1,39 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
+import { handleRouteError } from '../../lib/errors';
 import { listTrash, restoreItem, hardDeleteItem, emptyTrash } from './service';
 
 export const trashRoutes = new Elysia({ prefix: '/trash' })
   .use(authPlugin)
 
   // GET /v1/trash — List all trashed items in user's org
-  .use(requirePermission('org.read'))
-  .get('/', async ({ user, set }) => {
-    try {
-      return await listTrash(db, user.organizationId);
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .get(
+    '/',
+    async ({ user, set }) => {
+      try {
+        return await listTrash(db, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('org.read'),
     }
-  })
+  )
 
   // POST /v1/trash/restore — Restore a trashed item
-  .use(requirePermission('org.update'))
   .post(
     '/restore',
     async ({ user, body, set }) => {
       try {
         return await restoreItem(db, user.organizationId, body.itemType as any, body.itemId);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('org.read'),
       body: t.Object({
         itemType: t.Union([
           t.Literal('workspace'),
@@ -43,18 +47,21 @@ export const trashRoutes = new Elysia({ prefix: '/trash' })
   )
 
   // DELETE /v1/trash/empty — Permanently empty the trash
-  .use(requirePermission('org.delete'))
-  .delete('/empty', async ({ user, set }) => {
-    try {
-      return await emptyTrash(db, user.organizationId);
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .delete(
+    '/empty',
+    async ({ user, set }) => {
+      try {
+        return await emptyTrash(db, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('org.delete'),
     }
-  })
+  )
 
   // DELETE /v1/trash/:itemType/:itemId — Permanently delete a single item
-  .use(requirePermission('org.delete'))
   .delete(
     '/:itemType/:itemId',
     async ({ user, params, set }) => {
@@ -66,11 +73,11 @@ export const trashRoutes = new Elysia({ prefix: '/trash' })
           params.itemId
         );
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('org.delete'),
       params: t.Object({
         itemType: t.String(),
         itemId: t.String(),

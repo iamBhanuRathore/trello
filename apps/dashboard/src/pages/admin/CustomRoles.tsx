@@ -243,22 +243,26 @@ export function CustomRoles() {
 
       {/* Role Editor Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] h-[85vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
+          {/* ─── Fixed Header ─── */}
+          <DialogHeader className="p-5 sm:px-6 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">
+            <div className="flex items-center gap-2.5 pr-8">
+              <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
                 <Shield className="w-5 h-5" />
               </div>
-              <DialogTitle className="text-lg">
-                {editingRole ? 'Edit Custom Role' : 'Create Custom Role'}
-              </DialogTitle>
+              <div>
+                <DialogTitle className="text-base font-bold">
+                  {editingRole ? 'Edit Custom Role' : 'Create Custom Role'}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Specify a title and configure the permission matrix for this role.
+                </DialogDescription>
+              </div>
             </div>
-            <DialogDescription>
-              Specify a title and configure the permission matrix for this role.
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 pt-2">
+          {/* ─── Scrollable Body ─── */}
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
             {/* Role Name */}
             <div>
               <Label className="text-xs font-semibold mb-1 block">Role Name</Label>
@@ -342,21 +346,26 @@ export function CustomRoles() {
                 ))}
               </div>
             </div>
+          </div>
 
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-3 pt-2 border-t">
-              <Button variant="ghost" size="sm" onClick={closeModal}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
-                onClick={handleSave}
-                disabled={!roleName.trim() || createMutation.isPending || updateMutation.isPending}
-              >
-                <Check className="w-4 h-4" /> Save Role
-              </Button>
-            </div>
+          {/* ─── Fixed Bottom Footer ─── */}
+          <div className="p-4 sm:px-6 border-t border-border/80 bg-card/90 backdrop-blur-md shrink-0 flex items-center justify-end gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={closeModal}
+              className="cursor-pointer text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="gap-2 bg-purple-600 hover:bg-purple-700 text-white cursor-pointer text-xs px-5"
+              onClick={handleSave}
+              disabled={!roleName.trim() || createMutation.isPending || updateMutation.isPending}
+            >
+              <Check className="w-4 h-4" /> Save Role
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

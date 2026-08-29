@@ -1,4 +1,4 @@
-import { eq, and, isNull, max, desc, or, ilike, inArray, type SQL } from 'drizzle-orm';
+import { eq, and, isNull, max, desc, or, ilike, inArray, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   cards,
@@ -84,19 +84,55 @@ export async function createCard(db: Database, organizationId: string, input: Cr
     }
   }
 
-  // Get board ID for organizationId
+  // Get board ID and project info for organizationId and ticket number generation
   const [boardInfo] = await db
-    .select({ organizationId: boards.organizationId, boardId: boards.id })
+    .select({
+      organizationId: boards.organizationId,
+      boardId: boards.id,
+      projectId: boards.projectId,
+      boardName: boards.name,
+    })
     .from(lists)
     .innerJoin(boards, eq(boards.id, lists.boardId))
     .where(eq(lists.id, input.listId))
     .limit(1);
+
+  let taskNumber: number | null = null;
+  let cardKey: string | null = null;
+
+  if (boardInfo?.projectId) {
+    const [updatedProj] = await db
+      .update(projects)
+      .set({
+        taskCounter: sql`${projects.taskCounter} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(projects.id, boardInfo.projectId))
+      .returning({ key: projects.key, taskCounter: projects.taskCounter });
+
+    if (updatedProj) {
+      taskNumber = updatedProj.taskCounter;
+      const projKey = updatedProj.key || 'TASK';
+      cardKey = `${projKey}-${taskNumber}`;
+    }
+  }
+
+  if (!cardKey) {
+    const [maxRes] = await db
+      .select({ maxNum: max(cards.taskNumber) })
+      .from(cards)
+      .where(eq(cards.organizationId, boardInfo?.organizationId || organizationId));
+    taskNumber = (maxRes?.maxNum ?? 0) + 1;
+    cardKey = `TASK-${taskNumber}`;
+  }
 
   const [card] = await db
     .insert(cards)
     .values({
       organizationId: boardInfo!.organizationId,
       listId: input.listId,
+      taskNumber,
+      key: cardKey,
       title: input.title,
       description: input.description,
       position,
@@ -311,12 +347,16 @@ export async function getCard(db: Database, id: string, organizationId: string) 
   const [card] = await db
     .select({
       id: cards.id,
+      taskNumber: cards.taskNumber,
+      key: cards.key,
       organizationId: cards.organizationId,
       listId: cards.listId,
       listName: lists.name,
       boardId: boards.id,
       boardName: boards.name,
       projectId: boards.projectId,
+      projectKey: projects.key,
+      projectName: projects.name,
       parentCardId: cards.parentCardId,
       title: cards.title,
       description: cards.description,
@@ -335,6 +375,7 @@ export async function getCard(db: Database, id: string, organizationId: string) 
     .from(cards)
     .innerJoin(lists, eq(lists.id, cards.listId))
     .innerJoin(boards, eq(boards.id, lists.boardId))
+    .leftJoin(projects, eq(projects.id, boards.projectId))
     .where(and(eq(cards.id, id), eq(cards.organizationId, organizationId), isNull(cards.deletedAt)))
     .limit(1);
 
@@ -460,6 +501,26 @@ export async function createBoardLabel(db: Database, boardId: string, name: stri
     .values({ boardId, name, color })
     .returning();
   return newLabel;
+}
+
+export async function updateBoardLabel(db: Database, labelId: string, name?: string, color?: string) {
+  const updateData: Record<string, any> = {};
+  if (name !== undefined) updateData.name = name.trim();
+  if (color !== undefined) updateData.color = color;
+  if (Object.keys(updateData).length === 0) throw httpError(400, 'Nothing to update');
+  const [updated] = await db
+    .update(labels)
+    .set(updateData)
+    .where(eq(labels.id, labelId))
+    .returning();
+  if (!updated) throw httpError(404, 'Label not found');
+  return updated;
+}
+
+export async function deleteBoardLabel(db: Database, labelId: string) {
+  // Remove from cards first (cascade FK)
+  await db.delete(cardLabels).where(eq(cardLabels.labelId, labelId));
+  await db.delete(labels).where(eq(labels.id, labelId));
 }
 
 export async function updateCard(db: Database, id: string, organizationId: string, input: any) {
@@ -653,8 +714,16 @@ export async function deleteAttachment(db: Database, attachmentId: string, userI
   return attachment;
 }
 
+// ─── UUID Validation Helper ──────────────────────────────────────────────────
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function isValidUuid(id?: string | null): boolean {
+  if (!id || typeof id !== 'string') return false;
+  return UUID_REGEX.test(id);
+}
+
 // ─── Labels ───────────────────────────────────────────────────────────────────
 export async function getCardLabels(db: Database, cardId: string) {
+  if (!isValidUuid(cardId)) return [];
   return db
     .select({ label: labels })
     .from(cardLabels)
@@ -663,6 +732,9 @@ export async function getCardLabels(db: Database, cardId: string) {
 }
 
 export async function attachLabelToCard(db: Database, cardId: string, labelId: string, actorId?: string) {
+  if (!isValidUuid(cardId) || !isValidUuid(labelId)) {
+    return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
+  }
   await db.insert(cardLabels).values({ cardId, labelId }).onConflictDoNothing();
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
@@ -680,12 +752,18 @@ export async function attachLabelToCard(db: Database, cardId: string, labelId: s
 }
 
 export async function removeLabelFromCard(db: Database, cardId: string, labelId: string) {
+  if (!isValidUuid(cardId) || !isValidUuid(labelId)) {
+    return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
+  }
   await db.delete(cardLabels).where(and(eq(cardLabels.cardId, cardId), eq(cardLabels.labelId, labelId)));
   return { success: true };
 }
 
 // ─── Assignees (Single Assignee Model) ─────────────────────────────────────────
 export async function assignUserToCard(db: Database, cardId: string, userId: string, actorId: string) {
+  if (!isValidUuid(cardId) || !isValidUuid(userId)) {
+    return { success: false, error: 'Invalid UUID provided for cardId or userId' };
+  }
   // Enforce single primary assignee: clear previous assignees first
   await db.delete(cardAssignees).where(eq(cardAssignees.cardId, cardId));
   await db.insert(cardAssignees).values({ cardId, userId, assignedBy: actorId }).onConflictDoNothing();
@@ -706,6 +784,9 @@ export async function assignUserToCard(db: Database, cardId: string, userId: str
 }
 
 export async function removeUserFromCard(db: Database, cardId: string, userId: string) {
+  if (!isValidUuid(cardId) || !isValidUuid(userId)) {
+    return { success: false, error: 'Invalid UUID provided for cardId or userId' };
+  }
   await db.delete(cardAssignees).where(and(eq(cardAssignees.cardId, cardId), eq(cardAssignees.userId, userId)));
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
@@ -716,6 +797,9 @@ export async function removeUserFromCard(db: Database, cardId: string, userId: s
 
 // ─── Participants (Multiple Collaborators Model) ──────────────────────────────
 export async function addParticipantToCard(db: Database, cardId: string, userId: string, actorId: string) {
+  if (!isValidUuid(cardId) || !isValidUuid(userId)) {
+    return { success: false, error: 'Invalid UUID provided for cardId or userId' };
+  }
   await db.insert(cardParticipants).values({ cardId, userId, addedBy: actorId }).onConflictDoNothing();
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
@@ -734,6 +818,9 @@ export async function addParticipantToCard(db: Database, cardId: string, userId:
 }
 
 export async function removeParticipantFromCard(db: Database, cardId: string, userId: string) {
+  if (!isValidUuid(cardId) || !isValidUuid(userId)) {
+    return { success: false, error: 'Invalid UUID provided for cardId or userId' };
+  }
   await db.delete(cardParticipants).where(and(eq(cardParticipants.cardId, cardId), eq(cardParticipants.userId, userId)));
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
@@ -743,6 +830,7 @@ export async function removeParticipantFromCard(db: Database, cardId: string, us
 }
 
 export async function getCardParticipants(db: Database, cardId: string) {
+  if (!isValidUuid(cardId)) return [];
   return await db
     .select({
       id: users.id,
@@ -949,7 +1037,13 @@ export async function getMyTasks(
 
   if (options?.search && options.search.trim()) {
     const term = `%${options.search.trim()}%`;
-    conditions.push(or(ilike(cards.title, term), ilike(cards.description, term)));
+    conditions.push(
+      or(
+        ilike(cards.title, term),
+        ilike(cards.description, term),
+        ilike(cards.key, term)
+      )
+    );
   }
 
   if (options?.workspaceId) {
@@ -967,6 +1061,8 @@ export async function getMyTasks(
   const rawTasks = await db
     .select({
       id: cards.id,
+      taskNumber: cards.taskNumber,
+      key: cards.key,
       title: cards.title,
       description: cards.description,
       dueDate: cards.dueDate,
@@ -979,6 +1075,7 @@ export async function getMyTasks(
       boardId: lists.boardId,
       boardName: boards.name,
       projectId: boards.projectId,
+      projectKey: projects.key,
       projectName: projects.name,
       workspaceId: projects.workspaceId,
       workspaceName: workspaces.name,
@@ -1118,4 +1215,166 @@ export async function getMyTasks(
     },
     total: tasks.length,
   };
+}
+
+export interface CloneCardInput {
+  listId?: string;
+  title?: string;
+  parentCardId?: string;
+  cloneChecklists?: boolean;
+  cloneLabels?: boolean;
+  cloneAssignees?: boolean;
+}
+
+export async function cloneCard(
+  db: Database,
+  cardId: string,
+  organizationId: string,
+  input: CloneCardInput = {}
+) {
+  // 1. Fetch original card
+  const original = await getCard(db, cardId, organizationId);
+  if (!original) throw httpError(404, 'Card not found');
+
+  const targetListId = input.listId || original.listId;
+  await verifyListAccess(db, targetListId, organizationId);
+
+  // Position: get max position in the target list
+  const [result] = await db
+    .select({ maxPos: max(cards.position) })
+    .from(cards)
+    .where(eq(cards.listId, targetListId));
+
+  const newPosition = (result?.maxPos ?? 0) + 65536;
+  const clonedTitle = input.title || (input.parentCardId ? `Subtask: ${original.title}` : `${original.title} (Copy)`);
+
+  // If cloning as a subtask, verify parentCard
+  if (input.parentCardId) {
+    const [parent] = await db
+      .select({ id: cards.id, parentCardId: cards.parentCardId })
+      .from(cards)
+      .where(eq(cards.id, input.parentCardId))
+      .limit(1);
+
+    if (!parent) throw httpError(404, 'Parent card not found');
+    if (parent.parentCardId) {
+      throw httpError(400, 'Subtasks cannot have their own subtasks (max 2 levels of nesting)');
+    }
+  }
+
+  // 2. Insert cloned card
+  const [cloned] = await db
+    .insert(cards)
+    .values({
+      organizationId,
+      listId: targetListId,
+      parentCardId: input.parentCardId || null,
+      title: clonedTitle,
+      description: original.description,
+      position: newPosition,
+      dueDate: original.dueDate ? new Date(original.dueDate) : null,
+      stageId: original.stageId || null,
+      storyPoints: original.storyPoints || null,
+      estimateMinutes: original.estimateMinutes || null,
+      coverImage: original.coverImage || null,
+    })
+    .returning();
+
+  if (!cloned) throw httpError(500, 'Failed to clone card');
+
+  // If parentCardId, update parent's subtasksTotal
+  if (input.parentCardId) {
+    await db
+      .update(cards)
+      .set({ subtasksTotal: sql`${cards.subtasksTotal} + 1` })
+      .where(eq(cards.id, input.parentCardId));
+  }
+
+  // 3. Clone Checklists & Items
+  if (input.cloneChecklists !== false) {
+    const originalChecklists = await db
+      .select()
+      .from(checklists)
+      .where(eq(checklists.cardId, cardId))
+      .orderBy(checklists.position);
+
+    for (const cl of originalChecklists) {
+      const [newCl] = await db
+        .insert(checklists)
+        .values({
+          cardId: cloned.id,
+          title: cl.title,
+          position: cl.position,
+        })
+        .returning();
+
+      if (!newCl) continue;
+
+      const originalItems = await db
+        .select()
+        .from(checklistItems)
+        .where(eq(checklistItems.checklistId, cl.id))
+        .orderBy(checklistItems.position);
+
+      if (originalItems.length > 0) {
+        await db.insert(checklistItems).values(
+          originalItems.map((item) => ({
+            checklistId: newCl.id,
+            text: item.text,
+            isDone: false,
+            position: item.position,
+            assignedTo: item.assignedTo,
+            dueDate: item.dueDate,
+          }))
+        );
+      }
+    }
+  }
+
+  // 4. Clone Labels
+  if (input.cloneLabels !== false) {
+    const originalLabels = await db
+      .select({ labelId: cardLabels.labelId })
+      .from(cardLabels)
+      .where(eq(cardLabels.cardId, cardId));
+
+    if (originalLabels.length > 0) {
+      await db.insert(cardLabels).values(
+        originalLabels.map((l) => ({
+          cardId: cloned.id,
+          labelId: l.labelId,
+        }))
+      );
+    }
+  }
+
+  // 5. Clone Assignees
+  if (input.cloneAssignees !== false) {
+    const originalAssignees = await db
+      .select({ userId: cardAssignees.userId, assignedBy: cardAssignees.assignedBy })
+      .from(cardAssignees)
+      .where(eq(cardAssignees.cardId, cardId));
+
+    if (originalAssignees.length > 0) {
+      await db.insert(cardAssignees).values(
+        originalAssignees.map((a) => ({
+          cardId: cloned.id,
+          userId: a.userId,
+          assignedBy: a.assignedBy,
+        }))
+      );
+    }
+  }
+
+  const [boardInfo] = await db
+    .select({ boardId: lists.boardId })
+    .from(lists)
+    .where(eq(lists.id, targetListId))
+    .limit(1);
+
+  if (boardInfo) {
+    eventBus.broadcast(`board:${boardInfo.boardId}`, 'card.created', cloned);
+  }
+
+  return await getCard(db, cloned.id, organizationId);
 }

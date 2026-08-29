@@ -60,6 +60,23 @@ export const UpdateOrgSchema = z.object({
 export const InviteMemberSchema = z.object({
   email: EmailSchema,
   role: z.nativeEnum(OrgMemberRole),
+  name: z.string().optional(),
+  workspaceIds: z.array(UuidSchema).optional(),
+});
+
+export const BulkInviteMemberSchema = z.object({
+  invites: z.array(
+    z.object({
+      email: EmailSchema,
+      name: z.string().optional(),
+      role: z.string().default('member'),
+      workspaceIds: z.array(z.string()).optional(),
+    })
+  ),
+});
+
+export const DeactivateMemberSchema = z.object({
+  reason: z.string().max(500).optional(),
 });
 
 // ─── Workspace ────────────────────────────────────────────────────────────────
@@ -75,6 +92,7 @@ export const UpdateWorkspaceSchema = CreateWorkspaceSchema.partial();
 export const CreateProjectSchema = z.object({
   workspaceId: UuidSchema,
   name: z.string().min(2).max(200).trim(),
+  key: z.string().min(1).max(10).trim().optional(),
   description: z.string().max(1000).optional(),
   startDate: z.string().date().optional(),
   endDate: z.string().date().optional(),

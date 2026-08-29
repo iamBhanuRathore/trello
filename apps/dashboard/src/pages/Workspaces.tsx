@@ -57,16 +57,68 @@ export function Workspaces() {
     },
   });
 
+  const totalProjects = workspaces?.reduce((acc: number, ws: any) => acc + (ws.projects?.length || 0), 0) || 0;
+  const totalBoards = workspaces?.reduce((acc: number, ws: any) => acc + (ws.projects?.reduce((pAcc: number, p: any) => pAcc + (p.boards?.length || 0), 0) || 0), 0) || 0;
+
   return (
-    <div className="w-full max-w-6xl mx-auto flex flex-col gap-8">
-      <div className="flex items-center justify-between">
+    <div className="w-full max-w-6xl mx-auto flex flex-col gap-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Your Workspaces</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Your Workspaces</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Organize teams, projects, and Kanban boards across your organization.
           </p>
         </div>
         <CreateWorkspaceDialog onSuccess={() => queryClient.invalidateQueries({ queryKey: ['workspaces'] })} />
+      </div>
+
+      {/* Quick KPI Overview Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-4 rounded-xl border border-border/80 bg-card/60 backdrop-blur-xs flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+            <Briefcase className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xl font-bold text-foreground">{workspaces?.length || 0}</div>
+            <div className="text-xs text-muted-foreground">Workspaces</div>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl border border-border/80 bg-card/60 backdrop-blur-xs flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+            <BookOpen className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xl font-bold text-foreground">{totalProjects}</div>
+            <div className="text-xs text-muted-foreground">Active Projects</div>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl border border-border/80 bg-card/60 backdrop-blur-xs flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400">
+            <BarChart3 className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xl font-bold text-foreground">{totalBoards}</div>
+            <div className="text-xs text-muted-foreground">Kanban Boards</div>
+          </div>
+        </div>
+
+        <Link
+          to="/my-tasks"
+          className="p-4 rounded-xl border border-border/80 bg-card/60 backdrop-blur-xs flex items-center gap-3 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-colors group"
+        >
+          <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-105 transition-transform">
+            <Plus className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+              My Tasks
+            </div>
+            <div className="text-[11px] text-muted-foreground truncate">View assigned work →</div>
+          </div>
+        </Link>
       </div>
 
       {workspaces?.map((ws: any) => (

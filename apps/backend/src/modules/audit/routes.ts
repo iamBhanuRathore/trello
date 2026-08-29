@@ -1,13 +1,13 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
+import { handleRouteError } from '../../lib/errors';
 import { getAuditLogs, recordAuditLog } from './service';
 
 export const auditRoutes = new Elysia({ prefix: '/audit', tags: ['Audit'] })
   .use(authPlugin)
 
   // GET /v1/audit/logs
-  .use(requirePermission('org.read'))
   .get(
     '/logs',
     async ({ query, user, set }) => {
@@ -22,11 +22,11 @@ export const auditRoutes = new Elysia({ prefix: '/audit', tags: ['Audit'] })
           offset: query.offset ? Number(query.offset) : undefined,
         });
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('org.read'),
       query: t.Object({
         actorId: t.Optional(t.String()),
         action: t.Optional(t.String()),
@@ -40,7 +40,6 @@ export const auditRoutes = new Elysia({ prefix: '/audit', tags: ['Audit'] })
   )
 
   // POST /v1/audit/logs (manual client-triggered compliance audit event)
-  .use(requirePermission('org.read'))
   .post(
     '/logs',
     async ({ body, user, headers, set }) => {
@@ -58,11 +57,11 @@ export const auditRoutes = new Elysia({ prefix: '/audit', tags: ['Audit'] })
           userAgent: userAgent,
         });
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('org.read'),
       body: t.Object({
         action: t.String(),
         target: t.Optional(t.String()),

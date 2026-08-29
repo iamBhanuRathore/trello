@@ -23,12 +23,14 @@ const envSchema = z.object({
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('30d'),
 
   // App URLs
-  DASHBOARD_URL: z.string().url().default('http://localhost:5173'),
-  API_URL: z.string().url().default('http://localhost:3001'),
+  DASHBOARD_URL: z.string().default('http://localhost:5173'),
+  API_URL: z.string().default('http://localhost:3001'),
 
-  // WorkOS (enterprise SSO — optional at dev time)
+  // WorkOS (enterprise SSO & Google OAuth — optional at dev time)
   WORKOS_API_KEY: z.string().optional(),
   WORKOS_CLIENT_ID: z.string().optional(),
+  WORKOS_REDIRECT_URI: z.string().optional(),
+  WORKOS_WEBHOOK_SECRET: z.string().optional(),
 
   // Stripe (billing — optional at dev time)
   STRIPE_SECRET_KEY: z.string().optional(),
@@ -44,6 +46,18 @@ const envSchema = z.object({
     .optional()
     .transform((v) => (v === '' ? undefined : v))
     .pipe(z.string().url().optional()),
+
+  // Email / Notifications (SES / SMTP / Console fallback)
+  APP_URL: z.string().default('http://localhost:5173'),
+  EMAIL_FROM: z.string().default('Boardly <noreply@boardly.app>'),
+  AWS_SES_REGION: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().optional().default(587),
+  SMTP_SECURE: z.coerce.boolean().optional().default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

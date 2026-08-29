@@ -3,6 +3,7 @@ import { useAuthStore } from '../../store/authStore';
 import { getNotificationPreferences, updateNotificationPreferences } from '../../lib/api';
 import { Button } from '@boardly/ui/button';
 import { Switch } from '@boardly/ui/switch';
+import { toast } from 'sonner';
 
 const EVENTS = [
   { id: 'card.assigned', label: 'Card Assigned' },
@@ -87,10 +88,10 @@ export function NotificationSettings() {
         }
       }
       await updateNotificationPreferences(payload);
-      alert('Preferences saved successfully!');
+      toast.success('Notification preferences saved successfully!');
     } catch (err) {
       console.error(err);
-      alert('Failed to save preferences.');
+      toast.error('Failed to save notification preferences.');
     } finally {
       setSaving(false);
     }

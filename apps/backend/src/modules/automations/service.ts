@@ -3,7 +3,7 @@ import type { Database } from '../../db/index';
 import { automations } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
-import { attachLabelToCard, assignUserToCard } from '../cards/service';
+import { attachLabelToCard, assignUserToCard, isValidUuid } from '../cards/service';
 
 export async function listAutomations(db: Database, boardId: string) {
   return db.select().from(automations).where(eq(automations.boardId, boardId));
@@ -46,7 +46,7 @@ export function setupAutomationEngine(db: Database) {
       const { event, payload, actorId } = data;
       
       // We only support board-level automations. If event doesn't have boardId, skip.
-      if (!payload.boardId) return;
+      if (!payload.boardId || !isValidUuid(payload.boardId)) return;
 
       const boardAutomations = await db
         .select()
@@ -69,10 +69,10 @@ export function setupAutomationEngine(db: Database) {
           console.log(`[Automation] Trigger matched for automation: ${auto.name}`);
           // Execute Action
           try {
-            if (action.type === 'add_label') {
+            if (action.type === 'add_label' && isValidUuid(payload.cardId) && isValidUuid(action.labelId)) {
               await attachLabelToCard(db, payload.cardId, action.labelId, actorId);
               console.log(`[Automation] Action executed: add_label ${action.labelId}`);
-            } else if (action.type === 'assign_user') {
+            } else if (action.type === 'assign_user' && isValidUuid(payload.cardId) && isValidUuid(action.userId)) {
               await assignUserToCard(db, payload.cardId, action.userId, actorId);
               console.log(`[Automation] Action executed: assign_user ${action.userId}`);
             }

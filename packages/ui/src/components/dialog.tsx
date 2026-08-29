@@ -12,10 +12,39 @@ function Dialog({ ...props }: DialogPrimitive.Root.Props) {
 }
 
 function DialogTrigger({
-  asChild: _asChild,
+  asChild,
+  render,
+  children,
+  nativeButton,
   ...props
 }: DialogPrimitive.Trigger.Props & { asChild?: boolean }) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+  const isNonButton =
+    (React.isValidElement(render) && (typeof render.type !== 'string' || render.type !== 'button')) ||
+    (React.isValidElement(children) && (typeof children.type !== 'string' || children.type !== 'button'));
+
+  const resolvedNativeButton =
+    nativeButton !== undefined ? nativeButton : isNonButton ? false : undefined;
+
+  if ((asChild || React.isValidElement(children)) && !render) {
+    return (
+      <DialogPrimitive.Trigger
+        data-slot="dialog-trigger"
+        render={children as React.ReactElement<any>}
+        nativeButton={resolvedNativeButton}
+        {...props}
+      />
+    )
+  }
+  return (
+    <DialogPrimitive.Trigger
+      data-slot="dialog-trigger"
+      render={render}
+      nativeButton={resolvedNativeButton}
+      {...props}
+    >
+      {children}
+    </DialogPrimitive.Trigger>
+  )
 }
 
 function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
@@ -68,12 +97,12 @@ function DialogContent({
             render={
               <Button
                 variant="ghost"
-                className="absolute top-2 right-2"
+                className="absolute top-4 right-4 h-8 w-8 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors z-50 cursor-pointer p-0 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-primary/30"
                 size="icon-sm"
               />
             }
           >
-            <XIcon />
+            <XIcon className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         )}

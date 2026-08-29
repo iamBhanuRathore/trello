@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
-import { requirePermission } from '../../middleware/auth';
+import { authPlugin, requirePermission } from '../../middleware/auth';
 import { 
   listStageTemplates, 
   getStageTemplateWithStages, 
@@ -13,15 +13,14 @@ import {
 } from './service';
 
 export const stageRoutes = new Elysia({ prefix: '/stages' })
-  // For simplicity we use a generic org permission to manage templates (org_admin or similar)
-  // In a real app we might have a specific 'stage.manage' permission. Using 'org.update' for now.
-  .use(requirePermission('org.update'))
-
-  .get('/orgs/:orgId/templates', async ({ params: { orgId } }) => {
-    return listStageTemplates(db, orgId);
-  }, {
-    params: t.Object({ orgId: t.String() })
-  })
+  .use(authPlugin)
+  .guard({ beforeHandle: requirePermission('org.update') }, (app) =>
+    app
+      .get('/orgs/:orgId/templates', async ({ params: { orgId } }) => {
+        return listStageTemplates(db, orgId);
+      }, {
+        params: t.Object({ orgId: t.String() })
+      })
 
   .post('/orgs/:orgId/templates', async ({ params: { orgId }, body }) => {
     return createStageTemplate(db, orgId, body);
@@ -93,4 +92,5 @@ export const stageRoutes = new Elysia({ prefix: '/stages' })
     return deleteStage(db, id);
   }, {
     params: t.Object({ id: t.String() })
-  });
+  })
+  );

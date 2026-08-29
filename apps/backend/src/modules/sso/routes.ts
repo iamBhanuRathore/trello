@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
+import { handleRouteError } from '../../lib/errors';
 import {
   getSSOConfig,
   updateSSOConfig,
@@ -17,8 +18,7 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
       try {
         return await generateSSOLoginUrl(db, body.domain);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -34,8 +34,7 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
       try {
         return await processSSOCallback(db, body);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -56,8 +55,7 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
         const token = authHeader.replace(/^Bearer\s+/i, '');
         return await processSCIMWebhook(db, token, body);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -73,29 +71,32 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
   .use(authPlugin)
 
   // GET /v1/sso/config
-  .use(requirePermission('org.update'))
-  .get('/', async ({ user, set }) => {
-    try {
-      return await getSSOConfig(db, user.organizationId);
-    } catch (err: any) {
-      set.status = err.status || 500;
-      return { error: err.message };
+  .get(
+    '/',
+    async ({ user, set }) => {
+      try {
+        return await getSSOConfig(db, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('org.update'),
     }
-  })
+  )
 
   // PATCH /v1/sso/config
-  .use(requirePermission('org.update'))
   .patch(
     '/',
     async ({ body, user, set }) => {
       try {
         return await updateSSOConfig(db, user.organizationId, body);
       } catch (err: any) {
-        set.status = err.status || 500;
-        return { error: err.message };
+        return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('org.update'),
       body: t.Object({
         provider: t.Optional(t.String()),
         domain: t.Optional(t.String()),

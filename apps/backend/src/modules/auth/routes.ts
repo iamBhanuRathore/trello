@@ -1,12 +1,87 @@
 import Elysia, { t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin } from '../../middleware/auth';
-import { signUp, signIn, refreshTokens, signOut, getMe, updateProfile, changePassword, getMyPermissions } from './service';
+import { handleRouteError } from '../../lib/errors';
+import {
+  signUp,
+  signIn,
+  refreshTokens,
+  signOut,
+  getMe,
+  updateProfile,
+  changePassword,
+  getMyPermissions,
+  getInvitationInfo,
+  acceptInvitation,
+} from './service';
+import {
+  getGoogleAuthorizationUrl,
+  getSSOAuthorizationUrl,
+  authenticateWithWorkOSCode,
+} from './workos.service';
 
 /**
  * Auth routes — /v1/auth/*
  */
 export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
+
+  // ── WorkOS Authentication Flows ─────────────────────────────────────────────
+  // GET /v1/auth/workos/google-url
+  .get(
+    '/workos/google-url',
+    async ({ query, set }) => {
+      try {
+        return getGoogleAuthorizationUrl(query.redirectUri);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      query: t.Optional(
+        t.Object({
+          redirectUri: t.Optional(t.String()),
+        })
+      ),
+      detail: { summary: 'Get Google OAuth authorization URL via WorkOS' },
+    }
+  )
+
+  // POST /v1/auth/workos/sso-url
+  .post(
+    '/workos/sso-url',
+    async ({ body, set }) => {
+      try {
+        return await getSSOAuthorizationUrl(db, body.domain, body.redirectUri);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        domain: t.String({ minLength: 1 }),
+        redirectUri: t.Optional(t.String()),
+      }),
+      detail: { summary: 'Get domain-routed Enterprise SSO authorization URL via WorkOS' },
+    }
+  )
+
+  // POST /v1/auth/workos/callback
+  .post(
+    '/workos/callback',
+    async ({ body, set }) => {
+      try {
+        return await authenticateWithWorkOSCode(db, body.code);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        code: t.String({ minLength: 1 }),
+      }),
+      detail: { summary: 'Authenticate user via WorkOS authorization code' },
+    }
+  )
 
   // POST /v1/auth/sign-up
   .post(
@@ -17,9 +92,7 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
         set.status = 201;
         return result;
       } catch (err: unknown) {
-        const e = err as { status?: number; message: string };
-        set.status = e.status ?? 500;
-        return { error: e.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -41,9 +114,7 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
       try {
         return await signIn(db, body);
       } catch (err: unknown) {
-        const e = err as { status?: number; message: string };
-        set.status = e.status ?? 500;
-        return { error: e.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -62,14 +133,50 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
       try {
         return await refreshTokens(db, body.refreshToken);
       } catch (err: unknown) {
-        const e = err as { status?: number; message: string };
-        set.status = e.status ?? 500;
-        return { error: e.message };
+        return handleRouteError(err, set);
       }
     },
     {
       body: t.Object({ refreshToken: t.String() }),
       detail: { summary: 'Rotate refresh token — returns new access + refresh token pair' },
+    }
+  )
+
+  // GET /v1/auth/invitation
+  .get(
+    '/invitation',
+    async ({ query, set }) => {
+      try {
+        return await getInvitationInfo(db, query.token);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      query: t.Object({
+        token: t.String({ minLength: 1 }),
+      }),
+      detail: { summary: 'Get invitation details by token' },
+    }
+  )
+
+  // POST /v1/auth/accept-invite
+  .post(
+    '/accept-invite',
+    async ({ body, set }) => {
+      try {
+        return await acceptInvitation(db, body);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        token: t.String({ minLength: 1 }),
+        name: t.Optional(t.String()),
+        password: t.Optional(t.String()),
+      }),
+      detail: { summary: 'Accept organization invitation and activate membership' },
     }
   )
 
@@ -84,9 +191,7 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
         await signOut(db, body.refreshToken, user.userId);
         return { message: 'Signed out' };
       } catch (err: unknown) {
-        const e = err as { status?: number; message: string };
-        set.status = e.status ?? 500;
-        return { error: e.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -102,9 +207,7 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
       try {
         return await getMe(db, user.userId);
       } catch (err: unknown) {
-        const e = err as { status?: number; message: string };
-        set.status = e.status ?? 500;
-        return { error: e.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -119,9 +222,7 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
       try {
         return await updateProfile(db, user.userId, body);
       } catch (err: unknown) {
-        const e = err as { status?: number; message: string };
-        set.status = e.status ?? 500;
-        return { error: e.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -142,9 +243,7 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
       try {
         return await changePassword(db, user.userId, body);
       } catch (err: unknown) {
-        const e = err as { status?: number; message: string };
-        set.status = e.status ?? 500;
-        return { error: e.message };
+        return handleRouteError(err, set);
       }
     },
     {
@@ -163,9 +262,7 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
       try {
         return await getMyPermissions(db, user.userId, user.organizationId);
       } catch (err: unknown) {
-        const e = err as { status?: number; message: string };
-        set.status = e.status ?? 500;
-        return { error: e.message };
+        return handleRouteError(err, set);
       }
     },
     {

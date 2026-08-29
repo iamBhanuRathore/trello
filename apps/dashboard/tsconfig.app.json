@@ -20,7 +20,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
@@ -28,11 +28,16 @@
       "@boardly/ui/utils": ["../../packages/ui/src/utils.ts"],
       "@boardly/ui/button": ["../../packages/ui/src/components/button.tsx"],
       "@boardly/ui/card": ["../../packages/ui/src/components/card.tsx"],
+      "@boardly/ui/confirm-dialog": ["../../packages/ui/src/components/confirm-dialog.tsx"],
       "@boardly/ui/dialog": ["../../packages/ui/src/components/dialog.tsx"],
+      "@boardly/ui/dropdown-menu": ["../../packages/ui/src/components/dropdown-menu.tsx"],
+      "@boardly/ui/enterprise-data-grid": [
+        "../../packages/ui/src/components/enterprise-data-grid.tsx"
+      ],
       "@boardly/ui/input": ["../../packages/ui/src/components/input.tsx"],
       "@boardly/ui/label": ["../../packages/ui/src/components/label.tsx"],
       "@boardly/ui/avatar": ["../../packages/ui/src/components/avatar.tsx"],
-      "@boardly/ui/dropdown-menu": ["../../packages/ui/src/components/dropdown-menu.tsx"],
+      "@boardly/ui/searchable-select": ["../../packages/ui/src/components/searchable-select.tsx"],
       "@boardly/ui/sidebar": ["../../packages/ui/src/components/sidebar.tsx"],
       "@boardly/ui/switch": ["../../packages/ui/src/components/switch.tsx"]
     }
