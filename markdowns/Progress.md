@@ -1091,9 +1091,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
    - Backup invite link collapsed into a `<details>` disclosure (no longer the primary CTA).
    - Added an indigo "Invitation email dispatched" badge.
 
-7. **Environment Variable Configuration (`.env`, `apps/backend/.env`, `.env.example`, `env.ts`):**
+7. **Environment Variable Configuration (`.env`, `apps/backend/.env`, `.env.example`, `apps/backend/.env.example`, `apps/dashboard/.env.example`, `apps/super-admin/.env.example`, `env.ts`):**
    - Added optional keys for Amazon SES (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SES_REGION`) and SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`).
-   - Added `APP_URL` and `EMAIL_FROM` configuration keys.
+   - Added `APP_URL`, `EMAIL_FROM`, `WORKOS_REDIRECT_URI`, `WORKOS_WEBHOOK_SECRET` configuration keys.
+   - Added complete, clean `.env.example` templates at the root and for each sub-app (`backend`, `dashboard`, `super-admin`).
    - Updated Zod validation schema in `apps/backend/src/lib/env.ts` for type safety.
 
 ### Test Results
