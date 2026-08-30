@@ -1058,9 +1058,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ### Changes Made
 
 1. **Email Infrastructure (`apps/backend/src/lib/`):**
-   - Created `email.ts` — smart 3-tier mailer: Amazon SES (primary) → SMTP (fallback) → console log (dev mode). No email config required for local development.
-   - Created `emailTemplates.ts` — a rich branded HTML invite email template with org name, inviter, role badge, "Accept Invitation" CTA button, expiry notice, and safety footer.
-   - Installed `nodemailer@9.0.6` + `@types/nodemailer`.
+   - Created `email.ts` — 4-tier cascading mailer: **Resend** (primary) → **Amazon SES** (fallback 1) → **Personal SMTP** (fallback 2) → **Console log** (local dev fallback).
+   - If Resend API key is present, it dispatches via Resend; if delivery throws an error, it gracefully falls over to SES, then to SMTP, and finally dev console.
+   - Installed `resend@6.25.0` + `nodemailer@9.0.6` + `@types/nodemailer`.
+   - Created `emailTemplates.ts` — rich branded HTML invite email template with org name, inviter, role badge, "Accept Invitation" CTA button, expiry notice, and safety footer.
 
 2. **Schema Migration (`0009_rich_turbo.sql`):**
    - Added `invitationStatusEnum` (`pending`, `accepted`, `revoked`, `expired`) to the DB.
@@ -1092,16 +1093,23 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
    - Added an indigo "Invitation email dispatched" badge.
 
 7. **Environment Variable Configuration (`.env`, `apps/backend/.env`, `.env.example`, `apps/backend/.env.example`, `apps/dashboard/.env.example`, `apps/super-admin/.env.example`, `env.ts`):**
-   - Added optional keys for Amazon SES (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SES_REGION`) and SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`).
+   - Added optional keys for Resend (`RESEND_API_KEY`), Amazon SES (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SES_REGION`), and SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`).
    - Added `APP_URL`, `EMAIL_FROM`, `WORKOS_REDIRECT_URI`, `WORKOS_WEBHOOK_SECRET` configuration keys.
    - Added complete, clean `.env.example` templates at the root and for each sub-app (`backend`, `dashboard`, `super-admin`).
    - Updated Zod validation schema in `apps/backend/src/lib/env.ts` for type safety.
 
+8. **Admin Account Lifecycle Email Alerts (Deactivation & Reactivation):**
+   - Created `renderAccountDeactivatedEmail` template with custom warning accent bar, status pill, stated reason box, bulleted session revocation notes, and admin contact instructions.
+   - Created `renderAccountReactivatedEmail` template with emerald status pill, celebratory headline, workspace access restored notice, and direct "Sign In to Workspace" CTA.
+   - Hooked asynchronous email notifications directly into `deactivateMember` and `reactivateMember` in `organizations/service.ts`.
+   - Added automated unit test coverage in `org.test.ts`.
+
 ### Test Results
-- `bun test` — 22/22 tests pass across `auth.test.ts`, `workos.test.ts`, `org.test.ts`.
+- `bun test` — 23/23 tests pass across `auth.test.ts`, `workos.test.ts`, `org.test.ts`.
 - `bun run build` (dashboard) — 0 TypeScript errors, clean Vite production build.
 - `bun run typecheck` (backend) — 0 TypeScript errors.
-- Email in dev mode: automatically prints the full HTML email to the console with correct subject, recipient, org name, and role.
+- Email lifecycle in dev mode: automatically logs full HTML and plain text email payloads for invite, deactivation, and reactivation flows.
+
 
 
 

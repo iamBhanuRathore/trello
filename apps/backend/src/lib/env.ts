@@ -47,9 +47,10 @@ const envSchema = z.object({
     .transform((v) => (v === '' ? undefined : v))
     .pipe(z.string().url().optional()),
 
-  // Email / Notifications (SES / SMTP / Console fallback)
+  // Email / Notifications (Resend -> SES -> SMTP -> Console fallback)
   APP_URL: z.string().default('http://localhost:5173'),
   EMAIL_FROM: z.string().default('Boardly <noreply@boardly.app>'),
+  RESEND_API_KEY: z.string().optional(),
   AWS_SES_REGION: z.string().optional(),
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),

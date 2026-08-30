@@ -194,3 +194,296 @@ If you weren't expecting this, you can ignore this email.
 
   return { subject, html, text };
 }
+
+// ─── Account Deactivated Email ────────────────────────────────────────────────
+export interface DeactivatedEmailOptions {
+  toName: string;
+  toEmail: string;
+  orgName: string;
+  adminName?: string;
+  reason?: string;
+}
+
+export function renderAccountDeactivatedEmail(opts: DeactivatedEmailOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const displayName = opts.toName && opts.toName !== opts.toEmail.split('@')[0] ? opts.toName : 'there';
+  const reasonText = opts.reason?.trim() || 'Administrative policy or account review';
+  const adminText = opts.adminName || 'an organization administrator';
+  const subject = `Notice: Your access to ${opts.orgName} has been deactivated`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+          <!-- Logo Header -->
+          <tr>
+            <td style="padding-bottom:32px;text-align:center;">
+              <div style="display:inline-flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;display:inline-block;vertical-align:middle;"></div>
+                <span style="font-size:22px;font-weight:700;color:#f8fafc;vertical-align:middle;margin-left:10px;">Boardly</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e293b 0%,#1a2540 100%);border-radius:16px;border:1px solid rgba(239,68,68,0.25);overflow:hidden;">
+
+              <!-- Red/Amber Warning Accent Bar -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="height:4px;background:linear-gradient(90deg,#ef4444,#f97316,#eab308);"></td>
+                </tr>
+              </table>
+
+              <!-- Card content -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px;">
+                <tr>
+                  <td>
+
+                    <!-- Status Pill -->
+                    <div style="display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#fca5a5;background-color:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);margin-bottom:16px;">
+                      🔒 Account Access Deactivated
+                    </div>
+
+                    <!-- Headline -->
+                    <h1 style="margin:0 0 12px 0;font-size:26px;font-weight:700;color:#f8fafc;line-height:1.2;">
+                      Access to ${opts.orgName} Suspended
+                    </h1>
+                    <p style="margin:0 0 24px 0;font-size:15px;color:#94a3b8;line-height:1.6;">
+                      Hi <strong style="color:#e2e8f0">${displayName}</strong>, your membership in <strong style="color:#f8fafc">${opts.orgName}</strong> has been deactivated by ${adminText}.
+                    </p>
+
+                    <!-- Reason Box -->
+                    <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:12px;margin-bottom:28px;">
+                      <tr>
+                        <td style="padding:18px 20px;">
+                          <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#f87171;margin-bottom:4px;">
+                            Stated Reason
+                          </div>
+                          <div style="font-size:14px;color:#e2e8f0;line-height:1.5;">
+                            "${reasonText}"
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- What this means -->
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:16px 18px;margin-bottom:28px;">
+                      <div style="font-size:12px;font-weight:600;color:#94a3b8;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">
+                        What happens now:
+                      </div>
+                      <table width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="padding-bottom:6px;font-size:13px;color:#cbd5e1;">
+                            &bull; All active browser and mobile sessions for this organization have been securely logged out.
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding-bottom:6px;font-size:13px;color:#cbd5e1;">
+                            &bull; Your assigned tasks, cards, and activity logs remain preserved in the organization.
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="font-size:13px;color:#cbd5e1;">
+                            &bull; Access can be restored at any time by your organization owner or admin.
+                          </td>
+                        </tr>
+                      </table>
+                    </div>
+
+                    <!-- Divider -->
+                    <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 20px 0;" />
+
+                    <!-- Contact note -->
+                    <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
+                      If you believe this was done in error, please contact your organization owner or IT administrator directly.
+                    </p>
+
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 0;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#334155;">
+                &copy; ${new Date().getFullYear()} Boardly &middot; Enterprise Security &amp; Compliance Notification
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`;
+
+  const text = `
+Account Notice: Access to ${opts.orgName} Deactivated
+
+Hi ${displayName},
+
+Your membership in ${opts.orgName} on Boardly has been deactivated by ${adminText}.
+
+Reason: "${reasonText}"
+
+What this means:
+- All active sessions for this organization have been revoked.
+- Your data and task assignments remain intact.
+- An organization administrator can reactivate your account at any time.
+
+If you believe this was done in error, please reach out to your organization administrator.
+`;
+
+  return { subject, html, text };
+}
+
+// ─── Account Reactivated Email ────────────────────────────────────────────────
+export interface ReactivatedEmailOptions {
+  toName: string;
+  toEmail: string;
+  orgName: string;
+  adminName?: string;
+  loginUrl?: string;
+}
+
+export function renderAccountReactivatedEmail(opts: ReactivatedEmailOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const displayName = opts.toName && opts.toName !== opts.toEmail.split('@')[0] ? opts.toName : 'there';
+  const adminText = opts.adminName || 'An administrator';
+  const loginUrl = opts.loginUrl || 'http://localhost:5173/sign-in';
+  const subject = `Your access to ${opts.orgName} has been reactivated 🎉`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+          <!-- Logo Header -->
+          <tr>
+            <td style="padding-bottom:32px;text-align:center;">
+              <div style="display:inline-flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:8px;display:inline-block;vertical-align:middle;"></div>
+                <span style="font-size:22px;font-weight:700;color:#f8fafc;vertical-align:middle;margin-left:10px;">Boardly</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e293b 0%,#1a2540 100%);border-radius:16px;border:1px solid rgba(16,185,129,0.25);overflow:hidden;">
+
+              <!-- Green/Teal Emerald Accent Bar -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="height:4px;background:linear-gradient(90deg,#10b981,#06b6d4,#6366f1);"></td>
+                </tr>
+              </table>
+
+              <!-- Card content -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px;">
+                <tr>
+                  <td>
+
+                    <!-- Status Pill -->
+                    <div style="display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#6ee7b7;background-color:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);margin-bottom:16px;">
+                      ✓ Account Reactivated
+                    </div>
+
+                    <!-- Headline -->
+                    <h1 style="margin:0 0 12px 0;font-size:26px;font-weight:700;color:#f8fafc;line-height:1.2;">
+                      Welcome back to ${opts.orgName}! 🎉
+                    </h1>
+                    <p style="margin:0 0 28px 0;font-size:15px;color:#94a3b8;line-height:1.6;">
+                      Hi <strong style="color:#e2e8f0">${displayName}</strong>, your account in <strong style="color:#f8fafc">${opts.orgName}</strong> has been restored by ${adminText}. You can now sign back in to access your projects, workspaces, and team boards.
+                    </p>
+
+                    <!-- CTA Button -->
+                    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                      <tr>
+                        <td align="center">
+                          <a href="${loginUrl}"
+                             style="display:inline-block;padding:15px 44px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;text-decoration:none;border-radius:10px;font-size:15px;font-weight:700;letter-spacing:0.02em;box-shadow:0 4px 20px rgba(16,185,129,0.35);">
+                            Sign In to Workspace
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Divider -->
+                    <hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:0 0 20px 0;" />
+
+                    <!-- Backup Link -->
+                    <p style="margin:0 0 8px 0;font-size:12px;color:#64748b;">
+                      Direct login URL:
+                    </p>
+                    <p style="margin:0;font-size:12px;color:#10b981;word-break:break-all;">
+                      ${loginUrl}
+                    </p>
+
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 0;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#334155;">
+                &copy; ${new Date().getFullYear()} Boardly &middot; Enterprise Project Management
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`;
+
+  const text = `
+Welcome back! Your access to ${opts.orgName} has been reactivated.
+
+Hi ${displayName},
+
+Your account in ${opts.orgName} on Boardly has been restored by ${adminText}.
+You can sign back in here:
+${loginUrl}
+`;
+
+  return { subject, html, text };
+}
+

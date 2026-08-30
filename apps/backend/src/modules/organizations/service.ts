@@ -15,7 +15,11 @@ import {
   auditLog,
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
-import { renderInviteEmail } from '../../lib/emailTemplates';
+import {
+  renderInviteEmail,
+  renderAccountDeactivatedEmail,
+  renderAccountReactivatedEmail,
+} from '../../lib/emailTemplates';
 
 import { httpError } from '../../lib/errors';
 export { httpError };
@@ -557,6 +561,50 @@ export async function deactivateMember(
     metadata: { reason: reason || 'No reason provided' },
   });
 
+  // Asynchronously dispatch deactivation notice email (fire-and-forget)
+  (async () => {
+    try {
+      const [targetUser] = await db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, member.userId))
+        .limit(1);
+
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+        .limit(1);
+
+      let adminName = 'An administrator';
+      if (actorId) {
+        const [actor] = await db.select({ name: users.name }).from(users).where(eq(users.id, actorId)).limit(1);
+        if (actor?.name) adminName = actor.name;
+      }
+
+      if (targetUser?.email) {
+        const orgName = org?.name || 'Boardly';
+        const emailContent = renderAccountDeactivatedEmail({
+          toName: targetUser.name,
+          toEmail: targetUser.email,
+          orgName,
+          adminName,
+          reason,
+        });
+
+        await sendEmail({
+          to: targetUser.email,
+          toName: targetUser.name,
+          subject: emailContent.subject,
+          html: emailContent.html,
+          text: emailContent.text,
+        });
+      }
+    } catch (err) {
+      console.error('[deactivateMember] Deactivation email notification failed silently:', err);
+    }
+  })();
+
   return updated;
 }
 
@@ -594,6 +642,53 @@ export async function reactivateMember(
     target: member.userId,
     targetId: member.id,
   });
+
+  // Asynchronously dispatch reactivation notice email (fire-and-forget)
+  (async () => {
+    try {
+      const [targetUser] = await db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, member.userId))
+        .limit(1);
+
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+        .limit(1);
+
+      let adminName = 'An administrator';
+      if (actorId) {
+        const [actor] = await db.select({ name: users.name }).from(users).where(eq(users.id, actorId)).limit(1);
+        if (actor?.name) adminName = actor.name;
+      }
+
+      if (targetUser?.email) {
+        const orgName = org?.name || 'Boardly';
+        const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+        const loginUrl = `${appUrl}/sign-in`;
+
+        const emailContent = renderAccountReactivatedEmail({
+          toName: targetUser.name,
+          toEmail: targetUser.email,
+          orgName,
+          adminName,
+          loginUrl,
+        });
+
+        await sendEmail({
+          to: targetUser.email,
+          toName: targetUser.name,
+          subject: emailContent.subject,
+          html: emailContent.html,
+          text: emailContent.text,
+        });
+      }
+    } catch (err) {
+      console.error('[reactivateMember] Reactivation email notification failed silently:', err);
+    }
+  })();
 
   return updated;
 }

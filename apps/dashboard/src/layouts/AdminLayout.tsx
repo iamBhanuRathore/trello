@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Outlet, NavLink, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Button } from '@boardly/ui/button';
@@ -7,8 +7,10 @@ import {
   Sidebar,
   SidebarHeader,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
+  SidebarGroupContent,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
@@ -18,13 +20,15 @@ import {
 } from '@boardly/ui/sidebar';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { SearchPalette } from '../components/SearchPalette';
+import { AppearanceModal } from '../components/AppearanceModal';
+import { UserProfileDropdown } from '../components/UserProfileDropdown';
 import {
   Users,
   CreditCard,
   Palette,
   ShieldAlert,
   LayoutDashboard as Trello,
-  LogOut,
   ArrowLeft,
   Workflow,
   Shield,
@@ -37,9 +41,10 @@ import {
 } from 'lucide-react';
 
 export const AdminLayout: React.FC = () => {
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const orgId = user?.organizationId;
   const location = useLocation();
+  const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
 
   // ─── Role Guard: Only org owners, org admins, and platform admins can access ───
   const isAdmin =
@@ -106,61 +111,104 @@ export const AdminLayout: React.FC = () => {
   return (
     <SidebarProvider className="flex h-screen w-full flex-col bg-background text-foreground transition-colors overflow-hidden">
       {/* Top Header */}
-      <header className="shrink-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 backdrop-blur-md px-4 sm:px-6 py-3 shadow-xs transition-colors">
-        <div className="flex items-center gap-2">
-          <SidebarTrigger className="md:hidden" />
-          <Link to="/" className="flex items-center gap-2 font-semibold">
-            <div className="p-1 rounded-md bg-primary/10 text-primary">
-              <Trello className="h-5 w-5" />
+      <header className="shrink-0 z-30 flex h-14 items-center justify-between gap-3 border-b bg-background/85 backdrop-blur-md px-4 sm:px-6 shadow-2xs transition-colors">
+        {/* Left: Trigger + Brand */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <SidebarTrigger className="h-8 w-8 shrink-0" />
+          <div className="h-4 w-px bg-border/80 hidden sm:block shrink-0" />
+          <Link to="/admin/users" className="flex items-center gap-2 font-semibold">
+            <div className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20">
+              <Trello className="h-4 w-4" />
             </div>
-            <span className="text-lg font-bold tracking-tight">Boardly Admin</span>
+            <span className="text-sm font-bold tracking-tight text-foreground">Boardly Admin</span>
+            <span className="text-[10px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 hidden md:inline-block">
+              Governance
+            </span>
           </Link>
         </div>
         
-        <div className="ml-auto flex items-center gap-3">
-          <Link to="/" className="text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors">
-            <ArrowLeft className="h-4 w-4" /> Back to App
+        {/* Right: Back to App, Search, Notifications, Theme, User Profile */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/70 px-2.5 py-1.5 rounded-lg border border-border/70 shadow-2xs transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Back to App</span>
           </Link>
+
+          <SearchPalette triggerContext="navbar" />
+
           <NotificationDropdown />
+
           <ThemeToggle />
-          <div className="text-sm font-medium text-muted-foreground hidden sm:inline-block border-l pl-3">
-            {user?.name}
+
+          {/* Profile Avatar Quick Menu */}
+          <div className="hidden sm:flex items-center border-l pl-3 ml-1">
+            <UserProfileDropdown
+              variant="navbar"
+              onOpenAppearance={() => setIsAppearanceOpen(true)}
+            />
           </div>
-          <Button variant="ghost" size="icon" onClick={() => logout()} className="hover:bg-destructive/10 hover:text-destructive">
-            <LogOut className="h-4 w-4" />
-          </Button>
         </div>
       </header>
 
       {/* Main Workspace with Fixed Sidebar & Independent Content Scrolling */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        <Sidebar className="h-full">
-          <SidebarHeader>
-            <div className="px-1 py-1">
-              <h2 className="text-sm font-semibold tracking-tight text-sidebar-foreground">Admin Workspace</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Manage organization governance</p>
+        <Sidebar className="h-full border-r border-sidebar-border bg-sidebar select-none transition-all duration-200">
+          <SidebarHeader className="border-b border-sidebar-border/60 p-3">
+            <div className="px-1 py-0.5">
+              <h2 className="text-xs font-bold tracking-tight text-sidebar-foreground uppercase">Admin Workspace</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Manage organization governance</p>
             </div>
           </SidebarHeader>
-          <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupLabel>Governance & Settings</SidebarGroupLabel>
-              <SidebarMenu>
-                {navItems.map((item) => {
-                  const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
-                  return (
-                    <SidebarMenuItem key={item.name}>
-                      <SidebarMenuButton asChild isActive={isActive}>
-                        <NavLink to={item.path}>
-                          <item.icon className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{item.name}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
+          <SidebarContent className="p-2 space-y-4 overflow-y-auto">
+            <SidebarGroup className="p-1">
+              <SidebarGroupLabel className="text-[11px] font-semibold text-muted-foreground/80 px-2 mb-1">
+                Governance &amp; Settings
+              </SidebarGroupLabel>
+              <SidebarGroupContent className="w-full">
+                <SidebarMenu className="gap-1">
+                  {navItems.map((item) => {
+                    const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+                    return (
+                      <SidebarMenuItem key={item.name}>
+                        <SidebarMenuButton asChild isActive={isActive} tooltip={item.name}>
+                          <NavLink to={item.path}>
+                            <item.icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{item.name}</span>
+                          </NavLink>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
             </SidebarGroup>
           </SidebarContent>
+          <SidebarFooter className="border-t border-sidebar-border/60 p-2 space-y-1">
+            <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+              <Link
+                to="/"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors cursor-pointer text-xs"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Main App</span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => setIsAppearanceOpen(true)}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors cursor-pointer text-xs"
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span>Theme</span>
+              </button>
+            </div>
+            <UserProfileDropdown
+              variant="sidebar"
+              onOpenAppearance={() => setIsAppearanceOpen(true)}
+            />
+          </SidebarFooter>
           <SidebarRail />
         </Sidebar>
 
@@ -171,6 +219,9 @@ export const AdminLayout: React.FC = () => {
           </div>
         </SidebarInset>
       </div>
+
+      {/* Global Modals */}
+      <AppearanceModal open={isAppearanceOpen} onOpenChange={setIsAppearanceOpen} />
     </SidebarProvider>
   );
 };

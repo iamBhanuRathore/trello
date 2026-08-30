@@ -253,3 +253,20 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** Native HTML5 Drag and Drop (rejected — lack of smooth touch/mobile support and rigid drag image styling), Framer Motion Reorder (rejected — limited multi-column kanban coordination compared to dnd-kit).
 
 **Consequences:** Buttery-smooth, glitch-free dragging across columns with responsive visual slot opening, crisp click handling (via `distance: 6` PointerSensor), and high-fidelity glassmorphic drag elevation matching modern SaaS standards (Linear, Trello).
+
+---
+
+### 2026-08-30 — Multi-Tier Cascading Transactional Email Infrastructure (Resend → AWS SES → Personal SMTP → Dev Console)
+
+**Context:** The platform requires high-deliverability transactional emails (invitations, password setup, onboarding, security alerts). Enterprise customers and self-hosted deployments have varying email infrastructure capabilities and preferences.
+
+**Decision:** Implemented an automated 4-tier cascading email delivery pipeline:
+1. **Tier 1 (Primary): Resend (`RESEND_API_KEY`)** — Highest deliverability and modern developer experience for SaaS deployments.
+2. **Tier 2 (Fallback 1): Amazon SES (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SES_REGION`)** — High-volume cost-effective cloud deliverability.
+3. **Tier 3 (Fallback 2): Personal SMTP Server (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`)** — Self-hosted or internal corporate mail gateway support.
+4. **Tier 4 (Dev Fallback): Local Console Logger** — Logs formatted HTML & plain-text payload directly to terminal when no provider is configured or all remote networks fail.
+
+**Alternatives considered:** Single-provider locking (e.g. only SMTP or only SES) — rejected because it creates vendor lock-in and breaks local dev without credentials.
+
+**Consequences:** Zero configuration required for development; maximum reliability and deliverability in production with automatic fallback across providers.
+

@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface SendEmailOptions {
@@ -12,6 +13,8 @@ export interface SendEmailOptions {
 // ─── Config detection ─────────────────────────────────────────────────────────
 const FROM_EMAIL = process.env.EMAIL_FROM ?? 'Boardly <noreply@boardly.app>';
 
+const HAS_RESEND = !!process.env.RESEND_API_KEY;
+
 const HAS_SES =
   !!process.env.AWS_ACCESS_KEY_ID &&
   !!process.env.AWS_SECRET_ACCESS_KEY &&
@@ -20,26 +23,39 @@ const HAS_SES =
 const HAS_SMTP =
   !!process.env.SMTP_HOST && !!process.env.SMTP_PORT && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
 
-// ─── Transport builders ───────────────────────────────────────────────────────
+// ─── Client / Transport Singletons ────────────────────────────────────────────
+let _resendClient: Resend | null = null;
+function getResendClient(): Resend | null {
+  if (!HAS_RESEND) return null;
+  if (!_resendClient) {
+    _resendClient = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resendClient;
+}
 
-function buildSESTransport(): nodemailer.Transporter | null {
+let _sesTransport: nodemailer.Transporter | null = null;
+function getSESTransport(): nodemailer.Transporter | null {
   if (!HAS_SES) return null;
+  if (_sesTransport) return _sesTransport;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const awsSes = require('@aws-sdk/client-ses');
     const sesClient = new awsSes.SESClient({ region: process.env.AWS_SES_REGION });
-    return nodemailer.createTransport({
+    _sesTransport = nodemailer.createTransport({
       SES: { ses: sesClient, aws: awsSes },
     } as any);
-  } catch {
-    console.warn('[email] AWS SES transport init failed, falling back to SMTP.');
+    return _sesTransport;
+  } catch (err) {
+    console.warn('[email] AWS SES transport init failed:', err);
     return null;
   }
 }
 
-function buildSMTPTransport(): nodemailer.Transporter | null {
+let _smtpTransport: nodemailer.Transporter | null = null;
+function getSMTPTransport(): nodemailer.Transporter | null {
   if (!HAS_SMTP) return null;
-  return nodemailer.createTransport({
+  if (_smtpTransport) return _smtpTransport;
+  _smtpTransport = nodemailer.createTransport({
     host: process.env.SMTP_HOST!,
     port: Number(process.env.SMTP_PORT ?? 587),
     secure: process.env.SMTP_SECURE === 'true',
@@ -48,52 +64,107 @@ function buildSMTPTransport(): nodemailer.Transporter | null {
       pass: process.env.SMTP_PASS!,
     },
   });
+  return _smtpTransport;
 }
 
-// ─── Resolve transport once at startup ────────────────────────────────────────
-let _transport: nodemailer.Transporter | null = null;
+// ─── Primary & Fallback Transmitters ──────────────────────────────────────────
 
-function getTransport(): nodemailer.Transporter | null {
-  if (_transport) return _transport;
-  _transport = buildSESTransport() ?? buildSMTPTransport();
-  if (_transport) {
-    console.log(`[email] Transport initialized: ${HAS_SES ? 'Amazon SES' : 'SMTP'}`);
-  } else {
-    console.warn('[email] No email transport configured — emails will be printed to console (dev mode).');
+async function sendViaResend(opts: SendEmailOptions): Promise<boolean> {
+  const client = getResendClient();
+  if (!client) return false;
+
+  const toAddress = opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to;
+  const result = await client.emails.send({
+    from: FROM_EMAIL,
+    to: toAddress,
+    subject: opts.subject,
+    html: opts.html,
+    text: opts.text,
+  });
+
+  if (result.error) {
+    throw new Error(`Resend Error: ${result.error.message}`);
   }
-  return _transport;
+
+  console.log(`[email] Successfully sent via Resend (id: ${result.data?.id}) to ${opts.to}`);
+  return true;
 }
 
-// ─── sendEmail ────────────────────────────────────────────────────────────────
-export async function sendEmail(opts: SendEmailOptions): Promise<void> {
-  const transport = getTransport();
+async function sendViaSES(opts: SendEmailOptions): Promise<boolean> {
+  const transport = getSESTransport();
+  if (!transport) return false;
 
-  const mailOptions = {
+  const info = await transport.sendMail({
     from: FROM_EMAIL,
     to: opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to,
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
-  };
+  });
 
-  if (!transport) {
-    // Dev fallback — log to console
-    console.log('\n────────────────────────────────────────────────────────────');
-    console.log('[email] DEV MODE — Would have sent email:');
-    console.log(`  To:      ${mailOptions.to}`);
-    console.log(`  From:    ${mailOptions.from}`);
-    console.log(`  Subject: ${mailOptions.subject}`);
-    console.log('[email] HTML body:');
-    console.log(opts.html.substring(0, 800) + (opts.html.length > 800 ? '\n... (truncated)' : ''));
-    console.log('────────────────────────────────────────────────────────────\n');
-    return;
+  console.log(`[email] Successfully sent via Amazon SES (messageId: ${info.messageId}) to ${opts.to}`);
+  return true;
+}
+
+async function sendViaSMTP(opts: SendEmailOptions): Promise<boolean> {
+  const transport = getSMTPTransport();
+  if (!transport) return false;
+
+  const info = await transport.sendMail({
+    from: FROM_EMAIL,
+    to: opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to,
+    subject: opts.subject,
+    html: opts.html,
+    text: opts.text,
+  });
+
+  console.log(`[email] Successfully sent via Personal SMTP (messageId: ${info.messageId}) to ${opts.to}`);
+  return true;
+}
+
+function printDevModeEmail(opts: SendEmailOptions): void {
+  console.log('\n────────────────────────────────────────────────────────────');
+  console.log('[email] DEV MODE — Would have sent email (no provider configured or all failed):');
+  console.log(`  To:      ${opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to}`);
+  console.log(`  From:    ${FROM_EMAIL}`);
+  console.log(`  Subject: ${opts.subject}`);
+  console.log('[email] HTML body:');
+  console.log(opts.html.substring(0, 800) + (opts.html.length > 800 ? '\n... (truncated)' : ''));
+  console.log('────────────────────────────────────────────────────────────\n');
+}
+
+// ─── sendEmail (Tier 1: Resend -> Tier 2: AWS SES -> Tier 3: SMTP -> Dev Console) ───
+export async function sendEmail(opts: SendEmailOptions): Promise<void> {
+  // 1. Primary: Resend
+  if (HAS_RESEND) {
+    try {
+      const sent = await sendViaResend(opts);
+      if (sent) return;
+    } catch (err: any) {
+      console.warn(`[email] Resend delivery failed: ${err?.message || err}. Falling back to AWS SES...`);
+    }
   }
 
-  try {
-    const info = await transport.sendMail(mailOptions);
-    console.log(`[email] Sent to ${opts.to} — messageId: ${info.messageId}`);
-  } catch (err) {
-    console.error('[email] Failed to send email:', err);
-    // Do NOT re-throw — email failures should never block the invite transaction
+  // 2. Fallback 1: Amazon SES
+  if (HAS_SES) {
+    try {
+      const sent = await sendViaSES(opts);
+      if (sent) return;
+    } catch (err: any) {
+      console.warn(`[email] AWS SES delivery failed: ${err?.message || err}. Falling back to Personal SMTP...`);
+    }
   }
+
+  // 3. Fallback 2: Personal SMTP Server
+  if (HAS_SMTP) {
+    try {
+      const sent = await sendViaSMTP(opts);
+      if (sent) return;
+    } catch (err: any) {
+      console.warn(`[email] Personal SMTP delivery failed: ${err?.message || err}. Falling back to dev console...`);
+    }
+  }
+
+  // 4. Fallback 3: Local Dev Console
+  printDevModeEmail(opts);
 }

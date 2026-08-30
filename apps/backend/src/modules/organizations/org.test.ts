@@ -4,7 +4,7 @@ import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
-import { getOrg, updateOrg, listMembers, inviteMember, updateMemberRole, removeMember } from './service';
+import { getOrg, updateOrg, listMembers, inviteMember, updateMemberRole, removeMember, deactivateMember, reactivateMember } from './service';
 
 const TEST_DB_URL =
   process.env['DATABASE_TEST_URL'] ?? 'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
@@ -98,6 +98,48 @@ describe('Organizations Service', () => {
     expect(updated.role).toBe('org_admin');
   });
 
+  it('should deactivate and reactivate a member with email notifications', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { organization, user: owner } = await signUp(db, {
+      name: 'Owner',
+      email: `owner_${id}@test.com`,
+      password: 'pass',
+      orgName: `My Org ${id}`,
+      orgSlug: `my-org-${id}`,
+    });
+
+    const bobEmail = `bob_${id}@test.com`;
+    await db
+      .insert(schema.users)
+      .values({ name: 'Bob Smith', email: bobEmail, passwordHash: 'hash' })
+      .returning();
+
+    const member = await inviteMember(db, organization.id, bobEmail, 'member', owner.id);
+
+    // Deactivate member
+    const deactivated = await deactivateMember(
+      db,
+      organization.id,
+      member!.id,
+      owner.id,
+      'Temporary leave of absence'
+    );
+    expect(deactivated.status).toBe('deactivated');
+    expect(deactivated.deactivationReason).toBe('Temporary leave of absence');
+    expect(deactivated.deactivatedBy).toBe(owner.id);
+
+    // Reactivate member
+    const reactivated = await reactivateMember(
+      db,
+      organization.id,
+      member!.id,
+      owner.id
+    );
+    expect(reactivated.status).toBe('active');
+    expect(reactivated.deactivationReason).toBeNull();
+    expect(reactivated.deactivatedBy).toBeNull();
+  });
+
   it('should soft-remove a member', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const { organization, user: owner } = await signUp(db, {
@@ -122,3 +164,4 @@ describe('Organizations Service', () => {
     expect(members).toHaveLength(1); // Only owner remains (soft-deleted Bob is excluded)
   });
 });
+
