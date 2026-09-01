@@ -1311,6 +1311,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-09-02 — Top-Level Monorepo Structure & Knowledge Graph Standardization
+
 - **What was done:**
   1. **Documentation Standardization (`docs/`)**: Renamed `markdowns/` to standard `docs/` and organized knowledge graph artifacts.
   2. **Script Consolidation (`scripts/`)**: Removed loose root forwarding shell scripts (`setup.sh`, `start.sh`) and unified execution under canonical `package.json` scripts (`bun dev`, `bun run setup`, `bun run db:reset`).
@@ -1319,3 +1320,32 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   5. **Husky & Lint-Staged Hooks**: Added `.husky/pre-commit` (running `lint-staged` with Prettier/ESLint) and `.husky/pre-push` (running `turbo run typecheck` before remote push) with `"prepare": "husky"` script in `package.json`.
   6. **CI Pipeline Stabilization (`.github/workflows/ci.yml`)**: Added missing `db:migrate`, `db:seed`, and `build` stages to GitHub Actions workflow before test execution; added `"typecheck"` scripts to `apps/dashboard` and `apps/super-admin`.
   7. **AI Conciseness Directives**: Configured `AGENTS.md` and `CLAUDE.md` with strict output token minimization rules (zero fluff, direct diffs, terse bullet points).
+
+---
+
+### 2026-09-02 — Distributed Real-Time Scaling (Dedicated Redis Module)
+
+- **What was done:**
+  1. **Dedicated Redis Domain Module (`apps/backend/src/redis/`)**:
+     - `client.ts`: Singleton connection lifecycle for `pubClient`, `subClient`, and `dataClient` with reconnect strategies, error listeners, and clean shutdown hooks (`disconnectRedis()`).
+     - `pubsub.ts`: Multi-instance Redis Pub/Sub broker broadcasting cluster-wide real-time events (`boardly:realtime`) with unique `instanceId` tagging.
+     - `presence.ts`: Distributed `PresenceStore` using Redis Hashes (`presence:board:{boardId}`), TTL Sorted Sets (`presence:board:{boardId}:ttl`), active board set indexing, and an automatic periodic background TTL sweeper (15s interval) broadcasting `presence:update` on evictions. Also includes `InMemoryPresenceStore` and `HybridPresenceStore` fallback.
+     - `index.ts`: Unified module exports.
+  2. **WebSocket & Event Bus Integration**:
+     - Refactored `apps/backend/src/modules/realtime/routes.ts` to use async `presenceStore` operations, handle `heartbeat` keep-alive actions, and bridge Redis Pub/Sub directly to Bun WebSocket `server.publish()`.
+     - Updated `apps/backend/src/lib/event-bus.ts` to publish broadcasts across the Redis cluster while gracefully falling back to in-memory event dispatch when Redis is disabled or offline.
+     - Updated `apps/backend/src/index.ts` to initialize Redis on startup and gracefully disconnect on `SIGINT`/`SIGTERM`.
+  3. **Dashboard Heartbeat Client**:
+     - Updated `apps/dashboard/src/hooks/useRealtimeBoard.ts` to emit periodic `{ action: 'heartbeat', boardId }` pings every 25 seconds to keep presence alive.
+  4. **Testing & Quality Assurance**:
+     - Added unit test suites `src/redis/presence.test.ts` (TTL eviction, user updates, multi-board management, fallback) and `src/redis/pubsub.test.ts`. All 9 tests passing.
+     - Verified zero TypeScript compiler errors across `@boardly/backend` and `dashboard`.
+
+---
+
+### 2026-09-02 — Human-Readable Schema Validation Error Formatting
+
+- **What was done:**
+  - Implemented `formatValidationError` in `apps/backend/src/lib/errors.ts` to parse internal TypeBox/Elysia schema errors into clear, friendly JSON responses (`{ error, message, details: [...] }`).
+  - Integrated with the Elysia global `.onError` handler (`apps/backend/src/index.ts`).
+  - Added unit test coverage in `src/lib/errors.test.ts` (14/14 tests passing).

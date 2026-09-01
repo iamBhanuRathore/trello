@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { api, getGoogleAuthUrl, getWorkOSSSOAuthUrl } from '../lib/api';
+import { api, getApiErrorMessage, getGoogleAuthUrl, getWorkOSSSOAuthUrl } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
@@ -52,11 +52,7 @@ export function Login() {
       login(res.data);
       navigate('/', { replace: true });
     } catch (err: any) {
-      setError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          'Invalid email or password. Please try again.'
-      );
+      setError(getApiErrorMessage(err, 'Invalid email or password. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -75,9 +71,7 @@ export function Login() {
       }
     } catch (err: any) {
       setError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          'Failed to connect to Google OAuth service. Please try again.'
+        getApiErrorMessage(err, 'Failed to connect to Google OAuth service. Please try again.')
       );
       setIsGoogleLoading(false);
     }
@@ -97,9 +91,7 @@ export function Login() {
       }
     } catch (err: any) {
       setSsoError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          `No Single Sign-On configured for domain "${ssoDomain}".`
+        getApiErrorMessage(err, `No Single Sign-On configured for domain "${ssoDomain}".`)
       );
       setIsSSOLoading(false);
     }
@@ -154,12 +146,8 @@ export function Login() {
           </div>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground mb-1">
-              Welcome back
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Sign in to your account to continue
-            </p>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground mb-1">Welcome back</h2>
+            <p className="text-sm text-muted-foreground">Sign in to your account to continue</p>
           </div>
 
           {error && (
@@ -256,11 +244,7 @@ export function Login() {
                   tabIndex={-1}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>

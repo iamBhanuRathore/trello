@@ -10,6 +10,35 @@ export const api = axios.create({
   },
 });
 
+/**
+ * Standard utility to parse error responses from the backend API.
+ * Handles validation error arrays, message summaries, and standard error fields.
+ */
+export function getApiErrorMessage(
+  err: any,
+  fallbackMessage: string = 'An error occurred. Please try again.'
+): string {
+  const data = err?.response?.data;
+  if (!data) return err?.message || fallbackMessage;
+
+  // 1. If detailed validation error array exists, return the first field message
+  if (Array.isArray(data.details) && data.details.length > 0 && data.details[0]?.message) {
+    return data.details[0].message;
+  }
+
+  // 2. If a specific message string exists
+  if (data.message && typeof data.message === 'string' && data.message !== 'Validation failed') {
+    return data.message;
+  }
+
+  // 3. If standard error string exists
+  if (data.error && typeof data.error === 'string') {
+    return data.error;
+  }
+
+  return fallbackMessage;
+}
+
 // Notifications
 export const getNotifications = async () => {
   return api.get('/notifications');
@@ -140,7 +169,10 @@ export const createRole = async (payload: { name: string; permissionIds?: string
   return data;
 };
 
-export const updateRole = async (id: string, payload: { name?: string; permissionIds?: string[] }) => {
+export const updateRole = async (
+  id: string,
+  payload: { name?: string; permissionIds?: string[] }
+) => {
   const { data } = await api.patch(`/roles/${id}`, payload);
   return data;
 };
@@ -175,7 +207,10 @@ export const logAuditEvent = async (payload: {
 };
 
 // Project Docs & Wiki
-export const createDoc = async (projectId: string, payload: { title: string; content?: string }) => {
+export const createDoc = async (
+  projectId: string,
+  payload: { title: string; content?: string }
+) => {
   const { data } = await api.post(`/projects/${projectId}/docs`, payload);
   return data;
 };
@@ -405,13 +440,17 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('boardly_refresh_token');
         if (!refreshToken) throw new Error('No refresh token');
-        const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, {
-          headers: { 'Content-Type': 'application/json' },
-          withCredentials: true,
-        });
+        const { data } = await axios.post(
+          `${API_URL}/auth/refresh`,
+          { refreshToken },
+          {
+            headers: { 'Content-Type': 'application/json' },
+            withCredentials: true,
+          }
+        );
         localStorage.setItem('boardly_access_token', data.accessToken);
         localStorage.setItem('boardly_refresh_token', data.refreshToken);
-        
+
         // Update the original request's Authorization header
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(originalRequest);

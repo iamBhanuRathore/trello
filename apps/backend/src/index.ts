@@ -4,6 +4,7 @@ import { swagger } from '@elysiajs/swagger';
 import { env } from './lib/env';
 import { logger } from './lib/logger';
 import { db } from './db/index';
+import { connectRedis, disconnectRedis } from './redis';
 import { healthRoutes } from './modules/health/routes';
 import { authRoutes } from './modules/auth/routes';
 import { orgRoutes, inviteRoutes } from './modules/organizations/routes';
@@ -37,22 +38,37 @@ import { developerRoutes } from './modules/developer/routes';
 import { trashRoutes } from './modules/trash/routes';
 import { billingRoutes } from './modules/billing/routes';
 
-import { formatErrorResponse } from './lib/errors';
+import { formatErrorResponse, formatValidationError } from './lib/errors';
 import { sql } from 'drizzle-orm';
 
 // Ensure enum values and schema columns are up to date in the database on boot
 db.execute(sql`ALTER TYPE "org_member_role" ADD VALUE IF NOT EXISTS 'viewer'`).catch(() => {});
-db.execute(sql`ALTER TABLE IF EXISTS "sso_configurations" ADD COLUMN IF NOT EXISTS "workos_organization_id" varchar(255)`).catch(() => {});
-db.execute(sql`ALTER TABLE IF EXISTS "sso_configurations" ADD COLUMN IF NOT EXISTS "workos_connection_id" varchar(255)`).catch(() => {});
+db.execute(
+  sql`ALTER TABLE IF EXISTS "sso_configurations" ADD COLUMN IF NOT EXISTS "workos_organization_id" varchar(255)`
+).catch(() => {});
+db.execute(
+  sql`ALTER TABLE IF EXISTS "sso_configurations" ADD COLUMN IF NOT EXISTS "workos_connection_id" varchar(255)`
+).catch(() => {});
 
 // Setup event listeners
 setupNotificationListeners(db);
 setupWebhookDispatcher(db);
 setupAutomationEngine(db);
 
-const allowedOrigins = [
-  ...(env.DASHBOARD_URL?.split(',').map((s) => s.trim()) || [])
-];
+// Initialize Redis Pub/Sub cluster connection
+await connectRedis();
+
+// Handle graceful shutdown
+const shutdown = async (signal: string) => {
+  logger.info({ signal }, 'Shutting down gracefully...');
+  await disconnectRedis();
+  process.exit(0);
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+const allowedOrigins = [...(env.DASHBOARD_URL?.split(',').map((s) => s.trim()) || [])];
 
 const isAllowedOrigin = (origin: string | null): boolean => {
   if (!origin) return true;
@@ -105,10 +121,7 @@ const app = new Elysia()
   .onError(({ error, code, set }) => {
     if (code === 'VALIDATION') {
       set.status = 422;
-      return {
-        error: 'Validation failed',
-        details: error.message,
-      };
+      return formatValidationError(error);
     }
 
     if (code === 'NOT_FOUND') {
@@ -167,9 +180,6 @@ if (app.server) {
   setupRealtimeEventBus(app.server);
 }
 
-logger.info(
-  { host: app.server?.hostname, port: app.server?.port },
-  '🚀 Boardly API is running'
-);
+logger.info({ host: app.server?.hostname, port: app.server?.port }, '🚀 Boardly API is running');
 
 export type App = typeof app;

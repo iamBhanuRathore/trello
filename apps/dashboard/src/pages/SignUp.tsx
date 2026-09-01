@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, getApiErrorMessage } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
@@ -41,7 +41,7 @@ export function SignUp() {
       login(res.data);
       navigate('/', { replace: true });
     } catch (err: any) {
-      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to create account. Please try again.');
+      setError(getApiErrorMessage(err, 'Failed to create account. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -60,9 +60,7 @@ export function SignUp() {
             </div>
             <span className="text-2xl font-bold text-white tracking-tight">Boardly</span>
           </div>
-          <h1 className="text-4xl font-bold text-white leading-tight mb-4">
-            Start for free today
-          </h1>
+          <h1 className="text-4xl font-bold text-white leading-tight mb-4">Start for free today</h1>
           <p className="text-white/75 text-lg leading-relaxed">
             Set up your team workspace in seconds. No credit card required.
           </p>
@@ -80,7 +78,9 @@ export function SignUp() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground mb-1">Create your account</h2>
+            <h2 className="text-2xl font-bold tracking-tight text-foreground mb-1">
+              Create your account
+            </h2>
             <p className="text-sm text-muted-foreground">Get started with your team workspace</p>
           </div>
 
@@ -94,7 +94,9 @@ export function SignUp() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="signup-name" className="text-sm font-medium">Full name</Label>
+                <Label htmlFor="signup-name" className="text-sm font-medium">
+                  Full name
+                </Label>
                 <Input
                   id="signup-name"
                   placeholder="Jane Smith"
@@ -106,7 +108,9 @@ export function SignUp() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="signup-org" className="text-sm font-medium">Organization</Label>
+                <Label htmlFor="signup-org" className="text-sm font-medium">
+                  Organization
+                </Label>
                 <Input
                   id="signup-org"
                   placeholder="Acme Corp"
@@ -119,7 +123,9 @@ export function SignUp() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="signup-email" className="text-sm font-medium">Work email</Label>
+              <Label htmlFor="signup-email" className="text-sm font-medium">
+                Work email
+              </Label>
               <Input
                 id="signup-email"
                 type="email"
@@ -133,7 +139,9 @@ export function SignUp() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="signup-password" className="text-sm font-medium">Password</Label>
+              <Label htmlFor="signup-password" className="text-sm font-medium">
+                Password
+              </Label>
               <div className="relative">
                 <Input
                   id="signup-password"

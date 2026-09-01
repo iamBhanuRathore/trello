@@ -2,6 +2,7 @@ import { describe, it, expect } from 'bun:test';
 import {
   httpError,
   formatErrorResponse,
+  formatValidationError,
   handleRouteError,
   isSensitiveDatabaseMessage,
 } from './errors';
@@ -9,7 +10,8 @@ import {
 describe('Error Sanitization and Handling Utility', () => {
   describe('isSensitiveDatabaseMessage', () => {
     it('detects raw Drizzle failed query messages', () => {
-      const msg = 'Failed query: insert into "organization_members" ("id", "org_id") values ($1, $2)\nparams: foo, bar';
+      const msg =
+        'Failed query: insert into "organization_members" ("id", "org_id") values ($1, $2)\nparams: foo, bar';
       expect(isSensitiveDatabaseMessage(msg)).toBe(true);
     });
 
@@ -18,12 +20,16 @@ describe('Error Sanitization and Handling Utility', () => {
       expect(isSensitiveDatabaseMessage('update "cards" set title = $1')).toBe(true);
       expect(isSensitiveDatabaseMessage('delete from "refresh_tokens"')).toBe(true);
       expect(isSensitiveDatabaseMessage('relation "users" does not exist')).toBe(true);
-      expect(isSensitiveDatabaseMessage('invalid input value for enum org_member_role: "viewer"')).toBe(true);
+      expect(
+        isSensitiveDatabaseMessage('invalid input value for enum org_member_role: "viewer"')
+      ).toBe(true);
     });
 
     it('allows normal human-readable messages', () => {
       expect(isSensitiveDatabaseMessage('Please provide a valid email address.')).toBe(false);
-      expect(isSensitiveDatabaseMessage('User is already an active member of this organization.')).toBe(false);
+      expect(
+        isSensitiveDatabaseMessage('User is already an active member of this organization.')
+      ).toBe(false);
       expect(isSensitiveDatabaseMessage('Organization not found.')).toBe(false);
     });
   });
@@ -44,7 +50,10 @@ describe('Error Sanitization and Handling Utility', () => {
     });
 
     it('intercepts and sanitizes HttpError if message accidentally contains SQL query', () => {
-      const err = httpError(500, 'Failed query: insert into "organization_members" ("id") values (1)');
+      const err = httpError(
+        500,
+        'Failed query: insert into "organization_members" ("id") values (1)'
+      );
       const res = formatErrorResponse(err);
       expect(res.status).toBe(500);
       expect(res.body.error).toBe('An unexpected database error occurred. Please try again later.');
@@ -65,7 +74,9 @@ describe('Error Sanitization and Handling Utility', () => {
     });
 
     it('translates Postgres unique constraint code 23505 to human-readable message', () => {
-      const dbErr = Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
+      const dbErr = Object.assign(new Error('duplicate key value violates unique constraint'), {
+        code: '23505',
+      });
       const res = formatErrorResponse(dbErr);
       expect(res.status).toBe(409);
       expect(res.body.error).toBe('A record with this information already exists in the system.');
@@ -79,7 +90,9 @@ describe('Error Sanitization and Handling Utility', () => {
     });
 
     it('translates Postgres invalid identifier code 22P02 to human-readable message', () => {
-      const dbErr = Object.assign(new Error('invalid input syntax for type uuid'), { code: '22P02' });
+      const dbErr = Object.assign(new Error('invalid input syntax for type uuid'), {
+        code: '22P02',
+      });
       const res = formatErrorResponse(dbErr);
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('Invalid identifier or parameter format provided.');
@@ -100,6 +113,49 @@ describe('Error Sanitization and Handling Utility', () => {
       const body = handleRouteError(err, setObj);
       expect(setObj.status).toBe(404);
       expect(body).toEqual({ error: 'User profile not found.' });
+    });
+  });
+
+  describe('formatValidationError', () => {
+    it('formats raw stringified TypeBox email error into human-readable message', () => {
+      const typeBoxError = {
+        message: JSON.stringify({
+          type: 'validation',
+          on: 'body',
+          property: '/email',
+          message: "Expected string to match 'email' format",
+          errors: [
+            {
+              path: '/email',
+              message: "Expected string to match 'email' format",
+            },
+          ],
+        }),
+      };
+
+      const res = formatValidationError(typeBoxError);
+      expect(res.error).toBe('Validation failed');
+      expect(res.message).toBe(
+        "Field 'email' must be a valid email address (e.g. user@example.com)"
+      );
+      expect(res.details?.[0]?.field).toBe('email');
+    });
+
+    it('formats missing required property errors cleanly', () => {
+      const typeBoxError = {
+        message: JSON.stringify({
+          errors: [
+            {
+              path: '/password',
+              message: 'Expected required property',
+            },
+          ],
+        }),
+      };
+
+      const res = formatValidationError(typeBoxError);
+      expect(res.error).toBe('Validation failed');
+      expect(res.message).toBe("Field 'password' is required");
     });
   });
 });

@@ -1,151 +1,146 @@
 import { Elysia } from 'elysia';
 import { verifyAccessToken } from '../../middleware/auth';
 import { eventBus } from '../../lib/event-bus';
+import { presenceStore, initializeRedisPubSub, onRedisBroadcast, PresenceUser } from '../../redis';
 
-interface PresenceUser {
-  id: string;
-  name: string;
-  email: string;
-  avatarUrl?: string | null;
-  activeCardId?: string | null;
-  isTypingCardId?: string | null;
-  lastActiveAt: number;
-}
+export type { PresenceUser };
 
-// In-memory presence map: boardId -> (userId -> PresenceUser)
-const boardPresence = new Map<string, Map<string, PresenceUser>>();
+export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
+  async open(ws) {
+    // Validate token
+    const token = (ws.data.query as any)?.token;
+    if (!token) {
+      ws.send({ type: 'error', message: 'Missing token' });
+      ws.close();
+      return;
+    }
 
-export const realtimeRoutes = new Elysia({ prefix: '/realtime' })
-  .ws('/ws', {
-    async open(ws) {
-      // Validate token
-      const token = (ws.data.query as any)?.token;
-      if (!token) {
-        ws.send({ type: 'error', message: 'Missing token' });
-        ws.close();
-        return;
-      }
+    try {
+      const payload = await verifyAccessToken(token);
+      (ws.data as any).userId = payload.userId;
+      (ws.data as any).subscribedBoards = new Set<string>();
+    } catch {
+      ws.send({ type: 'error', message: 'Invalid token' });
+      ws.close();
+      return;
+    }
+  },
+  async message(ws, message: any) {
+    if (!message || typeof message !== 'object') return;
 
-      try {
-        const payload = await verifyAccessToken(token);
-        (ws.data as any).userId = payload.userId;
-        (ws.data as any).subscribedBoards = new Set<string>();
-      } catch (e) {
-        ws.send({ type: 'error', message: 'Invalid token' });
-        ws.close();
-        return;
-      }
-    },
-    message(ws, message: any) {
-      if (!message || typeof message !== 'object') return;
+    const userId = (ws.data as any).userId;
+    const subscribedBoards = (ws.data as any).subscribedBoards as Set<string>;
 
-      const userId = (ws.data as any).userId;
-      const subscribedBoards = (ws.data as any).subscribedBoards as Set<string>;
+    // 1. Subscribe to Board & Register Presence
+    if (message.action === 'subscribe' && message.boardId) {
+      const boardId = message.boardId;
+      const topic = `board:${boardId}`;
+      ws.subscribe(topic);
+      subscribedBoards?.add(boardId);
 
-      // 1. Subscribe to Board & Register Presence
-      if (message.action === 'subscribe' && message.boardId) {
-        const boardId = message.boardId;
-        const topic = `board:${boardId}`;
-        ws.subscribe(topic);
-        subscribedBoards?.add(boardId);
+      const userPresence: PresenceUser = {
+        id: userId,
+        name: message.user?.name || 'Team Member',
+        email: message.user?.email || '',
+        avatarUrl: message.user?.avatarUrl || null,
+        lastActiveAt: Date.now(),
+      };
 
-        if (!boardPresence.has(boardId)) {
-          boardPresence.set(boardId, new Map());
-        }
+      await presenceStore.setUser(boardId, userId, userPresence);
 
-        const userPresence: PresenceUser = {
-          id: userId,
-          name: message.user?.name || 'Team Member',
-          email: message.user?.email || '',
-          avatarUrl: message.user?.avatarUrl || null,
-          lastActiveAt: Date.now(),
-        };
+      ws.send({ type: 'subscribed', topic });
 
-        boardPresence.get(boardId)!.set(userId, userPresence);
+      // Broadcast updated presence list to all board subscribers
+      const activeUsers = await presenceStore.getUsers(boardId);
+      await eventBus.broadcast(topic, 'presence:update', {
+        boardId,
+        users: activeUsers,
+      });
+    }
 
-        ws.send({ type: 'subscribed', topic });
+    // 2. Active Card Focus / Viewing
+    else if (message.action === 'card_focus' && message.boardId) {
+      const boardId = message.boardId;
+      const topic = `board:${boardId}`;
 
-        // Broadcast presence list to all board subscribers
-        const activeUsers = Array.from(boardPresence.get(boardId)!.values());
-        eventBus.emit('broadcast', {
-          topic,
-          event: 'presence:update',
-          payload: { boardId, users: activeUsers },
+      const updated = await presenceStore.updateUser(boardId, userId, {
+        activeCardId: message.cardId || null,
+      });
+
+      if (updated) {
+        await eventBus.broadcast(topic, 'presence:card_focus', {
+          boardId,
+          userId,
+          cardId: message.cardId,
         });
       }
+    }
 
-      // 2. Active Card Focus / Viewing
-      else if (message.action === 'card_focus' && message.boardId) {
-        const boardId = message.boardId;
-        const topic = `board:${boardId}`;
-        const boardMap = boardPresence.get(boardId);
+    // 3. Typing Indicators
+    else if (message.action === 'typing' && message.boardId) {
+      const boardId = message.boardId;
+      const topic = `board:${boardId}`;
 
-        if (boardMap && boardMap.has(userId)) {
-          const u = boardMap.get(userId)!;
-          u.activeCardId = message.cardId || null;
-          u.lastActiveAt = Date.now();
+      const updated = await presenceStore.updateUser(boardId, userId, {
+        isTypingCardId: message.isTyping ? message.cardId : null,
+      });
 
-          eventBus.emit('broadcast', {
-            topic,
-            event: 'presence:card_focus',
-            payload: { boardId, userId, cardId: message.cardId },
-          });
-        }
+      if (updated) {
+        await eventBus.broadcast(topic, 'presence:typing', {
+          boardId,
+          userId,
+          userName: updated.name,
+          cardId: message.cardId,
+          isTyping: !!message.isTyping,
+        });
       }
+    }
 
-      // 3. Typing Indicators
-      else if (message.action === 'typing' && message.boardId) {
-        const boardId = message.boardId;
-        const topic = `board:${boardId}`;
-        const boardMap = boardPresence.get(boardId);
+    // 4. Heartbeat Keep-Alive
+    else if (message.action === 'heartbeat' && message.boardId) {
+      const boardId = message.boardId;
+      await presenceStore.refreshUser(boardId, userId);
+      ws.send({ type: 'heartbeat:ack', boardId, timestamp: Date.now() });
+    }
+  },
+  async close(ws) {
+    const userId = (ws.data as any)?.userId;
+    const subscribedBoards = (ws.data as any)?.subscribedBoards as Set<string>;
 
-        if (boardMap && boardMap.has(userId)) {
-          const u = boardMap.get(userId)!;
-          u.isTypingCardId = message.isTyping ? message.cardId : null;
-
-          eventBus.emit('broadcast', {
-            topic,
-            event: 'presence:typing',
-            payload: {
-              boardId,
-              userId,
-              userName: u.name,
-              cardId: message.cardId,
-              isTyping: !!message.isTyping,
-            },
-          });
-        }
+    if (userId && subscribedBoards) {
+      for (const boardId of subscribedBoards) {
+        await presenceStore.removeUser(boardId, userId);
+        const activeUsers = await presenceStore.getUsers(boardId);
+        await eventBus.broadcast(`board:${boardId}`, 'presence:update', {
+          boardId,
+          users: activeUsers,
+        });
       }
-    },
-    close(ws) {
-      const userId = (ws.data as any)?.userId;
-      const subscribedBoards = (ws.data as any)?.subscribedBoards as Set<string>;
-
-      if (userId && subscribedBoards) {
-        for (const boardId of subscribedBoards) {
-          const boardMap = boardPresence.get(boardId);
-          if (boardMap) {
-            boardMap.delete(userId);
-            if (boardMap.size === 0) {
-              boardPresence.delete(boardId);
-            }
-            const activeUsers = Array.from(boardMap.values());
-            eventBus.emit('broadcast', {
-              topic: `board:${boardId}`,
-              event: 'presence:update',
-              payload: { boardId, users: activeUsers },
-            });
-          }
-        }
-      }
-    },
-  });
+    }
+  },
+});
 
 export function setupRealtimeEventBus(server: any) {
+  // 1. Hook up Redis Pub/Sub receiver to local server publish
+  initializeRedisPubSub().catch(() => {});
+  onRedisBroadcast(({ topic, event, payload }) => {
+    if (server) {
+      server.publish(topic, JSON.stringify({ type: event, payload }));
+    }
+  });
+
+  // 2. In-Memory fallback listener when Redis is inactive or broadcasting locally
   eventBus.on('broadcast', ({ topic, event, payload }) => {
     if (server) {
       server.publish(topic, JSON.stringify({ type: event, payload }));
     }
   });
-}
 
+  // 3. Start background presence sweeper with automatic eviction broadcast
+  presenceStore.startSweeper(15000, async (boardId, remainingUsers) => {
+    await eventBus.broadcast(`board:${boardId}`, 'presence:update', {
+      boardId,
+      users: remainingUsers,
+    });
+  });
+}

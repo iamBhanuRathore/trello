@@ -24,11 +24,42 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
-### 2026-08-29 — WorkOS OAuth & Enterprise Single Sign-On (SSO) Architecture
+### 2026-09-02 — Human-Readable Schema Validation Error Formatting
+
+**Context:** Elysia/TypeBox validation failures on route request bodies/parameters returned raw, unparsed internal schema JSON strings containing AST trees (`{ "type": 50, "schema": ... }`) in the `details` field, confusing API clients and exposing internal framework serialization.
+
+**Decision:**
+
+1. Created `formatValidationError` in `apps/backend/src/lib/errors.ts` to parse TypeBox error trees into clean, user-friendly error objects with clear field names and messages (e.g. `Field 'email' must be a valid email address (e.g. user@example.com)` or `Field 'password' is required`).
+2. Integrated `formatValidationError` into the global Elysia `.onError` handler (`apps/backend/src/index.ts`) for `code === 'VALIDATION'`.
+3. Added unit tests in `src/lib/errors.test.ts`.
+
+**Alternatives considered:** Returning raw `error.message` strings directly (rejected — unreadable and noisy for API consumers).
+
+**Consequences:** Frontend and API clients receive clean, predictable `{ error, message, details: [{ field, message }] }` error responses for invalid inputs.
+
+---
+
+**Context:** WebSocket presence (`boardPresence` Map) and board mutation events (`eventBus`) ran in-memory per Node/Bun process, preventing horizontal scaling across multi-instance backend clusters or containers.
+
+**Decision:**
+
+1. Created an isolated domain module `apps/backend/src/redis/` containing `client.ts`, `pubsub.ts`, `presence.ts`, and `index.ts`.
+2. Implemented `PresenceStore` interface with `RedisPresenceStore` (Redis Hash `presence:board:{boardId}` + Sorted Set TTL tracking `presence:board:{boardId}:ttl` + active board indexing) and `InMemoryPresenceStore` fallback.
+3. Implemented `RedisPubSub` broker with separate `pubClient` and `subClient` ioredis connections listening on `boardly:realtime` and bridging events into local Bun WebSocket `server.publish()`.
+4. Added periodic background TTL sweeper and WebSocket heartbeat keep-alive (`action: 'heartbeat'` every 25s) from `useRealtimeBoard.ts`.
+5. Supported transparent graceful degradation: if Redis is disconnected or `REDIS_DISABLED=true`, the backend automatically falls back to single-instance in-memory event bus and presence storage.
+
+**Alternatives considered:** Single connection for pub/sub (rejected — violates Redis Pub/Sub protocol where subscriber connections enter dedicated subscriber state); raw in-memory only (rejected — prevents clustering).
+
+**Consequences:** Backend can now horizontally scale across any number of stateless Bun/Node instances behind load balancers with real-time presence and board sync shared across all cluster nodes.
+
+---
 
 **Context:** Enterprise users require SAML 2.0 / OIDC Single Sign-On with Okta, Azure AD (Entra ID), and Google Workspace alongside individual developer Google OAuth sign-in, while maintaining backward-compatible email/password authentication for platform Super Admins, seed accounts, and invited team members.
 
 **Decision:**
+
 1. Integrated `@workos-inc/node` SDK for authorization URL generation and code exchange across Google OAuth and enterprise SSO domains (`apps/backend/src/modules/auth/workos.service.ts`).
 2. Added `/v1/auth/workos/google-url`, `/v1/auth/workos/sso-url`, and `/v1/auth/workos/callback` endpoints, enabling Just-In-Time (JIT) user provisioning and automatic domain-to-organization membership resolution.
 3. Enhanced frontend login UI (`Login.tsx`) with "Continue with Google" button and domain-routed "Enterprise Single Sign-On (SSO)" expandable form, paired with a dedicated callback handler route (`/auth/callback` in `AuthCallback.tsx`).
@@ -43,6 +74,7 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Context:** Database query errors and unhandled exceptions were directly leaking internal SQL queries, parameter payloads, and table schemas in HTTP responses to the frontend. Furthermore, inviting members with the `'viewer'` role failed because `'viewer'` was omitted from the PostgreSQL `org_member_role` enum type.
 
 **Decision:**
+
 1. Created a centralized error handling and sanitization utility (`apps/backend/src/lib/errors.ts`) with `formatErrorResponse` and `handleRouteError`. All internal database queries, ORM dumps, and unhandled 500 errors are masked to clear human-readable messages (e.g. 409 Conflict, 400 Bad Request, or sanitized 500) while logging full query and stack diagnostics to server logs via `logger.error`.
 2. Added `'viewer'` to `org_member_role` enum in PostgreSQL and Drizzle schema, updated `OrgMemberRole` shared TypeScript enums, and wrapped `inviteMember` in database transactions with strict input validation.
 
@@ -261,6 +293,7 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Context:** The platform requires an automated, self-serve per-head SaaS billing engine that lets organizations purchase and adjust seats without manual sales interaction, while preventing concurrency race conditions, preserving unbilled guest collaboration, and handling downgrades safely.
 
 **Decision:** Implemented an industry-standard per-seat billing architecture (Slack/Linear standard):
+
 1. **Atomic Concurrency Locking**: Member invitations and seat adjustments execute under Postgres `SELECT ... FOR UPDATE` row-level locks on `subscriptions`.
 2. **Single Source of Truth Webhook Engine**: Subscription states (`seatCount`, `planId`, `status`, `currentPeriodEnd`) are updated strictly through cryptographic Stripe webhooks with database idempotency logs (`billing_events`).
 3. **Proration Isolation**:
@@ -274,4 +307,3 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** Flat-tier subscription pricing (rejected — does not scale with organization size, loses expansion revenue), manual seat approval workflow (rejected — introduces high friction for buyer organizations).
 
 **Consequences:** Complete self-serve upgrade capability for organizations, mathematically sound proration tracking, zero seat-oversubscription race conditions, and clear upgrade triggers.
-

@@ -46,9 +46,17 @@ export function isSensitiveDatabaseMessage(msg: string): boolean {
  * Sanitizes any error into a safe, human-readable format without leaking SQL queries,
  * parameters, or internal file paths to the client.
  */
-export function formatErrorResponse(err: unknown): { status: number; body: { error: string; details?: any } } {
+export function formatErrorResponse(err: unknown): {
+  status: number;
+  body: { error: string; details?: any };
+} {
   // If it is an explicit HttpError with a custom status code
-  if (err && typeof err === 'object' && 'status' in err && typeof (err as any).status === 'number') {
+  if (
+    err &&
+    typeof err === 'object' &&
+    'status' in err &&
+    typeof (err as any).status === 'number'
+  ) {
     const status = (err as any).status;
     const rawMessage = (err as any).message || 'Request failed';
     const details = (err as any).details;
@@ -66,7 +74,10 @@ export function formatErrorResponse(err: unknown): { status: number; body: { err
       logger.error({ err }, 'Server error (5xx)');
       return {
         status,
-        body: { error: rawMessage || 'Internal server error', ...(details !== undefined ? { details } : {}) },
+        body: {
+          error: rawMessage || 'Internal server error',
+          ...(details !== undefined ? { details } : {}),
+        },
       };
     }
 
@@ -129,6 +140,95 @@ export function formatErrorResponse(err: unknown): { status: number; body: { err
   return {
     status: 500,
     body: { error: 'An unexpected error occurred while processing your request.' },
+  };
+}
+
+/**
+ * Formats Elysia/TypeBox validation errors into a clean, human-readable JSON response.
+ */
+export function formatValidationError(error: any): {
+  error: string;
+  message: string;
+  details?: Array<{ field: string; message: string }>;
+} {
+  try {
+    let parsed: any = null;
+
+    if (
+      typeof error?.message === 'string' &&
+      (error.message.startsWith('{') || error.message.startsWith('['))
+    ) {
+      parsed = JSON.parse(error.message);
+    } else if (error && typeof error === 'object') {
+      parsed = error;
+    }
+
+    if (parsed) {
+      const rawErrors = Array.isArray(parsed.errors)
+        ? parsed.errors
+        : Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(error?.all)
+            ? error.all
+            : [];
+
+      const issues: Array<{ field: string; message: string }> = [];
+
+      for (const err of rawErrors) {
+        const rawPath = err.path || err.property || '';
+        const field = rawPath.replace(/^\//, '') || 'request';
+        let msg = err.summary || err.message || 'Invalid value';
+
+        // Clean up common TypeBox phrases into clear messages
+        if (
+          msg.includes("Expected string to match 'email' format") ||
+          msg.includes('should be email')
+        ) {
+          msg = `Field '${field}' must be a valid email address (e.g. user@example.com)`;
+        } else if (
+          msg.includes('Expected required property') ||
+          msg.includes('should have required property')
+        ) {
+          msg = `Field '${field}' is required`;
+        } else if (
+          msg.includes("Expected string to match 'uuid' format") ||
+          msg.includes('should be uuid')
+        ) {
+          msg = `Field '${field}' must be a valid UUID`;
+        } else if (msg.includes('Expected string to match') || msg.includes('Expected')) {
+          msg = `Field '${field}' has an invalid format or value`;
+        }
+
+        issues.push({ field, message: msg });
+      }
+
+      if (issues.length > 0 && issues[0]) {
+        return {
+          error: 'Validation failed',
+          message: issues[0].message,
+          details: issues,
+        };
+      }
+
+      if (parsed.summary && typeof parsed.summary === 'string') {
+        return {
+          error: 'Validation failed',
+          message: parsed.summary,
+        };
+      }
+    }
+  } catch {
+    // Fall back to clean default if parsing fails
+  }
+
+  const fallbackMsg =
+    typeof error?.message === 'string' && !error.message.startsWith('{')
+      ? error.message
+      : 'Invalid request payload';
+
+  return {
+    error: 'Validation failed',
+    message: fallbackMsg,
   };
 }
 

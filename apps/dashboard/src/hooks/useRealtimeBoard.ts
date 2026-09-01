@@ -108,7 +108,15 @@ export function useRealtimeBoard(boardId: string | undefined) {
       console.warn('Realtime WS error:', err);
     };
 
+    // 4. Heartbeat keep-alive every 25s to maintain presence TTL
+    const heartbeatTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action: 'heartbeat', boardId }));
+      }
+    }, 25000);
+
     return () => {
+      clearInterval(heartbeatTimer);
       ws.close();
       wsRef.current = null;
     };

@@ -10,15 +10,27 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
   // Database
-  DATABASE_URL: z.string().url().default('postgresql://boardly:boardly_dev@localhost:5432/boardly_dev'),
+  DATABASE_URL: z
+    .string()
+    .url()
+    .default('postgresql://boardly:boardly_dev@localhost:5432/boardly_dev'),
   DATABASE_TEST_URL: z.string().url().optional(),
 
   // Redis
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  REDIS_CHANNEL: z.string().default('boardly:realtime'),
+  REDIS_DISABLED: z.coerce.boolean().default(false),
+  PRESENCE_TTL_SECONDS: z.coerce.number().default(60),
 
   // Auth
-  JWT_SECRET: z.string().min(32).default('ZptMgi0ZAemUmS3Ku3COjAWHgBcIylR0zvZiN7YtmARoz8BbIHnNluqfAZkr/6Z3'),
-  REFRESH_TOKEN_SECRET: z.string().min(32).default('ayUfgRGoM07P8GvHIBN1Movg5hwx33/jZSQqYMC6luDz+9+84VG48EgbwT5HGX2v'),
+  JWT_SECRET: z
+    .string()
+    .min(32)
+    .default('ZptMgi0ZAemUmS3Ku3COjAWHgBcIylR0zvZiN7YtmARoz8BbIHnNluqfAZkr/6Z3'),
+  REFRESH_TOKEN_SECRET: z
+    .string()
+    .min(32)
+    .default('ayUfgRGoM07P8GvHIBN1Movg5hwx33/jZSQqYMC6luDz+9+84VG48EgbwT5HGX2v'),
   JWT_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('30d'),
 
