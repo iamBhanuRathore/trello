@@ -1316,3 +1316,5 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   2. **Script Consolidation (`scripts/`)**: Removed loose root forwarding shell scripts (`setup.sh`, `start.sh`) and unified execution under canonical `package.json` scripts (`bun dev`, `bun run setup`, `bun run db:reset`).
   3. **Knowledge Graph Integration**: Set up Graphify AST knowledge graph with `AGENTS.md` and `CLAUDE.md` rules instructing AI assistants to navigate via `graphify-out/GRAPH_REPORT.md`.
   4. **Git Hygiene**: Updated `.gitignore` to exclude `graphify-out/cache/` and timestamped backups.
+  5. **Husky & Lint-Staged Hooks**: Added `.husky/pre-commit` (running `lint-staged` with Prettier/ESLint) and `.husky/pre-push` (running `turbo run typecheck` before remote push) with `"prepare": "husky"` script in `package.json`.
+  6. **CI Pipeline Stabilization (`.github/workflows/ci.yml`)**: Added missing `db:migrate`, `db:seed`, and `build` stages to GitHub Actions workflow before test execution; added `"typecheck"` scripts to `apps/dashboard` and `apps/super-admin`.

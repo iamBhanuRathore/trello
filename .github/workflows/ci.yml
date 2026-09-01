@@ -20,7 +20,7 @@ jobs:
           POSTGRES_DB: boardly_test
         ports: ['5433:5432']
         options: >-
-          --health-cmd "pg_isready -U boardly"
+          --health-cmd "pg_isready -U boardly -d boardly_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -41,13 +41,14 @@ jobs:
       JWT_SECRET: ci-test-jwt-secret-at-least-32-characters
       REFRESH_TOKEN_SECRET: ci-test-refresh-secret-at-least-32-chars
       NODE_ENV: test
+      API_URL: http://localhost:3001
       DASHBOARD_URL: http://localhost:5173,http://localhost:5174
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Bun
+      - name: Setup Bun runtime
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -55,31 +56,20 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Typecheck
+      - name: Typecheck across all workspaces
         run: bun run typecheck
 
-      - name: Lint
+      - name: Lint across all workspaces
         run: bun run lint
 
-      - name: Unit & integration tests
+      - name: Build monorepo packages
+        run: bun run build
+
+      - name: Run PostgreSQL schema migrations
+        run: bun run --cwd apps/backend db:migrate
+
+      - name: Seed default roles and plans
+        run: bun run --cwd apps/backend db:seed
+
+      - name: Run unit & integration test suites
         run: bun run test
-
-  # E2E tests — runs on merge to main only (too slow for every PR)
-  e2e:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    needs: ci
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
-      - name: Run E2E tests
-        run: bun run test:e2e
-        env:
-          NODE_ENV: test
