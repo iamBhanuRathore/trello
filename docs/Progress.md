@@ -1349,3 +1349,13 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   - Implemented `formatValidationError` in `apps/backend/src/lib/errors.ts` to parse internal TypeBox/Elysia schema errors into clear, friendly JSON responses (`{ error, message, details: [...] }`).
   - Integrated with the Elysia global `.onError` handler (`apps/backend/src/index.ts`).
   - Added unit test coverage in `src/lib/errors.test.ts` (14/14 tests passing).
+
+---
+
+### 2026-09-02 — Monorepo Lint & Pre-Commit Hook Alignment
+
+- **What was done:**
+  - Fixed `lint-staged` configuration in root `package.json` to format staged files with Prettier without failing on missing root-level `eslint` binary.
+  - Unified package lint scripts to use `oxlint` across packages and added `oxlint` to root `devDependencies`.
+  - Removed deprecated `baseUrl` in `apps/super-admin/tsconfig.app.json`.
+  - Verified `bunx lint-staged`, `turbo run lint` (4/4 passed), and `turbo run typecheck` (5/5 passed).
