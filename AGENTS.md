@@ -13,3 +13,8 @@
 
 ## 3. Documentation Updates Rule
 - Keep markdown documents in `docs/` (e.g. `Progress.md`, `Decisions.md`) updated after implementing significant features or architectural changes.
+
+## 4. Response Conciseness & Output Token Reduction (STRICT)
+- **Zero Fluff**: Skip conversational filler, preamble, self-evident explanations, and redundant summaries.
+- **Direct & Terse**: Provide code diffs/actions immediately with compact bullet points.
+- **Surgical Edits**: Never rewrite large files or re-quote unchanged code. Focus strictly on modified lines.

@@ -1,0 +1,33 @@
+# ─── Large Lockfiles & Generated Bundles ──────────────────────────────────────
+bun.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ─── Large Database Migration Snapshots ───────────────────────────────────────
+apps/backend/src/db/migrations/meta/**
+
+# ─── Large Graphify Artifacts ────────────────────────────────────────────────
+graphify-out/graph.json
+graphify-out/.graphify_analysis.json
+graphify-out/cache/**
+graphify-out/202*/**
+
+# ─── Build Artifacts & Caches ────────────────────────────────────────────────
+dist/**
+build/**
+.turbo/**
+.next/**
+out/**
+coverage/**
+*.tsbuildinfo
+*.log
+
+# ─── Media & Binary Blobs ────────────────────────────────────────────────────
+*.svg
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.ico

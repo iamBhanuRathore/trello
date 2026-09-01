@@ -1318,3 +1318,4 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   4. **Git Hygiene**: Updated `.gitignore` to exclude `graphify-out/cache/` and timestamped backups.
   5. **Husky & Lint-Staged Hooks**: Added `.husky/pre-commit` (running `lint-staged` with Prettier/ESLint) and `.husky/pre-push` (running `turbo run typecheck` before remote push) with `"prepare": "husky"` script in `package.json`.
   6. **CI Pipeline Stabilization (`.github/workflows/ci.yml`)**: Added missing `db:migrate`, `db:seed`, and `build` stages to GitHub Actions workflow before test execution; added `"typecheck"` scripts to `apps/dashboard` and `apps/super-admin`.
+  7. **AI Conciseness Directives**: Configured `AGENTS.md` and `CLAUDE.md` with strict output token minimization rules (zero fluff, direct diffs, terse bullet points).
