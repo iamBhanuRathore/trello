@@ -256,17 +256,22 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ---
 
-### 2026-08-30 — Multi-Tier Cascading Transactional Email Infrastructure (Resend → AWS SES → Personal SMTP → Dev Console)
+### 2026-08-30 — Enterprise Per-Head (Per-Seat) SaaS Billing & Fair Proration Engine (v2)
 
-**Context:** The platform requires high-deliverability transactional emails (invitations, password setup, onboarding, security alerts). Enterprise customers and self-hosted deployments have varying email infrastructure capabilities and preferences.
+**Context:** The platform requires an automated, self-serve per-head SaaS billing engine that lets organizations purchase and adjust seats without manual sales interaction, while preventing concurrency race conditions, preserving unbilled guest collaboration, and handling downgrades safely.
 
-**Decision:** Implemented an automated 4-tier cascading email delivery pipeline:
-1. **Tier 1 (Primary): Resend (`RESEND_API_KEY`)** — Highest deliverability and modern developer experience for SaaS deployments.
-2. **Tier 2 (Fallback 1): Amazon SES (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SES_REGION`)** — High-volume cost-effective cloud deliverability.
-3. **Tier 3 (Fallback 2): Personal SMTP Server (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`)** — Self-hosted or internal corporate mail gateway support.
-4. **Tier 4 (Dev Fallback): Local Console Logger** — Logs formatted HTML & plain-text payload directly to terminal when no provider is configured or all remote networks fail.
+**Decision:** Implemented an industry-standard per-seat billing architecture (Slack/Linear standard):
+1. **Atomic Concurrency Locking**: Member invitations and seat adjustments execute under Postgres `SELECT ... FOR UPDATE` row-level locks on `subscriptions`.
+2. **Single Source of Truth Webhook Engine**: Subscription states (`seatCount`, `planId`, `status`, `currentPeriodEnd`) are updated strictly through cryptographic Stripe webhooks with database idempotency logs (`billing_events`).
+3. **Proration Isolation**:
+   - Seat additions trigger immediate proration via `updateSubscriptionSeatQuantity` (`proration_behavior: 'create_prorations'`).
+   - Seat decreases are scheduled at the period boundary via `scheduleSubscriptionSeatDecrease` (`subscription_schedules` with `proration_behavior: 'none'`), removing zero premature credits.
+4. **Slack-Style Fair Billing**: Deactivating members retains their paid seat as a **Vacant Seat**, allowing replacement colleagues to be onboarded at $0 proration.
+5. **Capped Guest Model**: Unbilled viewers are capped per tier (Free: 3 guests, Pro: 10 guests/seat, Business: 25 guests/seat, Enterprise: unlimited), with additional viewers billed via `$3/guest/mo` overage line items.
+6. **Downgrade Member Gate**: Blocks cancellation if active billable members exceed 5 on Free plan downgrade. If bypassed externally on Stripe, puts the subscription in `past_due_downgrade_pending` and alerts administrators.
+7. **Enterprise Invoicing**: High-tier enterprise contracts route through sales-assisted Stripe Invoicing (`send_invoice`, NET-30/60) rather than self-serve card checkout.
 
-**Alternatives considered:** Single-provider locking (e.g. only SMTP or only SES) — rejected because it creates vendor lock-in and breaks local dev without credentials.
+**Alternatives considered:** Flat-tier subscription pricing (rejected — does not scale with organization size, loses expansion revenue), manual seat approval workflow (rejected — introduces high friction for buyer organizations).
 
-**Consequences:** Zero configuration required for development; maximum reliability and deliverability in production with automatic fallback across providers.
+**Consequences:** Complete self-serve upgrade capability for organizations, mathematically sound proration tracking, zero seat-oversubscription race conditions, and clear upgrade triggers.
 

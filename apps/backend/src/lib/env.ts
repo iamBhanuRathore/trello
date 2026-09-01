@@ -35,6 +35,11 @@ const envSchema = z.object({
   // Stripe (billing — optional at dev time)
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PRO_MONTHLY_PRICE_ID: z.string().optional(),
+  STRIPE_PRO_ANNUAL_PRICE_ID: z.string().optional(),
+  STRIPE_BUSINESS_MONTHLY_PRICE_ID: z.string().optional(),
+  STRIPE_BUSINESS_ANNUAL_PRICE_ID: z.string().optional(),
+  STRIPE_GUEST_OVERAGE_PRICE_ID: z.string().optional(),
 
   // Storage (S3-compatible — optional at dev time)
   STORAGE_BUCKET: z.string().optional(),

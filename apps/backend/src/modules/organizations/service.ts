@@ -15,12 +15,8 @@ import {
   auditLog,
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
-import {
-  renderInviteEmail,
-  renderAccountDeactivatedEmail,
-  renderAccountReactivatedEmail,
-} from '../../lib/emailTemplates';
-
+import { renderInviteEmail, renderAccountDeactivatedEmail, renderAccountReactivatedEmail } from '../../lib/emailTemplates';
+import { checkAndReserveSeatSlot } from '../billing/service';
 import { httpError } from '../../lib/errors';
 export { httpError };
 
@@ -185,6 +181,17 @@ export async function inviteMember(
       .where(and(eq(workspaces.organizationId, orgId), isNull(workspaces.deletedAt)));
     const validSet = new Set(existingWorkspaces.map((w) => w.id));
     validWorkspaceIds = workspaceIds.filter((id) => validSet.has(id));
+  }
+
+  // Check seat capacity and guest quotas
+  const seatCheck = await checkAndReserveSeatSlot(orgId, normalizedRole);
+  if (!seatCheck.allowed) {
+    if (seatCheck.requiresProration) {
+      throw httpError(402, seatCheck.message || 'Seat limit reached. Adding a billable member requires seat expansion.');
+    }
+    if (seatCheck.requiresGuestOverage) {
+      throw httpError(402, seatCheck.message || 'Guest limit reached on your plan.');
+    }
   }
 
   const result = await db.transaction(async (tx) => {

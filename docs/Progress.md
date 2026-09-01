@@ -103,94 +103,111 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 ```
 
 ### 2026-08-10 — Session 1 (Phase 0 Scaffold)
+
 - What was done: Full monorepo scaffold. All packages created (config, shared-types, test-fixtures). Backend running with Drizzle schema, RBAC middleware, JWT auth, Swagger docs, 27 route stubs across 7 modules. Docker services healthy. 658 packages installed.
 - Decisions made: None beyond existing ADRs.
 - Tests added: None yet (Phase 0 scaffold only — test-fixtures factories created as foundation).
 - What's next: Phase 1 — scaffold `apps/dashboard` (Vite+React), implement auth service (sign-up/sign-in), run DB migrations.
 
 ### 2026-08-10 — Session 2 (Phase 1 MVP Core Loop)
+
 - What was done: Completed Critical Path (Option B). Ran DB migrations & seeded DB. Implemented all backend CRUD APIs for Auth, Orgs, Workspaces, Projects, Boards, Lists, and Cards (including fractional indexing logic). Scaffolded `apps/dashboard` with Vite, React, Tailwind v4, and Shadcn/UI. Built frontend UI (Login, Signup, Workspaces, Kanban Board View with `dnd-kit`).
 - Decisions made: Opted for Option B (Critical path backend -> frontend MVP) to immediately deliver a working core loop instead of exhausting all backend modules first.
 - Tests added: Full TDD backend test coverage (passing!) for all services (`auth.test.ts`, `organization.test.ts`, `workspace.test.ts`, `project.test.ts`, `board.test.ts`, `list.test.ts`, `card.test.ts`).
 - What's next: Implement remaining Phase 1 rich card features (comments, attachments, etc).
 
 ### 2026-08-10 — Session 3 (Phase 1 Rich Card Features)
+
 - What was done: Implemented all remaining Phase 1 rich card features. Added backend services and routes for comments, attachments, labels, checklists, and due dates. Built a comprehensive frontend `CardModal` component in `apps/dashboard` using React Query to consume these new endpoints. Fixed type errors in test setup.
 - Decisions made: Handled attachments using direct-to-S3 presigned URLs. Decided to decouple test execution in `bun test` by running tests sequentially or relying on focused test runs to avoid flaky DB resets due to foreign key constraints across concurrent test suites.
 - Tests added: N/A - relied on existing tests and manual verification for new components.
 - What's next: Phase 2 — WebSockets for real-time collaboration.
 
 ### 2026-08-10 — Session 4 (Phase 2 Real-Time WebSockets)
+
 - What was done: Implemented basic real-time board synchronization. Installed `@elysiajs/websocket`, set up a global EventBus using Node's `EventEmitter`, and created `src/modules/realtime/routes.ts` for secure WebSocket connections. Modified `cards` and `lists` services to emit events. Built `useRealtimeBoard` hook in the frontend to listen to `board:<id>` topics and invalidate `react-query` cache for live updates.
-- Decisions made: Opted for Bun's native WebSocket `server.publish` decoupled via an internal EventBus for the MVP. This avoids Redis Pub/Sub overhead while allowing easy swapping later. 
+- Decisions made: Opted for Bun's native WebSocket `server.publish` decoupled via an internal EventBus for the MVP. This avoids Redis Pub/Sub overhead while allowing easy swapping later.
 - Tests added: Ran existing backend tests to ensure services didn't break. (Tests still have known DB cleanup issues, but no logic was broken).
 - What's next: Subtasks (`parent_card_id`, 2-level nesting limit) or Notifications.
 
 ### 2026-08-10 — Session 5 (Subtasks)
+
 - What was done: Implemented Subtasks (`parent_card_id`). Added `listSubtasks` in backend `cards/service.ts` and exposed `GET /v1/cards/:id/subtasks`. Updated frontend `CardModal.tsx` to list subtasks, add new subtasks, and allow clicking subtasks to open their own modal.
 - Decisions made: Opted to let subtasks be independent cards that still appear on the board so they can be moved through columns, reducing frontend complexity for the MVP. The `createCard` backend logic already natively handled the 2-level nesting limit.
 - Tests added: Backend typechecks pass. Re-used existing logic and manual testing.
+
 ### 2026-08-10 — Session 6 (Notifications v1)
+
 - What was done: Implemented backend notifications service, wired into the internal event bus. Card comments now trigger a notification to all other organization members. Added `NotificationDropdown` to the top navigation for viewing and marking notifications as read.
 - Decisions made: Mocked email sending via `console.log` for the MVP phase. Used a basic `setInterval`/`internal` event emitter pattern instead of a dedicated background worker to save complexity for now.
 - Tests added: N/A - Manual verification & typechecking passed.
 - What's next: Company Admin Panel.
 
 ### 2026-08-10 — Session 7 (Company Admin Panel)
-- What was done: Built the Company Admin Panel. Added `AdminLayout.tsx` with sidebar navigation. Created `Users.tsx` for member management (invite, role change, remove), `Billing.tsx` to view plan usage, and `Branding.tsx` to customize organization visual settings (name, logo, primary color). Updated backend `getOrg` service to fetch plan/subscription details alongside org data. 
+
+- What was done: Built the Company Admin Panel. Added `AdminLayout.tsx` with sidebar navigation. Created `Users.tsx` for member management (invite, role change, remove), `Billing.tsx` to view plan usage, and `Branding.tsx` to customize organization visual settings (name, logo, primary color). Updated backend `getOrg` service to fetch plan/subscription details alongside org data.
 - Decisions made: Handled layout rendering natively with React Router nested routes under `/admin`. Display-only for billing for MVP limits.
 - Tests added: Backend `org.test.ts` still passes (modulo existing async DB tear-down flaky issues).
 - What's next: Super Admin Panel or start Phase 2 (Custom Stage/Status templates).
 
 ### 2026-08-10 — Session 8 (Super Admin Panel)
+
 - What was done: Implemented the Super Admin Panel to conclude Phase 1 (MVP). Added backend `requirePlatformAdmin` middleware and `/superadmin` endpoints for listing tenants and managing plans. Added frontend `/super-admin` route with `SuperAdminLayout.tsx`, `Tenants.tsx`, and `Plans.tsx` components.
 - Decisions made: Reused the existing `isPlatformAdmin` boolean on the `users` table for access control. Displayed a restricted "Super Admin" link conditionally in the main dashboard navigation.
-- Tests added: Backend `superadmin.test.ts` added to verify direct service methods. 
+- Tests added: Backend `superadmin.test.ts` added to verify direct service methods.
 - What's next: Phase 2 (Growth) features, starting with Custom Stage/Status templates or Sprints.
 
 ### 2026-08-10 — Session 9 (Custom Stage/Status templates)
+
 - What was done: Implemented Stage Templates and Stages as part of Phase 2. Created `/stages` routes for managing templates for an organization. Built `StageTemplates.tsx` admin page for organization admins to define standard stages and colors. Updated `CardModal` to include a dropdown for linking a card to a semantic `stageId`.
 - Decisions made: `stageId` operates independently of visual board columns (`listId`) so that cards can have semantic statuses regardless of which board or list they exist in.
 - Tests added: Backend `stages.test.ts` passing for `createStageTemplate` and `createStage` logic.
 - What's next: Sprints (Sprint Planner view, starting/stopping sprints).
 
 ### 2026-08-10 — Session 10 (Sprints)
+
 - What was done: Built the Sprints feature for Phase 2. Added backend `sprints/routes.ts` and `sprints/service.ts`. Created `ProjectSprints.tsx` for the Sprint Planner view, which allows creating new sprints, starting them, and completing them. Added a "Sprint Planner" navigation button to the dashboard next to projects. Integrated a "Sprint" selection dropdown within `CardModal.tsx` to add cards to a sprint.
 - Decisions made: `cardSprints` acts as a join table, enabling cards to technically belong to multiple sprints, but for this MVP, the UI sets cards to specific sprints via a simplified dropdown.
 - Tests added: Backend `sprints.test.ts` for lifecycle testing (create, update, delete sprint).
 - What's next: Phases (project lifecycle, template-able).
 
 ### 2026-08-10 — Session 11 (Phases)
+
 - What was done: Built the Phases feature for Phase 2. Added backend `phases/routes.ts` and `phases/service.ts`. Created `ProjectPhases.tsx` for the Phase Planner view, which allows defining macro-level lifecycles (e.g. Discovery -> Design -> Dev -> QA -> Launch). Added a "Phases Planner" navigation button to the dashboard next to projects. Integrated a "Phase" selection dropdown within `CardModal.tsx` to link tasks to higher-level lifecycle phases.
 - Decisions made: Modeled after the Sprints implementation to maintain consistency. Phases are ordered by a `position` field to represent sequential progression.
 - Tests added: Backend `phases.test.ts` for lifecycle testing (create, update, delete phase).
 - What's next: Global search + saved searches (Elasticsearch/OpenSearch index).
 
 ### 2026-08-10 — Session 12 (Global Search & Saved Searches)
+
 - What was done: Built the Global Search feature. Instead of spinning up Elasticsearch (which would introduce heavy infrastructure complexity for our current MVP state), we opted to utilize PostgreSQL Full-Text Search via `drizzle-orm` raw query capabilities. Added `search/routes.ts` and `search/service.ts`. Created a highly responsive Command Palette component (`SearchPalette.tsx`) triggered by `Cmd+K` or a navigation bar click. Integrated Saved Searches, stored via the `saved_searches` table.
 - Decisions made: Opted for Postgres FTS over Elasticsearch for MVP Phase 2 to keep the stack lightweight, fast, and easy to maintain.
 - Tests added: Backend `search.test.ts` passing for multi-entity querying (Cards, Boards) and Saved Searches CRUD.
 - What's next: Notifications engine maturity: granular preferences, digest bundling, DND.
 
 ### 2026-08-10 — Session 13 (Notifications Engine Maturity)
+
 - What was done: Implemented granular notification preferences, digest bundling, and Do Not Disturb (DND) scheduling. Updated the database schema to include `isDispatched` on notifications. Built a `digest.cron.ts` mock cron logic to aggregate and simulate email dispatching for notifications configured as `digest_daily` or `digest_weekly`. Updated `setupNotificationListeners` to respect a user's DND hours, selectively queuing emails to be processed later if triggered during quiet hours. Added a full Settings UI (`NotificationSettings.tsx`) allowing users to easily toggle their matrix of preferences (e.g., Event type x Channel).
 - Decisions made: Due to the lack of a real email provider in the MVP, the digest cron and instant dispatcher log directly to the console simulating a dispatched email.
 - Tests added: Backend `notifications.test.ts` to assert that preferences are saved accurately and the digest cron properly queues/dispatches notifications.
 - What's next: Automations engine + webhook dispatch.
 
 ### 2026-08-10 — Session 14 (Automations & Webhooks)
+
 - What was done: Implemented the Automations Engine and Webhook Dispatch for Phase 2. Updated core `cards/service.ts` to emit granular events like `card.moved`, `card.assigned`, and `card.labeled` to the internal `eventBus`. Created `webhooks/service.ts` to dispatch HTTP POSTs via `fetch` triggered by events with an HMAC-SHA256 signature. Built `automations/service.ts` to evaluate JSON triggers and automatically execute card actions (adding labels, assigning users). Created frontend admin views for `WebhookSettings.tsx` and an `AutomationsModal.tsx` accessible directly from the `BoardView.tsx`.
 - Decisions made: Mocked standard `bun test` logic for the Automations tester since the `cardsService` is imported globally and we're intercepting an internal event loop. For MVP, Automations are scoped to the `boardId` and webhooks to `organizationId`.
 - Tests added: Backend `webhooks.test.ts` to assert payload signature generation and fetch mocks, and `automations.test.ts` to verify the condition evaluator.
 - What's next: Core integrations: Slack, GitHub, Google Drive.
 
 ### 2026-08-10 — Session 15 (Core Integrations)
+
 - What was done: Implemented the architectural foundation for Core Integrations (Slack, GitHub, Google Drive) as part of Phase 2. Added the `integrations` table in the database schema. Built `integrations/routes.ts` and `integrations/service.ts` in the backend to manage these connections per organization. Created the `Integrations.tsx` page in the frontend Admin panel to allow users to mock-connect (OAuth simulation) and disconnect these providers.
 - Decisions made: Since this is an MVP phase without real third-party OAuth applications, the "Connect" action on the frontend fakes a short delay and successfully stores a mock token in the backend to prove the architecture.
 - Tests added: N/A - Manual verification passed.
 - What's next: Reporting v1 (burndown/velocity charts, basic dashboards).
 
 ### 2026-08-16 — Session 16 (Reporting v1, Time Tracking & Migration Importers)
+
 - What was done: Completed the remaining Phase 2 Growth milestones:
   1. **Reporting & Analytics (Reporting v1)**: Implemented `reports/service.ts` and `reports/routes.ts` generating project KPI summaries, dynamic sprint burndown charts, velocity history, board reports, stage distribution, and team workload. Built `ProjectReports.tsx` with responsive, pure-SVG interactive burndown & velocity visualizations.
   2. **Time Tracking & Timesheets**: Implemented `timetracking/service.ts` and `timetracking/routes.ts` for task work logging (`time_logs`), estimates vs. actual progress tracking, billable hour breakdown, and org-wide timesheets. Added Story Points and Time Tracking controls to `CardModal.tsx`. Built `Timesheets.tsx` with filtering, team/project aggregations, and CSV export.
@@ -200,6 +217,7 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - What's next: Phase 3 — Enterprise & Competitive Parity (SSO/SCIM, Custom Roles, Audit Logs, Real-time CRDT presence).
 
 ### 2026-08-16 — Session 17 (Custom Roles, Audit Logging, & Docs/Wiki Module)
+
 - What was done: Implemented core Phase 3 Enterprise & Knowledge modules:
   1. **Custom Roles & Permission Overrides**: Created `roles/service.ts`, `roles/routes.ts`, and frontend `CustomRoles.tsx` with full CRUD and a categorized permission matrix across 10 resource categories.
   2. **Audit Logging & Compliance Export**: Created `audit/service.ts`, `audit/routes.ts`, and frontend `AuditLogs.tsx` with multi-filter query engine, JSON metadata inspector modal, and CSV compliance export.
@@ -209,6 +227,7 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - What's next: SSO/SCIM via WorkOS, Dedicated-instance tier, and Real-time presence/CRDT editing.
 
 ### 2026-08-16 — Session 18 (Forms & SLAs + Advanced Analytics & Portfolio Health)
+
 - What was done: Implemented next Phase 3 enterprise capabilities:
   1. **Forms & Intake Module + SLA Policies**: Created `intake_forms` and `form_submissions` schema tables, `forms/service.ts`, `forms/routes.ts`, and frontend `PublicFormView.tsx` (`/forms/:slug`) and `FormBuilderModal.tsx` on boards. Forms allow external/internal intake with configurable inputs, target columns, and automated SLA calculation.
   2. **Advanced Reporting (CFD, Cycle Time, Portfolio)**: Implemented `getCumulativeFlowDiagram`, `getLeadAndCycleTime`, and `getWorkspacePortfolioHealth` in `reports/service.ts` & `reports/routes.ts`. Enhanced `ProjectReports.tsx` with tabs for Burndown, CFD, and Cycle Time. Created `PortfolioDashboard.tsx` (`/workspaces/:workspaceId/portfolio`) for cross-project executive visibility.
@@ -217,6 +236,7 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - What's next: SSO/SCIM via WorkOS, Dedicated-instance tier, and Real-time presence/CRDT editing.
 
 ### 2026-08-16 — Session 19 (Enterprise SSO/SCIM & Real-Time Presence Polish)
+
 - What was done: Implemented enterprise identity and live collaboration features:
   1. **Enterprise SSO & SCIM Directory Sync**: Created `sso_configurations` schema table, `sso/service.ts`, `sso/routes.ts`, and frontend `SSOSettings.tsx` at `/admin/sso`. Supports Okta, Microsoft Entra ID (Azure AD), Google Workspace SAML, custom OIDC, domain routing, automated user provisioning on SSO callback, and SCIM 2.0 directory webhooks (`user.create`, `user.update`, `user.delete`).
   2. **Real-Time Board Presence & Collaboration**: Upgraded `realtime/routes.ts` WebSocket server with in-memory presence tracking, active card viewing broadcasts (`presence:card_focus`), and typing indicators (`presence:typing`). Created `PresenceAvatars.tsx` displaying real-time viewer count, presence halos, and card editing badges in `BoardView.tsx`.
@@ -225,6 +245,7 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - What's next: Dedicated-instance tier, and Plugin / Power-Up marketplace.
 
 ### 2026-08-16 — Session 20 (Plugin & Power-Up Marketplace + Developer API Keys & Dedicated Instances)
+
 - What was done: Completed Phase 3 in full by delivering:
   1. **Public Developer API Keys**: Created `api_keys` schema table, SHA-256 token hashing, `developer/service.ts` & `developer/routes.ts` (`/v1/developer/keys`), and frontend `DeveloperSettings.tsx` at `/admin/developer` with scope selector, expiry controls, and secret reveal dialog.
   2. **Boardly App Marketplace & Power-Ups**: Created `marketplace_apps` and `installed_apps` schema tables, seeded 5 flagship integrations (GitHub Sync, Slack Alerts, Custom Fields Pro, Time Tracker Pro, Jira Sync), and built `Marketplace.tsx` (`/marketplace`) with category filters, verified badges, and 1-click install/configure modals.
@@ -234,13 +255,16 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - What's next: Phase 4 Mobile & Native apps.
 
 ### 2026-08-16 — Session 21 (Native Mobile App Expo React Native + Push Devices & Offline Queue)
+
 - What was done: Delivered full mobile client and push device infrastructure:
   1. **Push Device Infrastructure**: Created `push_devices` schema table, `/v1/notifications/push-devices` registration & unregistration routes, and push notification dispatcher in `notifications/service.ts`.
   2. **Native Mobile App (`apps/mobile`)**: Built Expo React Native mobile application containing `LoginScreen.tsx`, `WorkspacesScreen.tsx`, `BoardScreen.tsx` with horizontal Kanban columns, `CardDetailScreen.tsx` with checklist toggle and real-time comments, and `OfflineQueueScreen.tsx`.
   3. **Offline Resilience & Replay Engine**: Implemented `offlineQueue.ts` optimistic mutation queue with auto-sync replay against REST APIs when reconnecting to network.
 - Decisions made: Adopted an optimistic offline mutation pattern with queue replay to allow mobile workers to navigate boards and post updates without continuous internet connection.
 - Tests added: 4 tests in `notifications.test.ts` (push devices) and 3 tests in `offlineQueue.test.ts`. All 62 backend test assertions passing cleanly.
+
 ### 2026-08-16 — Session 22 (One-Command Startup & Developer Tooling)
+
 - What was done: Built complete developer automation suite for 1-command startup:
   1. **One-Command Dev Launcher (`./start.sh` & `scripts/dev.sh`)**: Starts Postgres & Redis Docker containers, checks readiness, synchronizes `.env` and JWT secrets, runs database migrations & seeds, and concurrently launches Backend API (:3001) and Frontend Dashboard (:5173) with graceful signal trapping.
   2. **First-Time Setup (`./setup.sh` & `scripts/setup.sh`)**: Automated dependency installation, key generation, and full DB provisioning.
@@ -249,61 +273,81 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
   5. **Clean DB Reset Runner (`apps/backend/src/db/reset.ts`)**: Drops schema, reapplies all Drizzle migrations, and reseeds default data.
   6. **Root Package Scripts & Documentation**: Wired scripts into root `package.json` and created comprehensive root `README.md`.
 - Decisions made: Created both modular scripts in `scripts/` and top-level executable wrappers (`./start.sh`, `./setup.sh`) with npm/bun script aliases for maximum convenience across terminal workflows.
+
 ### 2026-08-16 — Session 23 (Dark Mode & Multi-Theme Customization Engine)
+
 - What was done: Built end-to-end multi-theme and dark theme engine:
   1. **Multi-Theme CSS Variables & Tailwind Integration**: Extended `apps/dashboard/src/index.css` and `@boardly/config` with OKLCH/HSL CSS variables for Light Mode, Default Dark (Zinc), Midnight OLED, Oceanic Azure, Emerald Forest, Synthwave Sunset, and Nordic Frost.
   2. **Theme Store & State Persistence (`store/themeStore.ts`)**: Built Zustand theme manager supporting mode switching (`light` | `dark` | `system` with dynamic OS `prefers-color-scheme` listener), 6 curated palettes, and 6 customizable accent colors (Indigo, Sky Blue, Emerald, Neon Violet, Rose Crimson, Amber Glow + custom HEX picker).
   3. **Theme Selector Dropdown & Appearance Modal (`ThemeToggle.tsx` & `AppearanceModal.tsx`)**: Added compact navbar toggle dropdown with instant mode & palette switching + full interactive Appearance Modal featuring miniature live theme cards, swatches, and interactive mock Kanban preview.
   4. **Semantic Token Polish & Form Inputs**: Replaced hardcoded light colors across `DashboardLayout`, `AdminLayout`, `SuperAdminLayout`, and admin pages. Resolved WebKit/Firefox numeric stepper artifacts by applying global `input[type="number"]` spin-button resets and `color-scheme: dark` integration with centered numeric alignment.
+
 ### 2026-08-23 — Session 24 (Card Watchers Endpoint & Service Implementation)
+
 - What was done: Fully implemented the Card Watcher API endpoints and service methods:
   1. **Card Watcher Service Methods (`apps/backend/src/modules/cards/service.ts`)**: Implemented `watchCard`, `unwatchCard`, and `getCardWatchers` utilizing the `card_watchers` database table with real-time WebSocket (`card.watched` / `card.unwatched`) and internal event bus broadcasts.
   2. **Card Detail Watcher Integration**: Enhanced `getCard` to retrieve and return the card's active watchers avatar/user list along with existing assignees, labels, and stage metadata.
   3. **Card Routes (`apps/backend/src/modules/cards/routes.ts`)**: Replaced placeholder stubs with `GET /v1/cards/:id/watchers`, `POST /v1/cards/:id/watch`, `DELETE /v1/cards/:id/watch`, and `DELETE /v1/cards/:id/watch/:userId`.
   4. **RBAC Default Permissions (`apps/backend/src/modules/roles/service.ts`)**: Added `card.watch` permission into default system permissions seed list.
   5. **Card Unit Tests (`apps/backend/src/modules/cards/card.test.ts`)**: Added test coverage for card watching, watcher listing, and unwatching.
+
 ### 2026-08-24 — Session 25 (Auth User Organization Context & Admin Panel Fix)
+
 - What was done: Fixed missing `organizationId` and membership role in auth payloads:
   1. **Auth Service `getMe`, `signUp`, and `signIn` (`apps/backend/src/modules/auth/service.ts`)**: Updated backend endpoints to query active `organizationMembers` and return `organizationId` and `role` on the authenticated user object.
   2. **Admin Panel Access**: Resolved `Access Denied` state in `AdminLayout.tsx` for newly created organizations and existing users.
   3. **Auth Unit Tests (`apps/backend/src/modules/auth/auth.test.ts`)**: Added assertions ensuring `getMe` returns populated `organizationId` and `role`.
 - Decisions made: Flatted active primary `organizationId` and `role` onto the user object returned across all auth routes (`/me`, `/sign-up`, `/sign-in`) for consistent consumption by frontend Zustand store.
+
 ### 2026-08-24 — Session 26 (Shadcn Sidebar Primitives & Admin Viewport Fix)
+
 - What was done: Built official Shadcn UI Sidebar primitives and fixed page layout scrolling:
   1. **Shadcn Sidebar Primitives (`packages/ui/src/components/sidebar.tsx`)**: Implemented full `SidebarProvider`, `Sidebar`, `SidebarHeader`, `SidebarContent`, `SidebarGroup`, `SidebarGroupLabel`, `SidebarMenu`, `SidebarMenuItem`, `SidebarMenuButton`, `SidebarRail`, `SidebarInset`, and `SidebarTrigger` with keyboard shortcut (`Cmd/Ctrl + B`) and mobile drawer support.
   2. **Package & Build Export**: Exported `@boardly/ui/sidebar` in `packages/ui` package manifest, TSConfig path mappings, and Vite configuration aliases.
   3. **Admin & Super Admin Layouts (`AdminLayout.tsx` & `SuperAdminLayout.tsx`)**: Replaced custom `min-h-screen` wrapper with `h-screen overflow-hidden`, keeping top navigation and sidebar anchored in viewport while delegating scrolling cleanly and independently to `SidebarInset`.
+
 ### 2026-08-24 — Session 27 (System Roles Deduplication & Unique Constraints)
+
 - What was done: Resolved duplicated system roles and added database constraints:
   1. **Schema Unique Indices (`apps/backend/src/db/schema/index.ts`)**: Added unique partial index `system_role_name_idx` on `roles.name` (where `is_system_role = true`) and `org_role_name_idx` on `(organization_id, name)`.
   2. **Database Role Cleanup**: Removed 16 duplicate system role records from `roles` and `role_permissions` in the database, retaining only the 4 canonical system roles (`Org Owner`, `Org Admin`, `Member`, `Viewer`).
   3. **Idempotent Seeding (`apps/backend/src/db/seed.ts`)**: Updated `seed.ts` to check if a system role exists before insertion, preventing duplicate insertions when re-seeding.
+
 ### 2026-08-24 — Session 28 (50-Member Enterprise Seed & 60-Day Historical Data)
+
 - What was done: Built an enterprise organization seeding pipeline and populated 50 members with ~2 months of rich task history:
-  1. **Enterprise Organization Seed Generator (`apps/backend/src/db/seedOrganization.ts`)**: Built a seed script creating *Acme Technologies* on Enterprise tier with 50 realistic users, 5 workspaces, 8 projects (Kanban & Scrum), 4 sprints, and milestone phases.
+  1. **Enterprise Organization Seed Generator (`apps/backend/src/db/seedOrganization.ts`)**: Built a seed script creating _Acme Technologies_ on Enterprise tier with 50 realistic users, 5 workspaces, 8 projects (Kanban & Scrum), 4 sprints, and milestone phases.
   2. **Rich Historical & Current Data**: Populated 120+ detailed cards, checklists with items, 100+ comments, 115+ time tracking entries across past 60 days, documentation articles, and audit logs.
   3. **Credential Catalog & Guide (`markdowns/SEED_CREDENTIALS.md`)**: Created comprehensive credential reference with `Password123!` for all 50 team members and suggested testing scenarios by job function.
   4. **Package Script**: Added `"db:seed:org": "bun run src/db/seedOrganization.ts"` to `apps/backend/package.json` and integrated into `seed.ts`.
+
 ### 2026-08-24 — Session 29 (Team Member Search & Enterprise-Scale Member Picker)
+
 - What was done: Resolved missing usernames in card assignee selection and built enterprise-scale search & filtering:
   1. **Member Object Model Fix (`TaskDetailView.tsx`)**: Fixed the assignee picker to read from the flat member response model (`m.name`, `m.email`, `m.avatarUrl`) instead of undefined nested `m.user` properties, restoring full user names and dynamic avatar initials.
   2. **Enterprise Member Picker Component (`MemberPicker.tsx`)**: Created a dedicated, reusable, accessible popover component supporting instant in-memory filtering + debounced server query search across thousands of organization members.
   3. **Backend Search & Pagination Support (`apps/backend/src/modules/organizations/`)**: Enhanced `GET /v1/orgs/:orgId/members` and `listMembers` service with optional `search` (`ilike` on name & email), `limit`, `offset`, and `role` query parameters, ordered by name ASC.
   4. **Rich UI & UX Features**: Added deterministic HSL avatar gradients, role badges (`Admin`, `Member`, `Billing`, `Workspace Admin`), "Assign to Me" quick action, "Currently Assigned" section with 1-click unassigning, clear empty search states, escape key navigation, and click-outside dismissal.
+
 ### 2026-08-24 — Session 30 (Board Label Picker & Tag Management UX Overhaul)
+
 - What was done: Redesigned and rebuilt the Board Label selector and management experience:
   1. **Enterprise Label Picker Component (`LabelPicker.tsx`)**: Created a dedicated, glassmorphic dropdown popover component with search filtering, clean list of board labels with color pills, active checkmark toggles, and empty search states.
   2. **Dedicated Label Creation Panel**: Replaced the cramped color row with a structured creation interface featuring live tag preview badge, name input with Enter-key submission, clean 5-column color palette grid with active ring selectors, and dedicated action buttons.
   3. **Direct Active Chip Removal (`TaskDetailView.tsx`)**: Enhanced active label chips on task cards with 1-click `X` remove buttons directly on the chip, avoiding the need to open the picker to remove a label.
   4. **Accessibility & Dismissal**: Added Escape key navigation and click-outside dismissal handlers.
 - Decisions made: Separated label browsing and label creation into distinct, non-overlapping workflow zones within `LabelPicker.tsx`, resolving container truncation and swatch-button overlapping issues.
+
 ### 2026-08-24 — Session 31 (Rich Markdown Engine & Interactive Task List Previews)
+
 - What was done: Built a full-featured markdown rendering engine with interactive task list checkboxes:
   1. **Rich Markdown Renderer Component (`MarkdownRenderer.tsx`)**: Created a high-performance markdown parser supporting headings (`#`, `##`, `###`, `####`), interactive task lists (`- [ ]`, `- [x]`), bullet lists, numbered lists, blockquotes, horizontal rules, fenced code blocks with language badges & copy buttons, inline code, bold, italic, strikethrough, and external links.
   2. **Interactive Task List Toggle Support**: Enabled direct clicking on `- [ ]` / `- [x]` task checkboxes in description preview mode to update card markdown content with immediate optimistic feedback.
   3. **Task Description & Comments Integration (`TaskDetailView.tsx`)**: Replaced raw text formatting in description preview and comment streams with `MarkdownRenderer`, and joined comments with `users` in backend `listComments` to display proper author names and avatars.
   4. **Project Docs & Wiki Integration (`ProjectDocs.tsx`)**: Upgraded doc content preview to render full markdown formatting with code blocks and headers.
+
 ### 2026-08-24 — Session 32 (User Tagging Mentions, Auto-Observer Subscription & My Tasks Hub)
+
 - What was done: Implemented @mention company member tagging in comments with automatic observer addition, and built a unified "My Tasks" page:
   1. **Mention Autocomplete Component (`MentionCommentBox.tsx`)**: Created a rich comment composer with inline `@` trigger detection, member search popover, keyboard navigation (ArrowUp/Down, Enter, Tab, Escape), and shortcut submission (`Cmd+Enter`).
   2. **Automatic Card Observer Addition & Mentions (`service.ts`)**: When users are tagged via `@Name` in comments, backend automatically subscribes them to card observers (`card_watchers`), dispatches `card.watched` and `card.mentioned` realtime events, and creates in-app notifications.
@@ -319,6 +363,7 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - Decisions made: Unified all task relationship types (assigned, watching, commenting, created) into a single backend aggregation endpoint (`GET /v1/cards/my-tasks`) to give users complete cross-project visibility in one place.
 
 ### 2026-08-24 — Session 33 (Single Primary Assignee, Multi-Participant & Observer Roles, and Personal Subtasks)
+
 - What was done: Implemented clear role separation on tickets and personal subtask management:
   1. **Single Assignee Model**: Enforced single primary owner per ticket. In `assignUserToCard`, previous assignees are automatically cleared when a new assignee is selected. `MemberPicker` supports `mode="single"` with instant replacement.
   2. **Participants (Multiple Collaborators)**: Added dedicated `PARTICIPANTS` section and API endpoints (`GET/POST/DELETE /v1/cards/:id/participants`) backed by `card_participants` table, allowing multiple team members to actively collaborate on a ticket.
@@ -329,7 +374,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Subtasks display assignee avatar badges and names.
      - Added `All Subtasks` vs `My Subtasks` filter tabs so team members can view and manage their personal work items on any ticket.
 - Decisions made: Separated ticket membership into 3 distinct layers (1 Primary Assignee, N Collaborating Participants, N Observers) to match enterprise project management semantics while enabling fine-grained subtask assignment.
+
 ### 2026-08-24 — Session 34 (Rich Board Card Details & User Profile Settings Page)
+
 - What was done: Delivered rich card details across Kanban boards and created the user profile management page:
   1. **Rich Kanban Cards (`BoardView.tsx` & `cards/service.ts`)**:
      - Upgraded `listCards` to aggregate primary assignee, labels, stage, checklist progress (`checklistDone/checklistTotal`), comments count, and attachments count.
@@ -343,13 +390,17 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
   4. **Header Navigation Integration (`DashboardLayout.tsx` & `App.tsx`)**:
      - Linked top navigation header user avatar button to `/profile` with live user avatar badge.
 - Decisions made: Enriched board cards directly in `listCards` to minimize client-side round-trips while delivering a high-density, information-rich Kanban experience.
+
 ### 2026-08-24 — Session 35 (Custom Subtle Scrollbars & UX Polish)
+
 - What was done: Fixed ugly browser-native white/grey bottom scrollbar and polished layout scrolling across the Kanban board:
   1. **Custom Modern Scrollbar Engine (`index.css`)**: Implemented slim (6px), transparent-track scrollbars with rounded semi-transparent thumbs across WebKit and Firefox (`scrollbar-width: thin`), adapting seamlessly to light, dark, and custom themes with zero harsh white bars.
   2. **Dashboard Layout & Viewport Fitting (`DashboardLayout.tsx`)**: Replaced `min-h-screen` with `h-screen overflow-hidden` and configured `main` to `overflow-y-auto min-h-0`, eliminating double scrollbars and ensuring board containers fit cleanly within the viewport height.
   3. **Board Container & Column Polish (`BoardView.tsx`)**: Added `pb-4` breathing room to horizontal board container and styled column headers with card counters.
 - Decisions made: Replaced native browser scrollbars with custom semi-transparent overlay styling to maintain high visual aesthetics across all operating systems.
+
 ### 2026-08-24 — Session 36 (Workspace, Project, Board, and List Deletion & Renaming)
+
 - What was done: Added comprehensive delete and rename management across the full project hierarchy with permission enforcement:
   1. **Workspace Actions (`Workspaces.tsx`)**:
      - Added 3-dots action menu on each workspace header with Rename Workspace and Permanently Delete Workspace options.
@@ -364,7 +415,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
   4. **Kanban List Actions (`BoardView.tsx`)**:
      - Added 3-dots actions menu on each list column header with Rename List and Delete List options with confirmation modal (`DELETE /v1/lists/:id`).
 - Decisions made: Enforced cascading deletion confirmation dialogs on all levels to protect against accidental deletion while respecting RBAC permissions (`workspace.delete`, `project.delete`, `board.delete`, `list.delete`).
+
 ### 2026-08-24 — Session 37 (Task Detail Dialog UX Redesign & Popover Layout Fixes)
+
 - What was done: Redesigned the card modal dialog into an enterprise-grade, independent two-column split layout:
   1. **Modal Geometry & Sizing (`CardModal.tsx`)**: Expanded modal width to `sm:max-w-5xl md:max-w-6xl` (`w-[94vw] h-[88vh]`) with `overflow-hidden`, preventing outer dialog scrollbar clipping.
   2. **Fixed Top Header (`TaskDetailView.tsx`)**: Locked the top breadcrumb path, list switcher dropdown, share button, full screen expand, and close button permanently at the top of the dialog.
@@ -373,13 +426,17 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Right Sidebar (`w-80 overflow-y-auto bg-muted/15`): Stage/Status dropdown, Primary Assignee, Collaborating Participants, Observers, Priority, Due Date, Labels, and Sprints/Phases.
   4. **Contained Member & Label Pickers (`MemberPicker.tsx` & `LabelPicker.tsx`)**: Adjusted picker container classes to `w-full max-w-full`, allowing smooth expansion within the scrollable sidebar without overflowing modal boundaries.
 - Decisions made: Separated modal header and body scrolling into independent viewports (similar to Linear and Jira) for high ergonomics on dense task tickets.
+
 ### 2026-08-24 — Session 38 (Smart-Default Subtask Assignee UX)
+
 - What was done: Fixed subtask creation defaulting to "Unassigned":
   1. **Smart Assignee Pre-selection (`TaskDetailView.tsx`)**:
      - Added automatic pre-selection for new subtasks: defaults to the ticket's **Primary Assignee** (`card.assignee.id`) or the currently logged-in user (`user.id`) rather than defaulting to "Unassigned".
      - Enhanced subtask assignee dropdown with explicit labels: `Primary Assignee: [Name]`, `Assign to Me ([Name])`, `Participant: [Name]`, `Observer: [Name]`.
      - Preserves smart pre-selection after subtasks are submitted without resetting to unassigned.
+
 ### 2026-08-24 — Session 39 (Rich Task Creation & Composer UX)
+
 - What was done: Transformed task creation from a bare single-text-input into a rich, modern task composer:
   1. **In-Column Quick Composer (`BoardView.tsx`)**:
      - Upgraded the column "+ Add a card" composer with a multi-line auto-expanding title textarea.
@@ -391,7 +448,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Built dedicated `CreateTaskModal` dialog with Target Column selector, Task Title, Markdown Description, Assignee, Due Date, Story Points, and Estimated Hours.
   3. **Backend Route Enhancement (`apps/backend/src/modules/cards/routes.ts`)**:
      - Added `dueDate` parameter support to `POST /v1/cards` schema validation.
+
 ### 2026-08-24 — Session 40 (Workspace & Project Permission & Visibility Architecture)
+
 - What was done: Analyzed and refined the multi-tenancy and workspace permission isolation model:
   1. **Organization Multi-Tenant Boundary**: Confirmed that all queries enforce `eq(table.organizationId, organizationId)` — members of different organizations can never see or access another organization's workspaces, projects, boards, or tasks.
   2. **Workspace Visibility & Access Control (`workspaces/service.ts`)**:
@@ -399,7 +458,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
        - Org Admins / Owners: Can view all organization workspaces.
        - Regular Members: Can only see **public organization workspaces** (`visibility: 'org'`) and **private workspaces** where they are explicitly added to `workspace_members`.
      - Automatically assigns workspace creators as `admin` in `workspace_members` on creation.
+
 ### 2026-08-24 — Session 41 (Enterprise User Management & Rich Invitation Flow)
+
 - What was done: Overhauled User Management and Invitation flow for enterprise SaaS readiness:
   1. **Rich Invitation Modal (`Users.tsx` & `organizations/service.ts`)**:
      - Added Full Name field alongside email input.
@@ -411,7 +472,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Added summary metric counters (Total Members, Admins/Owners, Active, Workspaces).
      - Live search filter by Name or Email.
      - Filter dropdowns by Role (`Org Owner`, `Org Admin`, `Member`, `Viewer`) and Status (`Active`, `Invited`).
+
 ### 2026-08-24 — Session 42 (Rich Task Hover Tooltip & Card Preview)
+
 - What was done: Implemented an interactive hover card preview tooltip for all Kanban task tiles:
   1. **Interactive Hover Popover (`BoardView.tsx`)**:
      - Built a floating preview card with intentional hover debouncing (450ms) to prevent mouse-sweep noise.
@@ -420,7 +483,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Displays primary assignee avatar and details, alongside comment and attachment counters.
      - Automatically disabled during drag-and-drop actions (`isDragging`) for silky-smooth drag interactions.
 - Decisions made: Added rich hover preview to eliminate the need to open full task modals just to check description notes or checklist details.
+
 ### 2026-08-24 — Session 43 (Cascading Deletion for Boards, Lists, Projects & Workspaces)
+
 - What was done: Implemented full recursive cascading deletion across the entire database hierarchy to ensure clean removals without orphaned rows or FK constraint errors:
   1. **List Cascade (`lists/service.ts`)**:
      - Deletes all cards in the list, including all card assignees, participants, watchers, labels, sprints, phases, time tracking logs, comments, attachments, checklists, and checklist items.
@@ -433,7 +498,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
   4. **Workspace Cascade (`workspaces/service.ts`)**:
      - Recursively deletes all projects in the workspace (with full board, list, and card cascade).
      - Deletes workspace members.
+
 ### 2026-08-24 — Session 44 (30-Day Soft Delete & Trash / Recycle Bin Recovery System)
+
 - What was done: Built complete 30-day Trash and Recycle Bin recovery system across the full stack:
   1. **Backend Trash Module (`trash/service.ts` & `trash/routes.ts`)**:
      - Added `GET /v1/trash` to list all soft-deleted workspaces, projects, boards, and cards for the organization with dynamic 30-day countdown timer calculations.
@@ -441,7 +508,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Added `DELETE /v1/trash/:itemType/:itemId` for permanent hard cascade purging.
      - Added `DELETE /v1/trash/empty` to empty the entire organization trash in bulk.
      - Updated `boards/service.ts`, `lists/service.ts`, `projects/service.ts`, and `workspaces/service.ts` to soft-delete by default and filter out trashed rows (`isNull(deletedAt)`).
+
 ### 2026-08-24 — Session 45 (Notification System UX & Deep-Linking Overhaul)
+
 - What was done: Fixed notification interactivity, unread badge clearing, and added context-aware rendering:
   1. **Interactive Navigation & Read State (`NotificationDropdown.tsx`)**:
      - Clicking any notification marks it as read immediately and navigates directly to the referenced card/board (`/b/:boardId?cardId=:cardId`) or `/my-tasks`.
@@ -456,7 +525,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
   3. **Tabs & Empty State**:
      - Added `All` and `Unread` filter tabs.
      - Added friendly empty state illustration when all notifications are caught up.
+
 ### 2026-08-24 — Session 46 (User Permissions & Access Matrix Feature)
+
 - What was done: Built complete User Permissions visibility matrix across the backend and frontend:
   1. **Backend Permissions Matrix API (`auth/service.ts` & `auth/routes.ts`)**:
      - Added `GET /v1/auth/permissions` returning the user's active system role, total granted permissions, and categorized permission matrix (`Workspaces & Projects`, `Boards & Columns`, `Tasks & Collaboration`, `Administration & Governance`).
@@ -465,7 +536,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Upgraded Profile page with an interactive **"My Assigned Permissions"** card showing active system role, total granted count, and category summary chips.
      - Built **Detailed Role & Permissions Matrix Modal** with live search, category grouping, and filter tabs (`All`, `Allowed`, `Restricted`).
      - Displays description, permission key, and clear status badges (`✓ Allowed` vs `🔒 Restricted`).
+
 ### 2026-08-24 — Session 47 (Reusable Enterprise Data Grid Component with Excel-Style Filters & 15-Item Pagination)
+
 - What was done: Designed and built an enterprise-grade, reusable generic data grid component (`EnterpriseDataGrid.tsx`) supporting Excel-like filtering, multi-column sorting, 15-item default pagination, and dual client/server processing:
   1. **Reusable `EnterpriseDataGrid.tsx` Component**:
      - **Excel-Style Column Filtering**: Clicking column filter icon opens a popover showing a search bar, "(Select All)" toggle, and distinct value checkboxes with live frequency counts (e.g. `☑ Sarah Chen (12)`). Active filters glow in primary color.
@@ -476,7 +549,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
   2. **Page Upgrades**:
      - Upgraded **Timesheets & Work Logs** (`Timesheets.tsx` Detailed Log Entries) to `EnterpriseDataGrid` with filters on Date, Member, Task, Project, Type, and sortable Duration.
      - Upgraded **Audit Trail & Compliance Logs** (`AuditLogs.tsx`) to `EnterpriseDataGrid` with filters on Timestamp, Actor, Action, Target, and IP Address.
+
 ### 2026-08-24 — Session 48 (Comprehensive TypeScript Error Resolution Across Codebase)
+
 - What was done: Resolved 100% of TypeScript errors and strict type violations across the entire monorepo (`apps/backend`, `apps/dashboard`, `apps/mobile`, `packages/ui`, `packages/shared-types`):
   1. **Backend Database & Schema Generic Typing**:
      - Fixed Drizzle `Database` type resolution across 14 module test files (`superadmin.test.ts`, `webhooks.test.ts`, `workspace.test.ts`, `stages.test.ts`, `sprints.test.ts`, `phases.test.ts`, `project.test.ts`, `board.test.ts`, `list.test.ts`, `card.test.ts`, `org.test.ts`, `search.test.ts`, `auth.test.ts`, `roles.test.ts`, `notifications.test.ts`).
@@ -494,7 +569,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - `apps/dashboard`: `npx tsc --noEmit` & `npm run build` -> **0 errors (100% clean)**.
      - `apps/mobile`: `npx tsc --noEmit` -> **0 errors (100% clean)**.
      - `packages/shared-types`: `npx tsc --noEmit` -> **0 errors (100% clean)**.
+
 ### 2026-08-25 — Session 49 (World-Class Kanban Board Drag & Drop UX Overhaul)
+
 - What was done: Completely overhauled the Kanban Board drag-and-drop experience in `BoardView.tsx` to eliminate container overflow clipping, visual jitter, and preview interference:
   1. **Dnd-Kit DragOverlay & Portal Rendering**:
      - Introduced `<DragOverlay>` rendered outside `overflow-y: auto` list boundaries, eliminating card clipping and scrollbar jitter.
@@ -510,7 +587,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Configured `PointerSensor` (distance: 6px) to keep clicks instant while preventing accidental drags.
      - Added `TouchSensor` (delay: 150ms) and `KeyboardSensor` (`sortableKeyboardCoordinates`).
      - Suppressed rich hover preview tooltips globally while any drag is active.
+
 ### 2026-08-25 — Session 50 (Card Quick Peek & Portaled Floating Preview Overhaul)
+
 - What was done: Redesigned the card preview tooltip into a clean, unclipped React Portal popover (`CardHoverPreviewPortal`) with on-card quick action buttons:
   1. **Eliminated In-DOM Overflow Clipping via React Portal (`createPortal`)**:
      - Removed the relative `position: absolute` tooltip from inside `overflow-y: auto` columns that previously caused cut-off text, clipped borders, and layout jumps.
@@ -523,7 +602,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
   3. **Visual & Information Architecture Polish**:
      - Designed an ultra-clean glassmorphic card preview (`backdrop-blur-2xl bg-card/95 ring-1 ring-primary/20 shadow-2xl`) with Stage badges, Points chip, Due Date status, Label tags, Markdown description excerpt, and Checklist progress bar.
      - Added a direct **"Full Editor"** action button to open the comprehensive `CardModal`.
+
 ### 2026-08-25 — Session 51 (Full Editor & Inline Card Composer UX Overhaul)
+
 - What was done: Fixed the non-functional "Full Editor" action and completely redesigned the inline card creation composer in `BoardView.tsx`:
   1. **Full Editor Modal Integration**:
      - Fixed issue where clicking "Full Editor" failed to trigger when title was empty.
@@ -533,7 +614,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Replaced clunky raw inputs with compact, responsive attribute pills (`User`, `Calendar`, `PTS`, `Notes`).
      - Auto-focused, styled textarea with keyboard shortcuts (`Enter` to submit, `Shift+Enter` for newline, `Escape` to cancel).
      - Clean primary action button (`Add Card`) and outline modal button (`Full Editor`) with proper cursor states and hover animations.
+
 ### 2026-08-25 — Session 52 (Searchable Combobox & Modern Dropdown Overhaul)
+
 - What was done: Replaced clunky browser native `<select>` elements across the dashboard with a world-class, portaled searchable combobox (`SearchableSelect`, `MemberSearchableSelect`, `ListSearchableSelect`):
   1. **New Unified `SearchableSelect` Component**:
      - Live search filtering with keyboard navigation (`ArrowUp`, `ArrowDown`, `Enter`, `Escape`), auto-focus on open, and viewport-edge collision clamping.
@@ -548,7 +631,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - `Timesheets`: Date range and Team Member filters upgraded to `SearchableSelect`.
      - `Users`: Team role and status filters upgraded to `SearchableSelect`.
      - `AuditLogs`: Date range and action filters upgraded to `SearchableSelect`.
+
 ### 2026-08-25 — Session 53 (Zero-Shift Tab Switching & Scrollbar Gutter Stabilization)
+
 - What was done: Eliminated horizontal and vertical layout shifts when switching tabs in `MyTasks` and across the application:
   1. **Scrollbar Gutter Reservation (`scrollbar-gutter: stable`)**:
      - Added `scrollbar-gutter: stable;` to `html` in `index.css` to permanently reserve scrollbar width regardless of whether a page's content is shorter than the viewport (e.g. empty states) or taller (e.g. populated card grids).
@@ -559,7 +644,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Added a subtle floating `Updating...` status pill during background refetches.
   3. **Container Dimension Consistency**:
      - Established a consistent minimum height (`min-h-[420px]`) and centered empty-state dimensions across `MyTasks` tab views.
+
 ### 2026-08-25 — Session 54 (Fixed Header & Sticky Footer Dialog Architecture Overhaul)
+
 - What was done: Redesigned all modal dialog layouts across the application so headers and bottom action footers remain permanently pinned in place while only the body content scrolls:
   1. **Theme & Appearance Modal (`AppearanceModal.tsx`)**:
      - Restructured with fixed `DialogHeader` (with title, description, and Reset button), scrollable body (`flex-1 overflow-y-auto`), and permanently fixed bottom action bar with `Close` and `Save & Apply` buttons.
@@ -572,7 +659,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Added fixed header, scrollable forms and SLA management list, and fixed bottom `Done` button.
   5. **Board Import / Migration Modal (`ImportModal.tsx`)**:
      - Added fixed header, scrollable upload dropzone / preview area, and fixed bottom action bar (`Cancel` and `Start Migration`).
+
 ### 2026-08-25 — Session 55 (Card Move Route & RBAC Permission Resolution)
+
 - What was done: Resolved the CORS/permission failure on the card move API (`PATCH /v1/cards/:id/move`):
   1. **Root Cause Analysis**:
      - The route was guarded by `requirePermission('card.move')`, whereas the seeded system permission in the database for editing cards and moving them across lists is `card.update`.
@@ -581,7 +670,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
   2. **Backend Route & Permission Synchronization**:
      - Updated `apps/backend/src/modules/cards/routes.ts` to use `requirePermission('card.update')` for `PATCH /:id/move` and `requirePermission('card.delete')` for `POST /:id/archive`.
      - Updated `apps/backend/src/middleware/auth.ts` to automatically map granular alias permissions (`card.move` -> `card.update`, `card.archive` -> `card.delete`, `board.archive` -> `board.delete`) and attach explicit `{ status: 403 }` to error objects.
+
 ### 2026-08-25 — Session 56 (Universal EnterpriseDataGrid Rollout for Users & Tenants)
+
 - What was done: Standardized and unified the data grid experience across all administrative screens to use the rich `EnterpriseDataGrid`:
   1. **Organization Users Directory (`apps/dashboard/src/pages/admin/Users.tsx`)**:
      - Upgraded the manual table and filter bar to `EnterpriseDataGrid`.
@@ -597,7 +688,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Added real-time global search, column sorting, pagination, and CSV export (`enterprise_tenants.csv`).
   3. **Visual & Behavioral Consistency**:
      - All grids across the application (`Organization Users`, `Audit Logs`, `Timesheets`, `Tenants`) now share the exact same styling, filter behavior, search experience, pagination, and export tools.
+
 ### 2026-08-25 — Session 57 (Data Grid Filter UI, Full-Width Spacing & Header Overhaul)
+
 - What was done: Refined the visual design, spacing, and controls across the admin workspace:
   1. **Full-Width Spacing Stabilization (`AdminLayout.tsx`, `SuperAdminLayout.tsx`)**:
      - Removed narrow `max-w-5xl` (1024px) container restriction that caused massive empty black space on the left and right sides of the screen.
@@ -609,7 +702,9 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
      - Redesigned the **Export CSV** button into a sleek modern control featuring an emerald `FileSpreadsheet` icon and smooth hover animations.
      - Added an **Active Filters Bar** displaying removable pill tags with clear counters and a one-click "Clear all" action.
      - Refined table header filter icons with subtle hover visibility and distinct emerald/primary indicator badges when active.
+
 ### 2026-08-25 — Session 58 (Task Description Default Preview & Unsaved Changes Protection)
+
 - What was done: Implemented industry-standard task description editing UX and unsaved modifications protection across modals and pages:
   1. **Default Preview Mode (`TaskDetailView.tsx`)**:
      - Initialized task description in `'preview'` tab by default.
@@ -747,9 +842,11 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 ## Session: 2026-08-26 — Comprehensive Monorepo End-to-End (E2E) Testing Audit
 
 ### Goal
+
 Perform a complete End-to-End test across all features, personas, backend APIs, frontend views, edge cases, and UI/UX flows, cataloging every problem into a detailed report file.
 
 ### What Was Tested
+
 1. **Authentication & Session:** Invalid password error banner, Alex Vance Org Owner login, token persistence in localStorage.
 2. **Admin & Governance Panel:** `/admin/users`, `/admin/roles`, `/admin/sso`, `/admin/developer`, `/admin/audit-logs`, `/admin/billing`, `/admin/branding`, `/admin/stages`, `/admin/labels`, `/admin/webhooks`, `/admin/integrations`.
 3. **Super Admin Module:** Multi-tenant catalog (`/super-admin/tenants`) and subscription plans matrix (`/super-admin/plans`).
@@ -759,6 +856,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 7. **Automated Test Suite & Build Verification:** Backend Bun test runner (109 passing / 3 failing) and Frontend TypeScript/Vite compiler.
 
 ### Defects Identified & Documented in `markdowns/E2E_TESTING_REPORT.md`
+
 - **BUG-01 (Critical):** Backend organization router `.use(requirePermission(...))` leak causing 403s on `GET /orgs/:orgId/members`.
 - **BUG-02 (High):** Deprecated `baseUrl` option in `apps/dashboard/tsconfig.app.json` failing frontend `bun run build`.
 - **BUG-03 (High):** Missing 404 catch-all route rendering blank dark screen on unknown paths.
@@ -771,6 +869,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-26 — Session 48 (E2E Defect Resolution & Platform Stabilization)
+
 - **Goal:** Fix all 8 defects documented in `markdowns/E2E_TESTING_REPORT.md` across backend RBAC, frontend builds, routing, validation, error boundaries, and code quality without breaking existing functionality.
 - **What was done:**
   1. **BUG-01 (Backend RBAC Scoping):** Refactored `requirePermission` and `requirePlatformAdmin` to clean beforeHandle hook functions in `middleware/auth.ts`. Replaced leaking `.use(requirePermission(...))` chained router calls across all backend modules (`organizations`, `boards`, `workspaces`, `roles`, `trash`, `docs`, `timetracking`, `audit`, `superadmin`, `webhooks`, `integrations`, `sso`, `developer`, `stages`, `forms`, `lists`, `projects`, `cards`, `importers`) with per-route `{ beforeHandle: requirePermission(...) }` and `.guard({ beforeHandle: ... })`. Fixed type definitions in `org.routes.test.ts`.
@@ -787,6 +886,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-27 — Session 49 (Comprehensive User Management System & Cross-Company Governance)
+
 - **Goal:** Design and build a complete User Management & Access Governance System for company admins (onboarding, bulk invite, soft deactivation, pending invites, activity drawer) and platform super admins (cross-company user intelligence, multi-company reach detection, and global session revocation).
 - **What was done:**
   1. **Database Schema Enhancements:**
@@ -820,6 +920,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-27 — Session 50 (Dedicated Super Admin Application Architecture Separation)
+
 - **Goal:** Decouple Super Admin from the standard user/org dashboard (`apps/dashboard`) and create a standalone, dedicated Platform Super Admin Application (`apps/super-admin`) running on port 5174 with isolated auth, high-tech dark/purple ops aesthetic, independent token storage, and specialized platform tooling.
 - **What was done:**
   1. **New Standalone Application (`apps/super-admin`):**
@@ -847,6 +948,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 51 (Database Seed Script Connection Teardown & Dev Launcher Hang Fix)
+
 - **Goal:** Fix terminal hanging indefinitely on `bun run dev` during `🔄 Verifying database schema & seed data...`.
 - **Root Cause:** In `apps/backend/src/db/seedOrganization.ts`, a module-level postgres client instance remained connected when imported by `seed.ts`, because `client.end()` was only guarded inside `if (import.meta.main)`. This open socket prevented Bun's event loop from exiting after completing the enterprise organization seed.
 - **What was done:**
@@ -857,6 +959,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 52 (Super Admin Panel End-to-End Testing & Hardening)
+
 - **Goal:** Rigorously test the new dedicated Super Admin application (`apps/super-admin`) across all pages, workflows, security boundaries, and edge cases, cataloging and resolving any logical, UI/UX, or integration defects.
 - **Defects Identified & Resolved:**
   1. **Cross-Origin Resource Sharing (CORS):** Backend `allowedOrigins` in `apps/backend/src/index.ts` only parsed `env.DASHBOARD_URL` (port 5173), blocking requests from the Super Admin portal (`http://localhost:5174`). Added `http://localhost:5174` explicitly to `allowedOrigins`.
@@ -868,6 +971,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 53 (Member RBAC Enum Casting Fix & Workspaces Guard)
+
 - **Problem Reported:** In the dashboard, logging in as regular member Jordan Rivera (`jordan.rivera@acme.corp`) caused `GET /v1/workspaces` and `GET /v1/cards/my-tasks` to return HTTP 500 errors (`{"error":"Internal server error"}`).
 - **Root Cause Analysis:**
   1. **PostgreSQL Enum Type Incompatibility in `middleware/auth.ts`:** The `requirePermission` hook evaluated `WHEN ${organizationMembers.role} = 'viewer' THEN 'Viewer'`. Because `organizationMembers.role` is a Postgres enum of type `org_member_role` (which only contains `'org_owner'`, `'org_admin'`, `'billing_manager'`, `'workspace_admin'`, `'member'`), Postgres attempted to cast the string literal `'viewer'` to `org_member_role`, throwing `PostgresError: invalid input value for enum org_member_role: "viewer"` (code `22P02`) on all permission checks for non-platform admin members.
@@ -880,6 +984,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 54 (Base UI nativeButton Trigger Accessibility & Console Warning Fix)
+
 - **Problem Reported:** Browser console threw warning:
   `Base UI: A component that acts as a button expected a native <button> because the nativeButton prop is true. Rendering a non-<button> removes native button semantics, which can impact forms and accessibility. Use a real <button> in the render prop, or set nativeButton to false. at DropdownMenuTrigger (dropdown-menu.tsx:23:7) at DashboardLayout (DashboardLayout.tsx:150:17)`.
 - **Root Cause:** In `@base-ui/react/menu` and `@base-ui/react/dialog`, `MenuPrimitive.Trigger` and `DialogPrimitive.Trigger` default `nativeButton: true`. When passing a `<div>` element as children or via the `render` prop (e.g. the user profile avatar wrapper in `DashboardLayout.tsx`), Base UI warns that a non-button element was passed without setting `nativeButton={false}`.
@@ -891,6 +996,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 55 (Sequential Number-Based Ticket ID System)
+
 - **Goal:** Replace pseudo-random UUID hex slice task IDs (`CFP-69BE`) with an industry-standard, human-readable, and strictly sequential incremental ticket ID system (e.g. `BCW-1`, `BCW-2`, `CFP-1`, `CFP-14`, `ENG-108`) per project.
 - **What was done:**
   1. **Database Schema Additions (`apps/backend/src/db/schema/index.ts`):**
@@ -915,6 +1021,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 56 (Trash Restore Confirmation UX & Member Restore Permission Fix)
+
 - **Problem Reported:** In the Trash / Recycle Bin dialog, the "Restore Board?" confirmation modal had unstyled/low-contrast action buttons, and standard members were blocked from restoring trashed items.
 - **Root Cause Analysis:**
   1. **Route Permission Mismatch in `trash/routes.ts`:** `POST /v1/trash/restore` required `org.update`. Because regular organization members do not possess `org.update` (which is restricted to org owners/admins for company settings), restoring soft-deleted boards or cards thrown a 403 Forbidden error.
@@ -928,6 +1035,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 57 (UI Standardization & Super Admin Multi-Company Filtering)
+
 - **Goal:** Unify common UI components into the `@boardly/ui` workspace package so that both `apps/dashboard` and `apps/super-admin` share the exact same UI foundation without code duplication or drift, and bring rich Excel-style filters, sorting, search, pagination, and CSV export to the Super Admin platform users & tenants screens.
 - **What was done:**
   1. **Shared UI Package Upgrade (`packages/ui`):**
@@ -955,6 +1063,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 58 (CORS Configuration Hardening for Development & Auth Flows)
+
 - **Problem Reported:** User reported receiving CORS error when signing in from `http://localhost:5173`.
 - **Root Cause Analysis:**
   1. `apps/backend/src/index.ts` restricted `allowedHeaders` to only `['Content-Type', 'Authorization']`, which caused preflight `OPTIONS` requests from browsers sending standard headers like `Accept`, `X-Requested-With`, `Origin`, or telemetry headers to fail CORS preflight checks.
@@ -971,7 +1080,8 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 59 (API Error Sanitization & Organization Member Invite Logic Fix)
-- **Problem Reported:** 
+
+- **Problem Reported:**
   1. Internal database query and parameters (`Failed query: insert into "organization_members" ... \nparams: ...`) were leaked in API error responses to the frontend.
   2. Inviting a member with the `'viewer'` role failed with an enum violation because `'viewer'` was missing from the PostgreSQL `org_member_role` enum type.
 - **Fixes Applied:**
@@ -990,13 +1100,14 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
      - Refactored `inviteMember` and `bulkInviteMembers` with strict email and role validation against `ALLOWED_ORG_ROLES`.
      - Wrapped user provisioning, membership creation/reactivation, workspace linking, invitation token generation, and audit logging inside atomic database transactions (`db.transaction`).
      - Throws clean `409 Conflict` if the user is already an active member and `400 Bad Request` on invalid email/role.
-- **Verification:** 
+- **Verification:**
   - Created and ran `apps/backend/src/lib/errors.test.ts` with 12 unit tests verifying SQL query masking, safe error translation, and route handling (12/12 passing).
   - Validated full TypeScript typecheck across backend, shared types, and dashboard with 0 errors.
 
 ---
 
 ### 2026-08-29 — Session 60 (Huly-Parity Feature Roadmap Definition & Planning)
+
 - **What was done:**
   1. Analyzed full functional scope comparison between Boardly and Huly.
   2. Defined and added **Phase 4 (Workspace Collaboration & All-in-One Expansion / Huly Parity)** to `ROADMAP.md` across 6 discrete tracks:
@@ -1011,6 +1122,7 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 ---
 
 ### 2026-08-29 — Session 61 (WorkOS OAuth & Enterprise SSO/SCIM Full Architecture Integration)
+
 - **Goal:** Integrate WorkOS authentication into Boardly, providing Google OAuth sign-in for individual users, domain-routed Enterprise SSO (SAML 2.0 / OIDC) for corporate teams (Okta, Azure AD, Google Workspace), and automated JIT provisioning, while keeping existing email/password and platform Super Admin credentials fully intact.
 - **What was done:**
   1. **SDK & Environment Configuration:**
@@ -1105,13 +1217,102 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
    - Added automated unit test coverage in `org.test.ts`.
 
 ### Test Results
+
 - `bun test` — 23/23 tests pass across `auth.test.ts`, `workos.test.ts`, `org.test.ts`.
 - `bun run build` (dashboard) — 0 TypeScript errors, clean Vite production build.
 - `bun run typecheck` (backend) — 0 TypeScript errors.
 - Email lifecycle in dev mode: automatically logs full HTML and plain text email payloads for invite, deactivation, and reactivation flows.
 
+---
 
+## 2026-08-30 — Enterprise Per-Head (Per-Seat) Payment & Billing System (v2)
 
+### Summary of Changes
 
+1. **Stripe SDK & Configuration (`apps/backend/src/lib/stripe.ts` & `env.ts`)**:
+   - Installed `stripe@22.6.0` in `apps/backend`.
+   - Created Stripe helper library supporting:
+     - `createCheckoutSession`: Self-serve Stripe Checkout for Pro & Business plans with automatic quantity multiplication.
+     - `createBillingPortalSession`: Direct launcher for the Stripe Customer Billing Portal.
+     - `updateSubscriptionSeatQuantity`: Immediate proration seat expansion via `proration_behavior: 'create_prorations'`.
+     - `scheduleSubscriptionSeatDecrease`: Period-boundary seat downsizing via `subscription_schedules` with `proration_behavior: 'none'` (no premature credits removed).
+     - `previewProratedInvoice`: Live preview of upcoming charges, line items, and proration breakdowns before confirming seat additions.
+     - `constructWebhookEvent`: Cryptographically verified webhook handler using Stripe webhook secret.
 
+2. **Database Migration Applied (`0011_billing_v2.sql` & `patch.ts`)**:
+   - Added `past_due_downgrade_pending` to `subscription_status` enum.
+   - Added `stripe_subscription_item_id`, `stripe_guest_overage_item_id`, `billing_interval`, `pending_seat_change`, `seat_version`, `billing_terms`, `trial_ends_at`, `cancel_at_period_end` to `subscriptions` table.
+   - Created `billing_events` table (for webhook idempotency log and audit trail).
+   - Created `guest_seats` table (for tracking guest viewer limits and overage billing).
+   - Created `seat_change_requests` table (with `stripe_idempotency_key` preventing duplicate mutations).
 
+3. **Core Backend Billing Engine (`apps/backend/src/modules/billing/`)**:
+   - `service.ts`:
+     - Atomic concurrency locking via Postgres `SELECT ... FOR UPDATE` on `subscriptions`.
+     - Single source of truth webhook architecture where `seatCount`, `planId`, and `status` are reconciled idempotently.
+     - Slack-style fair billing model: vacant seats are preserved upon member deactivation, enabling replacement invites for $0 proration.
+     - Downgrade member gate: verifies active billable members <= 5 when downgrading to Free; puts accounts in `past_due_downgrade_pending` if exceeded.
+     - Capped guest model: Free (3 guests), Pro (10 guests/seat), Business (25 guests/seat), Enterprise (unlimited) with $3/guest/mo overage calculations.
+   - `routes.ts`:
+     - `GET /v1/billing/overview`: Comprehensive metrics, seat utilization, vacant seat counters, guest quotas, and invoice history.
+     - `POST /v1/billing/checkout`: Initiates Stripe Checkout session.
+     - `POST /v1/billing/portal`: Generates Customer Portal URL.
+     - `POST /v1/billing/seats/preview`: Real-time upcoming invoice calculation.
+     - `POST /v1/billing/seats/increase`: Instant prorated seat addition.
+     - `POST /v1/billing/seats/schedule-decrease`: Scheduled period-end downsize.
+     - `POST /v1/billing/cancel`: Handles plan cancellation with downgrade gating.
+     - `POST /v1/billing/enterprise/request-quote`: Sales-assisted NET-30 invoice lead generator.
+     - `POST /v1/billing/webhook`: Secure Stripe webhook processor.
+
+4. **Plan Guard Middleware (`apps/backend/src/middleware/planGuard.ts`)**:
+   - Implemented `requirePlan('pro' | 'business' | 'enterprise')` returning HTTP 402 with `PLAN_UPGRADE_REQUIRED` and `upgradeUrl`.
+
+5. **Branded Email Templates (`apps/backend/src/lib/emailTemplates.ts`)**:
+   - Created 8 full billing lifecycle templates: `renderSubscriptionActivatedEmail`, `renderSeatAddedEmail`, `renderSeatDecreaseScheduledEmail`, `renderGuestOverageEmail`, `renderPaymentFailedEmail`, `renderDowngradeBlockedEmail`, `renderSubscriptionCanceledEmail`, `renderEnterpriseInvoiceSentEmail`.
+
+6. **Frontend UI Components (`apps/dashboard`)**:
+   - `apps/dashboard/src/lib/billingService.ts`: Typed client wrapper for all billing API endpoints.
+   - `apps/dashboard/src/pages/Pricing.tsx`: Public pricing page with Monthly/Annual 20% discount switch, dynamic seat sliders for Pro and Business tiers, full feature comparison matrix, and Enterprise "Contact Sales" modal.
+   - `apps/dashboard/src/pages/admin/Billing.tsx`: Complete Enterprise Billing Hub featuring:
+     - Real-time seat utilization progress gauge with **Vacant Seat Badges**.
+     - Guest quota tracking with overage status.
+     - "Add Seats" Modal with live Stripe proration breakdown preview.
+     - "Downsize Seats" Modal with period-boundary validation.
+     - Customer Portal launcher for self-serve card updates.
+     - Past invoice history table with receipts and PDF downloads.
+   - `apps/dashboard/src/pages/admin/Users.tsx`: Integrated pre-flight seat capacity checks and 402 redirect action toasts on user invitations.
+
+### Verification Results
+
+- `bun test apps/backend/src/modules/billing/billing.test.ts apps/backend/src/modules/organizations/org.test.ts` — 14/14 tests pass (100%).
+- `bun run --cwd apps/dashboard build` — Clean Vite production bundle (0 errors).
+- `bun x tsc -p apps/backend/tsconfig.json --noEmit` — 0 TypeScript errors.
+
+---
+
+### 2026-08-30 — Admin Panel Sidebar Responsive & Collapse State UX Fix
+
+- **Problem:** When collapsing the sidebar in `AdminLayout.tsx` (`/admin/*`), header text, group labels, footer buttons, and profile info were not checking the `collapsed` state and were overflowing / squishing into the 56px (`w-14`) collapsed sidebar width.
+- **Solution:**
+  - Refactored `AdminLayout.tsx` to extract an `AdminSidebar` sub-component that consumes `useSidebar()`.
+  - Added `collapsible="icon"` to the admin `<Sidebar>`.
+  - Implemented responsive conditional rendering: when collapsed, shows centered icon buttons with tooltips, hides text labels, stacks footer action icons vertically, and passes `isCollapsed={true}` to `UserProfileDropdown`.
+  - Added mobile dismissal (`setOpenMobile(false)`) on navigation item click.
+
+---
+
+### 2026-08-30 — Admin Panel Invoice Interface Alignment & Full Typecheck
+
+- **Problem:** `apps/backend/src/modules/billing/service.ts` had a type discrepancy in `invoiceList` mapping where `pdfUrl` was defined instead of `hostedInvoiceUrl` and `invoicePdf`, causing a TypeScript compilation error when building the billing overview response.
+- **Solution:**
+  - Updated `invoiceList` type signature in `service.ts` to match the frontend contract with `hostedInvoiceUrl: string | null` and `invoicePdf: string | null`.
+  - Verified `tsc --noEmit` across `apps/dashboard`, `apps/backend`, and `apps/super-admin` with 0 errors.
+
+---
+
+### 2026-09-02 — Top-Level Monorepo Structure & Knowledge Graph Standardization
+- **What was done:**
+  1. **Documentation Standardization (`docs/`)**: Renamed `markdowns/` to standard `docs/` and organized knowledge graph artifacts.
+  2. **Script Consolidation (`scripts/`)**: Removed loose root forwarding shell scripts (`setup.sh`, `start.sh`) and unified execution under canonical `package.json` scripts (`bun dev`, `bun run setup`, `bun run db:reset`).
+  3. **Knowledge Graph Integration**: Set up Graphify AST knowledge graph with `AGENTS.md` and `CLAUDE.md` rules instructing AI assistants to navigate via `graphify-out/GRAPH_REPORT.md`.
+  4. **Git Hygiene**: Updated `.gitignore` to exclude `graphify-out/cache/` and timestamped backups.

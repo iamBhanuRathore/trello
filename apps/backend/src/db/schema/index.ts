@@ -23,6 +23,7 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'past_due',
   'canceled',
   'trialing',
+  'past_due_downgrade_pending',
 ]);
 export const orgMemberRoleEnum = pgEnum('org_member_role', [
   'org_owner',
@@ -202,11 +203,56 @@ export const subscriptions = pgTable('subscriptions', {
     .references(() => plans.id),
   stripeSubscriptionId: varchar('stripe_subscription_id', { length: 255 }),
   stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
+  stripeSubscriptionItemId: varchar('stripe_subscription_item_id', { length: 255 }),
+  stripeGuestOverageItemId: varchar('stripe_guest_overage_item_id', { length: 255 }),
+  billingInterval: varchar('billing_interval', { length: 20 }).default('monthly'),
   status: subscriptionStatusEnum('status').notNull().default('active'),
   currentPeriodStart: timestamp('current_period_start'),
   currentPeriodEnd: timestamp('current_period_end'),
   seatCount: integer('seat_count').notNull().default(1),
+  pendingSeatChange: boolean('pending_seat_change').notNull().default(false),
+  seatVersion: integer('seat_version').notNull().default(0),
+  billingTerms: varchar('billing_terms', { length: 20 }).default('card'),
+  trialEndsAt: timestamp('trial_ends_at'),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
   ...timestamps,
+});
+
+// ─── Billing Events (Webhook Idempotency Log) ─────────────────────────────────
+export const billingEvents = pgTable('billing_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  stripeEventId: varchar('stripe_event_id', { length: 255 }).notNull().unique(),
+  eventType: varchar('event_type', { length: 100 }).notNull(),
+  organizationId: uuid('organization_id').references(() => organizations.id),
+  payload: jsonb('payload').notNull(),
+  processedAt: timestamp('processed_at').notNull().defaultNow(),
+  error: text('error'),
+});
+
+// ─── Guest Seats ──────────────────────────────────────────────────────────────
+export const guestSeats = pgTable('guest_seats', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id')
+    .notNull()
+    .references(() => organizations.id),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  billable: boolean('billable').notNull().default(false),
+  ...timestamps,
+});
+
+// ─── Seat Change Requests ─────────────────────────────────────────────────────
+export const seatChangeRequests = pgTable('seat_change_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  subscriptionId: uuid('subscription_id')
+    .notNull()
+    .references(() => subscriptions.id),
+  requestedQuantity: integer('requested_quantity').notNull(),
+  direction: varchar('direction', { length: 10 }).notNull(), // 'increase' | 'decrease'
+  stripeIdempotencyKey: varchar('stripe_idempotency_key', { length: 255 }).notNull().unique(),
+  status: varchar('status', { length: 20 }).notNull().default('pending'), // 'pending' | 'confirmed' | 'failed'
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
 // ─── Workspaces ───────────────────────────────────────────────────────────────

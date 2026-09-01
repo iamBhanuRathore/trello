@@ -32,6 +32,7 @@ import { NotificationSettings } from './pages/Settings/NotificationSettings';
 import { WebhookSettings } from './pages/Settings/WebhookSettings';
 import { Integrations } from './pages/Integrations';
 import { TaskPage } from './pages/TaskPage';
+import { Pricing } from './pages/Pricing';
 import { ProfileSettings } from './pages/ProfileSettings';
 import { NotFound } from './pages/NotFound';
 
@@ -54,6 +55,7 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/pricing" element={<Pricing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/invite" element={<AcceptInvite />} />

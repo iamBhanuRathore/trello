@@ -124,9 +124,10 @@ describe('Organizations Service', () => {
       owner.id,
       'Temporary leave of absence'
     );
-    expect(deactivated.status).toBe('deactivated');
-    expect(deactivated.deactivationReason).toBe('Temporary leave of absence');
-    expect(deactivated.deactivatedBy).toBe(owner.id);
+    expect(deactivated).toBeDefined();
+    expect(deactivated?.status).toBe('deactivated');
+    expect(deactivated?.deactivationReason).toBe('Temporary leave of absence');
+    expect(deactivated?.deactivatedBy).toBe(owner.id);
 
     // Reactivate member
     const reactivated = await reactivateMember(
@@ -135,9 +136,10 @@ describe('Organizations Service', () => {
       member!.id,
       owner.id
     );
-    expect(reactivated.status).toBe('active');
-    expect(reactivated.deactivationReason).toBeNull();
-    expect(reactivated.deactivatedBy).toBeNull();
+    expect(reactivated).toBeDefined();
+    expect(reactivated?.status).toBe('active');
+    expect(reactivated?.deactivationReason).toBeNull();
+    expect(reactivated?.deactivatedBy).toBeNull();
   });
 
   it('should soft-remove a member', async () => {

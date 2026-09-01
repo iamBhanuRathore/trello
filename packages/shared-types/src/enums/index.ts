@@ -15,6 +15,7 @@ export enum SubscriptionStatus {
   PastDue = 'past_due',
   Canceled = 'canceled',
   Trialing = 'trialing',
+  PastDueDowngradePending = 'past_due_downgrade_pending',
 }
 
 export enum OrgMemberRole {

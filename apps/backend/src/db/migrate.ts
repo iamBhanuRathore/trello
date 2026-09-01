@@ -3,15 +3,13 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import * as path from 'path';
 
+import { env } from '../lib/env';
+
 /**
  * One-shot migration runner.
  * Run with: bun run src/db/migrate.ts
  */
-const connectionString = process.env['DATABASE_URL'];
-if (!connectionString) {
-  console.error('❌  DATABASE_URL is not set');
-  process.exit(1);
-}
+const connectionString = process.env.DATABASE_URL || env.DATABASE_URL;
 
 const sql = postgres(connectionString, { max: 1 });
 const db = drizzle(sql);

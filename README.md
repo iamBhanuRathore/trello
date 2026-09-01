@@ -9,10 +9,10 @@
 Start all services (PostgreSQL, Redis, Migrations, Seeds, Backend API, and Web Dashboard) with a single command:
 
 ```bash
-./start.sh
+bun dev
 ```
 
-*(or `bun dev` / `bun start`)*
+*(or `./scripts/dev.sh`)*
 
 ### 🔗 Service Endpoints
 Once started, the following services are available:
@@ -33,10 +33,10 @@ Once started, the following services are available:
 All necessary scripts are pre-configured in `package.json` and in `./scripts/`:
 
 ### 🚀 Application Lifecyle
-- **`./start.sh`** or **`bun dev`**: Start the full stack development environment with auto-provisioned databases, migrations, and seeds.
-- **`./setup.sh`** or **`bun run setup`**: First-time project setup (generates `.env` with strong JWT keys, installs dependencies, initializes DB).
-- **`bun run stop`** or **`./scripts/stop.sh`**: Gracefully stop all development processes and database containers.
-- **`bun run doctor`** or **`./scripts/doctor.sh`**: Run environment diagnostics (checks Bun, Docker, ports, `.env`, and DB connectivity).
+- **`bun dev`** (or **`./scripts/dev.sh`**): Start the full stack development environment with auto-provisioned databases, migrations, and seeds.
+- **`bun run setup`** (or **`./scripts/setup.sh`**): First-time project setup (generates `.env` with strong JWT keys, installs dependencies, initializes DB).
+- **`bun run stop`** (or **`./scripts/stop.sh`**): Gracefully stop all development processes and database containers.
+- **`bun run doctor`** (or **`./scripts/doctor.sh`**): Run environment diagnostics (checks Bun, Docker, ports, `.env`, and DB connectivity).
 
 ### 🗄️ Database Management
 - **`bun run db:up`**: Start PostgreSQL and Redis Docker containers.
@@ -63,19 +63,18 @@ All necessary scripts are pre-configured in `package.json` and in `./scripts/`:
 ├── apps/
 │   ├── backend/        # Elysia.js + Drizzle ORM + PostgreSQL API (:3001)
 │   ├── dashboard/      # React + Vite + Tailwind v4 + Shadcn Kanban Dashboard (:5173)
-│   └── mobile/         # React Native (Expo) mobile client
+│   ├── mobile/         # React Native (Expo) mobile client
+│   ├── super-admin/    # Standalone Platform Super Admin SPA (:5174)
+│   └── website/        # Marketing & landing website
 ├── packages/
 │   ├── config/         # Shared TypeScript, ESLint, & Tailwind presets
 │   ├── shared-types/   # Shared schemas, DTOs, enums & permissions
 │   ├── test-fixtures/  # Mock factories for tests
 │   ├── ui/             # Shared React UI component library
 │   └── ui-native/      # Shared React Native component library
-├── scripts/
-│   ├── dev.sh          # One-command developer startup runner
-│   ├── setup.sh        # Project setup & dependency initialization
-│   ├── stop.sh         # Stop and clean up dev processes
-│   ├── db.sh           # Database management CLI
-│   └── doctor.sh       # Environment diagnostics
+├── docs/               # System architecture, schemas, and specifications
+├── scripts/            # Development, setup, and database CLI scripts
+├── graphify-out/       # Knowledge graph index and interactive visualizer
 ├── docker-compose.yml  # PostgreSQL (dev: 5432, test: 5433) & Redis (6379)
 └── turbo.json          # Monorepo build pipeline configuration
 ```

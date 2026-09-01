@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
 import { orgService, type OrgMember, type PendingInvitation } from '../../lib/orgService';
@@ -158,6 +159,8 @@ export const Users: React.FC = () => {
     enabled: !!orgId && !!drawerMemberId,
   });
 
+  const navigate = useNavigate();
+
   // Mutations
   const singleInviteMutation = useMutation({
     mutationFn: () =>
@@ -174,7 +177,19 @@ export const Users: React.FC = () => {
       toast.success(`Invitation generated for ${inviteEmail.trim()}`);
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.error || err.message || 'Failed to invite user');
+      const isBillingError = err.response?.status === 402 || err.response?.data?.code === 'PLAN_UPGRADE_REQUIRED';
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to invite user';
+      if (isBillingError) {
+        toast.error(msg, {
+          action: {
+            label: 'Manage Seats',
+            onClick: () => navigate('/admin/billing'),
+          },
+          duration: 8000,
+        });
+      } else {
+        toast.error(msg);
+      }
     },
   });
 
@@ -188,7 +203,19 @@ export const Users: React.FC = () => {
       toast.success(`Successfully onboarded ${data.successfulCount} members (${data.failedCount} failed)`);
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.error || err.message || 'Bulk invite failed');
+      const isBillingError = err.response?.status === 402 || err.response?.data?.code === 'PLAN_UPGRADE_REQUIRED';
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Bulk invite failed';
+      if (isBillingError) {
+        toast.error(msg, {
+          action: {
+            label: 'Manage Seats',
+            onClick: () => navigate('/admin/billing'),
+          },
+          duration: 8000,
+        });
+      } else {
+        toast.error(msg);
+      }
     },
   });
 

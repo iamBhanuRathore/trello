@@ -14,6 +14,8 @@ import {
   refreshTokens as refreshTokensTable,
   invitations,
   auditLog,
+  plans,
+  subscriptions,
 } from '../../db/schema/index';
 import { signAccessToken } from '../../middleware/auth';
 import { env } from '../../lib/env';
@@ -96,8 +98,24 @@ export async function signUp(db: Database, input: SignUpInput) {
   // Hash password
   const passwordHash = await Bun.password.hash(password, { algorithm: 'bcrypt', cost: 12 });
 
-  // Create user + org + membership in a transaction
+  // Create user + org + membership + default subscription in a transaction
   const result = await db.transaction(async (tx) => {
+    let [freePlan] = await tx.select().from(plans).where(eq(plans.tier, 'free')).limit(1);
+    if (!freePlan) {
+      const [createdPlan] = await tx
+        .insert(plans)
+        .values({
+          name: 'Free Plan',
+          tier: 'free',
+          maxSeats: 5,
+          maxWorkspaces: 1,
+          maxBoards: 3,
+          maxStorageGb: 1,
+        })
+        .returning();
+      freePlan = createdPlan;
+    }
+
     const [newUser] = await tx
       .insert(users)
       .values({ name, email: email.toLowerCase(), passwordHash })
@@ -105,7 +123,7 @@ export async function signUp(db: Database, input: SignUpInput) {
 
     const [newOrg] = await tx
       .insert(organizations)
-      .values({ name: orgName, slug: orgSlug })
+      .values({ name: orgName, slug: orgSlug, planId: freePlan?.id })
       .returning();
 
     await tx.insert(organizationMembers).values({
@@ -114,6 +132,16 @@ export async function signUp(db: Database, input: SignUpInput) {
       role: 'org_owner',
       status: 'active',
     });
+
+    if (freePlan) {
+      await tx.insert(subscriptions).values({
+        organizationId: newOrg!.id,
+        planId: freePlan.id,
+        status: 'active',
+        seatCount: 5,
+        billingInterval: 'monthly',
+      });
+    }
 
     return { user: newUser!, organization: newOrg! };
   });

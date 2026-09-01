@@ -21,7 +21,6 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@boardly/ui": ["../../packages/ui/src/index.ts"],
