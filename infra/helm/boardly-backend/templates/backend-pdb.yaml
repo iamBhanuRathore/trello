@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: boardly-backend-pdb
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: boardly-backend
+    environment: {{ .Values.environment }}
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: boardly-backend

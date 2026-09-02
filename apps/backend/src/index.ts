@@ -3,8 +3,9 @@ import { cors } from '@elysiajs/cors';
 import { swagger } from '@elysiajs/swagger';
 import { env } from './lib/env';
 import { logger } from './lib/logger';
-import { db } from './db/index';
+import { db, disconnectDb } from './db/index';
 import { connectRedis, disconnectRedis } from './redis';
+import { rateLimiterMiddleware } from './middleware/rateLimiter';
 import { healthRoutes } from './modules/health/routes';
 import { authRoutes } from './modules/auth/routes';
 import { orgRoutes, inviteRoutes } from './modules/organizations/routes';
@@ -41,6 +42,10 @@ import { billingRoutes } from './modules/billing/routes';
 import { formatErrorResponse, formatValidationError } from './lib/errors';
 import { sql } from 'drizzle-orm';
 
+// In-flight request tracking for graceful draining
+let inFlight = 0;
+let shuttingDown = false;
+
 // Ensure enum values and schema columns are up to date in the database on boot
 db.execute(sql`ALTER TYPE "org_member_role" ADD VALUE IF NOT EXISTS 'viewer'`).catch(() => {});
 db.execute(
@@ -58,16 +63,6 @@ setupAutomationEngine(db);
 // Initialize Redis Pub/Sub cluster connection
 await connectRedis();
 
-// Handle graceful shutdown
-const shutdown = async (signal: string) => {
-  logger.info({ signal }, 'Shutting down gracefully...');
-  await disconnectRedis();
-  process.exit(0);
-};
-
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-
 const allowedOrigins = [...(env.DASHBOARD_URL?.split(',').map((s) => s.trim()) || [])];
 
 const isAllowedOrigin = (origin: string | null): boolean => {
@@ -79,6 +74,15 @@ const isAllowedOrigin = (origin: string | null): boolean => {
 };
 
 const app = new Elysia()
+  // ── In-flight Tracking & Logging ───────────────────────────────────────────
+  .onRequest(({ request }) => {
+    inFlight++;
+    logger.info({ method: request.method, url: request.url, inFlight }, 'Incoming request');
+  })
+  .onAfterResponse(() => {
+    inFlight = Math.max(0, inFlight - 1);
+  })
+
   // ── Global middleware ──────────────────────────────────────────────────────
   .use(
     cors({
@@ -119,6 +123,8 @@ const app = new Elysia()
 
   // ── Global error handler ───────────────────────────────────────────────────
   .onError(({ error, code, set }) => {
+    inFlight = Math.max(0, inFlight - 1);
+
     if (code === 'VALIDATION') {
       set.status = 422;
       return formatValidationError(error);
@@ -134,15 +140,11 @@ const app = new Elysia()
     return body;
   })
 
-  // ── Request logging ────────────────────────────────────────────────────────
-  .onRequest(({ request }) => {
-    logger.info({ method: request.method, url: request.url }, 'Incoming request');
-  })
-
   // ── Routes (versioned under /v1) ───────────────────────────────────────────
   .use(healthRoutes)
   .group('/v1', (app) =>
     app
+      .use(rateLimiterMiddleware())
       .use(authRoutes)
       .use(inviteRoutes)
       .use(orgRoutes)
@@ -181,5 +183,43 @@ if (app.server) {
 }
 
 logger.info({ host: app.server?.hostname, port: app.server?.port }, '🚀 Boardly API is running');
+
+// ── Graceful Shutdown & Drain Handler ─────────────────────────────────────────
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ signal, inFlight }, 'Draining in-flight requests and shutting down gracefully...');
+
+  // 1. Stop accepting new connections
+  if (app.server) {
+    try {
+      app.server.stop(true);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.warn({ err: errMsg }, 'Error stopping HTTP listener');
+    }
+  }
+
+  // 2. Drain in-flight requests (max 25s deadline — fits inside K8s 45s terminationGracePeriod)
+  const deadline = Date.now() + 25_000;
+  while (inFlight > 0 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  if (inFlight > 0) {
+    logger.warn({ inFlight }, 'Drain deadline reached with requests still pending');
+  } else {
+    logger.info({}, 'All in-flight requests drained successfully');
+  }
+
+  // 3. Close downstream Redis and Database client pools
+  await Promise.allSettled([disconnectRedis(), disconnectDb()]);
+
+  logger.info({}, 'Clean shutdown completed. Exiting.');
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export type App = typeof app;

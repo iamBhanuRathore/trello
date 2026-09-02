@@ -14,6 +14,7 @@ const envSchema = z.object({
     .string()
     .url()
     .default('postgresql://boardly:boardly_dev@localhost:5432/boardly_dev'),
+  DATABASE_REPLICA_URL: z.string().url().optional(),
   DATABASE_TEST_URL: z.string().url().optional(),
 
   // Redis

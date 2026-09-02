@@ -33,10 +33,15 @@
 - ✅ `packages/test-fixtures` — factory/seeder functions (createOrgWithUsers, createBoardWithCards, etc.)
 - ✅ `packages/ui` — shared UI component library (`@boardly/ui`): Button, Card, Dialog, Input, Label, Avatar, DropdownMenu, Switch + `cn()` utility.
 - ✅ `apps/backend` — Bun + Elysia on :3001
-  - Full Drizzle ORM schema with 42+ tables (including `push_devices`, `api_keys`, `marketplace_apps`, `installed_apps`, `sso_configurations`, `intake_forms`, `form_submissions`, `documents`, `document_cards`, `roles`, `permissions`, `role_permissions`, `audit_log`)
-  - RBAC permission guards (`requirePermission`) & JWT authentication
-  - Full CRUD & domain services: Auth, Orgs, Workspaces, Projects, Boards, Lists, Cards, Stages, Sprints, Phases, Search, Notifications, Webhooks, Automations, Integrations, Reports, Time Tracking, Importers, Custom Roles, Audit Logs, Project Docs, Intake Forms & SLAs, Enterprise SSO & SCIM, Developer API Keys & Marketplace, Mobile Push Devices
-  - Real-time WebSocket event bus with live presence registry and active card/typing broadcast
+  - Full Drizzle ORM schema with 42+ tables with RLS (`0012_enable_row_level_security.sql`) and `withOrgContext()` tenant context isolation.
+  - Multi-tenant token bucket rate limiter (`rateLimiter.ts`) with Redis Lua `EVALSHA` and fail-open policy (`rate_limiter_fail_open_total`).
+  - Fleet-wide heavy endpoint concurrency semaphore (`tenantQuota.ts`) with 300s TTL safety net.
+  - Graceful shutdown with 25-second in-flight request draining and connection cleanup.
+  - Production multi-stage Dockerfile (`apps/backend/Dockerfile`) with Drizzle migrations and non-root securityContext.
+  - Complete GitOps Helm chart (`infra/helm/boardly-backend/`) with HPA (3-20 replicas), PDB (minAvailable: 2), topology spread constraints, cert-manager TLS Ingress with per-IP rate limiting, ExternalSecrets (AWS Secrets Manager), and pre-upgrade migration Job hook.
+  - Structured logging with `org_id` context propagation for CloudWatch tenant filtering.
+  - Automated CI/CD workflow (`.github/workflows/docker-build.yml`) for immutable SHA tagging and ArgoCD deployment.
+  - RBAC permission guards (`requirePermission`) & JWT authentication with Redis-cached `planTier` resolution.
 - ✅ `apps/dashboard` — Vite + React + TypeScript + Tailwind v4 + Shadcn/UI
   - Boardly App Marketplace & Power-Ups Catalog (`/marketplace`) with category filtering, verified badges, and custom config modals
   - Public Developer API Keys manager (`/admin/developer`) with scope selection and secret token generator

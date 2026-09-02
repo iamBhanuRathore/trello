@@ -71,6 +71,27 @@
       "when": 1788031895626,
       "tag": "0009_rich_turbo",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788031895627,
+      "tag": "0010_viewer_org_member_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788031895628,
+      "tag": "0011_billing_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788031895629,
+      "tag": "0012_enable_row_level_security",
+      "breakpoints": true
     }
   ]
 }

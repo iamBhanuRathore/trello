@@ -3,9 +3,18 @@ import { bearer } from '@elysiajs/bearer';
 import { SignJWT, jwtVerify } from 'jose';
 import { env } from '../lib/env';
 import { db } from '../db/index';
-import { organizationMembers, rolePermissions, roles, permissions } from '../db/schema/index';
+import {
+  organizationMembers,
+  rolePermissions,
+  roles,
+  permissions,
+  organizations,
+  plans,
+} from '../db/schema/index';
 import { eq, and, or, isNull, sql } from 'drizzle-orm';
-import type { PermissionKey } from '@boardly/shared-types';
+import type { PermissionKey, PlanTier } from '@boardly/shared-types';
+import { getDataClient, isRedisAvailable } from '../redis/client';
+import { logger } from '../lib/logger';
 
 const JWT_SECRET = new TextEncoder().encode(env.JWT_SECRET);
 
@@ -13,6 +22,54 @@ export interface AuthContext {
   userId: string;
   organizationId: string;
   isPlatformAdmin: boolean;
+}
+
+/**
+ * Resolves the plan tier for an organization.
+ * Uses Redis cache (`org:meta:{orgId}`) with a 60s TTL,
+ * falling back to a database lookup on cache miss.
+ */
+export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
+  const redis = getDataClient();
+  const cacheKey = `org:meta:${orgId}`;
+
+  if (isRedisAvailable() && redis) {
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return cached as PlanTier;
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.warn({ err: errMsg, org_id: orgId }, 'Redis org metadata cache read failed');
+    }
+  }
+
+  try {
+    const org = await db
+      .select({ tier: plans.tier })
+      .from(organizations)
+      .leftJoin(plans, eq(plans.id, organizations.planId))
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+
+    const tier: PlanTier = (org[0]?.tier as PlanTier) || 'free';
+
+    if (isRedisAvailable() && redis) {
+      try {
+        await redis.set(cacheKey, tier, 'EX', 60);
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.warn({ err: errMsg, org_id: orgId }, 'Redis org metadata cache write failed');
+      }
+    }
+
+    return tier;
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error({ err: errMsg, org_id: orgId }, 'Failed to resolve org plan tier from database');
+    return 'free';
+  }
 }
 
 /**
@@ -35,9 +92,8 @@ export async function verifyAccessToken(token: string): Promise<AuthContext> {
 }
 
 /**
- * Elysia plugin that parses the Bearer token and attaches the authenticated
- * user context to every request. Routes that use this plugin will have
- * `ctx.user` available.
+ * Elysia plugin that parses the Bearer token, attaches the authenticated
+ * user context, and resolves the tenant's planTier.
  */
 export const authPlugin = new Elysia({ name: 'auth' })
   .use(bearer())
@@ -49,7 +105,11 @@ export const authPlugin = new Elysia({ name: 'auth' })
 
     try {
       const user = await verifyAccessToken(bearer);
-      return { user };
+      const planTier = user.organizationId
+        ? await resolveOrgPlanTier(user.organizationId)
+        : ('free' as PlanTier);
+
+      return { user, planTier };
     } catch {
       set.status = 401;
       throw Object.assign(new Error('Unauthorized — invalid or expired token'), { status: 401 });
@@ -66,7 +126,13 @@ export const authPlugin = new Elysia({ name: 'auth' })
  * Uses DB-level role_permissions lookup.
  */
 export function requirePermission(permissionKey: PermissionKey) {
-  return async ({ user, set }: { user?: AuthContext; set: { status?: number | string } }): Promise<{ error: string } | undefined> => {
+  return async ({
+    user,
+    set,
+  }: {
+    user?: AuthContext;
+    set: { status?: number | string };
+  }): Promise<{ error: string } | undefined> => {
     if (!user) {
       set.status = 401;
       return { error: 'Unauthorized — missing Bearer token' };
@@ -80,11 +146,20 @@ export function requirePermission(permissionKey: PermissionKey) {
     // Map alias keys if granular permission isn't directly seeded
     let permCondition = eq(permissions.key, permissionKey);
     if (permissionKey === 'card.move') {
-      permCondition = or(eq(permissions.key, 'card.move'), eq(permissions.key, 'card.update')) as any;
+      permCondition = or(
+        eq(permissions.key, 'card.move'),
+        eq(permissions.key, 'card.update')
+      ) as any;
     } else if (permissionKey === 'card.archive') {
-      permCondition = or(eq(permissions.key, 'card.archive'), eq(permissions.key, 'card.delete')) as any;
+      permCondition = or(
+        eq(permissions.key, 'card.archive'),
+        eq(permissions.key, 'card.delete')
+      ) as any;
     } else if (permissionKey === 'board.archive') {
-      permCondition = or(eq(permissions.key, 'board.archive'), eq(permissions.key, 'board.delete')) as any;
+      permCondition = or(
+        eq(permissions.key, 'board.archive'),
+        eq(permissions.key, 'board.delete')
+      ) as any;
     }
 
     // Look up the user's role permissions for this org
@@ -127,7 +202,13 @@ export function requirePermission(permissionKey: PermissionKey) {
  * requirePlatformAdmin — Elysia beforeHandle hook for platform admin check.
  */
 export function requirePlatformAdmin() {
-  return async ({ user, set }: { user?: AuthContext; set: { status?: number | string } }): Promise<{ error: string } | undefined> => {
+  return async ({
+    user,
+    set,
+  }: {
+    user?: AuthContext;
+    set: { status?: number | string };
+  }): Promise<{ error: string } | undefined> => {
     if (!user) {
       set.status = 401;
       return { error: 'Unauthorized — missing Bearer token' };

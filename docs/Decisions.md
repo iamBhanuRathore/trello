@@ -24,6 +24,24 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-02 — K8s Deployment, Helm GitOps & Multi-Tenant Isolation Architecture
+
+**Context:** Boardly backend needed enterprise-grade containerization, horizontal autoscaling on AWS EKS, zero-downtime deployment pipelines with GitOps/ArgoCD, multi-tenant noisy neighbor isolation, RDS Proxy transaction pooling compatibility, and Row-Level Security (RLS) enforcement.
+
+**Decision:**
+
+1. **Container & CI/CD**: Multi-stage Bun 1.2 Alpine image (`apps/backend/Dockerfile`) bundled with Drizzle migrations. GitHub Actions pipeline (`.github/workflows/docker-build.yml`) builds immutable SHA-tagged images and updates GitOps Helm values.
+2. **Helm & Kubernetes**: Authored complete Helm chart (`infra/helm/boardly-backend/`) with RollingUpdate (`maxSurge: 1, maxUnavailable: 0`), `securityContext` (`readOnlyRootFilesystem: true`, non-root bun user, all capabilities dropped), `topologySpreadConstraints` across nodes, HPA (3-20 replicas with 300s scale-down stabilization), PDB (`minAvailable: 2`), ExternalSecrets (AWS Secrets Manager), cert-manager TLS Ingress with per-IP rate limiting, and pre-upgrade migration Job hook.
+3. **Multi-Tenant Rate Limiting & Concurrency Quota**: Created atomic Redis Lua token-bucket rate limiter (`rateLimiter.ts`) enforcing plan-tier RPS/burst caps with a 50ms hard timeout and fail-open policy (`rate_limiter_fail_open_total` alert metric). Created heavy-endpoint concurrency semaphore (`tenantQuota.ts`) with `HOLD_TTL_SECONDS: 300` safety net.
+4. **Database & RLS Layer**: Configured `prepare: false` across postgres clients for RDS Proxy / PgBouncer transaction pooling safety. Implemented `withOrgContext()` enforcing `SET LOCAL app.current_org_id` with 3-second read-after-write Redis TTL markers for monotonic read consistency. Added RLS migration (`0012_enable_row_level_security.sql`) and lint rule (`scripts/lint-raw-db.ts`).
+5. **Graceful Draining**: Implemented in-flight request tracking with 25-second drain window on `SIGTERM` / `SIGINT` before closing Redis and Postgres pools, paired with K8s 45s `terminationGracePeriodSeconds` and `preStop: sleep 5`.
+
+**Alternatives considered:** Self-hosted PgBouncer pod sidecars (rejected — AWS RDS Proxy provides fully managed pooling and failover); fail-closed rate limiter (rejected — Redis outage should degrade fairness rather than bring down API availability); in-memory per-pod rate limiting (rejected — Bun has no cluster module and per-pod counters scale 20× incorrectly across pods).
+
+**Consequences:** Backend is horizontally scalable up to 20+ pods with full tenant isolation, predictable GitOps releases, zero-downtime rolling updates, and sub-second failover recovery.
+
+---
+
 ### 2026-09-02 — Human-Readable Schema Validation Error Formatting
 
 **Context:** Elysia/TypeBox validation failures on route request bodies/parameters returned raw, unparsed internal schema JSON strings containing AST trees (`{ "type": 50, "schema": ... }`) in the `details` field, confusing API clients and exposing internal framework serialization.

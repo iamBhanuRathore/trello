@@ -1,0 +1,75 @@
+namespace: boardly-prod
+environment: production
+
+image:
+  repository: 123456789012.dkr.ecr.us-east-1.amazonaws.com/boardly-backend
+  tag: 'latest'
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: ecr-pull-secret
+
+serviceAccount:
+  create: true
+  name: boardly-backend-sa
+  annotations:
+    eks.amazonaws.com/role-arn: 'arn:aws:iam::123456789012:role/boardly-backend-sa-role'
+
+backend:
+  replicas: 3
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 65
+  targetMemoryUtilizationPercentage: 75
+  terminationGracePeriodSeconds: 45
+  port: 3001
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  probes:
+    liveness:
+      path: /health
+      initialDelaySeconds: 15
+      periodSeconds: 10
+    readiness:
+      path: /health
+      initialDelaySeconds: 5
+      periodSeconds: 5
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3001
+
+ingress:
+  enabled: true
+  className: nginx
+  host: api.boardly.app
+  tlsSecretName: boardly-api-tls
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/limit-rps: '100'
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: '5'
+    nginx.ingress.kubernetes.io/limit-connections: '50'
+    nginx.ingress.kubernetes.io/proxy-body-size: '25m'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '60'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '60'
+
+config:
+  PORT: '3001'
+  NODE_ENV: 'production'
+  DASHBOARD_URL: 'https://app.boardly.app'
+  API_URL: 'https://api.boardly.app'
+  APP_URL: 'https://app.boardly.app'
+  REDIS_CHANNEL: 'boardly:realtime'
+  PRESENCE_TTL_SECONDS: '60'
+
+secrets:
+  secretStoreRef:
+    name: aws-secretsmanager
+    kind: ClusterSecretStore
+  secretKey: boardly/prod/backend

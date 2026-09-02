@@ -1,0 +1,65 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: boardly-backend-alerts
+  namespace: boardly-prod
+  labels:
+    role: alert-rules
+    app: boardly-backend
+spec:
+  groups:
+    - name: boardly-backend.rules
+      rules:
+        - alert: RateLimitExcessive429s
+          expr: sum(rate(rate_limit_429_total[5m])) by (org_id) > 50
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'High 429 Rate Limit rejections for org {{ $labels.org_id }}'
+            description: 'Org {{ $labels.org_id }} is receiving more than 50 rate limit (429) rejections/sec over 5m.'
+
+        - alert: RateLimiterFailOpenActive
+          expr: sum(increase(rate_limiter_fail_open_total[1m])) > 0
+          for: 30s
+          labels:
+            severity: critical
+          annotations:
+            summary: 'Redis Rate Limiter Fail-Open triggered'
+            description: 'Redis connectivity or timeout failure caused the rate limiter to fail open. Investigate Redis cluster health immediately.'
+
+        - alert: TenantQuotaHeavyRejections
+          expr: sum(rate(tenant_quota_rejected_total[5m])) by (org_id, endpoint_class) > 10
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Tenant concurrency quota exceeded for {{ $labels.org_id }}'
+            description: 'Org {{ $labels.org_id }} has saturated concurrency capacity for {{ $labels.endpoint_class }} endpoints.'
+
+        - alert: DatabaseQueryDurationP99High
+          expr: histogram_quantile(0.99, sum(rate(db_query_duration_ms_bucket[5m])) by (le)) > 500
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Database query p99 latency exceeded 500ms'
+            description: 'p99 DB query duration has been > 500ms for 3 minutes.'
+
+        - alert: RedisConnectionErrors
+          expr: sum(rate(redis_connection_errors_total[5m])) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'Redis Connection Errors detected in backend pods'
+            description: 'Backend instances are reporting Redis connection failures.'
+
+        - alert: BackendHpaMaxedOut
+          expr: kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler="boardly-backend-hpa"} >= 20
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Backend HPA reached max replica limit'
+            description: 'Backend deployment has been running at maximum replica count (20 pods) for 10 minutes.'
