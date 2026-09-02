@@ -1357,10 +1357,27 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 
 ---
 
-### 2026-09-02 — Monorepo Lint & Pre-Commit Hook Alignment
+---
+
+### 2026-09-03 — Enterprise Dual-Pane Task View Redesign (Bitrix24 Layout)
 
 - **What was done:**
-  - Fixed `lint-staged` configuration in root `package.json` to format staged files with Prettier without failing on missing root-level `eslint` binary.
-  - Unified package lint scripts to use `oxlint` across packages and added `oxlint` to root `devDependencies`.
-  - Removed deprecated `baseUrl` in `apps/super-admin/tsconfig.app.json`.
-  - Verified `bunx lint-staged`, `turbo run lint` (4/4 passed), and `turbo run typecheck` (5/5 passed).
+  1. **Dual-Pane Layout Architecture**:
+     - Redesigned `TaskDetailView.tsx` into a high-density, structured enterprise split view:
+       - **Left Pane (Task Specification & Management)**: Card-based architecture with collapsible Requirement/Description box (with inline Markdown editor & preview), Core Metadata Grid (Owner, Assignee, Deadline, Status, Task ID), Agile Context (Scrum team, Stage dropdown, Epic/Sprint/Phase selectors, Story points), People & Roles (Participants, Observers with watch/unwatch toggle), Tags, Subtasks with interactive status filters (`All` vs `Mine`), Custom Fields, Time Tracking worklogs with progress visualization, Checklists, and Files/Attachments.
+       - **Right Pane (Task Chat & Activity Stream)**: Built `TaskChatPane.tsx` featuring real-time collaborative comments, `@mention` teammate autocomplete, Google Meet video trigger, chat search, delivery checkmarks, inline image attachment previews, system audit event timeline pills (stage transitions, observer updates), and rich composer.
+  2. **Enterprise Quick-Action Ribbon (`TaskActionRibbon.tsx`)**:
+     - Added scrollable quick-action pill ribbon at the bottom of task specifications (`Files`, `Checklists`, `Project`, `Participants`, `Observers`, `Tags`, `Subtasks`, `Time tracking`, `Custom fields`, etc.) allowing instant jump navigation to corresponding sections.
+  3. **Sticky Enterprise Bottom Action Bar**:
+     - Integrated sticky bottom action bar with `Start`, `Complete`, `...` more dropdown (Clone, Create subtask, Archive, Delete), `Rate task` modal, and active viewer counter.
+  4. **Responsive Modal & Page Containers**:
+     - Expanded `CardModal.tsx` and `TaskPage.tsx` container viewports to accommodate full-width edge-to-edge dual-pane layouts with mobile tab switching (`Task` vs `Chat`).
+  5. **Verification**:
+     - Built and typechecked `dashboard` package via Turbo with zero TypeScript or compilation errors.
+
+---
+
+### 2026-09-03 — Pre-Commit Hook Helm Templates Fix
+
+- **What was done:**
+  - Added `infra/helm/**/templates/**` to `.prettierignore` so `lint-staged` and Prettier ignore Go/Helm template files containing template directives (`{{- if ... }}`, `{{- toYaml ... }}`) instead of failing with YAML syntax errors during git pre-commit.

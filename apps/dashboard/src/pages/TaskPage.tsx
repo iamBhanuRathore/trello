@@ -5,15 +5,11 @@ export function TaskPage() {
   const { cardId } = useParams<{ cardId: string }>();
 
   if (!cardId) {
-    return (
-      <div className="p-8 text-center text-muted-foreground">
-        No task specified.
-      </div>
-    );
+    return <div className="p-8 text-center text-muted-foreground">No task specified.</div>;
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] p-4 sm:p-6 lg:p-8 bg-background">
+    <div className="h-[calc(100vh-3.5rem)] p-2 sm:p-4 lg:p-6 bg-muted/20 flex flex-col overflow-hidden">
       <TaskDetailView cardId={cardId} mode="page" />
     </div>
   );

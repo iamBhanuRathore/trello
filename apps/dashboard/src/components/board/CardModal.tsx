@@ -32,7 +32,7 @@ export function CardModal({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="sm:max-w-5xl md:max-w-6xl w-[94vw] h-[88vh] max-h-[88vh] p-0 bg-card rounded-2xl border border-border overflow-hidden flex flex-col shadow-2xl"
+        className="sm:max-w-6xl md:max-w-7xl xl:max-w-[1550px] w-[96vw] h-[92vh] max-h-[92vh] p-0 bg-card rounded-2xl border border-border/80 overflow-hidden flex flex-col shadow-2xl"
         showCloseButton={false}
       >
         <TaskDetailView
