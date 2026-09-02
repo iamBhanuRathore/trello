@@ -12,7 +12,7 @@ import {
   plans,
 } from '../db/schema/index';
 import { eq, and, or, isNull, sql } from 'drizzle-orm';
-import type { PermissionKey, PlanTier } from '@boardly/shared-types';
+import { type PermissionKey, PlanTier } from '@boardly/shared-types';
 import { getDataClient, isRedisAvailable } from '../redis/client';
 import { logger } from '../lib/logger';
 
@@ -53,7 +53,7 @@ export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
       .where(eq(organizations.id, orgId))
       .limit(1);
 
-    const tier: PlanTier = (org[0]?.tier as PlanTier) || 'free';
+    const tier: PlanTier = (org[0]?.tier as PlanTier) || PlanTier.Free;
 
     if (isRedisAvailable() && redis) {
       try {
@@ -68,7 +68,7 @@ export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error({ err: errMsg, org_id: orgId }, 'Failed to resolve org plan tier from database');
-    return 'free';
+    return PlanTier.Free;
   }
 }
 

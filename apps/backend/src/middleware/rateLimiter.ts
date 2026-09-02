@@ -1,4 +1,4 @@
-import Elysia from 'elysia';
+import Elysia, { type HTTPHeaders } from 'elysia';
 import type { PlanTier } from '@boardly/shared-types';
 import { getDataClient, isRedisAvailable } from '../redis/client';
 import { logger } from '../lib/logger';
@@ -82,7 +82,7 @@ async function executeLuaTokenBucket(
 
   // Load script SHA if not cached
   if (!scriptSha) {
-    const loadedSha = await redis.script('load', TOKEN_BUCKET_LUA);
+    const loadedSha = await redis.script('LOAD', TOKEN_BUCKET_LUA);
     scriptSha = String(loadedSha);
   }
 
@@ -111,7 +111,7 @@ async function executeLuaTokenBucket(
     const errMsg = err instanceof Error ? err.message : String(err);
     // Handle NOSCRIPT when Redis restarts or clears script cache
     if (errMsg.includes('NOSCRIPT')) {
-      const reloadedSha = String(await redis.script('load', TOKEN_BUCKET_LUA));
+      const reloadedSha = String(await redis.script('LOAD', TOKEN_BUCKET_LUA));
       scriptSha = reloadedSha;
       const res = (await redis.evalsha(
         reloadedSha,
@@ -135,7 +135,7 @@ async function executeLuaTokenBucket(
 interface RateLimiterContext {
   user?: { organizationId?: string };
   planTier?: PlanTier;
-  set: { status?: number | string; headers?: Record<string, string> };
+  set: { status?: number | string; headers?: HTTPHeaders };
 }
 
 /**
@@ -150,7 +150,7 @@ export const rateLimiterMiddleware = () =>
     async ({ user, planTier, set }: RateLimiterContext) => {
       // If unauthenticated or no org context, allow down to IP limiting at ingress / route auth
       const orgId = user?.organizationId;
-      if (!orgId) return;
+      if (!orgId) return undefined;
 
       const tier: PlanTier = planTier || (await resolveOrgPlanTier(orgId));
       const config = PLAN_RATE_LIMITS[tier] || PLAN_RATE_LIMITS.free;
@@ -161,7 +161,7 @@ export const rateLimiterMiddleware = () =>
         // Fail-open
         metrics.rateLimiterFailOpenTotal++;
         logger.warn({ org_id: orgId }, 'Rate limiter fail-open: Redis is unavailable');
-        return;
+        return undefined;
       }
 
       try {
@@ -176,7 +176,7 @@ export const rateLimiterMiddleware = () =>
         if ('timeout' in outcome) {
           metrics.rateLimiterFailOpenTotal++;
           logger.warn({ org_id: orgId }, 'Rate limiter fail-open: Redis check timed out (>50ms)');
-          return;
+          return undefined;
         }
 
         if (!set.headers) {
@@ -206,5 +206,6 @@ export const rateLimiterMiddleware = () =>
           'Rate limiter evaluation error — failing open'
         );
       }
+      return undefined;
     }
   );

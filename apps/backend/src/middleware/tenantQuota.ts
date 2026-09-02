@@ -85,7 +85,7 @@ export async function acquireQuotaSlot(
 
   try {
     if (!acquireSha) {
-      const loaded = await redis.script('load', ACQUIRE_SEMAPHORE_LUA);
+      const loaded = await redis.script('LOAD', ACQUIRE_SEMAPHORE_LUA);
       acquireSha = String(loaded);
     }
 
@@ -108,7 +108,7 @@ export async function acquireQuotaSlot(
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes('NOSCRIPT')) {
-        const reloaded = String(await redis.script('load', ACQUIRE_SEMAPHORE_LUA));
+        const reloaded = String(await redis.script('LOAD', ACQUIRE_SEMAPHORE_LUA));
         acquireSha = reloaded;
         res = (await redis.evalsha(
           reloaded,
@@ -144,7 +144,7 @@ export async function releaseQuotaSlot(
 
   try {
     if (!releaseSha) {
-      const loaded = await redis.script('load', RELEASE_SEMAPHORE_LUA);
+      const loaded = await redis.script('LOAD', RELEASE_SEMAPHORE_LUA);
       releaseSha = String(loaded);
     }
 
@@ -156,7 +156,7 @@ export async function releaseQuotaSlot(
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes('NOSCRIPT')) {
-        const reloaded = String(await redis.script('load', RELEASE_SEMAPHORE_LUA));
+        const reloaded = String(await redis.script('LOAD', RELEASE_SEMAPHORE_LUA));
         releaseSha = reloaded;
         await redis.evalsha(reloaded, 1, key, token);
       }
@@ -189,7 +189,7 @@ export const tenantQuotaMiddleware = (endpointClass: string) => {
     }))
     .onBeforeHandle(async ({ user, planTier, quotaSlotToken, set }: TenantQuotaContext) => {
       const orgId = user?.organizationId;
-      if (!orgId) return;
+      if (!orgId) return undefined;
 
       const token = quotaSlotToken || randomUUID();
       const tier = planTier || (await resolveOrgPlanTier(orgId));
@@ -203,6 +203,7 @@ export const tenantQuotaMiddleware = (endpointClass: string) => {
           message: `Your '${tier}' plan has reached its concurrent limit for '${endpointClass}'. Please wait for ongoing requests to finish.`,
         };
       }
+      return undefined;
     })
     .onAfterResponse(async ({ user, quotaSlotToken }: TenantQuotaReleaseContext) => {
       const orgId = user?.organizationId;

@@ -1377,7 +1377,12 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 
 ---
 
-### 2026-09-03 — Pre-Commit Hook Helm Templates Fix
+### 2026-09-03 — Pre-Commit Hook & Backend Typecheck Resolution
 
 - **What was done:**
   - Added `infra/helm/**/templates/**` to `.prettierignore` so `lint-staged` and Prettier ignore Go/Helm template files containing template directives (`{{- if ... }}`, `{{- toYaml ... }}`) instead of failing with YAML syntax errors during git pre-commit.
+  - Fixed TypeScript compiler errors in `@boardly/backend` triggered during `pre-push` hook (`turbo run typecheck`):
+    - Aligned `PlanTier.Free` enum usage in `apps/backend/src/middleware/auth.ts`.
+    - Corrected ioredis `.script('LOAD', ...)` uppercase subcommand typing across `rateLimiter.ts` and `tenantQuota.ts`.
+    - Typed Elysia `HTTPHeaders` on rate-limiter context and added explicit `return undefined` for strict `noImplicitReturns` compliance.
+  - Verified `tsc --noEmit` runs with 0 errors across all monorepo packages.
