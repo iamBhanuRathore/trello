@@ -162,6 +162,30 @@ export function requirePermission(permissionKey: PermissionKey) {
       ) as any;
     }
 
+    // If user.organizationId is undefined/null, look up their active organization membership
+    let orgId: string | undefined = user.organizationId;
+    if (!orgId) {
+      const [membership] = await db
+        .select({ organizationId: organizationMembers.organizationId })
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.userId, user.userId),
+            isNull(organizationMembers.deletedAt),
+            eq(organizationMembers.status, 'active')
+          )
+        )
+        .limit(1);
+      orgId = membership?.organizationId;
+    }
+
+    if (!orgId) {
+      set.status = 403;
+      return { error: 'Forbidden — user does not belong to an active organization' };
+    }
+
+    const activeOrgId = orgId;
+
     // Look up the user's role permissions for this org
     const result = await db
       .select({ permKey: permissions.key })
@@ -171,7 +195,7 @@ export function requirePermission(permissionKey: PermissionKey) {
       .innerJoin(
         organizationMembers,
         and(
-          eq(organizationMembers.organizationId, user.organizationId),
+          eq(organizationMembers.organizationId, activeOrgId),
           eq(organizationMembers.userId, user.userId),
           isNull(organizationMembers.deletedAt),
           eq(organizationMembers.status, 'active'),

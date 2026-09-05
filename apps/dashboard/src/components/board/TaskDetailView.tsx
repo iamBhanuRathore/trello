@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -51,6 +51,7 @@ import {
   LayoutGrid,
   Play,
   CheckCircle2,
+  Pause,
 } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
@@ -112,7 +113,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const [showUnsavedPrompt, setShowUnsavedPrompt] = useState<boolean>(false);
     const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
-    // Pickers & Popovers
+    // Pickers & Popovers (Floating)
     const [showAssigneePicker, setShowAssigneePicker] = useState<boolean>(false);
     const [showParticipantPicker, setShowParticipantPicker] = useState<boolean>(false);
     const [showWatcherPicker, setShowWatcherPicker] = useState<boolean>(false);
@@ -123,8 +124,16 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const [newSubtaskAssigneeId, setNewSubtaskAssigneeId] = useState<string>('');
     const [subtaskFilter, setSubtaskFilter] = useState<'all' | 'mine'>('all');
 
-    // Time logging
+    // Popover refs for click outside
+    const assigneePickerRef = useRef<HTMLDivElement>(null);
+    const participantPickerRef = useRef<HTMLDivElement>(null);
+    const watcherPickerRef = useRef<HTMLDivElement>(null);
+    const labelPickerRef = useRef<HTMLDivElement>(null);
+
+    // Time logging & Task Timer
     const [isLoggingTime, setIsLoggingTime] = useState<boolean>(false);
+    const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+    const [timerSeconds, setTimerSeconds] = useState<number>(0);
     const [logHours, setLogHours] = useState<string>('');
     const [logMinutes, setLogMinutes] = useState<string>('');
     const [logDescription, setLogDescription] = useState<string>('');
@@ -132,7 +141,10 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const [logDate, setLogDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
     // Rate task modal / rating state
-    const [userRating, setUserRating] = useState<number>(0);
+    const [userRating, setUserRating] = useState<number>(() => {
+      const saved = localStorage.getItem(`task-rating-${cardId}`);
+      return saved ? Number(saved) : 0;
+    });
     const [showRateModal, setShowRateModal] = useState<boolean>(false);
 
     // Dialogs & Modals
@@ -142,6 +154,52 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const [copiedBranch, setCopiedBranch] = useState<boolean>(false);
     const [showArchiveConfirm, setShowArchiveConfirm] = useState<boolean>(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+
+    // Active Timer effect
+    useEffect(() => {
+      let interval: any = null;
+      if (isTimerRunning) {
+        interval = setInterval(() => {
+          setTimerSeconds((prev) => prev + 1);
+        }, 1000);
+      }
+      return () => {
+        if (interval) clearInterval(interval);
+      };
+    }, [isTimerRunning]);
+
+    // Click outside listener for pickers
+    useEffect(() => {
+      const handleClickOutside = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (
+          showAssigneePicker &&
+          assigneePickerRef.current &&
+          !assigneePickerRef.current.contains(target)
+        ) {
+          setShowAssigneePicker(false);
+        }
+        if (
+          showParticipantPicker &&
+          participantPickerRef.current &&
+          !participantPickerRef.current.contains(target)
+        ) {
+          setShowParticipantPicker(false);
+        }
+        if (
+          showWatcherPicker &&
+          watcherPickerRef.current &&
+          !watcherPickerRef.current.contains(target)
+        ) {
+          setShowWatcherPicker(false);
+        }
+        if (showLabelPicker && labelPickerRef.current && !labelPickerRef.current.contains(target)) {
+          setShowLabelPicker(false);
+        }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showAssigneePicker, showParticipantPicker, showWatcherPicker, showLabelPicker]);
 
     // Queries
     const { data: card, isLoading: isCardLoading } = useQuery({
@@ -178,7 +236,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       }
     }, [card?.assignee?.id, user?.id]);
 
-    const { data: lists } = useQuery({
+    const { data: lists = [] } = useQuery({
       queryKey: ['lists', card?.boardId],
       queryFn: async () => (await api.get(`/lists?boardId=${card?.boardId}`)).data,
       enabled: !!card?.boardId,
@@ -292,25 +350,37 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const assignUserMutation = useMutation({
       mutationFn: async (userId: string) =>
         await api.post(`/cards/${cardId}/assignees`, { userId }),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId] }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+        setShowAssigneePicker(false);
+        toast.success('Task owner assigned');
+      },
     });
 
     const removeUserMutation = useMutation({
       mutationFn: async (userId: string) =>
         await api.delete(`/cards/${cardId}/assignees/${userId}`),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId] }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+        toast.success('Task owner unassigned');
+      },
     });
 
     const addParticipantMutation = useMutation({
       mutationFn: async (userId: string) =>
         await api.post(`/cards/${cardId}/participants`, { userId }),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId] }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+        toast.success('Participant added');
+      },
     });
 
     const removeParticipantMutation = useMutation({
       mutationFn: async (userId: string) =>
         await api.delete(`/cards/${cardId}/participants/${userId}`),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId] }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+      },
     });
 
     const watchCardMutation = useMutation({
@@ -318,6 +388,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
+        toast.success('Added to task observers');
       },
     });
 
@@ -326,6 +397,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
+        toast.success('Removed from task observers');
       },
     });
 
@@ -362,6 +434,16 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
         setNewChecklistTitle('');
         setShowNewChecklist(false);
+        toast.success('Checklist created');
+      },
+    });
+
+    const deleteChecklistMutation = useMutation({
+      mutationFn: async (checklistId: string) =>
+        await api.delete(`/cards/checklists/${checklistId}`),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
+        toast.success('Checklist removed');
       },
     });
 
@@ -372,8 +454,35 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     });
 
     const toggleItemMutation = useMutation({
-      mutationFn: async ({ itemId, isDone }: { itemId: string; isDone: boolean }) =>
-        await api.patch(`/cards/checklist-items/${itemId}`, { isDone }),
+      mutationFn: async ({ itemId, isDone }: { itemId: string; isDone: boolean }) => {
+        const res = await api.patch(`/cards/checklist-items/${itemId}`, { isDone });
+        return res.data;
+      },
+      onMutate: async ({ itemId, isDone }) => {
+        await queryClient.cancelQueries({ queryKey: ['card', cardId, 'checklists'] });
+        const previous = queryClient.getQueryData(['card', cardId, 'checklists']);
+        queryClient.setQueryData(['card', cardId, 'checklists'], (old: any[]) => {
+          if (!old) return [];
+          return old.map((cl) => ({
+            ...cl,
+            items: cl.items?.map((it: any) => (it.id === itemId ? { ...it, isDone } : it)),
+          }));
+        });
+        return { previous };
+      },
+      onError: (_err, _vars, context) => {
+        if (context?.previous) {
+          queryClient.setQueryData(['card', cardId, 'checklists'], context.previous);
+        }
+        toast.error('Failed to update checklist item');
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
+      },
+    });
+
+    const deleteChecklistItemMutation = useMutation({
+      mutationFn: async (itemId: string) => await api.delete(`/cards/checklist-items/${itemId}`),
       onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] }),
     });
 
@@ -394,7 +503,10 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         }
         return attachment;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId, 'attachments'] }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'attachments'] });
+        toast.success('File uploaded');
+      },
     });
 
     const deleteAttachmentMutation = useMutation({
@@ -421,6 +533,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         } else if (user?.id) {
           setNewSubtaskAssigneeId(user.id);
         }
+        toast.success('Subtask added');
       },
     });
 
@@ -474,6 +587,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             navigate(`/cards/${clonedCard.id}`);
           }
         }
+        toast.success('Task cloned successfully');
       },
     });
 
@@ -498,6 +612,68 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       }
     };
 
+    // ─── START & COMPLETE ACTIONS ───
+    const handleStartTask = async () => {
+      // Find in-progress or doing list
+      const inProgressList = lists.find(
+        (l: any) => /progress|doing|dev|active/i.test(l.name) && l.id !== card?.listId
+      );
+      if (inProgressList) {
+        await moveCardMutation.mutateAsync(inProgressList.id);
+      }
+      setIsTimerRunning(!isTimerRunning);
+      if (!isTimerRunning) {
+        toast.success('Task started! Tracking working time.');
+      } else {
+        // Log accumulated time if paused
+        const mins = Math.max(1, Math.round(timerSeconds / 60));
+        await logCardTime(cardId, {
+          minutes: mins,
+          description: 'Live task timer session',
+          loggedDate: new Date().toISOString().split('T')[0],
+          isBillable: true,
+        });
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'time-logs'] });
+        setTimerSeconds(0);
+        toast.info(`Task paused. Logged ${mins} minutes.`);
+      }
+    };
+
+    const handleCompleteTask = async () => {
+      // Find Done or Completed list
+      const doneList =
+        lists.find((l: any) => /done|complete|finished|closed/i.test(l.name)) ||
+        lists[lists.length - 1];
+
+      if (doneList && doneList.id !== card?.listId) {
+        await moveCardMutation.mutateAsync(doneList.id);
+      }
+
+      // Mark all checklist items as done
+      checklists.forEach((cl: any) => {
+        cl.items?.forEach((it: any) => {
+          if (!it.isDone) {
+            toggleItemMutation.mutate({ itemId: it.id, isDone: true });
+          }
+        });
+      });
+
+      if (isTimerRunning) {
+        setIsTimerRunning(false);
+        const mins = Math.max(1, Math.round(timerSeconds / 60));
+        await logCardTime(cardId, {
+          minutes: mins,
+          description: 'Completion work session',
+          loggedDate: new Date().toISOString().split('T')[0],
+          isBillable: true,
+        });
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'time-logs'] });
+        setTimerSeconds(0);
+      }
+
+      toast.success('Task marked as Complete!');
+    };
+
     // Description helpers
     const handleSaveDescription = async () => {
       if (descriptionValue !== (card?.description || '')) {
@@ -506,6 +682,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       setIsDescDirty(false);
       onDirtyChange?.(false);
       setDescTab('preview');
+      toast.success('Requirement saved');
     };
 
     const handleDiscardDescription = () => {
@@ -581,6 +758,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       navigator.clipboard.writeText(url);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
+      toast.success('Task link copied to clipboard');
     };
 
     // Jump to section helper via Action Ribbon
@@ -682,6 +860,13 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         : []),
     ];
 
+    // Format timer seconds into mm:ss
+    const formatTimer = (totalSeconds: number) => {
+      const mins = Math.floor(totalSeconds / 60);
+      const secs = totalSeconds % 60;
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
     return (
       <div
         className={`relative flex flex-col h-full bg-background text-foreground overflow-hidden ${
@@ -736,6 +921,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 if (ok) {
                   setCopiedId(true);
                   setTimeout(() => setCopiedId(false), 2000);
+                  toast.success(`Copied ID: ${taskIdentifier}`);
                 }
               }}
               className="px-2 py-0.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 font-mono font-bold text-xs cursor-pointer transition-all flex items-center gap-1 shrink-0 select-none"
@@ -760,7 +946,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             <div className="flex lg:hidden items-center bg-muted/70 p-0.5 rounded-lg border border-border mr-1">
               <button
                 type="button"
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
                   mobileActiveTab === 'details'
                     ? 'bg-background text-foreground shadow-2xs'
                     : 'text-muted-foreground hover:text-foreground'
@@ -771,7 +957,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               </button>
               <button
                 type="button"
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center gap-1 ${
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
                   mobileActiveTab === 'chat'
                     ? 'bg-background text-foreground shadow-2xs'
                     : 'text-muted-foreground hover:text-foreground'
@@ -845,6 +1031,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     await copyTextToClipboard(`git checkout -b ${branch}`);
                     setCopiedBranch(true);
                     setTimeout(() => setCopiedBranch(false), 2000);
+                    toast.success('Git branch command copied');
                   }}
                   className="cursor-pointer text-xs gap-2"
                 >
@@ -945,7 +1132,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
           {/* ─── LEFT PANE: Task Specification & Management (60% width on Desktop) ─── */}
           <div
-            className={`flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 min-w-0 bg-background ${
+            className={`flex-1 overflow-y-auto p-4 sm:p-6 pb-36 space-y-4 min-w-0 bg-background ${
               mobileActiveTab === 'details' ? 'flex flex-col' : 'hidden lg:flex lg:flex-col'
             }`}
           >
@@ -990,7 +1177,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             {/* ─── REQUIREMENT / DESCRIPTION CARD (Bitrix24 Style with Edit & Expand) ─── */}
             <div
               id="section-status-summary"
-              className="p-5 rounded-2xl border border-border/80 bg-card shadow-2xs space-y-3"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1211,8 +1398,8 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             </div>
 
             {/* ─── CARD 1: CORE METADATA GRID (Owner, Assignee, Deadline, Status, Created) ─── */}
-            <div className="p-5 rounded-2xl border border-border/80 bg-card shadow-2xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6 text-xs">
+            <div className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs relative">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3.5 gap-x-6 text-xs">
                 {/* Task Owner */}
                 <div className="flex items-center gap-3">
                   <span className="w-24 text-muted-foreground font-medium shrink-0">
@@ -1230,8 +1417,8 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                   </div>
                 </div>
 
-                {/* Assignee */}
-                <div className="flex items-center gap-3">
+                {/* Assignee with Floating Popover */}
+                <div className="flex items-center gap-3 relative">
                   <span className="w-24 text-muted-foreground font-medium shrink-0">Assignee:</span>
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     {card.assignee ? (
@@ -1270,6 +1457,30 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                       </button>
                     )}
                   </div>
+
+                  {/* Floating Popover for Assignee */}
+                  {showAssigneePicker && (
+                    <div
+                      ref={assigneePickerRef}
+                      className="absolute z-50 top-full left-0 mt-2 w-80 sm:w-96 shadow-2xl rounded-2xl border border-border bg-popover/98 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+                    >
+                      <MemberPicker
+                        orgId={orgId}
+                        assignedUserIds={assignedUserIds}
+                        onAssign={(userId) => {
+                          assignUserMutation.mutate(userId);
+                        }}
+                        onRemove={(userId) => {
+                          removeUserMutation.mutate(userId);
+                          setShowAssigneePicker(false);
+                        }}
+                        onClose={() => setShowAssigneePicker(false)}
+                        currentUserId={user?.id}
+                        title="Assign Task Owner"
+                        mode="single"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Deadline / Due Date */}
@@ -1314,13 +1525,13 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 </div>
 
                 {/* Created & Task ID */}
-                <div className="flex items-center gap-3 sm:col-span-2 pt-1 border-t border-border/50 text-muted-foreground">
+                <div className="flex items-center gap-3 sm:col-span-2 pt-2 border-t border-border/50 text-muted-foreground">
                   <span className="w-24 font-medium shrink-0">Created:</span>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
                     <span>
                       {card.createdAt
-                        ? format(new Date(card.createdAt), 'MMMM d h:mm a')
+                        ? format(new Date(card.createdAt), 'MMM d, yyyy · h:mm a')
                         : 'Recently'}
                     </span>
                     <span>/</span>
@@ -1333,6 +1544,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                         await copyTextToClipboard(taskIdentifier);
                         setCopiedId(true);
                         setTimeout(() => setCopiedId(false), 2000);
+                        toast.success('Task ID copied');
                       }}
                       className="hover:text-foreground cursor-pointer"
                       title="Copy Task ID"
@@ -1342,34 +1554,12 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                   </div>
                 </div>
               </div>
-
-              {/* Member Picker popover for assignee */}
-              {showAssigneePicker && (
-                <div className="mt-3 pt-3 border-t border-border/60">
-                  <MemberPicker
-                    orgId={orgId}
-                    assignedUserIds={assignedUserIds}
-                    onAssign={(userId) => {
-                      assignUserMutation.mutate(userId);
-                      setShowAssigneePicker(false);
-                    }}
-                    onRemove={(userId) => {
-                      removeUserMutation.mutate(userId);
-                      setShowAssigneePicker(false);
-                    }}
-                    onClose={() => setShowAssigneePicker(false)}
-                    currentUserId={user?.id}
-                    title="Assign Task Owner"
-                    mode="single"
-                  />
-                </div>
-              )}
             </div>
 
             {/* ─── CARD 2: AGILE / SCRUM & PROJECT CONTEXT ─── */}
             <div
               id="section-project"
-              className="p-5 rounded-2xl border border-border/80 bg-card shadow-2xs"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs"
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3.5 gap-x-6 text-xs">
                 {/* Scrum / Project */}
@@ -1411,14 +1601,12 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
 
                 {/* Epic / Sprint / Phase */}
                 <div className="flex items-center gap-3">
-                  <span className="w-24 text-muted-foreground font-medium shrink-0">
-                    Epic / Sprint:
-                  </span>
+                  <span className="w-24 text-muted-foreground font-medium shrink-0">Epic:</span>
                   <div className="flex-1 max-w-[200px]">
                     {sprints && sprints.length > 0 ? (
                       <SearchableSelect
                         options={[
-                          { value: '', label: 'Select sprint...' },
+                          { value: '', label: 'Select epic / sprint...' },
                           ...sprints.map((sp: any) => ({
                             value: sp.id,
                             label: `Sprint: ${sp.name}`,
@@ -1432,7 +1620,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                         onChange={(val) => {
                           if (val) sprintsService.addCardToSprint(val, cardId);
                         }}
-                        placeholder="Select epic / sprint"
+                        placeholder="Select epic"
                         size="sm"
                         triggerClassName="h-7 bg-muted/40 text-xs"
                       />
@@ -1465,10 +1653,10 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             {/* ─── CARD 3: PEOPLE / PARTICIPANTS & OBSERVERS ─── */}
             <div
               id="section-participants"
-              className="p-5 rounded-2xl border border-border/80 bg-card shadow-2xs space-y-3.5"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3 relative"
             >
-              {/* Participants */}
-              <div className="flex items-start gap-3 text-xs">
+              {/* Participants with Floating Popover */}
+              <div className="flex items-start gap-3 text-xs relative">
                 <span className="w-24 text-muted-foreground font-medium shrink-0 pt-1">
                   Participants:
                 </span>
@@ -1513,27 +1701,31 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     <Plus className="w-3.5 h-3.5" /> Add
                   </button>
                 </div>
+
+                {/* Floating Popover for Participants */}
+                {showParticipantPicker && (
+                  <div
+                    ref={participantPickerRef}
+                    className="absolute z-50 top-full left-0 mt-2 w-80 sm:w-96 shadow-2xl rounded-2xl border border-border bg-popover/98 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+                  >
+                    <MemberPicker
+                      orgId={orgId}
+                      assignedUserIds={participantUserIds}
+                      onAssign={(userId) => addParticipantMutation.mutate(userId)}
+                      onRemove={(userId) => removeParticipantMutation.mutate(userId)}
+                      onClose={() => setShowParticipantPicker(false)}
+                      currentUserId={user?.id}
+                      title="Add Participants"
+                      mode="multiple"
+                    />
+                  </div>
+                )}
               </div>
 
-              {showParticipantPicker && (
-                <div className="pt-2">
-                  <MemberPicker
-                    orgId={orgId}
-                    assignedUserIds={participantUserIds}
-                    onAssign={(userId) => addParticipantMutation.mutate(userId)}
-                    onRemove={(userId) => removeParticipantMutation.mutate(userId)}
-                    onClose={() => setShowParticipantPicker(false)}
-                    currentUserId={user?.id}
-                    title="Add Participants"
-                    mode="multiple"
-                  />
-                </div>
-              )}
-
-              {/* Observers */}
+              {/* Observers with Floating Popover */}
               <div
                 id="section-observers"
-                className="flex items-start gap-3 text-xs pt-2 border-t border-border/50"
+                className="flex items-start gap-3 text-xs pt-3 border-t border-border/50 relative"
               >
                 <span className="w-24 text-muted-foreground font-medium shrink-0 pt-1">
                   Observers:
@@ -1602,28 +1794,32 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     <Plus className="w-3.5 h-3.5" /> Add
                   </button>
                 </div>
-              </div>
 
-              {showWatcherPicker && (
-                <div className="pt-2">
-                  <MemberPicker
-                    orgId={orgId}
-                    assignedUserIds={watcherUserIds}
-                    onAssign={(userId) => watchCardMutation.mutate(userId)}
-                    onRemove={(userId) => unwatchCardMutation.mutate(userId)}
-                    onClose={() => setShowWatcherPicker(false)}
-                    currentUserId={user?.id}
-                    title="Add Observers"
-                    mode="multiple"
-                  />
-                </div>
-              )}
+                {/* Floating Popover for Observers */}
+                {showWatcherPicker && (
+                  <div
+                    ref={watcherPickerRef}
+                    className="absolute z-50 top-full left-0 mt-2 w-80 sm:w-96 shadow-2xl rounded-2xl border border-border bg-popover/98 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+                  >
+                    <MemberPicker
+                      orgId={orgId}
+                      assignedUserIds={watcherUserIds}
+                      onAssign={(userId) => watchCardMutation.mutate(userId)}
+                      onRemove={(userId) => unwatchCardMutation.mutate(userId)}
+                      onClose={() => setShowWatcherPicker(false)}
+                      currentUserId={user?.id}
+                      title="Add Observers"
+                      mode="multiple"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* ─── CARD 4: TAGS ─── */}
             <div
               id="section-tags"
-              className="p-4 rounded-2xl border border-border/80 bg-card shadow-2xs"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs relative"
             >
               <div className="flex items-center gap-3 text-xs">
                 <span className="w-24 text-muted-foreground font-medium shrink-0">Tags:</span>
@@ -1664,8 +1860,12 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 </div>
               </div>
 
+              {/* Floating Popover for Label Picker */}
               {showLabelPicker && (
-                <div className="mt-3 pt-3 border-t border-border/60">
+                <div
+                  ref={labelPickerRef}
+                  className="absolute z-50 top-full left-0 mt-2 w-80 shadow-2xl rounded-2xl border border-border bg-popover/98 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+                >
                   <LabelPicker
                     boardId={card.boardId}
                     cardId={cardId}
@@ -1679,7 +1879,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             {/* ─── CARD 5: SUBTASKS (Bitrix24 Interactive List) ─── */}
             <div
               id="section-subtasks"
-              className="p-5 rounded-2xl border border-border/80 bg-card shadow-2xs space-y-3"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1690,11 +1890,11 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Filter Subtasks */}
+                  {/* Filter Subtasks: All vs Mine */}
                   <div className="flex items-center gap-1 bg-muted/50 p-0.5 rounded-lg border border-border">
                     <button
                       type="button"
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
                         subtaskFilter === 'all'
                           ? 'bg-background text-foreground shadow-2xs'
                           : 'text-muted-foreground hover:text-foreground'
@@ -1705,7 +1905,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     </button>
                     <button
                       type="button"
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
                         subtaskFilter === 'mine'
                           ? 'bg-background text-foreground shadow-2xs'
                           : 'text-muted-foreground hover:text-foreground'
@@ -1726,7 +1926,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 </div>
               </div>
 
-              {/* Subtasks items */}
+              {/* Subtasks items list */}
               <div className="space-y-2">
                 {filteredSubtasks.map((subtask: any) => {
                   const subAssignee = subtask.assignee || subtask.assignees?.[0];
@@ -1774,7 +1974,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 })}
 
                 {/* Inline Subtask Creation Input */}
-                <div className="p-3 bg-muted/30 rounded-xl border border-border/60 space-y-2 mt-2">
+                <div className="p-2.5 bg-muted/30 rounded-xl border border-border/60 space-y-2 mt-2">
                   <div className="flex gap-2">
                     <Input
                       id="new-subtask-input"
@@ -1809,10 +2009,10 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               </div>
             </div>
 
-            {/* ─── CARD 6: CUSTOM FIELDS (Assigned Date, Billable, etc.) ─── */}
+            {/* ─── CARD 6: CUSTOM FIELDS (Clean Date & Estimation) ─── */}
             <div
               id="section-custom-fields"
-              className="p-5 rounded-2xl border border-border/80 bg-card shadow-2xs space-y-3"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3"
             >
               <div className="flex items-center gap-2">
                 <LayoutGrid className="w-4 h-4 text-indigo-600" />
@@ -1826,8 +2026,8 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                   </span>
                   <span className="font-semibold text-foreground">
                     {card.createdAt
-                      ? format(new Date(card.createdAt), 'MMMM d 12:00 am')
-                      : 'August 10 12:00 am'}
+                      ? format(new Date(card.createdAt), 'MMMM d, yyyy')
+                      : 'August 10, 2026'}
                   </span>
                 </div>
 
@@ -1844,10 +2044,10 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               </div>
             </div>
 
-            {/* ─── CARD 7: TIME TRACKING (Linked via Ribbon) ─── */}
+            {/* ─── CARD 7: TIME TRACKING ─── */}
             <div
               id="section-time-tracking"
-              className="p-5 rounded-2xl border border-border/80 bg-card shadow-2xs space-y-3"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1856,14 +2056,21 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     Time Tracking & Worklogs
                   </span>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs gap-1"
-                  onClick={() => setIsLoggingTime(!isLoggingTime)}
-                >
-                  <Plus className="w-3.5 h-3.5" /> Log Time
-                </Button>
+                <div className="flex items-center gap-2">
+                  {isTimerRunning && (
+                    <span className="px-2 py-0.5 rounded bg-sky-500/15 text-sky-600 text-xs font-mono font-bold animate-pulse">
+                      ⏱ {formatTimer(timerSeconds)}
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1 cursor-pointer"
+                    onClick={() => setIsLoggingTime(!isLoggingTime)}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Log Time
+                  </Button>
+                </div>
               </div>
 
               {/* Time progress bar */}
@@ -1882,20 +2089,20 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     </strong>
                   </span>
                 </div>
-                {estimateMinutes > 0 && (
-                  <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        totalLoggedMinutes > estimateMinutes ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`}
-                      style={{ width: `${timeProgressPercent}%` }}
-                    />
-                  </div>
-                )}
+                <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      estimateMinutes > 0 && totalLoggedMinutes > estimateMinutes
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${estimateMinutes > 0 ? timeProgressPercent : 100}%` }}
+                  />
+                </div>
               </div>
 
               {isLoggingTime && (
-                <div className="p-4 bg-muted/40 border border-border rounded-xl space-y-3 mt-2">
+                <div className="p-3.5 bg-muted/40 border border-border rounded-xl space-y-3 mt-2">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs text-muted-foreground mb-1 block">Hours</Label>
@@ -1903,7 +2110,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                         type="number"
                         min="0"
                         placeholder="0"
-                        className="h-8 text-sm"
+                        className="h-8 text-sm bg-background"
                         value={logHours}
                         onChange={(e) => setLogHours(e.target.value)}
                       />
@@ -1914,7 +2121,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                         type="number"
                         min="0"
                         placeholder="30"
-                        className="h-8 text-sm"
+                        className="h-8 text-sm bg-background"
                         value={logMinutes}
                         onChange={(e) => setLogMinutes(e.target.value)}
                       />
@@ -1925,7 +2132,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     <Label className="text-xs text-muted-foreground mb-1 block">Date</Label>
                     <Input
                       type="date"
-                      className="h-8 text-sm"
+                      className="h-8 text-sm bg-background"
                       value={logDate}
                       onChange={(e) => setLogDate(e.target.value)}
                     />
@@ -1934,8 +2141,8 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                   <div>
                     <Label className="text-xs text-muted-foreground mb-1 block">Work Note</Label>
                     <Input
-                      placeholder="Describe what was completed..."
-                      className="h-8 text-sm"
+                      placeholder="Describe work completed..."
+                      className="h-8 text-sm bg-background"
                       value={logDescription}
                       onChange={(e) => setLogDescription(e.target.value)}
                     />
@@ -2008,7 +2215,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             {/* ─── CARD 8: CHECKLISTS & ACCEPTANCE CRITERIA ─── */}
             <div
               id="section-checklists"
-              className="p-5 rounded-2xl border border-border/80 bg-card shadow-2xs space-y-3"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2018,7 +2225,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 text-xs gap-1"
+                  className="h-7 text-xs gap-1 cursor-pointer"
                   onClick={() => setShowNewChecklist(!showNewChecklist)}
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Checklist
@@ -2028,8 +2235,8 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               {showNewChecklist && (
                 <div className="flex items-center gap-2 p-3 bg-muted/30 border border-border rounded-xl">
                   <Input
-                    placeholder="Checklist title (e.g. QA Verification)..."
-                    className="h-8 text-sm"
+                    placeholder="Checklist title (e.g. Acceptance Criteria)..."
+                    className="h-8 text-sm bg-background"
                     value={newChecklistTitle}
                     onChange={(e) => setNewChecklistTitle(e.target.value)}
                     onKeyDown={(e) => {
@@ -2068,13 +2275,23 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 return (
                   <div
                     key={cl.id}
-                    className="p-3.5 rounded-xl border border-border bg-muted/15 space-y-2.5"
+                    className="p-3.5 rounded-xl border border-border bg-muted/15 space-y-2.5 group/cl"
                   >
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-foreground">{cl.title}</span>
-                      <span className="font-semibold text-muted-foreground">
-                        {doneItems}/{totalItems} ({pct}%)
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-muted-foreground">
+                          {doneItems}/{totalItems} ({pct}%)
+                        </span>
+                        <button
+                          type="button"
+                          className="opacity-0 group-hover/cl:opacity-100 hover:text-destructive transition-opacity p-0.5 cursor-pointer text-muted-foreground"
+                          onClick={() => deleteChecklistMutation.mutate(cl.id)}
+                          title="Delete checklist"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
@@ -2088,29 +2305,41 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
 
                     <div className="space-y-1 mt-2">
                       {cl.items?.map((item: any) => (
-                        <label
+                        <div
                           key={item.id}
-                          className="flex items-center gap-2 py-1 px-2 rounded-lg hover:bg-muted/40 cursor-pointer text-xs"
+                          className="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-muted/40 group/item"
                         >
-                          <input
-                            type="checkbox"
-                            checked={item.isDone}
-                            onChange={(e) =>
-                              toggleItemMutation.mutate({
-                                itemId: item.id,
-                                isDone: e.target.checked,
-                              })
-                            }
-                            className="w-3.5 h-3.5 rounded accent-primary cursor-pointer"
-                          />
-                          <span
-                            className={
-                              item.isDone ? 'line-through text-muted-foreground' : 'text-foreground'
-                            }
+                          <label className="flex items-center gap-2 cursor-pointer text-xs flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={item.isDone}
+                              onChange={(e) =>
+                                toggleItemMutation.mutate({
+                                  itemId: item.id,
+                                  isDone: e.target.checked,
+                                })
+                              }
+                              className="w-3.5 h-3.5 rounded accent-primary cursor-pointer shrink-0"
+                            />
+                            <span
+                              className={`truncate ${
+                                item.isDone
+                                  ? 'line-through text-muted-foreground'
+                                  : 'text-foreground'
+                              }`}
+                            >
+                              {item.text}
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity p-0.5 cursor-pointer text-muted-foreground"
+                            onClick={() => deleteChecklistItemMutation.mutate(item.id)}
+                            title="Delete item"
                           >
-                            {item.text}
-                          </span>
-                        </label>
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
                       ))}
                       <Input
                         placeholder="Add checklist item..."
@@ -2134,7 +2363,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             {/* ─── CARD 9: FILES & ATTACHMENTS ─── */}
             <div
               id="section-files"
-              className="p-5 rounded-2xl border border-border/80 bg-card shadow-2xs space-y-3"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -2182,7 +2411,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                         </span>
                       </div>
                       <button
-                        className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity p-1 text-muted-foreground"
+                        className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity p-1 text-muted-foreground cursor-pointer"
                         onClick={() => deleteAttachmentMutation.mutate(att.id)}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -2208,95 +2437,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 timeLogs: timeTrackingData?.timeLogs?.length,
               }}
             />
-
-            {/* ─── STICKY ENTERPRISE ACTION BOTTOM BAR (Bitrix24 Style) ─── */}
-            <div className="sticky bottom-0 -mx-4 sm:-mx-6 -mb-4 sm:-mb-6 p-4 bg-card/95 backdrop-blur-md border-t border-border/80 flex items-center justify-between gap-3 shrink-0 z-10 shadow-lg">
-              <div className="flex items-center gap-2">
-                {/* Start / In Progress button */}
-                <Button
-                  size="sm"
-                  className="h-8 px-4 font-bold text-xs bg-sky-600 hover:bg-sky-700 text-white gap-1.5 shadow-2xs cursor-pointer"
-                  onClick={() => {
-                    toast.success('Task execution started');
-                  }}
-                >
-                  <Play className="w-3.5 h-3.5 fill-white" /> Start
-                </Button>
-
-                {/* Complete button */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-4 font-semibold text-xs border-border/80 hover:bg-muted gap-1.5 cursor-pointer"
-                  onClick={() => {
-                    toast.success('Task marked as complete');
-                  }}
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Complete
-                </Button>
-
-                {/* 3-dots more */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
-                      >
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="start" className="w-48 p-1.5">
-                    <DropdownMenuItem onClick={handleCloneTask} className="text-xs cursor-pointer">
-                      Clone Task
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={handleCreateSubtask}
-                      className="text-xs cursor-pointer"
-                    >
-                      Add Subtask
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setShowArchiveConfirm(true)}
-                      className="text-xs cursor-pointer"
-                    >
-                      Archive Task
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => setShowDeleteConfirm(true)}
-                      variant="destructive"
-                      className="text-xs cursor-pointer"
-                    >
-                      Delete Task
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              {/* Right: Rate task & Views */}
-              <div className="flex items-center gap-4 text-xs text-muted-foreground font-medium">
-                <button
-                  type="button"
-                  className="hover:text-amber-500 transition-colors flex items-center gap-1 cursor-pointer"
-                  onClick={() => setShowRateModal(true)}
-                >
-                  <Star
-                    className={`w-3.5 h-3.5 ${
-                      userRating > 0 ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground'
-                    }`}
-                  />
-                  <span>{userRating > 0 ? `${userRating} Stars` : 'Rate task'}</span>
-                </button>
-
-                <div className="flex items-center gap-1">
-                  <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span>{uniqueMemberCount}</span>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* ─── RIGHT PANE: Dedicated Task Chat & Real-Time Activity Stream (40% width on Desktop) ─── */}
@@ -2320,6 +2460,100 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               onAddMemberClick={() => setShowParticipantPicker(true)}
               isSending={addCommentMutation.isPending}
             />
+          </div>
+        </div>
+
+        {/* ─── STICKY ENTERPRISE ACTION BOTTOM BAR (Bitrix24 Style) ─── */}
+        <div className="absolute bottom-0 left-0 right-0 lg:right-[420px] xl:right-[480px] px-4 sm:px-6 py-3 sm:py-3.5 bg-card/95 backdrop-blur-md border-t border-border/80 flex items-center justify-between gap-3 z-30 shadow-xl">
+          <div className="flex items-center gap-2">
+            {/* Start / Pause Button */}
+            <Button
+              size="sm"
+              className={`h-8 px-4 font-bold text-xs gap-1.5 shadow-2xs cursor-pointer ${
+                isTimerRunning
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                  : 'bg-sky-600 hover:bg-sky-700 text-white'
+              }`}
+              onClick={handleStartTask}
+            >
+              {isTimerRunning ? (
+                <>
+                  <Pause className="w-3.5 h-3.5 fill-white" /> Pause ({formatTimer(timerSeconds)})
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-white" /> Start
+                </>
+              )}
+            </Button>
+
+            {/* Complete Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-4 font-semibold text-xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 gap-1.5 cursor-pointer"
+              onClick={handleCompleteTask}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Complete
+            </Button>
+
+            {/* Three-Dot Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-48 p-1.5">
+                <DropdownMenuItem onClick={handleCloneTask} className="text-xs cursor-pointer">
+                  Clone Task
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleCreateSubtask} className="text-xs cursor-pointer">
+                  Add Subtask
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setShowArchiveConfirm(true)}
+                  className="text-xs cursor-pointer"
+                >
+                  Archive Task
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setShowDeleteConfirm(true)}
+                  variant="destructive"
+                  className="text-xs cursor-pointer"
+                >
+                  Delete Task
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Right: Rate task & Views */}
+          <div className="flex items-center gap-4 text-xs text-muted-foreground font-medium">
+            <button
+              type="button"
+              className="hover:text-amber-500 transition-colors flex items-center gap-1 cursor-pointer"
+              onClick={() => setShowRateModal(true)}
+            >
+              <Star
+                className={`w-3.5 h-3.5 ${
+                  userRating > 0 ? 'text-amber-500 fill-amber-500' : 'text-muted-foreground'
+                }`}
+              />
+              <span>{userRating > 0 ? `${userRating} Stars` : 'Rate task'}</span>
+            </button>
+
+            <div className="flex items-center gap-1" title="Active viewers on card">
+              <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+              <span>{uniqueMemberCount}</span>
+            </div>
           </div>
         </div>
 
@@ -2351,15 +2585,16 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-xs"
+                  className="text-xs cursor-pointer"
                   onClick={() => setShowRateModal(false)}
                 >
                   Close
                 </Button>
                 <Button
                   size="sm"
-                  className="text-xs"
+                  className="text-xs cursor-pointer"
                   onClick={() => {
+                    localStorage.setItem(`task-rating-${cardId}`, String(userRating));
                     toast.success(`Rated ${userRating} stars!`);
                     setShowRateModal(false);
                   }}

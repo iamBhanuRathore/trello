@@ -92,7 +92,16 @@ const app = new Elysia()
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-      allowedHeaders: true,
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'x-organization-id',
+        'x-requested-with',
+        'Accept',
+        'Origin',
+        'baggage',
+        'sentry-trace',
+      ],
       exposeHeaders: true,
       maxAge: 86400,
     })
@@ -122,8 +131,22 @@ const app = new Elysia()
   )
 
   // ── Global error handler ───────────────────────────────────────────────────
-  .onError(({ error, code, set }) => {
+  .onError(({ error, code, set, request }) => {
     inFlight = Math.max(0, inFlight - 1);
+
+    // Ensure single clean CORS headers are ALWAYS attached on error responses
+    const origin = request.headers.get('origin');
+    if (isAllowedOrigin(origin)) {
+      set.headers['access-control-allow-origin'] = origin || '*';
+      delete (set.headers as any)['Access-Control-Allow-Origin'];
+      set.headers['access-control-allow-credentials'] = 'true';
+      delete (set.headers as any)['Access-Control-Allow-Credentials'];
+      set.headers['access-control-allow-methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD';
+      delete (set.headers as any)['Access-Control-Allow-Methods'];
+      set.headers['access-control-allow-headers'] =
+        'Content-Type, Authorization, x-organization-id, x-requested-with, Accept, Origin, baggage, sentry-trace';
+      delete (set.headers as any)['Access-Control-Allow-Headers'];
+    }
 
     if (code === 'VALIDATION') {
       set.status = 422;

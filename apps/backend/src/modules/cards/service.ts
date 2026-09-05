@@ -160,7 +160,7 @@ export async function createCard(db: Database, organizationId: string, input: Cr
     event: 'card.created',
     payload: { cardId: card!.id, listId: input.listId, boardId: boardInfo!.boardId },
     actorId: 'system',
-    organizationId: boardInfo!.organizationId
+    organizationId: boardInfo!.organizationId,
   });
   return card;
 }
@@ -308,7 +308,13 @@ export async function listSubtasks(db: Database, parentCardId: string, organizat
   const subtaskCards = await db
     .select()
     .from(cards)
-    .where(and(eq(cards.parentCardId, parentCardId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
+    .where(
+      and(
+        eq(cards.parentCardId, parentCardId),
+        eq(cards.isArchived, false),
+        isNull(cards.deletedAt)
+      )
+    )
     .orderBy(cards.position);
 
   const subtaskIds = subtaskCards.map((s) => s.id);
@@ -488,22 +494,20 @@ export async function deleteCard(db: Database, id: string, organizationId: strin
 }
 
 export async function getBoardLabels(db: Database, boardId: string) {
-  return db
-    .select()
-    .from(labels)
-    .where(eq(labels.boardId, boardId))
-    .orderBy(labels.name);
+  return db.select().from(labels).where(eq(labels.boardId, boardId)).orderBy(labels.name);
 }
 
 export async function createBoardLabel(db: Database, boardId: string, name: string, color: string) {
-  const [newLabel] = await db
-    .insert(labels)
-    .values({ boardId, name, color })
-    .returning();
+  const [newLabel] = await db.insert(labels).values({ boardId, name, color }).returning();
   return newLabel;
 }
 
-export async function updateBoardLabel(db: Database, labelId: string, name?: string, color?: string) {
+export async function updateBoardLabel(
+  db: Database,
+  labelId: string,
+  name?: string,
+  color?: string
+) {
   const updateData: Record<string, any> = {};
   if (name !== undefined) updateData.name = name.trim();
   if (color !== undefined) updateData.color = color;
@@ -538,7 +542,14 @@ export async function updateCard(db: Database, id: string, organizationId: strin
   return card;
 }
 
-export async function moveCard(db: Database, id: string, organizationId: string, newListId: string, newPosition: number, actorId?: string) {
+export async function moveCard(
+  db: Database,
+  id: string,
+  organizationId: string,
+  newListId: string,
+  newPosition: number,
+  actorId?: string
+) {
   await verifyListAccess(db, newListId, organizationId);
 
   const [card] = await db
@@ -555,13 +566,18 @@ export async function moveCard(db: Database, id: string, organizationId: string,
       event: 'card.moved',
       payload: { cardId: id, listId: newListId, boardId },
       actorId: actorId || 'system',
-      organizationId
+      organizationId,
     });
   }
   return card;
 }
 
-export async function archiveCard(db: Database, id: string, organizationId: string, actorId?: string) {
+export async function archiveCard(
+  db: Database,
+  id: string,
+  organizationId: string,
+  actorId?: string
+) {
   const [card] = await db
     .update(cards)
     .set({ isArchived: true, updatedAt: new Date() })
@@ -576,7 +592,7 @@ export async function archiveCard(db: Database, id: string, organizationId: stri
       event: 'card.archived',
       payload: { cardId: id, boardId },
       actorId: actorId || 'system',
-      organizationId
+      organizationId,
     });
   }
   return card;
@@ -609,10 +625,7 @@ export async function createComment(
   body: string,
   mentionedUserIds?: string[]
 ) {
-  const [comment] = await db
-    .insert(comments)
-    .values({ cardId, userId, body })
-    .returning();
+  const [comment] = await db.insert(comments).values({ cardId, userId, body }).returning();
 
   // Find board and org
   const boardId = await getBoardIdForCard(db, cardId);
@@ -696,7 +709,15 @@ export async function listAttachments(db: Database, cardId: string) {
     .orderBy(desc(attachments.createdAt));
 }
 
-export async function createAttachmentRecord(db: Database, cardId: string, userId: string, url: string, fileName: string, fileType?: string, sizeBytes?: number) {
+export async function createAttachmentRecord(
+  db: Database,
+  cardId: string,
+  userId: string,
+  url: string,
+  fileName: string,
+  fileType?: string,
+  sizeBytes?: number
+) {
   const [attachment] = await db
     .insert(attachments)
     .values({ cardId, uploadedBy: userId, url, fileName, fileType, sizeBytes })
@@ -731,20 +752,28 @@ export async function getCardLabels(db: Database, cardId: string) {
     .where(eq(cardLabels.cardId, cardId));
 }
 
-export async function attachLabelToCard(db: Database, cardId: string, labelId: string, actorId?: string) {
+export async function attachLabelToCard(
+  db: Database,
+  cardId: string,
+  labelId: string,
+  actorId?: string
+) {
   if (!isValidUuid(cardId) || !isValidUuid(labelId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
   }
   await db.insert(cardLabels).values({ cardId, labelId }).onConflictDoNothing();
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
-    const [board] = await db.select({ organizationId: boards.organizationId }).from(boards).where(eq(boards.id, boardId));
+    const [board] = await db
+      .select({ organizationId: boards.organizationId })
+      .from(boards)
+      .where(eq(boards.id, boardId));
     if (board) {
       eventBus.emit('internal', {
         event: 'card.labeled',
         payload: { cardId, labelId },
         actorId: actorId || 'system',
-        organizationId: board.organizationId
+        organizationId: board.organizationId,
       });
     }
   }
@@ -755,28 +784,41 @@ export async function removeLabelFromCard(db: Database, cardId: string, labelId:
   if (!isValidUuid(cardId) || !isValidUuid(labelId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
   }
-  await db.delete(cardLabels).where(and(eq(cardLabels.cardId, cardId), eq(cardLabels.labelId, labelId)));
+  await db
+    .delete(cardLabels)
+    .where(and(eq(cardLabels.cardId, cardId), eq(cardLabels.labelId, labelId)));
   return { success: true };
 }
 
 // ─── Assignees (Single Assignee Model) ─────────────────────────────────────────
-export async function assignUserToCard(db: Database, cardId: string, userId: string, actorId: string) {
+export async function assignUserToCard(
+  db: Database,
+  cardId: string,
+  userId: string,
+  actorId: string
+) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
   // Enforce single primary assignee: clear previous assignees first
   await db.delete(cardAssignees).where(eq(cardAssignees.cardId, cardId));
-  await db.insert(cardAssignees).values({ cardId, userId, assignedBy: actorId }).onConflictDoNothing();
+  await db
+    .insert(cardAssignees)
+    .values({ cardId, userId, assignedBy: actorId })
+    .onConflictDoNothing();
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.assigned', { cardId, assigneeId: userId });
-    const [board] = await db.select({ organizationId: boards.organizationId }).from(boards).where(eq(boards.id, boardId));
+    const [board] = await db
+      .select({ organizationId: boards.organizationId })
+      .from(boards)
+      .where(eq(boards.id, boardId));
     if (board) {
       eventBus.emit('internal', {
         event: 'card.assigned',
         payload: { cardId, assigneeId: userId },
         actorId,
-        organizationId: board.organizationId
+        organizationId: board.organizationId,
       });
     }
   }
@@ -787,7 +829,9 @@ export async function removeUserFromCard(db: Database, cardId: string, userId: s
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
-  await db.delete(cardAssignees).where(and(eq(cardAssignees.cardId, cardId), eq(cardAssignees.userId, userId)));
+  await db
+    .delete(cardAssignees)
+    .where(and(eq(cardAssignees.cardId, cardId), eq(cardAssignees.userId, userId)));
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.unassigned', { cardId, userId });
@@ -796,15 +840,26 @@ export async function removeUserFromCard(db: Database, cardId: string, userId: s
 }
 
 // ─── Participants (Multiple Collaborators Model) ──────────────────────────────
-export async function addParticipantToCard(db: Database, cardId: string, userId: string, actorId: string) {
+export async function addParticipantToCard(
+  db: Database,
+  cardId: string,
+  userId: string,
+  actorId: string
+) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
-  await db.insert(cardParticipants).values({ cardId, userId, addedBy: actorId }).onConflictDoNothing();
+  await db
+    .insert(cardParticipants)
+    .values({ cardId, userId, addedBy: actorId })
+    .onConflictDoNothing();
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.participant_added', { cardId, userId });
-    const [board] = await db.select({ organizationId: boards.organizationId }).from(boards).where(eq(boards.id, boardId));
+    const [board] = await db
+      .select({ organizationId: boards.organizationId })
+      .from(boards)
+      .where(eq(boards.id, boardId));
     if (board) {
       eventBus.emit('internal', {
         event: 'card.participant_added',
@@ -821,7 +876,9 @@ export async function removeParticipantFromCard(db: Database, cardId: string, us
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
-  await db.delete(cardParticipants).where(and(eq(cardParticipants.cardId, cardId), eq(cardParticipants.userId, userId)));
+  await db
+    .delete(cardParticipants)
+    .where(and(eq(cardParticipants.cardId, cardId), eq(cardParticipants.userId, userId)));
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.participant_removed', { cardId, userId });
@@ -845,7 +902,12 @@ export async function getCardParticipants(db: Database, cardId: string) {
 }
 
 // ─── Watchers ─────────────────────────────────────────────────────────────────
-export async function watchCard(db: Database, cardId: string, userId: string, organizationId?: string) {
+export async function watchCard(
+  db: Database,
+  cardId: string,
+  userId: string,
+  organizationId?: string
+) {
   if (organizationId) {
     await getCard(db, cardId, organizationId);
   }
@@ -853,34 +915,47 @@ export async function watchCard(db: Database, cardId: string, userId: string, or
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.watched', { cardId, userId });
-    const [board] = await db.select({ organizationId: boards.organizationId }).from(boards).where(eq(boards.id, boardId));
+    const [board] = await db
+      .select({ organizationId: boards.organizationId })
+      .from(boards)
+      .where(eq(boards.id, boardId));
     if (board?.organizationId) {
       eventBus.emit('internal', {
         event: 'card.watched',
         payload: { cardId, userId },
         actorId: userId,
-        organizationId: board.organizationId
+        organizationId: board.organizationId,
       });
     }
   }
   return { success: true, watched: true };
 }
 
-export async function unwatchCard(db: Database, cardId: string, userId: string, organizationId?: string) {
+export async function unwatchCard(
+  db: Database,
+  cardId: string,
+  userId: string,
+  organizationId?: string
+) {
   if (organizationId) {
     await getCard(db, cardId, organizationId);
   }
-  await db.delete(cardWatchers).where(and(eq(cardWatchers.cardId, cardId), eq(cardWatchers.userId, userId)));
+  await db
+    .delete(cardWatchers)
+    .where(and(eq(cardWatchers.cardId, cardId), eq(cardWatchers.userId, userId)));
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.unwatched', { cardId, userId });
-    const [board] = await db.select({ organizationId: boards.organizationId }).from(boards).where(eq(boards.id, boardId));
+    const [board] = await db
+      .select({ organizationId: boards.organizationId })
+      .from(boards)
+      .where(eq(boards.id, boardId));
     if (board?.organizationId) {
       eventBus.emit('internal', {
         event: 'card.unwatched',
         payload: { cardId, userId },
         actorId: userId,
-        organizationId: board.organizationId
+        organizationId: board.organizationId,
       });
     }
   }
@@ -913,21 +988,41 @@ export async function getCardChecklists(db: Database, cardId: string) {
     .select()
     .from(checklistItems)
     .innerJoin(checklists, eq(checklists.id, checklistItems.checklistId))
-    .where(and(eq(checklists.cardId, cardId), isNull(checklists.deletedAt), isNull(checklistItems.deletedAt)))
+    .where(
+      and(
+        eq(checklists.cardId, cardId),
+        isNull(checklists.deletedAt),
+        isNull(checklistItems.deletedAt)
+      )
+    )
     .orderBy(checklistItems.position);
 
-  return allChecklists.map(cl => ({
+  return allChecklists.map((cl) => ({
     ...cl,
-    items: allItems.filter(item => item.checklist_items.checklistId === cl.id).map(i => i.checklist_items),
+    items: allItems
+      .filter((item) => item.checklist_items.checklistId === cl.id)
+      .map((i) => i.checklist_items),
   }));
 }
 
-export async function createChecklist(db: Database, cardId: string, title: string, position: number) {
+export async function createChecklist(
+  db: Database,
+  cardId: string,
+  title: string,
+  position: number
+) {
   const [checklist] = await db.insert(checklists).values({ cardId, title, position }).returning();
   return checklist;
 }
 
-export async function createChecklistItem(db: Database, checklistId: string, text: string, position: number, assignedTo?: string, dueDate?: Date) {
+export async function createChecklistItem(
+  db: Database,
+  checklistId: string,
+  text: string,
+  position: number,
+  assignedTo?: string,
+  dueDate?: Date
+) {
   const [item] = await db
     .insert(checklistItems)
     .values({ checklistId, text, position, assignedTo, dueDate })
@@ -943,6 +1038,22 @@ export async function updateChecklistItem(db: Database, itemId: string, input: a
     .returning();
   if (!item) throw httpError(404, 'Checklist item not found');
   return item;
+}
+
+export async function deleteChecklistItem(db: Database, itemId: string) {
+  const [deleted] = await db
+    .delete(checklistItems)
+    .where(eq(checklistItems.id, itemId))
+    .returning();
+  if (!deleted) throw httpError(404, 'Checklist item not found');
+  return { success: true, deletedId: itemId };
+}
+
+export async function deleteChecklist(db: Database, checklistId: string) {
+  await db.delete(checklistItems).where(eq(checklistItems.checklistId, checklistId));
+  const [deleted] = await db.delete(checklists).where(eq(checklists.id, checklistId)).returning();
+  if (!deleted) throw httpError(404, 'Checklist not found');
+  return { success: true, deletedId: checklistId };
 }
 
 // ─── My Tasks Hub ─────────────────────────────────────────────────────────────
@@ -1038,11 +1149,7 @@ export async function getMyTasks(
   if (options?.search && options.search.trim()) {
     const term = `%${options.search.trim()}%`;
     conditions.push(
-      or(
-        ilike(cards.title, term),
-        ilike(cards.description, term),
-        ilike(cards.key, term)
-      )
+      or(ilike(cards.title, term), ilike(cards.description, term), ilike(cards.key, term))
     );
   }
 
@@ -1055,7 +1162,9 @@ export async function getMyTasks(
   }
 
   if (options?.status) {
-    conditions.push(or(eq(stages.category, options.status as any), eq(stages.name, options.status)));
+    conditions.push(
+      or(eq(stages.category, options.status as any), eq(stages.name, options.status))
+    );
   }
 
   const rawTasks = await db
@@ -1096,19 +1205,20 @@ export async function getMyTasks(
   const cardIds = rawTasks.map((t) => t.id);
 
   // Fetch assignees for these cards
-  const allAssignees = cardIds.length > 0
-    ? await db
-        .select({
-          cardId: cardAssignees.cardId,
-          userId: users.id,
-          name: users.name,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
-        })
-        .from(cardAssignees)
-        .innerJoin(users, eq(users.id, cardAssignees.userId))
-        .where(inArray(cardAssignees.cardId, cardIds))
-    : [];
+  const allAssignees =
+    cardIds.length > 0
+      ? await db
+          .select({
+            cardId: cardAssignees.cardId,
+            userId: users.id,
+            name: users.name,
+            email: users.email,
+            avatarUrl: users.avatarUrl,
+          })
+          .from(cardAssignees)
+          .innerJoin(users, eq(users.id, cardAssignees.userId))
+          .where(inArray(cardAssignees.cardId, cardIds))
+      : [];
 
   const assigneesByCard = new Map<string, any[]>();
   allAssignees.forEach((a) => {
@@ -1118,15 +1228,16 @@ export async function getMyTasks(
   });
 
   // Fetch watchers count for these cards
-  const allWatchers = cardIds.length > 0
-    ? await db
-        .select({
-          cardId: cardWatchers.cardId,
-          userId: cardWatchers.userId,
-        })
-        .from(cardWatchers)
-        .where(inArray(cardWatchers.cardId, cardIds))
-    : [];
+  const allWatchers =
+    cardIds.length > 0
+      ? await db
+          .select({
+            cardId: cardWatchers.cardId,
+            userId: cardWatchers.userId,
+          })
+          .from(cardWatchers)
+          .where(inArray(cardWatchers.cardId, cardIds))
+      : [];
 
   const watchersCountByCard = new Map<string, number>();
   allWatchers.forEach((w) => {
@@ -1134,15 +1245,16 @@ export async function getMyTasks(
   });
 
   // Fetch comments count
-  const allComments = cardIds.length > 0
-    ? await db
-        .select({
-          cardId: comments.cardId,
-          id: comments.id,
-        })
-        .from(comments)
-        .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt)))
-    : [];
+  const allComments =
+    cardIds.length > 0
+      ? await db
+          .select({
+            cardId: comments.cardId,
+            id: comments.id,
+          })
+          .from(comments)
+          .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt)))
+      : [];
 
   const commentsCountByCard = new Map<string, number>();
   allComments.forEach((c) => {
@@ -1150,16 +1262,23 @@ export async function getMyTasks(
   });
 
   // Fetch checklists progress
-  const allChecklists = cardIds.length > 0
-    ? await db
-        .select({
-          cardId: checklists.cardId,
-          isCompleted: checklistItems.isDone,
-        })
-        .from(checklists)
-        .innerJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
-        .where(and(inArray(checklists.cardId, cardIds), isNull(checklists.deletedAt), isNull(checklistItems.deletedAt)))
-    : [];
+  const allChecklists =
+    cardIds.length > 0
+      ? await db
+          .select({
+            cardId: checklists.cardId,
+            isCompleted: checklistItems.isDone,
+          })
+          .from(checklists)
+          .innerJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
+          .where(
+            and(
+              inArray(checklists.cardId, cardIds),
+              isNull(checklists.deletedAt),
+              isNull(checklistItems.deletedAt)
+            )
+          )
+      : [];
 
   const checklistsProgressByCard = new Map<string, { total: number; completed: number }>();
   allChecklists.forEach((item) => {
@@ -1246,7 +1365,8 @@ export async function cloneCard(
     .where(eq(cards.listId, targetListId));
 
   const newPosition = (result?.maxPos ?? 0) + 65536;
-  const clonedTitle = input.title || (input.parentCardId ? `Subtask: ${original.title}` : `${original.title} (Copy)`);
+  const clonedTitle =
+    input.title || (input.parentCardId ? `Subtask: ${original.title}` : `${original.title} (Copy)`);
 
   // If cloning as a subtask, verify parentCard
   if (input.parentCardId) {

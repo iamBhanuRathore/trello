@@ -1377,12 +1377,25 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 
 ---
 
-### 2026-09-03 — Pre-Commit Hook & Backend Typecheck Resolution
+---
+
+### 2026-09-03 — Task Detail UX Refinement & Checklist CORS Resolution
 
 - **What was done:**
-  - Added `infra/helm/**/templates/**` to `.prettierignore` so `lint-staged` and Prettier ignore Go/Helm template files containing template directives (`{{- if ... }}`, `{{- toYaml ... }}`) instead of failing with YAML syntax errors during git pre-commit.
-  - Fixed TypeScript compiler errors in `@boardly/backend` triggered during `pre-push` hook (`turbo run typecheck`):
-    - Aligned `PlanTier.Free` enum usage in `apps/backend/src/middleware/auth.ts`.
-    - Corrected ioredis `.script('LOAD', ...)` uppercase subcommand typing across `rateLimiter.ts` and `tenantQuota.ts`.
-    - Typed Elysia `HTTPHeaders` on rate-limiter context and added explicit `return undefined` for strict `noImplicitReturns` compliance.
-  - Verified `tsc --noEmit` runs with 0 errors across all monorepo packages.
+  1. **Root Cause of CORS Error on API Errors**:
+     - In Elysia, `@elysiajs/cors` middleware hooks only decorate non-error responses. When any error occurred (401 Unauthorized, 403 Forbidden, 404, 422, 500), Elysia routed directly to `.onError()` which was sending HTTP error statuses without CORS response headers (`Access-Control-Allow-Origin: ...`).
+     - As a result, browsers intercepted missing headers on 4xx/5xx responses and labeled them in the DevTools Network panel as `CORS error` instead of revealing the actual HTTP error.
+     - **Fix**: Explicitly attached clean, single CORS headers inside `.onError()` (`access-control-allow-origin`, `credentials`, `methods`, `headers`) in `apps/backend/src/index.ts`.
+  2. **Checklist Item Update (500 Database Error Fix)**:
+     - In `apps/backend/src/middleware/auth.ts`, `requirePermission` was passing `user.organizationId` into Postgres/Drizzle queries without fallback. When `organizationId` was undefined on the token context, Postgres threw `UNDEFINED_VALUE: Undefined values are not allowed` producing a 500 error.
+     - **Fix**: Added active organization lookup fallback (`membership.organizationId`) and null guards before query execution.
+  3. **Floating Popovers & Click-Outside Dismissal**:
+     - Refactored `MemberPicker` and `LabelPicker` invocations across Assignee, Participants, Observers, and Tags to mount as floating, positioned popovers (`absolute z-50 top-full left-0 mt-2 shadow-2xl backdrop-blur-xl`) with click-outside detection instead of stretching card containers inline.
+  4. **Action Ribbon & Sticky Bottom Bar Positioning**:
+     - Added generous bottom padding (`pb-36` / 144px) on the task specification scroll container and `mt-4 mb-6 pt-4 pb-4` on `TaskActionRibbon.tsx` to provide clean breathing room above the sticky bottom bar.
+     - Connected `Start` button with live time tracking timer, live state display, and automatic stage transition.
+     - Connected `Complete` button with instant stage movement, batch checklist completion, and success notifications.
+     - Fixed date formatting from `12:00 AM43` to clean standard `July 26, 2026` / `MMM d, yyyy · h:mm a`.
+  5. **Verification**:
+     - Verified `PATCH /v1/cards/checklist-items/:itemId` returns `200 OK` with updated `isDone: true` data payload.
+     - Full monorepo typecheck (`turbo run typecheck`) and dashboard build (`turbo run build --filter=dashboard`) passing with 0 errors.

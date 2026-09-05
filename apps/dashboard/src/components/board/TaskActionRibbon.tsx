@@ -148,7 +148,7 @@ export function TaskActionRibbon({
   ];
 
   return (
-    <div className="w-full border-t border-border/70 pt-3 pb-1">
+    <div className="w-full border-t border-border/70 pt-4 pb-4 mt-4 mb-6">
       <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
         {ribbonItems.map((item) => {
           const isSelected = activeSection === item.id;
