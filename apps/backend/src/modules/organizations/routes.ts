@@ -6,6 +6,7 @@ import {
   getOrg,
   updateOrg,
   listMembers,
+  countMembers,
   inviteMember,
   bulkInviteMembers,
   listPendingInvitations,
@@ -25,16 +26,13 @@ import {
 export const inviteRoutes = new Elysia({ prefix: '/invite', tags: ['Invitations'] })
 
   // GET /v1/invite/preview/:token
-  .get(
-    '/preview/:token',
-    async ({ params, set }) => {
-      try {
-        return await previewInvitation(db, params.token);
-      } catch (err: any) {
-        return handleRouteError(err, set);
-      }
+  .get('/preview/:token', async ({ params, set }) => {
+    try {
+      return await previewInvitation(db, params.token);
+    } catch (err: any) {
+      return handleRouteError(err, set);
     }
-  )
+  })
 
   // POST /v1/invite/accept
   .post(
@@ -54,7 +52,6 @@ export const inviteRoutes = new Elysia({ prefix: '/invite', tags: ['Invitations'
       }),
     }
   );
-
 
 /** Organization routes — /v1/orgs/* */
 export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] })
@@ -100,13 +97,33 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     '/:orgId/members',
     async ({ params, query, set }) => {
       try {
-        return await listMembers(db, params.orgId, {
-          search: query?.search,
+        const userIds = query?.userIds
+          ? query.userIds
+              .split(',')
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+          : undefined;
+
+        const options = {
+          search: query?.search?.trim() || undefined,
           limit: query?.limit ? parseInt(query.limit, 10) : undefined,
           offset: query?.offset ? parseInt(query.offset, 10) : undefined,
           role: query?.role,
           status: query?.status,
-        });
+          userIds,
+        };
+
+        const [members, totalCount] = await Promise.all([
+          listMembers(db, params.orgId, options),
+          countMembers(db, params.orgId, options),
+        ]);
+
+        if (set?.headers) {
+          set.headers['x-total-count'] = String(totalCount);
+          set.headers['access-control-expose-headers'] = 'x-total-count';
+        }
+
+        return members;
       } catch (err: any) {
         return handleRouteError(err, set);
       }
@@ -120,6 +137,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
           offset: t.Optional(t.String()),
           role: t.Optional(t.String()),
           status: t.Optional(t.String()),
+          userIds: t.Optional(t.String()),
         })
       ),
     }

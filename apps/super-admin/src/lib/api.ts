@@ -1,13 +1,21 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/v1',
+  baseURL: import.meta.env.VITE_API_URL || '/v1',
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
 api.interceptors.request.use((config) => {
+  if (
+    config.url?.includes('/auth/sign-in') ||
+    config.url?.includes('/auth/sign-up') ||
+    config.url?.includes('/auth/refresh')
+  ) {
+    return config;
+  }
   const token =
     localStorage.getItem('boardly_superadmin_token') ||
     localStorage.getItem('boardly_access_token');

@@ -16,7 +16,8 @@
     "./avatar": "./src/components/avatar.tsx",
     "./searchable-select": "./src/components/searchable-select.tsx",
     "./sidebar": "./src/components/sidebar.tsx",
-    "./switch": "./src/components/switch.tsx"
+    "./switch": "./src/components/switch.tsx",
+    "./tooltip": "./src/components/tooltip.tsx"
   },
   "peerDependencies": {
     "@base-ui/react": ">=1.0.0",

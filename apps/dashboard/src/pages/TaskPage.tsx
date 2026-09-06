@@ -9,7 +9,7 @@ export function TaskPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] p-2 sm:p-4 lg:p-6 bg-muted/20 flex flex-col overflow-hidden">
+    <div className="-m-4 md:-m-6 flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-hidden">
       <TaskDetailView cardId={cardId} mode="page" />
     </div>
   );

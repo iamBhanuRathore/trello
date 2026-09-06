@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../../lib/api";
-import { Search, X, Check, Tag, ExternalLink } from "lucide-react";
-import { Button } from "@boardly/ui/button";
-import { Link } from "react-router-dom";
-import { useAuthStore } from "../../store/authStore";
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '../../lib/api';
+import { Search, X, Check, Tag, ExternalLink } from 'lucide-react';
+import { Button } from '@boardly/ui/button';
+import { Link } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore';
 
 export interface BoardLabel {
   id: string;
@@ -21,33 +21,27 @@ interface LabelPickerProps {
 }
 
 export const PRESET_LABEL_COLORS = [
-  { color: "#ef4444", name: "Red" },
-  { color: "#f97316", name: "Orange" },
-  { color: "#f59e0b", name: "Amber" },
-  { color: "#10b981", name: "Emerald" },
-  { color: "#06b6d4", name: "Cyan" },
-  { color: "#3b82f6", name: "Blue" },
-  { color: "#8b5cf6", name: "Violet" },
-  { color: "#ec4899", name: "Pink" },
-  { color: "#6366f1", name: "Indigo" },
-  { color: "#14b8a6", name: "Teal" },
+  { color: '#ef4444', name: 'Red' },
+  { color: '#f97316', name: 'Orange' },
+  { color: '#f59e0b', name: 'Amber' },
+  { color: '#10b981', name: 'Emerald' },
+  { color: '#06b6d4', name: 'Cyan' },
+  { color: '#3b82f6', name: 'Blue' },
+  { color: '#8b5cf6', name: 'Violet' },
+  { color: '#ec4899', name: 'Pink' },
+  { color: '#6366f1', name: 'Indigo' },
+  { color: '#14b8a6', name: 'Teal' },
 ];
 
-export function LabelPicker({
-  boardId,
-  cardId,
-  cardLabelIds,
-  onClose,
-}: LabelPickerProps) {
+export function LabelPicker({ boardId, cardId, cardLabelIds, onClose }: LabelPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const isAdmin =
-    user?.isPlatformAdmin || user?.role === "org_owner" || user?.role === "org_admin";
+  const isAdmin = user?.isPlatformAdmin || user?.role === 'org_owner' || user?.role === 'org_admin';
 
   useEffect(() => {
     searchInputRef.current?.focus();
@@ -60,22 +54,24 @@ export function LabelPicker({
       }
     }
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         onClose();
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [onClose]);
 
   const { data: boardLabels = [], isLoading } = useQuery<BoardLabel[]>({
-    queryKey: ["boardLabels", boardId],
+    queryKey: ['boardLabels', boardId],
     queryFn: async () => (await api.get(`/boards/${boardId}/labels`)).data,
     enabled: !!boardId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   const toggleLabelMutation = useMutation({
@@ -87,7 +83,7 @@ export function LabelPicker({
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["card", cardId] });
+      queryClient.invalidateQueries({ queryKey: ['card', cardId] });
     },
   });
 
@@ -100,14 +96,12 @@ export function LabelPicker({
   return (
     <div
       ref={containerRef}
-      className="w-full max-w-full rounded-2xl border border-border/80 bg-popover/95 backdrop-blur-xl shadow-2xl overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150 z-50 flex flex-col text-foreground mt-2"
+      className="w-full max-w-full rounded-2xl border border-border/80 bg-popover/98 dark:bg-slate-900/98 backdrop-blur-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 z-50 flex flex-col text-foreground ring-1 ring-white/5"
     >
       <div className="p-3 border-b border-border/70 flex items-center justify-between gap-2 bg-muted/30">
         <div className="flex items-center gap-2">
           <Tag className="w-3.5 h-3.5 text-primary" />
-          <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-            Labels
-          </span>
+          <span className="text-xs font-bold uppercase tracking-wider text-foreground">Labels</span>
           {boardLabels.length > 0 && (
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
               {boardLabels.length}
@@ -140,7 +134,7 @@ export function LabelPicker({
               type="button"
               className="absolute right-2 text-muted-foreground hover:text-foreground p-0.5"
               onClick={() => {
-                setSearchQuery("");
+                setSearchQuery('');
                 searchInputRef.current?.focus();
               }}
             >
@@ -171,8 +165,8 @@ export function LabelPicker({
                 type="button"
                 className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all group cursor-pointer ${
                   hasLabel
-                    ? "bg-primary/10 border border-primary/25 shadow-xs"
-                    : "hover:bg-muted/70 border border-transparent"
+                    ? 'bg-primary/10 border border-primary/25 shadow-xs'
+                    : 'hover:bg-muted/70 border border-transparent'
                 }`}
                 onClick={() => toggleLabelMutation.mutate({ labelId: lbl.id, hasLabel })}
               >
@@ -195,8 +189,8 @@ export function LabelPicker({
                 <div
                   className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
                     hasLabel
-                      ? "bg-primary text-primary-foreground shadow-xs"
-                      : "border border-border/80 group-hover:border-primary/60 group-hover:bg-primary/5 text-transparent group-hover:text-primary/40"
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'border border-border/80 group-hover:border-primary/60 group-hover:bg-primary/5 text-transparent group-hover:text-primary/40'
                   }`}
                 >
                   <Check className="w-3.5 h-3.5 stroke-[2.5]" />

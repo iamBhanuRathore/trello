@@ -80,10 +80,55 @@ export const orgService = {
 
   getMembers: async (
     orgId: string,
-    params?: { search?: string; limit?: number; offset?: number; role?: string; status?: string }
+    params?: {
+      search?: string;
+      limit?: number;
+      offset?: number;
+      role?: string;
+      status?: string;
+      userIds?: string[];
+    }
   ): Promise<OrgMember[]> => {
-    const res = await api.get(`/orgs/${orgId}/members`, { params });
+    const queryParams: Record<string, any> = {};
+    if (params?.search) queryParams.search = params.search;
+    if (params?.limit !== undefined) queryParams.limit = params.limit;
+    if (params?.offset !== undefined) queryParams.offset = params.offset;
+    if (params?.role) queryParams.role = params.role;
+    if (params?.status) queryParams.status = params.status;
+    if (params?.userIds && params.userIds.length > 0) {
+      queryParams.userIds = params.userIds.join(',');
+    }
+    const res = await api.get(`/orgs/${orgId}/members`, { params: queryParams });
     return res.data;
+  },
+
+  getMembersWithCount: async (
+    orgId: string,
+    params?: {
+      search?: string;
+      limit?: number;
+      offset?: number;
+      role?: string;
+      status?: string;
+      userIds?: string[];
+    }
+  ): Promise<{ members: OrgMember[]; total: number }> => {
+    const queryParams: Record<string, any> = {};
+    if (params?.search) queryParams.search = params.search;
+    if (params?.limit !== undefined) queryParams.limit = params.limit;
+    if (params?.offset !== undefined) queryParams.offset = params.offset;
+    if (params?.role) queryParams.role = params.role;
+    if (params?.status) queryParams.status = params.status;
+    if (params?.userIds && params.userIds.length > 0) {
+      queryParams.userIds = params.userIds.join(',');
+    }
+    const res = await api.get(`/orgs/${orgId}/members`, { params: queryParams });
+    const headerVal = res.headers?.['x-total-count'] || res.headers?.['X-Total-Count'];
+    const total = headerVal !== undefined ? parseInt(headerVal, 10) : res.data.length;
+    return {
+      members: res.data,
+      total: isNaN(total) ? res.data.length : total,
+    };
   },
 
   inviteMember: async (
@@ -137,7 +182,10 @@ export const orgService = {
     return res.data;
   },
 
-  getMemberActivitySummary: async (orgId: string, memberId: string): Promise<MemberActivitySummary> => {
+  getMemberActivitySummary: async (
+    orgId: string,
+    memberId: string
+  ): Promise<MemberActivitySummary> => {
     const res = await api.get(`/orgs/${orgId}/members/${memberId}/summary`);
     return res.data;
   },

@@ -10,6 +10,12 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5174,
+    proxy: {
+      '/v1': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
   },
   resolve: {
     alias: {

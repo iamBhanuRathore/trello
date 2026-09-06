@@ -4,6 +4,8 @@ import { useAuthStore } from './store/authStore';
 import { Login } from './pages/Login';
 import { AuthCallback } from './pages/AuthCallback';
 import { Toaster } from 'sonner';
+import { TooltipProvider } from '@boardly/ui';
+import { GlobalTooltip } from './components/GlobalTooltip';
 import { SignUp } from './pages/SignUp';
 import { AcceptInvite } from './pages/AcceptInvite';
 import { DashboardLayout } from './layouts/DashboardLayout';
@@ -38,10 +40,11 @@ import { NotFound } from './pages/NotFound';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
-  
-  if (isLoading) return <div className="flex h-screen w-screen items-center justify-center">Loading...</div>;
+
+  if (isLoading)
+    return <div className="flex h-screen w-screen items-center justify-center">Loading...</div>;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  
+
   return <>{children}</>;
 }
 
@@ -53,53 +56,70 @@ export function App() {
   }, [checkAuth]);
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/pricing" element={<Pricing />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<SignUp />} />
-        <Route path="/invite" element={<AcceptInvite />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/forms/:slug" element={<PublicFormView />} />
-        
-        <Route path="/" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
-          <Route index element={<Workspaces />} />
-          <Route path="b/:boardId" element={<BoardView />} />
-          <Route path="b/:boardId/c/:cardId" element={<TaskPage />} />
-          <Route path="cards/:cardId" element={<TaskPage />} />
-          <Route path="marketplace" element={<Marketplace />} />
-          <Route path="workspaces/:workspaceId/portfolio" element={<PortfolioDashboard />} />
-          <Route path="projects/:projectId/sprints" element={<ProjectSprints />} />
-          <Route path="projects/:projectId/phases" element={<ProjectPhases />} />
-          <Route path="projects/:projectId/reports" element={<ProjectReports />} />
-          <Route path="projects/:projectId/docs" element={<ProjectDocs />} />
-          <Route path="timesheets" element={<Timesheets />} />
-          <Route path="my-tasks" element={<MyTasks />} />
-          <Route path="tasks" element={<MyTasks />} />
-          <Route path="profile" element={<ProfileSettings />} />
-          <Route path="settings/profile" element={<ProfileSettings />} />
-          <Route path="settings/notifications" element={<NotificationSettings />} />
-        </Route>
+    <TooltipProvider delay={200} closeDelay={150}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<SignUp />} />
+          <Route path="/invite" element={<AcceptInvite />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/forms/:slug" element={<PublicFormView />} />
 
-        <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
-          <Route index element={<Navigate to="users" replace />} />
-          <Route path="users" element={<Users />} />
-          <Route path="roles" element={<CustomRoles />} />
-          <Route path="sso" element={<SSOSettings />} />
-          <Route path="developer" element={<DeveloperSettings />} />
-          <Route path="audit-logs" element={<AuditLogs />} />
-          <Route path="billing" element={<Billing />} />
-          <Route path="branding" element={<Branding />} />
-          <Route path="stages" element={<StageTemplates />} />
-          <Route path="labels" element={<LabelsAdmin />} />
-          <Route path="webhooks" element={<WebhookSettings />} />
-          <Route path="integrations" element={<Integrations />} />
-        </Route>
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Workspaces />} />
+            <Route path="b/:boardId" element={<BoardView />} />
+            <Route path="b/:boardId/c/:cardId" element={<TaskPage />} />
+            <Route path="cards/:cardId" element={<TaskPage />} />
+            <Route path="marketplace" element={<Marketplace />} />
+            <Route path="workspaces/:workspaceId/portfolio" element={<PortfolioDashboard />} />
+            <Route path="projects/:projectId/sprints" element={<ProjectSprints />} />
+            <Route path="projects/:projectId/phases" element={<ProjectPhases />} />
+            <Route path="projects/:projectId/reports" element={<ProjectReports />} />
+            <Route path="projects/:projectId/docs" element={<ProjectDocs />} />
+            <Route path="timesheets" element={<Timesheets />} />
+            <Route path="my-tasks" element={<MyTasks />} />
+            <Route path="tasks" element={<MyTasks />} />
+            <Route path="profile" element={<ProfileSettings />} />
+            <Route path="settings/profile" element={<ProfileSettings />} />
+            <Route path="settings/notifications" element={<NotificationSettings />} />
+          </Route>
 
-        {/* 404 Catch-All Route */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-      <Toaster richColors position="bottom-right" closeButton />
-    </BrowserRouter>
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="users" replace />} />
+            <Route path="users" element={<Users />} />
+            <Route path="roles" element={<CustomRoles />} />
+            <Route path="sso" element={<SSOSettings />} />
+            <Route path="developer" element={<DeveloperSettings />} />
+            <Route path="audit-logs" element={<AuditLogs />} />
+            <Route path="billing" element={<Billing />} />
+            <Route path="branding" element={<Branding />} />
+            <Route path="stages" element={<StageTemplates />} />
+            <Route path="labels" element={<LabelsAdmin />} />
+            <Route path="webhooks" element={<WebhookSettings />} />
+            <Route path="integrations" element={<Integrations />} />
+          </Route>
+
+          {/* 404 Catch-All Route */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+        <GlobalTooltip />
+        <Toaster richColors position="top-right" closeButton />
+      </BrowserRouter>
+    </TooltipProvider>
   );
 }

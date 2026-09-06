@@ -1,4 +1,4 @@
-import { eq, and, isNull, or, ilike, asc, desc, gte, type SQL } from 'drizzle-orm';
+import { eq, and, isNull, or, ilike, asc, desc, gte, inArray, sql, type SQL } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import type { Database } from '../../db/index';
 import {
@@ -15,7 +15,11 @@ import {
   auditLog,
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
-import { renderInviteEmail, renderAccountDeactivatedEmail, renderAccountReactivatedEmail } from '../../lib/emailTemplates';
+import {
+  renderInviteEmail,
+  renderAccountDeactivatedEmail,
+  renderAccountReactivatedEmail,
+} from '../../lib/emailTemplates';
 import { checkAndReserveSeatSlot } from '../billing/service';
 import { httpError } from '../../lib/errors';
 export { httpError };
@@ -74,21 +78,23 @@ export interface ListMembersOptions {
   offset?: number;
   role?: string;
   status?: string;
+  userIds?: string[];
 }
 
-// ─── listMembers ──────────────────────────────────────────────────────────────
-export async function listMembers(
-  db: Database,
-  orgId: string,
-  options: ListMembersOptions = {}
-) {
+function buildMemberConditions(orgId: string, options: ListMembersOptions = {}): SQL[] {
   const conditions: SQL[] = [
     eq(organizationMembers.organizationId, orgId),
     isNull(organizationMembers.deletedAt),
   ];
 
   if (options.role) {
-    conditions.push(eq(organizationMembers.role, options.role as any));
+    if (options.role === 'admin') {
+      conditions.push(
+        inArray(organizationMembers.role, ['org_owner', 'org_admin', 'workspace_admin'])
+      );
+    } else if ((ALLOWED_ORG_ROLES as readonly string[]).includes(options.role)) {
+      conditions.push(eq(organizationMembers.role, options.role as any));
+    }
   }
 
   if (options.status && options.status !== 'all') {
@@ -99,6 +105,17 @@ export async function listMembers(
     const term = `%${options.search}%`;
     conditions.push(or(ilike(users.name, term), ilike(users.email, term)) as SQL);
   }
+
+  if (options.userIds && options.userIds.length > 0) {
+    conditions.push(inArray(organizationMembers.userId, options.userIds));
+  }
+
+  return conditions;
+}
+
+// ─── listMembers ──────────────────────────────────────────────────────────────
+export async function listMembers(db: Database, orgId: string, options: ListMembersOptions = {}) {
+  const conditions = buildMemberConditions(orgId, options);
 
   let query = db
     .select({
@@ -129,6 +146,23 @@ export async function listMembers(
   }
 
   return await query;
+}
+
+// ─── countMembers ─────────────────────────────────────────────────────────────
+export async function countMembers(
+  db: Database,
+  orgId: string,
+  options: Omit<ListMembersOptions, 'limit' | 'offset'> = {}
+): Promise<number> {
+  const conditions = buildMemberConditions(orgId, options);
+
+  const [result] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(and(...conditions));
+
+  return result?.count ?? 0;
 }
 
 // ─── inviteMember ───────────────────────────────────────────────────────────────────
@@ -168,7 +202,11 @@ export async function inviteMember(
   // Resolve inviter name
   let inviterName = 'A team member';
   if (invitedBy) {
-    const [actor] = await db.select({ name: users.name }).from(users).where(eq(users.id, invitedBy)).limit(1);
+    const [actor] = await db
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, invitedBy))
+      .limit(1);
     if (actor?.name) inviterName = actor.name;
   }
 
@@ -187,7 +225,10 @@ export async function inviteMember(
   const seatCheck = await checkAndReserveSeatSlot(orgId, normalizedRole);
   if (!seatCheck.allowed) {
     if (seatCheck.requiresProration) {
-      throw httpError(402, seatCheck.message || 'Seat limit reached. Adding a billable member requires seat expansion.');
+      throw httpError(
+        402,
+        seatCheck.message || 'Seat limit reached. Adding a billable member requires seat expansion.'
+      );
     }
     if (seatCheck.requiresGuestOverage) {
       throw httpError(402, seatCheck.message || 'Guest limit reached on your plan.');
@@ -234,15 +275,15 @@ export async function inviteMember(
       .select()
       .from(organizationMembers)
       .where(
-        and(
-          eq(organizationMembers.organizationId, orgId),
-          eq(organizationMembers.userId, user.id)
-        )
+        and(eq(organizationMembers.organizationId, orgId), eq(organizationMembers.userId, user.id))
       )
       .limit(1);
 
     if (existingMember && !existingMember.deletedAt && existingMember.status === 'active') {
-      throw httpError(409, `User "${normalizedEmail}" is already an active member of this organization.`);
+      throw httpError(
+        409,
+        `User "${normalizedEmail}" is already an active member of this organization.`
+      );
     }
 
     // For existing Boardly users being invited to a new org, set them pending (they confirm via wizard)
@@ -351,33 +392,39 @@ export async function inviteMember(
   sendEmail({
     to: normalizedEmail,
     toName: result.user.name,
-    subject: (await renderInviteEmail({
-      toName: result.user.name,
-      toEmail: normalizedEmail,
-      inviterName,
-      orgName: org.name,
-      role: normalizedRole,
-      inviteUrl,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    })).subject,
-    html: (await renderInviteEmail({
-      toName: result.user.name,
-      toEmail: normalizedEmail,
-      inviterName,
-      orgName: org.name,
-      role: normalizedRole,
-      inviteUrl,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    })).html,
-    text: (await renderInviteEmail({
-      toName: result.user.name,
-      toEmail: normalizedEmail,
-      inviterName,
-      orgName: org.name,
-      role: normalizedRole,
-      inviteUrl,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    })).text,
+    subject: (
+      await renderInviteEmail({
+        toName: result.user.name,
+        toEmail: normalizedEmail,
+        inviterName,
+        orgName: org.name,
+        role: normalizedRole,
+        inviteUrl,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      })
+    ).subject,
+    html: (
+      await renderInviteEmail({
+        toName: result.user.name,
+        toEmail: normalizedEmail,
+        inviterName,
+        orgName: org.name,
+        role: normalizedRole,
+        inviteUrl,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      })
+    ).html,
+    text: (
+      await renderInviteEmail({
+        toName: result.user.name,
+        toEmail: normalizedEmail,
+        inviterName,
+        orgName: org.name,
+        role: normalizedRole,
+        inviteUrl,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      })
+    ).text,
   }).catch((err) => console.error('[invite] Email send failed silently:', err));
 
   return result;
@@ -448,7 +495,12 @@ export async function listPendingInvitations(db: Database, orgId: string) {
 }
 
 // ─── resendInvitation ─────────────────────────────────────────────────────────────────
-export async function resendInvitation(db: Database, orgId: string, invitationId: string, actorId: string) {
+export async function resendInvitation(
+  db: Database,
+  orgId: string,
+  invitationId: string,
+  actorId: string
+) {
   const newToken = randomBytes(32).toString('hex');
   const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
@@ -477,7 +529,12 @@ export async function resendInvitation(db: Database, orgId: string, invitationId
 }
 
 // ─── revokeInvitation ─────────────────────────────────────────────────────────
-export async function revokeInvitation(db: Database, orgId: string, invitationId: string, actorId: string) {
+export async function revokeInvitation(
+  db: Database,
+  orgId: string,
+  invitationId: string,
+  actorId: string
+) {
   const [deleted] = await db
     .delete(invitations)
     .where(and(eq(invitations.id, invitationId), eq(invitations.organizationId, orgId)))
@@ -497,7 +554,13 @@ export async function revokeInvitation(db: Database, orgId: string, invitationId
 }
 
 // ─── updateMemberRole ─────────────────────────────────────────────────────────
-export async function updateMemberRole(db: Database, orgId: string, memberId: string, role: string, actorId?: string) {
+export async function updateMemberRole(
+  db: Database,
+  orgId: string,
+  memberId: string,
+  role: string,
+  actorId?: string
+) {
   const [member] = await db
     .update(organizationMembers)
     .set({ role: role as any, updatedAt: new Date() })
@@ -585,7 +648,11 @@ export async function deactivateMember(
 
       let adminName = 'An administrator';
       if (actorId) {
-        const [actor] = await db.select({ name: users.name }).from(users).where(eq(users.id, actorId)).limit(1);
+        const [actor] = await db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, actorId))
+          .limit(1);
         if (actor?.name) adminName = actor.name;
       }
 
@@ -667,7 +734,11 @@ export async function reactivateMember(
 
       let adminName = 'An administrator';
       if (actorId) {
-        const [actor] = await db.select({ name: users.name }).from(users).where(eq(users.id, actorId)).limit(1);
+        const [actor] = await db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, actorId))
+          .limit(1);
         if (actor?.name) adminName = actor.name;
       }
 
@@ -765,7 +836,13 @@ export async function getMemberActivitySummary(db: Database, orgId: string, memb
     })
     .from(workspaceMembers)
     .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
-    .where(and(eq(workspaceMembers.userId, member.userId), eq(workspaces.organizationId, orgId), isNull(workspaces.deletedAt)));
+    .where(
+      and(
+        eq(workspaceMembers.userId, member.userId),
+        eq(workspaces.organizationId, orgId),
+        isNull(workspaces.deletedAt)
+      )
+    );
 
   // 2. Assigned cards count
   const assignedCards = await db
@@ -775,7 +852,13 @@ export async function getMemberActivitySummary(db: Database, orgId: string, memb
     })
     .from(cardAssignees)
     .innerJoin(cards, eq(cards.id, cardAssignees.cardId))
-    .where(and(eq(cardAssignees.userId, member.userId), eq(cards.organizationId, orgId), isNull(cards.deletedAt)));
+    .where(
+      and(
+        eq(cardAssignees.userId, member.userId),
+        eq(cards.organizationId, orgId),
+        isNull(cards.deletedAt)
+      )
+    );
 
   const totalCards = assignedCards.length;
   const activeCards = assignedCards.filter((c) => !c.isArchived).length;
@@ -802,7 +885,9 @@ export async function getMemberActivitySummary(db: Database, orgId: string, memb
     );
 
   const totalMinutes = logs.reduce((acc, l) => acc + (l.minutes || 0), 0);
-  const billableMinutes = logs.filter((l) => l.isBillable).reduce((acc, l) => acc + (l.minutes || 0), 0);
+  const billableMinutes = logs
+    .filter((l) => l.isBillable)
+    .reduce((acc, l) => acc + (l.minutes || 0), 0);
 
   return {
     member,
@@ -818,7 +903,12 @@ export async function getMemberActivitySummary(db: Database, orgId: string, memb
 }
 
 // ─── removeMember (Soft Delete) ───────────────────────────────────────────────
-export async function removeMember(db: Database, orgId: string, memberId: string, actorId?: string) {
+export async function removeMember(
+  db: Database,
+  orgId: string,
+  memberId: string,
+  actorId?: string
+) {
   const [member] = await db
     .update(organizationMembers)
     .set({ deletedAt: new Date(), updatedAt: new Date() })
@@ -862,10 +952,17 @@ export async function previewInvitation(db: Database, token: string) {
     .where(eq(invitations.token, token))
     .limit(1);
 
-  if (!invite) throw httpError(404, 'Invitation not found. It may have been revoked or never existed.');
-  if (invite.status === 'accepted') throw httpError(410, 'This invitation has already been accepted.');
-  if (invite.status === 'revoked') throw httpError(410, 'This invitation has been revoked by an admin.');
-  if (invite.expiresAt < now) throw httpError(410, 'This invitation has expired. Please contact your admin for a new invite.');
+  if (!invite)
+    throw httpError(404, 'Invitation not found. It may have been revoked or never existed.');
+  if (invite.status === 'accepted')
+    throw httpError(410, 'This invitation has already been accepted.');
+  if (invite.status === 'revoked')
+    throw httpError(410, 'This invitation has been revoked by an admin.');
+  if (invite.expiresAt < now)
+    throw httpError(
+      410,
+      'This invitation has expired. Please contact your admin for a new invite.'
+    );
 
   const [org] = await db
     .select({ id: organizations.id, name: organizations.name, slug: organizations.slug })
@@ -888,7 +985,7 @@ export async function previewInvitation(db: Database, token: string) {
     orgSlug: org?.slug ?? '',
     expiresAt: invite.expiresAt,
     isExistingUser: !!existingUser,
-    hasPassword: !!(existingUser?.passwordHash),
+    hasPassword: !!existingUser?.passwordHash,
   };
 }
 
@@ -901,14 +998,11 @@ export async function acceptInvitation(
 ) {
   const now = new Date();
 
-  const [invite] = await db
-    .select()
-    .from(invitations)
-    .where(eq(invitations.token, token))
-    .limit(1);
+  const [invite] = await db.select().from(invitations).where(eq(invitations.token, token)).limit(1);
 
   if (!invite) throw httpError(404, 'Invitation not found.');
-  if (invite.status === 'accepted') throw httpError(410, 'This invitation has already been accepted.');
+  if (invite.status === 'accepted')
+    throw httpError(410, 'This invitation has already been accepted.');
   if (invite.status === 'revoked') throw httpError(410, 'This invitation has been revoked.');
   if (invite.expiresAt < now) throw httpError(410, 'This invitation has expired.');
 
@@ -933,7 +1027,10 @@ export async function acceptInvitation(
     const updateData: Record<string, any> = { updatedAt: new Date() };
     if (name?.trim() && name.trim() !== user.name) updateData.name = name.trim();
     if (!hasExistingPassword && password) {
-      updateData.passwordHash = await Bun.password.hash(password, { algorithm: 'bcrypt', cost: 10 });
+      updateData.passwordHash = await Bun.password.hash(password, {
+        algorithm: 'bcrypt',
+        cost: 10,
+      });
     }
     await tx.update(users).set(updateData).where(eq(users.id, user.id));
 

@@ -43,7 +43,7 @@ const PROVIDERS = [
     name: 'GitHub',
     description: 'Link pull requests and commits to cards. Auto-move cards when PRs are merged.',
     icon: Github,
-    color: 'text-gray-900',
+    color: 'text-gray-900 dark:text-gray-100',
   },
   {
     id: 'google_drive' as IntegrationProvider,

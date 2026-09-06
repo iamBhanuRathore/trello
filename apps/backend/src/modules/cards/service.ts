@@ -18,6 +18,7 @@ import {
   projects,
   workspaces,
   notifications,
+  organizationMembers,
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
@@ -407,6 +408,7 @@ export async function getCard(db: Database, id: string, organizationId: string) 
       email: users.email,
       avatarUrl: users.avatarUrl,
       addedAt: cardParticipants.addedAt,
+      createdAt: cardParticipants.addedAt,
     })
     .from(cardParticipants)
     .innerJoin(users, eq(users.id, cardParticipants.userId))
@@ -420,6 +422,7 @@ export async function getCard(db: Database, id: string, organizationId: string) 
       email: users.email,
       avatarUrl: users.avatarUrl,
       subscribedAt: cardWatchers.subscribedAt,
+      createdAt: cardWatchers.subscribedAt,
     })
     .from(cardWatchers)
     .innerJoin(users, eq(users.id, cardWatchers.userId))
@@ -606,6 +609,7 @@ export async function listComments(db: Database, cardId: string) {
       cardId: comments.cardId,
       userId: comments.userId,
       body: comments.body,
+      isEdited: comments.isEdited,
       createdAt: comments.createdAt,
       updatedAt: comments.updatedAt,
       authorName: users.name,
@@ -698,6 +702,150 @@ export async function createComment(
   }
 
   return comment;
+}
+
+export async function updateComment(
+  db: Database,
+  commentId: string,
+  userId: string,
+  organizationId: string,
+  body: string,
+  isPlatformAdmin: boolean = false
+) {
+  const [comment] = await db
+    .select({
+      id: comments.id,
+      cardId: comments.cardId,
+      userId: comments.userId,
+      organizationId: cards.organizationId,
+    })
+    .from(comments)
+    .innerJoin(cards, eq(cards.id, comments.cardId))
+    .where(and(eq(comments.id, commentId), isNull(comments.deletedAt)))
+    .limit(1);
+
+  if (!comment) {
+    throw httpError(404, 'Comment not found');
+  }
+
+  if (comment.organizationId !== organizationId && !isPlatformAdmin) {
+    throw httpError(403, 'Forbidden');
+  }
+
+  let canEdit = comment.userId === userId || isPlatformAdmin;
+
+  if (!canEdit) {
+    const [membership] = await db
+      .select({ role: organizationMembers.role })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          eq(organizationMembers.userId, userId),
+          isNull(organizationMembers.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (
+      membership &&
+      ['org_owner', 'org_admin', 'workspace_admin', 'admin'].includes(membership.role)
+    ) {
+      canEdit = true;
+    }
+  }
+
+  if (!canEdit) {
+    throw httpError(403, 'You do not have permission to edit this comment');
+  }
+
+  const [updated] = await db
+    .update(comments)
+    .set({
+      body,
+      isEdited: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(comments.id, commentId))
+    .returning();
+
+  const boardId = await getBoardIdForCard(db, comment.cardId);
+  if (boardId) {
+    eventBus.broadcast(`board:${boardId}`, 'comment.updated', {
+      cardId: comment.cardId,
+      commentId,
+      body,
+    });
+  }
+
+  return updated;
+}
+
+export async function deleteComment(
+  db: Database,
+  commentId: string,
+  userId: string,
+  organizationId: string,
+  isPlatformAdmin: boolean = false
+) {
+  const [comment] = await db
+    .select({
+      id: comments.id,
+      cardId: comments.cardId,
+      userId: comments.userId,
+      organizationId: cards.organizationId,
+    })
+    .from(comments)
+    .innerJoin(cards, eq(cards.id, comments.cardId))
+    .where(and(eq(comments.id, commentId), isNull(comments.deletedAt)))
+    .limit(1);
+
+  if (!comment) {
+    throw httpError(404, 'Comment not found');
+  }
+
+  if (comment.organizationId !== organizationId && !isPlatformAdmin) {
+    throw httpError(403, 'Forbidden');
+  }
+
+  let canDelete = comment.userId === userId || isPlatformAdmin;
+
+  if (!canDelete) {
+    const [membership] = await db
+      .select({ role: organizationMembers.role })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          eq(organizationMembers.userId, userId),
+          isNull(organizationMembers.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (
+      membership &&
+      ['org_owner', 'org_admin', 'workspace_admin', 'admin'].includes(membership.role)
+    ) {
+      canDelete = true;
+    }
+  }
+
+  if (!canDelete) {
+    throw httpError(403, 'You do not have permission to delete this comment');
+  }
+
+  await db.update(comments).set({ deletedAt: new Date() }).where(eq(comments.id, commentId));
+
+  const boardId = await getBoardIdForCard(db, comment.cardId);
+  if (boardId) {
+    eventBus.broadcast(`board:${boardId}`, 'comment.deleted', {
+      cardId: comment.cardId,
+      commentId,
+    });
+  }
+
+  return { success: true, id: commentId };
 }
 
 // ─── Attachments ──────────────────────────────────────────────────────────────
@@ -851,8 +999,11 @@ export async function addParticipantToCard(
   }
   await db
     .insert(cardParticipants)
-    .values({ cardId, userId, addedBy: actorId })
-    .onConflictDoNothing();
+    .values({ cardId, userId, addedBy: actorId, addedAt: new Date() })
+    .onConflictDoUpdate({
+      target: [cardParticipants.cardId, cardParticipants.userId],
+      set: { addedAt: new Date(), addedBy: actorId },
+    });
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.participant_added', { cardId, userId });
@@ -895,6 +1046,7 @@ export async function getCardParticipants(db: Database, cardId: string) {
       email: users.email,
       avatarUrl: users.avatarUrl,
       addedAt: cardParticipants.addedAt,
+      createdAt: cardParticipants.addedAt,
     })
     .from(cardParticipants)
     .innerJoin(users, eq(users.id, cardParticipants.userId))
@@ -911,7 +1063,13 @@ export async function watchCard(
   if (organizationId) {
     await getCard(db, cardId, organizationId);
   }
-  await db.insert(cardWatchers).values({ cardId, userId }).onConflictDoNothing();
+  await db
+    .insert(cardWatchers)
+    .values({ cardId, userId, subscribedAt: new Date() })
+    .onConflictDoUpdate({
+      target: [cardWatchers.cardId, cardWatchers.userId],
+      set: { subscribedAt: new Date() },
+    });
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.watched', { cardId, userId });
@@ -970,6 +1128,7 @@ export async function getCardWatchers(db: Database, cardId: string) {
       email: users.email,
       avatarUrl: users.avatarUrl,
       subscribedAt: cardWatchers.subscribedAt,
+      createdAt: cardWatchers.subscribedAt,
     })
     .from(cardWatchers)
     .innerJoin(users, eq(users.id, cardWatchers.userId))

@@ -4,11 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { searchService } from '../lib/searchService';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
-import {
-  Dialog,
-  DialogContent,
-  DialogTrigger,
-} from '@boardly/ui/dialog';
+import { Dialog, DialogContent, DialogTrigger } from '@boardly/ui/dialog';
+import { Kbd } from './ui/Kbd';
 import {
   Search,
   SearchIcon,
@@ -58,10 +55,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
   const { user } = useAuthStore();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const isAdmin =
-    user?.isPlatformAdmin ||
-    user?.role === 'org_owner' ||
-    user?.role === 'org_admin';
+  const isAdmin = user?.isPlatformAdmin || user?.role === 'org_owner' || user?.role === 'org_admin';
 
   // 1. Fetch remote search results for cards/boards/projects
   const { data: serverResults = [], isLoading } = useQuery({
@@ -186,7 +180,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
         proj.boards?.forEach((b: any) => {
           items.push({
             id: `board-${b.id}`,
-            title: b.title,
+            title: b.name || b.title || 'Untitled Board',
             subtitle: `${ws.name} > ${proj.name}`,
             type: 'board',
             icon: Columns,
@@ -200,30 +194,33 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
   }, [workspaces, navigate]);
 
   // Quick Action Items
-  const quickActions: SearchItem[] = useMemo(() => [
-    {
-      id: 'action-create-ws',
-      title: 'Create New Workspace',
-      subtitle: 'Set up a new team environment',
-      type: 'action',
-      icon: Plus,
-      iconColor: 'text-primary',
-      onSelect: () => navigate('/'),
-    },
-    {
-      id: 'action-docs',
-      title: 'Docs & Knowledge Base',
-      subtitle: 'Browse specifications and wikis',
-      type: 'action',
-      icon: BookOpen,
-      iconColor: 'text-teal-500',
-      onSelect: () => {
-        const firstProj = workspaces[0]?.projects?.[0];
-        if (firstProj) navigate(`/projects/${firstProj.id}/docs`);
-        else navigate('/');
+  const quickActions: SearchItem[] = useMemo(
+    () => [
+      {
+        id: 'action-create-ws',
+        title: 'Create New Workspace',
+        subtitle: 'Set up a new team environment',
+        type: 'action',
+        icon: Plus,
+        iconColor: 'text-primary',
+        onSelect: () => navigate('/'),
       },
-    },
-  ], [workspaces, navigate]);
+      {
+        id: 'action-docs',
+        title: 'Docs & Knowledge Base',
+        subtitle: 'Browse specifications and wikis',
+        type: 'action',
+        icon: BookOpen,
+        iconColor: 'text-teal-500',
+        onSelect: () => {
+          const firstProj = workspaces[0]?.projects?.[0];
+          if (firstProj) navigate(`/projects/${firstProj.id}/docs`);
+          else navigate('/');
+        },
+      },
+    ],
+    [workspaces, navigate]
+  );
 
   // Format remote search results into SearchItems
   const formattedServerResults: SearchItem[] = useMemo(() => {
@@ -268,11 +265,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
     const q = query.trim().toLowerCase();
     if (!q) {
       // Empty query default suggestions
-      return [
-        ...quickNavItems,
-        ...boardItems.slice(0, 4),
-        ...quickActions,
-      ];
+      return [...quickNavItems, ...boardItems.slice(0, 4), ...quickActions];
     }
 
     // Filter local navigation items by query
@@ -332,9 +325,10 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
                 <span className="hidden sm:inline-flex truncate">Search boards, cards...</span>
                 <span className="inline-flex sm:hidden">Search...</span>
               </div>
-              <kbd className="pointer-events-none hidden h-4.5 select-none items-center gap-0.5 rounded border border-border/80 bg-muted px-1.5 font-mono text-[10px] font-semibold text-muted-foreground sm:flex">
-                <span>⌘</span>K
-              </kbd>
+              <Kbd
+                shortcut="mod+k"
+                className="pointer-events-none hidden sm:inline-flex h-4.5 px-1.5 font-semibold"
+              />
             </button>
           }
         />
@@ -424,7 +418,9 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
                           className={`p-1.5 rounded-lg shrink-0 ${
                             isSelected
                               ? 'bg-primary/20 text-primary'
-                              : item.iconColor ? `${item.iconColor} bg-muted/60` : 'bg-muted text-muted-foreground'
+                              : item.iconColor
+                                ? `${item.iconColor} bg-muted/60`
+                                : 'bg-muted text-muted-foreground'
                           }`}
                         >
                           <Icon className="w-4 h-4" />
@@ -455,11 +451,16 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
               </div>
             </div>
           ) : (
-            !isLoading && query.length > 0 && (
+            !isLoading &&
+            query.length > 0 && (
               <div className="py-10 text-center text-xs text-muted-foreground space-y-1">
                 <SearchIcon className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
-                <p className="font-semibold text-foreground">No matches found for &quot;{query}&quot;</p>
-                <p className="text-[11px]">Try searching for task titles, board names, or projects.</p>
+                <p className="font-semibold text-foreground">
+                  No matches found for &quot;{query}&quot;
+                </p>
+                <p className="text-[11px]">
+                  Try searching for task titles, board names, or projects.
+                </p>
               </div>
             )
           )}
@@ -509,18 +510,26 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
         <div className="p-3 px-4 bg-muted/30 border-t border-border/70 flex items-center justify-between text-[11px] text-muted-foreground shrink-0">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">↑</kbd>
-              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">↓</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">
+                ↑
+              </kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">
+                ↓
+              </kbd>
               <span className="text-[10px] ml-0.5">navigate</span>
             </span>
 
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">↵</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">
+                ↵
+              </kbd>
               <span className="text-[10px] ml-0.5">select</span>
             </span>
 
             <span className="flex items-center gap-1 hidden sm:inline-flex">
-              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">esc</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-background border text-[10px] font-mono">
+                esc
+              </kbd>
               <span className="text-[10px] ml-0.5">close</span>
             </span>
           </div>

@@ -71,6 +71,7 @@ import { MarkdownRenderer } from '../MarkdownRenderer';
 import { SearchableSelect, ListSearchableSelect } from '../ui/SearchableSelect';
 import { ShareTaskModal } from './ShareTaskModal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { Kbd } from '../ui/Kbd';
 import { toast } from 'sonner';
 import { usePageMetadata } from '../../hooks/usePageMetadata';
 import {
@@ -206,13 +207,20 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       queryKey: ['card', cardId],
       queryFn: async () => {
         const res = await api.get(`/cards/${cardId}`);
-        if (!isDescDirty) {
-          setDescriptionValue(res.data.description || '');
-        }
         return res.data;
       },
       enabled: !!cardId,
     });
+
+    // Sync description editor value from card data.
+    // This runs both when fresh data arrives from the network AND when TanStack
+    // Query serves the result from cache, fixing the stale-description bug where
+    // opening a task showed "No requirement provided" until a hard refresh.
+    useEffect(() => {
+      if (!isDescDirty) {
+        setDescriptionValue(card?.description || '');
+      }
+    }, [card?.description, isDescDirty]);
 
     const taskIdentifier = getTaskIdentifier(card);
 
@@ -275,14 +283,19 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const { data: stageTemplates } = useQuery({
       queryKey: ['stageTemplatesWithStages', orgId],
       queryFn: async () => {
-        const ts = await stagesService.getTemplates(orgId!);
-        if (ts.length > 0) {
-          const fullTemplate = await stagesService.getTemplate(ts[0].id);
-          ts[0].stages = fullTemplate.stages;
+        try {
+          const ts = await stagesService.getTemplates(orgId!);
+          if (ts && ts.length > 0) {
+            const fullTemplate = await stagesService.getTemplate(ts[0].id);
+            ts[0].stages = fullTemplate?.stages || [];
+          }
+          return ts || [];
+        } catch {
+          return [];
         }
-        return ts;
       },
       enabled: !!orgId,
+      retry: false,
     });
 
     const { data: sprints } = useQuery({
@@ -353,7 +366,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         setShowAssigneePicker(false);
-        toast.success('Task owner assigned');
       },
     });
 
@@ -362,7 +374,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         await api.delete(`/cards/${cardId}/assignees/${userId}`),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
-        toast.success('Task owner unassigned');
       },
     });
 
@@ -371,7 +382,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         await api.post(`/cards/${cardId}/participants`, { userId }),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
-        toast.success('Participant added');
       },
     });
 
@@ -388,7 +398,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
-        toast.success('Added to task observers');
       },
     });
 
@@ -397,7 +406,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
-        toast.success('Removed from task observers');
       },
     });
 
@@ -427,6 +435,27 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       },
     });
 
+    const editCommentMutation = useMutation({
+      mutationFn: async ({ commentId, body }: { commentId: string; body: string }) =>
+        await api.patch(`/cards/comments/${commentId}`, { body }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
+      },
+      onError: (err: any) => {
+        toast.error(err?.response?.data?.message || err?.message || 'Failed to update comment');
+      },
+    });
+
+    const deleteCommentMutation = useMutation({
+      mutationFn: async (commentId: string) => await api.delete(`/cards/comments/${commentId}`),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
+      },
+      onError: (err: any) => {
+        toast.error(err?.response?.data?.message || err?.message || 'Failed to delete comment');
+      },
+    });
+
     const addChecklistMutation = useMutation({
       mutationFn: async (title: string) =>
         await api.post(`/cards/${cardId}/checklists`, { title, position: 0 }),
@@ -434,7 +463,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
         setNewChecklistTitle('');
         setShowNewChecklist(false);
-        toast.success('Checklist created');
       },
     });
 
@@ -443,7 +471,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         await api.delete(`/cards/checklists/${checklistId}`),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
-        toast.success('Checklist removed');
       },
     });
 
@@ -505,7 +532,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId, 'attachments'] });
-        toast.success('File uploaded');
       },
     });
 
@@ -533,7 +559,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         } else if (user?.id) {
           setNewSubtaskAssigneeId(user.id);
         }
-        toast.success('Subtask added');
       },
     });
 
@@ -682,7 +707,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       setIsDescDirty(false);
       onDirtyChange?.(false);
       setDescTab('preview');
-      toast.success('Requirement saved');
     };
 
     const handleDiscardDescription = () => {
@@ -708,6 +732,16 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const handleAttemptClose = useCallback(() => {
       handleAttemptAction(() => onClose?.());
     }, [handleAttemptAction, onClose]);
+
+    // ESC key closes the dialog (modal mode only)
+    useEffect(() => {
+      if (mode !== 'modal') return;
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') handleAttemptClose();
+      };
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [mode, handleAttemptClose]);
 
     useImperativeHandle(
       ref,
@@ -843,11 +877,16 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         createdAt: card.createdAt || new Date().toISOString(),
       },
       ...(card.watchers && card.watchers.length > 0
-        ? card.watchers.slice(0, 2).map((w: any) => ({
-            id: `watcher-${w.id}`,
-            text: `${w.name || w.email} is now an observer`,
-            createdAt: card.updatedAt || new Date().toISOString(),
-          }))
+        ? card.watchers.map((w: any) => {
+            const watcherDate = w.subscribedAt || w.createdAt || w.addedAt;
+            return {
+              id: `watcher-${w.id}`,
+              text: `${w.name || w.email} is now an observer`,
+              createdAt: watcherDate
+                ? new Date(watcherDate).toISOString()
+                : new Date().toISOString(),
+            };
+          })
         : []),
       ...(card.stageId
         ? [
@@ -868,13 +907,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     };
 
     return (
-      <div
-        className={`relative flex flex-col h-full bg-background text-foreground overflow-hidden ${
-          mode === 'page'
-            ? 'w-full h-full max-w-[1700px] mx-auto rounded-2xl border border-border/80 shadow-md'
-            : 'w-full h-full'
-        }`}
-      >
+      <div className="relative flex flex-col w-full h-full bg-background text-foreground overflow-hidden">
         {/* ─── Top Navigation Header Bar (Breadcrumb, Task ID Pill, Actions) ─── */}
         <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-2.5 border-b border-border/70 shrink-0 bg-card/95 backdrop-blur-md z-20">
           {/* Left: Breadcrumbs / Path & Identifier */}
@@ -921,7 +954,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 if (ok) {
                   setCopiedId(true);
                   setTimeout(() => setCopiedId(false), 2000);
-                  toast.success(`Copied ID: ${taskIdentifier}`);
                 }
               }}
               className="px-2 py-0.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 font-mono font-bold text-xs cursor-pointer transition-all flex items-center gap-1 shrink-0 select-none"
@@ -1119,9 +1151,13 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 px-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                className="h-8 px-2 text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5"
                 onClick={handleAttemptClose}
+                title="Close (Esc)"
               >
+                <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-muted text-muted-foreground border border-border leading-none">
+                  ESC
+                </kbd>
                 <X className="w-4 h-4" />
               </Button>
             )}
@@ -1323,12 +1359,8 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                         }}
                       />
                       <div className="flex items-center justify-between px-3.5 py-2.5 bg-muted/30 border-t border-border/60 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          Markdown supported •{' '}
-                          <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border text-[10px] font-mono">
-                            ⌘/Ctrl+Enter
-                          </kbd>{' '}
-                          to save
+                        <span className="flex items-center gap-1.5">
+                          Markdown supported • <Kbd shortcut="mod+enter" /> to save
                         </span>
                         <div className="flex items-center gap-2">
                           <Button
@@ -1462,7 +1494,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                   {showAssigneePicker && (
                     <div
                       ref={assigneePickerRef}
-                      className="absolute z-50 top-full left-0 mt-2 w-80 sm:w-96 shadow-2xl rounded-2xl border border-border bg-popover/98 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+                      className="absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96"
                     >
                       <MemberPicker
                         orgId={orgId}
@@ -1544,7 +1576,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                         await copyTextToClipboard(taskIdentifier);
                         setCopiedId(true);
                         setTimeout(() => setCopiedId(false), 2000);
-                        toast.success('Task ID copied');
                       }}
                       className="hover:text-foreground cursor-pointer"
                       title="Copy Task ID"
@@ -1563,20 +1594,22 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3.5 gap-x-6 text-xs">
                 {/* Scrum / Project */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <span className="w-24 text-muted-foreground font-medium shrink-0">Scrum:</span>
-                  <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <div className="flex items-center gap-1.5 font-semibold text-foreground min-w-0 flex-1">
                     <div className="w-5 h-5 rounded-md bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center text-[10px] font-bold shrink-0">
                       <FolderGit2 className="w-3.5 h-3.5" />
                     </div>
-                    <span className="truncate">{card.boardName || 'DMS Dev Team'}</span>
+                    <span className="truncate" title={card.boardName || 'DMS Dev Team'}>
+                      {card.boardName || 'DMS Dev Team'}
+                    </span>
                   </div>
                 </div>
 
                 {/* Stage */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <span className="w-24 text-muted-foreground font-medium shrink-0">Stage:</span>
-                  <div className="flex-1 max-w-[200px]">
+                  <div className="flex-1 max-w-[200px] min-w-0">
                     {stageTemplates && stageTemplates.length > 0 && stageTemplates[0].stages ? (
                       <SearchableSelect
                         options={[
@@ -1706,7 +1739,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 {showParticipantPicker && (
                   <div
                     ref={participantPickerRef}
-                    className="absolute z-50 top-full left-0 mt-2 w-80 sm:w-96 shadow-2xl rounded-2xl border border-border bg-popover/98 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+                    className="absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96"
                   >
                     <MemberPicker
                       orgId={orgId}
@@ -1799,7 +1832,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 {showWatcherPicker && (
                   <div
                     ref={watcherPickerRef}
-                    className="absolute z-50 top-full left-0 mt-2 w-80 sm:w-96 shadow-2xl rounded-2xl border border-border bg-popover/98 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+                    className="absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96"
                   >
                     <MemberPicker
                       orgId={orgId}
@@ -1862,10 +1895,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
 
               {/* Floating Popover for Label Picker */}
               {showLabelPicker && (
-                <div
-                  ref={labelPickerRef}
-                  className="absolute z-50 top-full left-0 mt-2 w-80 shadow-2xl rounded-2xl border border-border bg-popover/98 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
-                >
+                <div ref={labelPickerRef} className="absolute z-50 top-full left-0 mt-1.5 w-80">
                   <LabelPicker
                     boardId={card.boardId}
                     cardId={cardId}
@@ -2394,9 +2424,18 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                       key={att.id}
                       className="flex items-center gap-3 p-2.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 transition-colors group"
                     >
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center font-bold text-[10px] uppercase text-muted-foreground shrink-0">
-                        {att.fileName.split('.').pop() || 'FILE'}
-                      </div>
+                      {att.fileType?.startsWith('image/') ||
+                      /\.(png|jpe?g|gif|webp|svg)$/i.test(att.fileName) ? (
+                        <img
+                          src={att.url}
+                          alt={att.fileName}
+                          className="w-10 h-10 rounded-lg object-cover bg-muted shrink-0 border border-border/60"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center font-bold text-[10px] uppercase text-muted-foreground shrink-0">
+                          {att.fileName.split('.').pop() || 'FILE'}
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <a
                           href={att.url}
@@ -2448,16 +2487,26 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             <TaskChatPane
               cardId={cardId}
               cardTitle={card.title}
+              boardId={card.boardId}
+              defaultListId={card.listId}
               membersCount={uniqueMemberCount}
               comments={comments}
               systemActivities={systemActivities}
+              participantUserIds={participantUserIds}
+              onAddParticipant={(userId) => addParticipantMutation.mutate(userId)}
+              onRemoveParticipant={(userId) => removeParticipantMutation.mutate(userId)}
               onSendMessage={async (body, mentionedUserIds) => {
                 await addCommentMutation.mutateAsync({ body, mentionedUserIds });
               }}
-              onUploadAttachment={async (file) => {
-                await uploadAttachmentMutation.mutateAsync(file);
+              onEditMessage={async (commentId, body) => {
+                await editCommentMutation.mutateAsync({ commentId, body });
               }}
-              onAddMemberClick={() => setShowParticipantPicker(true)}
+              onDeleteMessage={async (commentId) => {
+                await deleteCommentMutation.mutateAsync(commentId);
+              }}
+              onUploadAttachment={async (file) => {
+                return await uploadAttachmentMutation.mutateAsync(file);
+              }}
               isSending={addCommentMutation.isPending}
             />
           </div>

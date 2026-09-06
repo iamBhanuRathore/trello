@@ -82,7 +82,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ onOpenAppearance }) => {
       className="h-full border-r border-sidebar-border bg-sidebar select-none transition-all duration-200"
     >
       {/* ─── Header: Brand / Workspace Info ─── */}
-      <SidebarHeader className={`border-b border-sidebar-border/60 ${isCollapsed ? 'p-2' : 'p-3'}`}>
+      <SidebarHeader
+        className={`sticky top-0 z-10 bg-sidebar/98 backdrop-blur-md border-b border-sidebar-border/60 shrink-0 ${isCollapsed ? 'p-2' : 'p-3'}`}
+      >
         {isCollapsed ? (
           <div className="flex flex-col items-center justify-center py-1">
             <Link
@@ -112,7 +114,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ onOpenAppearance }) => {
       </SidebarHeader>
 
       {/* ─── Nav Items Content ─── */}
-      <SidebarContent className={`overflow-y-auto overflow-x-hidden ${isCollapsed ? 'p-1.5 space-y-2' : 'p-2 space-y-4'}`}>
+      <SidebarContent
+        className={`sidebar-scroll overscroll-contain overflow-y-auto overflow-x-hidden ${isCollapsed ? 'p-1.5 space-y-2' : 'p-2 space-y-4'}`}
+      >
         <SidebarGroup className={isCollapsed ? 'p-0 items-center' : 'p-1'}>
           {!isCollapsed && (
             <SidebarGroupLabel className="text-[11px] font-semibold text-muted-foreground/80 px-2 mb-1">
@@ -123,8 +127,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ onOpenAppearance }) => {
             <SidebarMenu className={isCollapsed ? 'items-center gap-1.5' : 'gap-1'}>
               {ADMIN_NAV_ITEMS.map((item) => {
                 const isActive =
-                  location.pathname === item.path ||
-                  location.pathname.startsWith(`${item.path}/`);
+                  location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
                 const Icon = item.icon;
 
                 return (
@@ -137,9 +140,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ onOpenAppearance }) => {
                       isActive={isActive}
                       tooltip={item.name}
                       className={
-                        isCollapsed
-                          ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg'
-                          : ''
+                        isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''
                       }
                     >
                       <NavLink
@@ -160,7 +161,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ onOpenAppearance }) => {
       </SidebarContent>
 
       {/* ─── Footer: Main App, Theme, User Profile ─── */}
-      <SidebarFooter className={`border-t border-sidebar-border/60 ${isCollapsed ? 'p-1.5 space-y-2' : 'p-2 space-y-1'}`}>
+      <SidebarFooter
+        className={`sticky bottom-0 z-10 bg-sidebar/98 backdrop-blur-md border-t border-sidebar-border/60 shrink-0 ${isCollapsed ? 'p-1.5 space-y-2' : 'p-2 space-y-1'}`}
+      >
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-1.5">
             <Link
@@ -226,10 +229,7 @@ export const AdminLayout: React.FC = () => {
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
 
   // ─── Role Guard: Only org owners, org admins, and platform admins can access ───
-  const isAdmin =
-    user?.isPlatformAdmin ||
-    user?.role === 'org_owner' ||
-    user?.role === 'org_admin';
+  const isAdmin = user?.isPlatformAdmin || user?.role === 'org_owner' || user?.role === 'org_admin';
 
   if (!orgId) {
     return (
@@ -237,9 +237,13 @@ export const AdminLayout: React.FC = () => {
         <div className="text-center p-8 rounded-xl border bg-card shadow-sm max-w-md">
           <ShieldAlert className="mx-auto h-12 w-12 text-destructive mb-4" />
           <h2 className="text-2xl font-bold tracking-tight">Access Denied</h2>
-          <p className="text-muted-foreground mt-2">You must belong to an organization to access this page.</p>
+          <p className="text-muted-foreground mt-2">
+            You must belong to an organization to access this page.
+          </p>
           <Link to="/" className="mt-4 inline-block">
-            <Button variant="outline" size="sm">Return to Dashboard</Button>
+            <Button variant="outline" size="sm">
+              Return to Dashboard
+            </Button>
           </Link>
         </div>
       </div>
@@ -255,12 +259,16 @@ export const AdminLayout: React.FC = () => {
           </div>
           <h2 className="text-2xl font-bold tracking-tight">Admin Access Required</h2>
           <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-            You don't have permission to access the Admin Panel.
-            Only <span className="font-semibold text-foreground">Org Owners</span> and{' '}
-            <span className="font-semibold text-foreground">Org Admins</span> can manage organization settings.
+            You don't have permission to access the Admin Panel. Only{' '}
+            <span className="font-semibold text-foreground">Org Owners</span> and{' '}
+            <span className="font-semibold text-foreground">Org Admins</span> can manage
+            organization settings.
           </p>
           <p className="text-xs text-muted-foreground/70 mt-2">
-            Your current role: <span className="font-mono font-semibold text-foreground/70">{user?.role ?? 'member'}</span>
+            Your current role:{' '}
+            <span className="font-mono font-semibold text-foreground/70">
+              {user?.role ?? 'member'}
+            </span>
           </p>
           <Link to="/" className="mt-6 inline-block">
             <Button size="sm" className="gap-2">
@@ -291,7 +299,7 @@ export const AdminLayout: React.FC = () => {
             </span>
           </Link>
         </div>
-        
+
         {/* Right: Back to App, Search, Notifications, Theme, User Profile */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <Link

@@ -14,7 +14,7 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
     min-height: 100vh;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    transition: background-color 0.2s eCan we ase, color 0.2s ease;
   }
   html {
     @apply font-sans;
@@ -346,11 +346,162 @@
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
-/* Utility to completely hide scrollbar while preserving scrollability */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+/* ─── Premium Sidebar Scrollbar (Auto-hiding & Theme-Adaptive) ──────────────── */
+.sidebar-scroll,
+[data-sidebar="content"] {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.25s ease-in-out;
 }
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+
+/* Chrome, Brave, Safari, Edge */
+.sidebar-scroll::-webkit-scrollbar,
+[data-sidebar="content"]::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track,
+[data-sidebar="content"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb,
+[data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 9999px;
+  transition: background 0.2s ease-in-out;
+}
+
+/* Light Mode: Auto-reveal refined pill thumb only when hovering over sidebar */
+.sidebar-scroll:hover::-webkit-scrollbar-thumb,
+[data-sidebar="content"]:hover::-webkit-scrollbar-thumb,
+[data-sidebar="sidebar"]:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-sidebar="sidebar"]:hover [data-sidebar="content"]::-webkit-scrollbar-thumb,
+.group\/sidebar:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+.group\/sidebar:hover [data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.18);
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover,
+[data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.38) !important;
+}
+
+/* Firefox on hover */
+.sidebar-scroll:hover,
+[data-sidebar="content"]:hover,
+[data-sidebar="sidebar"]:hover .sidebar-scroll,
+[data-sidebar="sidebar"]:hover [data-sidebar="content"],
+.group\/sidebar:hover .sidebar-scroll,
+.group\/sidebar:hover [data-sidebar="content"] {
+  scrollbar-color: rgba(15, 23, 42, 0.18) transparent;
+}
+
+/* ─── Dark Theme Variants ─── */
+.dark .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+.dark [data-sidebar="content"]:hover::-webkit-scrollbar-thumb,
+.dark [data-sidebar="sidebar"]:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+.dark [data-sidebar="sidebar"]:hover [data-sidebar="content"]::-webkit-scrollbar-thumb,
+.dark .group\/sidebar:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+.dark .group\/sidebar:hover [data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.dark .sidebar-scroll::-webkit-scrollbar-thumb:hover,
+.dark [data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.38) !important;
+}
+
+.dark .sidebar-scroll:hover,
+.dark [data-sidebar="content"]:hover,
+.dark [data-sidebar="sidebar"]:hover .sidebar-scroll,
+.dark [data-sidebar="sidebar"]:hover [data-sidebar="content"],
+.dark .group\/sidebar:hover .sidebar-scroll,
+.dark .group\/sidebar:hover [data-sidebar="content"] {
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+/* Midnight OLED */
+[data-theme="midnight"] .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+[data-theme="midnight"] [data-sidebar="content"]:hover::-webkit-scrollbar-thumb,
+[data-theme="midnight"] [data-sidebar="sidebar"]:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="midnight"] [data-sidebar="sidebar"]:hover [data-sidebar="content"]::-webkit-scrollbar-thumb,
+[data-theme="midnight"] .group\/sidebar:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="midnight"] .group\/sidebar:hover [data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+[data-theme="midnight"] .sidebar-scroll:hover,
+[data-theme="midnight"] [data-sidebar="content"]:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* Oceanic Azure */
+[data-theme="ocean"] .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+[data-theme="ocean"] [data-sidebar="content"]:hover::-webkit-scrollbar-thumb,
+[data-theme="ocean"] [data-sidebar="sidebar"]:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="ocean"] [data-sidebar="sidebar"]:hover [data-sidebar="content"]::-webkit-scrollbar-thumb,
+[data-theme="ocean"] .group\/sidebar:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="ocean"] .group\/sidebar:hover [data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.28);
+}
+[data-theme="ocean"] .sidebar-scroll:hover,
+[data-theme="ocean"] [data-sidebar="content"]:hover {
+  scrollbar-color: rgba(56, 189, 248, 0.28) transparent;
+}
+
+/* Emerald Forest */
+[data-theme="forest"] .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+[data-theme="forest"] [data-sidebar="content"]:hover::-webkit-scrollbar-thumb,
+[data-theme="forest"] [data-sidebar="sidebar"]:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="forest"] [data-sidebar="sidebar"]:hover [data-sidebar="content"]::-webkit-scrollbar-thumb,
+[data-theme="forest"] .group\/sidebar:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="forest"] .group\/sidebar:hover [data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.28);
+}
+[data-theme="forest"] .sidebar-scroll:hover,
+[data-theme="forest"] [data-sidebar="content"]:hover {
+  scrollbar-color: rgba(16, 185, 129, 0.28) transparent;
+}
+
+/* Synthwave Sunset */
+[data-theme="synthwave"] .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+[data-theme="synthwave"] [data-sidebar="content"]:hover::-webkit-scrollbar-thumb,
+[data-theme="synthwave"] [data-sidebar="sidebar"]:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="synthwave"] [data-sidebar="sidebar"]:hover [data-sidebar="content"]::-webkit-scrollbar-thumb,
+[data-theme="synthwave"] .group\/sidebar:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="synthwave"] .group\/sidebar:hover [data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: rgba(244, 63, 94, 0.32);
+}
+[data-theme="synthwave"] .sidebar-scroll:hover,
+[data-theme="synthwave"] [data-sidebar="content"]:hover {
+  scrollbar-color: rgba(244, 63, 94, 0.32) transparent;
+}
+
+/* Nordic Frost */
+[data-theme="nordic"] .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+[data-theme="nordic"] [data-sidebar="content"]:hover::-webkit-scrollbar-thumb,
+[data-theme="nordic"] [data-sidebar="sidebar"]:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="nordic"] [data-sidebar="sidebar"]:hover [data-sidebar="content"]::-webkit-scrollbar-thumb,
+[data-theme="nordic"] .group\/sidebar:hover .sidebar-scroll::-webkit-scrollbar-thumb,
+[data-theme="nordic"] .group\/sidebar:hover [data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: rgba(136, 192, 208, 0.28);
+}
+[data-theme="nordic"] .sidebar-scroll:hover,
+[data-theme="nordic"] [data-sidebar="content"]:hover {
+  scrollbar-color: rgba(136, 192, 208, 0.28) transparent;
+}
+
+/* Utilities to completely hide scrollbar while preserving scrollability */
+.no-scrollbar::-webkit-scrollbar,
+.sidebar-no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+.no-scrollbar,
+.sidebar-no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }

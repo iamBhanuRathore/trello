@@ -7,11 +7,7 @@ interface MarkdownRendererProps {
   onToggleTask?: (newContent: string) => void;
 }
 
-export function MarkdownRenderer({
-  content,
-  className = '',
-  onToggleTask,
-}: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, className = '', onToggleTask }: MarkdownRendererProps) {
   if (!content || !content.trim()) {
     return <p className="text-muted-foreground italic text-xs">No description provided yet.</p>;
   }
@@ -41,9 +37,9 @@ export function MarkdownRenderer({
     const elements: ReactNode[] = [];
     let key = 0;
 
-    // Pattern for inline code, mentions, links, bold, italic, strikethrough
+    // Pattern for inline code, mentions, images, links, bold, italic, strikethrough
     const inlineRegex =
-      /(`[^`]+`)|(@\[([^\]]+)\]\(([^)]+)\))|(@[A-Za-z0-9_.-]+(?:\s+[A-Za-z0-9_.-]+)?(?=\s|[.,!?]|$))|(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(~~([^~]+)~~)/g;
+      /(`[^`]+`)|(@\[([^\]]+)\]\(([^)]+)\))|(@[A-Za-z0-9_.-]+(?:\s+[A-Za-z0-9_.-]+)?(?=\s|[.,!?]|$))|(!\[([^\]]*)\]\(([^)]+)\))|(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(~~([^~]+)~~)/g;
 
     let lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -91,9 +87,29 @@ export function MarkdownRenderer({
           </span>
         );
       } else if (match[6]) {
+        // Image ![alt](url)
+        const imgAlt = match[7];
+        const imgUrl = match[8];
+        elements.push(
+          <a
+            key={key++}
+            href={imgUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block my-1.5 max-w-sm rounded-xl overflow-hidden border border-border/80 hover:opacity-95 transition-opacity"
+            title={imgAlt || 'View full image'}
+          >
+            <img
+              src={imgUrl}
+              alt={imgAlt || 'Attachment'}
+              className="max-h-64 w-auto rounded-xl object-contain bg-black/5"
+            />
+          </a>
+        );
+      } else if (match[9]) {
         // Link [text](url)
-        const linkText = match[7];
-        const linkUrl = match[8];
+        const linkText = match[10];
+        const linkUrl = match[11];
         elements.push(
           <a
             key={key++}
@@ -106,25 +122,25 @@ export function MarkdownRenderer({
             <ExternalLink className="w-2.5 h-2.5 inline" />
           </a>
         );
-      } else if (match[9]) {
+      } else if (match[12]) {
         // Bold **text**
         elements.push(
           <strong key={key++} className="font-bold text-foreground">
-            {match[10]}
+            {match[13]}
           </strong>
         );
-      } else if (match[11]) {
+      } else if (match[14]) {
         // Italic *text*
         elements.push(
           <em key={key++} className="italic text-foreground/90">
-            {match[12]}
+            {match[15]}
           </em>
         );
-      } else if (match[13]) {
+      } else if (match[16]) {
         // Strikethrough ~~text~~
         elements.push(
           <span key={key++} className="line-through text-muted-foreground">
-            {match[14]}
+            {match[17]}
           </span>
         );
       }
@@ -156,11 +172,7 @@ export function MarkdownRenderer({
         // End code block
         const fullCode = codeBlockLines.join('\n');
         nodes.push(
-          <CodeBlock
-            key={`code-${blockIndex++}`}
-            code={fullCode}
-            language={codeBlockLang}
-          />
+          <CodeBlock key={`code-${blockIndex++}`} code={fullCode} language={codeBlockLang} />
         );
         inCodeBlock = false;
         codeBlockLines = [];

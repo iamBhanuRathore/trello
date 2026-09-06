@@ -4,7 +4,13 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Card, CardHeader, CardTitle } from '@boardly/ui/card';
 import { Button } from '@boardly/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@boardly/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@boardly/ui/dialog';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import {
@@ -17,6 +23,8 @@ import {
   Trash2,
   Edit2,
   AlertTriangle,
+  Check,
+  Kanban,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -25,7 +33,60 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@boardly/ui/dropdown-menu';
+import { Tooltip } from '@boardly/ui';
 import { ImportModal } from '../components/board/ImportModal';
+
+export const BOARD_GRADIENTS = [
+  { id: 'blue', name: 'Oceanic Blue', value: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' },
+  {
+    id: 'violet',
+    name: 'Royal Purple',
+    value: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+  },
+  {
+    id: 'emerald',
+    name: 'Emerald Teal',
+    value: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+  },
+  {
+    id: 'sunset',
+    name: 'Sunset Coral',
+    value: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)',
+  },
+  { id: 'rose', name: 'Rose Berry', value: 'linear-gradient(135deg, #db2777 0%, #be185d 100%)' },
+  { id: 'cyan', name: 'Cyan Sky', value: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' },
+  { id: 'amber', name: 'Golden Amber', value: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)' },
+  { id: 'indigo', name: 'Deep Indigo', value: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)' },
+  { id: 'slate', name: 'Modern Slate', value: 'linear-gradient(135deg, #475569 0%, #334155 100%)' },
+];
+
+export const PROFESSIONAL_BOARD_FALLBACK = 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)';
+
+/**
+ * Resolves board gradient, automatically upgrading legacy dark/pitch-black gradients
+ * into rich, vibrant, modern palettes that look amazing in both light and dark themes.
+ */
+export function resolveBoardGradient(bg?: string, index: number = 0): string {
+  if (!bg) {
+    return BOARD_GRADIENTS[index % BOARD_GRADIENTS.length].value;
+  }
+  // Check if it's one of the legacy pitch-black gradients
+  const isDarkLegacy =
+    bg.includes('#0f172a') ||
+    bg.includes('#1e1b4b') ||
+    bg.includes('#0c2340') ||
+    bg.includes('#064e3b') ||
+    bg.includes('#2e1065') ||
+    bg.includes('#18181b') ||
+    bg.includes('#312e81') ||
+    bg.includes('slate-900') ||
+    bg.includes('indigo-950');
+
+  if (isDarkLegacy) {
+    return BOARD_GRADIENTS[index % BOARD_GRADIENTS.length].value;
+  }
+  return bg;
+}
 
 export function Workspaces() {
   const queryClient = useQueryClient();
@@ -57,8 +118,15 @@ export function Workspaces() {
     },
   });
 
-  const totalProjects = workspaces?.reduce((acc: number, ws: any) => acc + (ws.projects?.length || 0), 0) || 0;
-  const totalBoards = workspaces?.reduce((acc: number, ws: any) => acc + (ws.projects?.reduce((pAcc: number, p: any) => pAcc + (p.boards?.length || 0), 0) || 0), 0) || 0;
+  const totalProjects =
+    workspaces?.reduce((acc: number, ws: any) => acc + (ws.projects?.length || 0), 0) || 0;
+  const totalBoards =
+    workspaces?.reduce(
+      (acc: number, ws: any) =>
+        acc +
+        (ws.projects?.reduce((pAcc: number, p: any) => pAcc + (p.boards?.length || 0), 0) || 0),
+      0
+    ) || 0;
 
   return (
     <div className="w-full max-w-6xl mx-auto flex flex-col gap-6">
@@ -70,7 +138,9 @@ export function Workspaces() {
             Organize teams, projects, and Kanban boards across your organization.
           </p>
         </div>
-        <CreateWorkspaceDialog onSuccess={() => queryClient.invalidateQueries({ queryKey: ['workspaces'] })} />
+        <CreateWorkspaceDialog
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['workspaces'] })}
+        />
       </div>
 
       {/* Quick KPI Overview Bar */}
@@ -122,7 +192,10 @@ export function Workspaces() {
       </div>
 
       {workspaces?.map((ws: any) => (
-        <div key={ws.id} className="flex flex-col gap-4 p-5 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-sm shadow-xs">
+        <div
+          key={ws.id}
+          className="flex flex-col gap-4 p-5 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-sm shadow-xs"
+        >
           {/* Workspace Header */}
           <div className="flex items-center justify-between pb-3 border-b border-border/60">
             <div className="flex items-center gap-3">
@@ -147,7 +220,11 @@ export function Workspaces() {
               {/* Workspace Actions Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  >
                     <MoreHorizontal className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -225,11 +302,15 @@ export function Workspaces() {
             </DialogHeader>
             <div className="space-y-3 py-2 text-xs text-muted-foreground">
               <p>
-                Are you sure you want to delete <strong className="text-foreground">{deletingWs.name}</strong>?
+                Are you sure you want to delete{' '}
+                <strong className="text-foreground">{deletingWs.name}</strong>?
               </p>
               <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs space-y-1">
                 <p className="font-semibold">Warning: This action cannot be undone.</p>
-                <p>All projects, boards, lists, and tasks in this workspace will be permanently deleted.</p>
+                <p>
+                  All projects, boards, lists, and tasks in this workspace will be permanently
+                  deleted.
+                </p>
               </div>
               <div className="flex justify-end gap-2 pt-3">
                 <Button type="button" variant="ghost" size="sm" onClick={() => setDeletingWs(null)}>
@@ -295,7 +376,10 @@ function ProjectsList({ workspaceId }: { workspaceId: string }) {
   return (
     <div className="grid gap-6 pt-1">
       {projects.map((proj: any) => (
-        <div key={proj.id} className="flex flex-col gap-3 p-4 rounded-xl bg-muted/25 border border-border/60">
+        <div
+          key={proj.id}
+          className="flex flex-col gap-3 p-4 rounded-xl bg-muted/25 border border-border/60"
+        >
           <div className="flex items-center justify-between border-b border-border/40 pb-2">
             <h3 className="font-semibold text-base text-foreground flex items-center gap-2">
               {proj.name}
@@ -337,7 +421,11 @@ function ProjectsList({ workspaceId }: { workspaceId: string }) {
               {/* Project Actions Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  >
                     <MoreHorizontal className="w-3.5 h-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -392,7 +480,12 @@ function ProjectsList({ workspaceId }: { workspaceId: string }) {
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setEditingProj(null)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditingProj(null)}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" size="sm" disabled={updateProjMutation.isPending}>
@@ -415,13 +508,22 @@ function ProjectsList({ workspaceId }: { workspaceId: string }) {
             </DialogHeader>
             <div className="space-y-3 py-2 text-xs text-muted-foreground">
               <p>
-                Are you sure you want to delete project <strong className="text-foreground">{deletingProj.name}</strong>?
+                Are you sure you want to delete project{' '}
+                <strong className="text-foreground">{deletingProj.name}</strong>?
               </p>
               <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs space-y-1">
-                <p className="font-semibold">Warning: This action will permanently remove all Kanban boards, tasks, sprints, and documents in this project.</p>
+                <p className="font-semibold">
+                  Warning: This action will permanently remove all Kanban boards, tasks, sprints,
+                  and documents in this project.
+                </p>
               </div>
               <div className="flex justify-end gap-2 pt-3">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setDeletingProj(null)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDeletingProj(null)}
+                >
                   Cancel
                 </Button>
                 <Button
@@ -452,7 +554,11 @@ function ProjectsList({ workspaceId }: { workspaceId: string }) {
 
 function BoardsList({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient();
-  const [editingBoard, setEditingBoard] = useState<{ id: string; name: string } | null>(null);
+  const [editingBoard, setEditingBoard] = useState<{
+    id: string;
+    name: string;
+    background?: string;
+  } | null>(null);
   const [deletingBoard, setDeletingBoard] = useState<{ id: string; name: string } | null>(null);
 
   const { data: boards } = useQuery({
@@ -472,8 +578,15 @@ function BoardsList({ projectId }: { projectId: string }) {
   });
 
   const updateBoardMutation = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) =>
-      await api.patch(`/boards/${id}`, { name }),
+    mutationFn: async ({
+      id,
+      name,
+      background,
+    }: {
+      id: string;
+      name: string;
+      background?: string;
+    }) => await api.patch(`/boards/${id}`, { name, background }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
       setEditingBoard(null);
@@ -482,64 +595,93 @@ function BoardsList({ projectId }: { projectId: string }) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      {boards?.map((board: any) => (
-        <div key={board.id} className="relative group">
-          <Link to={`/b/${board.id}`}>
-            <Card className="h-32 hover:shadow-lg transition-all hover:-translate-y-0.5 cursor-pointer overflow-hidden relative border-primary/20 rounded-2xl">
-              <div
-                className={`absolute inset-0 bg-gradient-to-br ${
-                  board.background || 'from-indigo-600 via-purple-600 to-pink-600'
-                } opacity-90 group-hover:opacity-100 transition-opacity`}
-              />
-              <CardHeader className="relative z-10 p-4">
-                <CardTitle className="text-white text-base font-bold truncate pr-6">{board.name}</CardTitle>
-              </CardHeader>
-            </Card>
-          </Link>
+      {boards?.map((board: any, idx: number) => {
+        const bgGradient = resolveBoardGradient(board.background, idx);
+        const isTailwindBg =
+          bgGradient && (bgGradient.startsWith('from-') || bgGradient.startsWith('bg-'));
+        return (
+          <div key={board.id} className="relative group">
+            <Link to={`/b/${board.id}`}>
+              <Card className="h-32 hover:shadow-xl transition-all hover:-translate-y-1 cursor-pointer overflow-hidden relative border border-white/20 dark:border-white/10 rounded-2xl text-white shadow-sm flex flex-col justify-between p-4">
+                <div
+                  className={`absolute inset-0 ${
+                    isTailwindBg
+                      ? bgGradient.startsWith('from-')
+                        ? `bg-gradient-to-br ${bgGradient}`
+                        : bgGradient
+                      : ''
+                  } transition-transform duration-300 group-hover:scale-105`}
+                  style={!isTailwindBg ? { background: bgGradient } : undefined}
+                />
+                {/* Subtle glassmorphic depth & lighting overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-white/10 pointer-events-none" />
 
-          {/* 3-Dots Action Menu on Board Tile */}
-          <div className="absolute top-2.5 right-2.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-            <DropdownMenu>
-              <DropdownMenuTrigger>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  className="w-7 h-7 rounded-lg bg-black/40 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-xs transition-colors cursor-pointer"
-                  title="Board options"
-                >
-                  <MoreHorizontal className="w-4 h-4" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-36">
-                <DropdownMenuItem
-                  className="cursor-pointer gap-2 text-xs"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setEditingBoard({ id: board.id, name: board.name });
-                  }}
-                >
-                  <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDeletingBoard({ id: board.id, name: board.name });
-                  }}
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Delete Board
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                {/* Top header strip: Board Icon badge */}
+                <div className="relative z-10 flex items-center justify-between">
+                  <span className="w-7 h-7 rounded-lg bg-white/20 backdrop-blur-md flex items-center justify-center text-white shadow-2xs">
+                    <Kanban className="w-3.5 h-3.5" />
+                  </span>
+                </div>
+
+                {/* Bottom title */}
+                <div className="relative z-10">
+                  <Tooltip content={board.name} side="bottom">
+                    <h3 className="text-white text-base font-bold truncate pr-6 drop-shadow-xs group-hover:translate-x-0.5 transition-transform">
+                      {board.name}
+                    </h3>
+                  </Tooltip>
+                </div>
+              </Card>
+            </Link>
+
+            {/* 3-Dots Action Menu on Board Tile */}
+            <div className="absolute top-3.5 right-3.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+              <DropdownMenu>
+                <DropdownMenuTrigger>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className="w-7 h-7 rounded-lg bg-black/35 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer shadow-xs"
+                    title="Board options"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2 text-xs"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setEditingBoard({
+                        id: board.id,
+                        name: board.name,
+                        background: board.background,
+                      });
+                    }}
+                  >
+                    <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename &amp; Theme
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeletingBoard({ id: board.id, name: board.name });
+                    }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete Board
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <CreateBoardDialog projectId={projectId} />
 
@@ -548,13 +690,17 @@ function BoardsList({ projectId }: { projectId: string }) {
         <Dialog open={!!editingBoard} onOpenChange={(open) => !open && setEditingBoard(null)}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Rename Board</DialogTitle>
+              <DialogTitle>Edit Board</DialogTitle>
             </DialogHeader>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 if (editingBoard.name.trim()) {
-                  updateBoardMutation.mutate({ id: editingBoard.id, name: editingBoard.name.trim() });
+                  updateBoardMutation.mutate({
+                    id: editingBoard.id,
+                    name: editingBoard.name.trim(),
+                    background: editingBoard.background,
+                  });
                 }
               }}
               className="space-y-4 py-2"
@@ -570,8 +716,43 @@ function BoardsList({ projectId }: { projectId: string }) {
                   required
                 />
               </div>
+
+              <div>
+                <Label className="text-xs font-semibold mb-1.5 block">Board Theme</Label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {BOARD_GRADIENTS.map((grad) => {
+                    const isSelected = editingBoard.background === grad.value;
+                    return (
+                      <button
+                        key={grad.id}
+                        type="button"
+                        onClick={() => setEditingBoard({ ...editingBoard, background: grad.value })}
+                        className={`h-10 rounded-lg relative overflow-hidden transition-all cursor-pointer ring-offset-background ${
+                          isSelected
+                            ? 'ring-2 ring-primary ring-offset-2 scale-[1.02] shadow-sm'
+                            : 'hover:scale-[1.02] opacity-85 hover:opacity-100'
+                        }`}
+                        style={{ background: grad.value }}
+                        title={grad.name}
+                      >
+                        {isSelected && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/25">
+                            <Check className="w-4 h-4 text-white drop-shadow" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setEditingBoard(null)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditingBoard(null)}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" size="sm" disabled={updateBoardMutation.isPending}>
@@ -594,13 +775,19 @@ function BoardsList({ projectId }: { projectId: string }) {
             </DialogHeader>
             <div className="space-y-3 py-2 text-xs text-muted-foreground">
               <p>
-                Are you sure you want to permanently delete <strong className="text-foreground">{deletingBoard.name}</strong>?
+                Are you sure you want to permanently delete{' '}
+                <strong className="text-foreground">{deletingBoard.name}</strong>?
               </p>
               <p className="text-destructive text-xs">
                 All lists, cards, checklist items, and discussions on this board will be removed.
               </p>
               <div className="flex justify-end gap-2 pt-3">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setDeletingBoard(null)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDeletingBoard(null)}
+                >
                   Cancel
                 </Button>
                 <Button
@@ -673,12 +860,17 @@ function CreateWorkspaceDialog({ onSuccess }: { onSuccess: () => void }) {
 function CreateBoardDialog({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
+  const [selectedGradient, setSelectedGradient] = useState(BOARD_GRADIENTS[0].value);
   const queryClient = useQueryClient();
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    await api.post('/boards', { projectId, name: name.trim() });
+    await api.post('/boards', {
+      projectId,
+      name: name.trim(),
+      background: selectedGradient,
+    });
     setName('');
     setOpen(false);
     queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
@@ -710,6 +902,36 @@ function CreateBoardDialog({ projectId }: { projectId: string }) {
               required
             />
           </div>
+
+          <div>
+            <Label className="text-xs font-semibold mb-1.5 block">Board Theme</Label>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {BOARD_GRADIENTS.map((grad) => {
+                const isSelected = selectedGradient === grad.value;
+                return (
+                  <button
+                    key={grad.id}
+                    type="button"
+                    onClick={() => setSelectedGradient(grad.value)}
+                    className={`h-10 rounded-lg relative overflow-hidden transition-all cursor-pointer ring-offset-background ${
+                      isSelected
+                        ? 'ring-2 ring-primary ring-offset-2 scale-[1.02] shadow-sm'
+                        : 'hover:scale-[1.02] opacity-85 hover:opacity-100'
+                    }`}
+                    style={{ background: grad.value }}
+                    title={grad.name}
+                  >
+                    {isSelected && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/25">
+                        <Check className="w-4 h-4 text-white drop-shadow" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
               Cancel

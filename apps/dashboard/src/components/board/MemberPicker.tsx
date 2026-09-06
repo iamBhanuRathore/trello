@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { orgService, type OrgMember } from '../../lib/orgService';
-import { Search, X, Check, User, Sparkles, Loader2 } from 'lucide-react';
+import { Search, X, Check, User, Sparkles, Loader2, Users } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 
 interface MemberPickerProps {
@@ -15,6 +15,8 @@ interface MemberPickerProps {
   mode?: 'single' | 'multiple';
   placeholder?: string;
 }
+
+const PAGE_SIZE = 20;
 
 // Deterministic gradient generator for user avatars
 const AVATAR_GRADIENTS = [
@@ -100,12 +102,13 @@ export function MemberPicker({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'selected' | 'admin' | 'member'>('all');
 
-  // Debounce search query for server-side lookup (200ms)
+  // Debounce search query for server-side lookup (250ms)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery.trim());
-    }, 200);
+    }, 250);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -134,68 +137,117 @@ export function MemberPicker({
     };
   }, [onClose]);
 
-  // Query 1: Default organization members list
-  const { data: defaultMembers = [], isLoading: isLoadingDefault } = useQuery({
-    queryKey: ['orgMembers', orgId],
-    queryFn: () => (orgId ? orgService.getMembers(orgId) : Promise.resolve([])),
-    enabled: !!orgId,
-  });
+  // Pinned query: Assigned members and current user are always fetched and preserved
+  const pinnedUserIds = useMemo(() => {
+    const ids = new Set<string>(assignedUserIds);
+    if (currentUserId) ids.add(currentUserId);
+    return Array.from(ids);
+  }, [assignedUserIds, currentUserId]);
 
-  // Query 2: Server-side search if debounced query is present (for orgs with thousands of members)
-  const { data: searchResults, isFetching: isSearching } = useQuery({
-    queryKey: ['orgMembersSearch', orgId, debouncedQuery],
+  const { data: pinnedMembers = [] } = useQuery({
+    queryKey: ['pinnedOrgMembers', orgId, pinnedUserIds],
     queryFn: () =>
-      orgId
-        ? orgService.getMembers(orgId, { search: debouncedQuery, limit: 50 })
+      orgId && pinnedUserIds.length > 0
+        ? orgService.getMembers(orgId, { userIds: pinnedUserIds })
         : Promise.resolve([]),
-    enabled: !!orgId && debouncedQuery.length > 0,
+    enabled: !!orgId && pinnedUserIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
-  // Combine and deduplicate members:
-  // Instant in-memory filter on loaded members + Server results from search
-  const membersToDisplay = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return defaultMembers;
-    }
+  // Server-Side Infinite Query for Paginated Progressive Loading
+  const {
+    data: infiniteData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: isLoadingMembers,
+    isFetching,
+  } = useInfiniteQuery({
+    queryKey: ['orgMembersInfinite', orgId, debouncedQuery, roleFilter],
+    queryFn: ({ pageParam = 0 }) =>
+      orgId
+        ? orgService.getMembersWithCount(orgId, {
+            search: debouncedQuery || undefined,
+            role: roleFilter === 'admin' ? 'admin' : roleFilter === 'member' ? 'member' : undefined,
+            limit: PAGE_SIZE,
+            offset: pageParam,
+          })
+        : Promise.resolve({ members: [], total: 0 }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const fetchedSoFar = allPages.reduce((acc, p) => acc + p.members.length, 0);
+      if (fetchedSoFar >= lastPage.total || lastPage.members.length < PAGE_SIZE) {
+        return undefined;
+      }
+      return fetchedSoFar;
+    },
+    enabled: !!orgId,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
 
-    const queryLower = searchQuery.toLowerCase().trim();
-    
-    // Instant client filter
-    const clientFiltered = defaultMembers.filter(
-      (m: OrgMember) =>
-        m.name?.toLowerCase().includes(queryLower) ||
-        m.email?.toLowerCase().includes(queryLower)
-    );
+  const totalServerCount = infiniteData?.pages[0]?.total ?? 0;
+  const loadedMembers = useMemo(
+    () => infiniteData?.pages.flatMap((page) => page.members) ?? [],
+    [infiniteData]
+  );
 
-    if (!searchResults) {
-      return clientFiltered;
-    }
-
-    // Merge server results with client filtered results (avoiding duplicates by userId)
+  // Consolidated member dictionary for fast lookups
+  const memberMap = useMemo(() => {
     const map = new Map<string, OrgMember>();
-    clientFiltered.forEach((m) => map.set(m.userId, m));
-    searchResults.forEach((m) => map.set(m.userId, m));
-    return Array.from(map.values());
-  }, [defaultMembers, searchResults, searchQuery]);
+    pinnedMembers.forEach((m) => map.set(m.userId, m));
+    loadedMembers.forEach((m) => map.set(m.userId, m));
+    return map;
+  }, [pinnedMembers, loadedMembers]);
 
   // Split into Assigned and Unassigned
-  const { assignedMembers, unassignedMembers } = useMemo(() => {
-    const assigned: OrgMember[] = [];
-    const unassigned: OrgMember[] = [];
-
-    membersToDisplay.forEach((m) => {
-      if (assignedUserIds.has(m.userId)) {
-        assigned.push(m);
-      } else {
-        unassigned.push(m);
+  const assignedMembers = useMemo(() => {
+    const list: OrgMember[] = [];
+    assignedUserIds.forEach((uid) => {
+      const m = memberMap.get(uid);
+      if (m) {
+        if (
+          roleFilter === 'admin' &&
+          !['admin', 'org_admin', 'org_owner', 'workspace_admin'].includes(m.role)
+        ) {
+          return;
+        }
+        if (roleFilter === 'member' && m.role !== 'member' && m.role) {
+          return;
+        }
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase().trim();
+          if (!m.name?.toLowerCase().includes(q) && !m.email?.toLowerCase().includes(q)) {
+            return;
+          }
+        }
+        list.push(m);
       }
     });
+    return list;
+  }, [assignedUserIds, memberMap, roleFilter, searchQuery]);
 
-    return { assignedMembers: assigned, unassignedMembers: unassigned };
-  }, [membersToDisplay, assignedUserIds]);
+  const unassignedMembers = useMemo(() => {
+    if (roleFilter === 'selected') return [];
+    return loadedMembers.filter((m) => !assignedUserIds.has(m.userId));
+  }, [loadedMembers, assignedUserIds, roleFilter]);
 
   const isCurrentUserAssigned = currentUserId ? assignedUserIds.has(currentUserId) : false;
-  const currentMember = defaultMembers.find((m) => m.userId === currentUserId);
+  const currentMember = memberMap.get(currentUserId || '');
+
+  // Infinite scroll trigger when reaching bottom of container
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight < 60) {
+      if (hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    }
+  };
+
+  const totalVisibleCount = assignedMembers.length + unassignedMembers.length;
+  const remainingCount = Math.max(0, totalServerCount - totalVisibleCount);
 
   const handleToggle = (userId: string) => {
     if (mode === 'single') {
@@ -217,46 +269,50 @@ export function MemberPicker({
   return (
     <div
       ref={containerRef}
-      className="w-full max-w-full rounded-2xl border border-border/80 bg-popover/95 backdrop-blur-xl shadow-2xl overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150 z-50 flex flex-col text-foreground mt-2"
+      className="w-full max-w-full rounded-2xl border border-border/80 bg-popover/98 dark:bg-slate-900/98 backdrop-blur-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 z-50 flex flex-col text-foreground ring-1 ring-white/5"
     >
       {/* ─── Header ─── */}
-      <div className="p-3 border-b border-border/70 flex items-center justify-between gap-2 bg-muted/30">
+      <div className="px-3.5 py-3 border-b border-border/50 flex items-center justify-between gap-2 bg-muted/20">
         <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+            <Users className="w-3.5 h-3.5" />
+          </div>
           <span className="text-xs font-bold uppercase tracking-wider text-foreground">
             {title}
           </span>
-          {defaultMembers.length > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border">
-              {defaultMembers.length}
+          {totalServerCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+              {totalServerCount}
             </span>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
+        <button
+          type="button"
+          className="h-6 w-6 rounded-lg flex items-center justify-center hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           onClick={onClose}
         >
           <X className="w-3.5 h-3.5" />
-        </Button>
+        </button>
       </div>
 
       {/* ─── Search Bar ─── */}
-      <div className="p-2.5 border-b border-border/50 bg-background/50">
+      <div className="p-3 pb-2 border-b border-border/40 bg-background/30">
         <div className="relative flex items-center">
-          <Search className="w-3.5 h-3.5 absolute left-3 text-muted-foreground pointer-events-none" />
+          <Search className="w-3.5 h-3.5 absolute left-3 text-muted-foreground/80 pointer-events-none" />
           <input
             ref={searchInputRef}
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+            }}
             placeholder={placeholder}
-            className="w-full h-8 pl-8 pr-7 text-xs rounded-lg bg-muted/60 border border-input/60 focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none placeholder:text-muted-foreground/70 transition-all"
+            className="w-full h-8.5 pl-9 pr-7 text-xs rounded-xl bg-muted/40 hover:bg-muted/60 focus:bg-background border border-input/60 focus:border-primary/50 focus:ring-2 focus:ring-primary/20 focus:outline-none placeholder:text-muted-foreground/60 transition-all text-foreground"
           />
           {searchQuery && (
             <button
               type="button"
-              className="absolute right-2 text-muted-foreground hover:text-foreground p-0.5"
+              className="absolute right-2.5 text-muted-foreground hover:text-foreground p-0.5 rounded hover:bg-muted/80 transition-colors cursor-pointer"
               onClick={() => {
                 setSearchQuery('');
                 searchInputRef.current?.focus();
@@ -268,81 +324,193 @@ export function MemberPicker({
         </div>
       </div>
 
-      {/* ─── Quick Action: Assign to Me ─── */}
-      {currentUserId && !isCurrentUserAssigned && currentMember && !searchQuery && (
-        <div className="px-2.5 pt-2 pb-1 border-b border-border/40 bg-primary/5">
+      {/* ─── Role & Selection Filter Chips ─── */}
+      <div className="px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b border-border/30 bg-muted/10 text-xs">
+        <button
+          type="button"
+          onClick={() => setRoleFilter('all')}
+          className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer shrink-0 ${
+            roleFilter === 'all'
+              ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
+              : 'bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
+        >
+          All {totalServerCount > 0 && `(${totalServerCount})`}
+        </button>
+
+        {assignedUserIds.size > 0 && (
           <button
             type="button"
-            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium text-primary hover:bg-primary/10 transition-colors border border-primary/20"
-            onClick={() => onAssign(currentUserId)}
+            onClick={() => setRoleFilter('selected')}
+            className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer shrink-0 ${
+              roleFilter === 'selected'
+                ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
+                : 'bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted'
+            }`}
           >
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-primary" />
-              <span>Assign to me</span>
-            </div>
-            <span className="text-[10px] text-primary/80 font-semibold uppercase">Quick</span>
+            Selected ({assignedUserIds.size})
           </button>
-        </div>
-      )}
+        )}
+
+        <button
+          type="button"
+          onClick={() => setRoleFilter('admin')}
+          className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer shrink-0 ${
+            roleFilter === 'admin'
+              ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
+              : 'bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
+        >
+          Admins
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setRoleFilter('member')}
+          className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer shrink-0 ${
+            roleFilter === 'member'
+              ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
+              : 'bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
+        >
+          Members
+        </button>
+      </div>
+
+      {/* ─── Quick Action: Assign to Me ─── */}
+      {currentUserId &&
+        !isCurrentUserAssigned &&
+        currentMember &&
+        !searchQuery &&
+        roleFilter !== 'selected' && (
+          <div className="px-3 pt-2 pb-0.5">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-medium text-primary bg-primary/10 hover:bg-primary/15 border border-primary/20 transition-all cursor-pointer group shadow-2xs"
+              onClick={() => onAssign(currentUserId)}
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-md bg-primary/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-3 h-3 text-primary" />
+                </div>
+                <span className="font-semibold">Assign to me</span>
+              </div>
+              <span className="text-[10px] bg-primary/20 text-primary font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md">
+                Quick
+              </span>
+            </button>
+          </div>
+        )}
 
       {/* ─── Member List ─── */}
-      <div className="max-h-72 overflow-y-auto p-2 space-y-3 divide-y divide-border/30">
-        {isLoadingDefault && defaultMembers.length === 0 ? (
-          <div className="p-6 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-primary" />
-            <span>Loading organization members...</span>
+      <div className="max-h-72 overflow-y-auto p-2 space-y-3" onScroll={handleScroll}>
+        {isLoadingMembers && loadedMembers.length === 0 ? (
+          <div className="p-8 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            <span>Loading team members...</span>
           </div>
-        ) : membersToDisplay.length === 0 ? (
-          <div className="p-6 text-center space-y-1.5">
-            <User className="w-6 h-6 mx-auto text-muted-foreground/50" />
-            <p className="text-xs font-medium text-foreground">No members found</p>
+        ) : assignedMembers.length === 0 && unassignedMembers.length === 0 ? (
+          <div className="p-8 text-center space-y-2">
+            <div className="w-10 h-10 rounded-full bg-muted/60 flex items-center justify-center mx-auto text-muted-foreground/60">
+              <User className="w-5 h-5" />
+            </div>
+            <p className="text-xs font-semibold text-foreground">No members found</p>
             <p className="text-[11px] text-muted-foreground">
-              No team members match &ldquo;{searchQuery}&rdquo;
+              {searchQuery
+                ? `No team members match "${searchQuery}"`
+                : `No members match the selected filter`}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2 h-7 text-xs"
-              onClick={() => setSearchQuery('')}
-            >
-              Clear search
-            </Button>
+            {(searchQuery || roleFilter !== 'all') && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7 text-xs rounded-lg cursor-pointer"
+                onClick={() => {
+                  setSearchQuery('');
+                  setRoleFilter('all');
+                }}
+              >
+                Reset filters
+              </Button>
+            )}
           </div>
         ) : (
           <>
             {/* Section: Currently Assigned */}
             {assignedMembers.length > 0 && (
-              <div className="space-y-1 pt-1 first:pt-0">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-0.5 flex items-center justify-between">
-                  <span>Assigned ({assignedMembers.length})</span>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 px-2.5 py-0.5 flex items-center justify-between">
+                  <span>Selected ({assignedMembers.length})</span>
                 </p>
-                {assignedMembers.map((member) => (
-                  <MemberRow
-                    key={member.id}
-                    member={member}
-                    isAssigned={true}
-                    onToggle={() => handleToggle(member.userId)}
-                  />
-                ))}
+                <div className="space-y-1">
+                  {assignedMembers.map((member) => (
+                    <MemberRow
+                      key={member.id}
+                      member={member}
+                      isAssigned={true}
+                      mode={mode}
+                      onToggle={() => handleToggle(member.userId)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
 
             {/* Section: Unassigned / Other Members */}
             {unassignedMembers.length > 0 && (
-              <div className="space-y-1 pt-2 first:pt-0">
+              <div className="space-y-1">
                 {assignedMembers.length > 0 && (
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 px-2.5 pt-2 pb-0.5">
                     <span>Other Members ({unassignedMembers.length})</span>
                   </p>
                 )}
-                {unassignedMembers.map((member) => (
-                  <MemberRow
-                    key={member.id}
-                    member={member}
-                    isAssigned={false}
-                    onToggle={() => handleToggle(member.userId)}
-                  />
-                ))}
+                <div className="space-y-1">
+                  {unassignedMembers.map((member) => (
+                    <MemberRow
+                      key={member.id}
+                      member={member}
+                      isAssigned={false}
+                      mode={mode}
+                      onToggle={() => handleToggle(member.userId)}
+                    />
+                  ))}
+                </div>
+
+                {/* Progressive server-side chunking */}
+                {hasNextPage && (
+                  <div className="pt-2 px-1">
+                    <button
+                      type="button"
+                      onClick={() => fetchNextPage()}
+                      disabled={isFetchingNextPage}
+                      className="w-full py-1.5 px-3 rounded-xl text-xs font-semibold text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-60"
+                    >
+                      {isFetchingNextPage ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Loading next page...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Load next 20 members</span>
+                          {remainingCount > 0 && (
+                            <span className="text-[10px] text-muted-foreground font-normal">
+                              ({remainingCount} remaining)
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {!hasNextPage && loadedMembers.length > 0 && (
+                  <div className="pt-2 pb-1 text-center">
+                    <span className="text-[10px] text-muted-foreground/70 font-medium">
+                      All {totalServerCount} members loaded
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -350,17 +518,26 @@ export function MemberPicker({
       </div>
 
       {/* ─── Footer: Search Indicator / Stats ─── */}
-      <div className="p-2 border-t border-border/50 bg-muted/20 flex items-center justify-between text-[10px] text-muted-foreground px-3">
+      <div className="px-3.5 py-2 border-t border-border/50 bg-muted/15 flex items-center justify-between text-[11px] text-muted-foreground">
         <span>
-          {isSearching ? (
-            <span className="inline-flex items-center gap-1 text-primary">
-              <Loader2 className="w-2.5 h-2.5 animate-spin" /> Searching server...
+          {isFetching && !isFetchingNextPage ? (
+            <span className="inline-flex items-center gap-1.5 text-primary font-medium">
+              <Loader2 className="w-3 h-3 animate-spin" /> Searching server...
             </span>
           ) : (
-            `Showing ${membersToDisplay.length} of ${defaultMembers.length || membersToDisplay.length} members`
+            <span>
+              Showing <span className="font-semibold text-foreground">{totalVisibleCount}</span> of{' '}
+              {totalServerCount} members
+            </span>
           )}
         </span>
-        <span className="text-muted-foreground/60 font-mono">Press Esc to close</span>
+        <span className="flex items-center gap-1 text-[10px] text-muted-foreground/80">
+          <span>Press</span>
+          <kbd className="px-1.5 py-0.5 rounded-md bg-muted border border-border/70 text-[10px] font-mono text-foreground/80 shadow-2xs">
+            Esc
+          </kbd>
+          <span>to close</span>
+        </span>
       </div>
     </div>
   );
@@ -369,10 +546,11 @@ export function MemberPicker({
 interface MemberRowProps {
   member: OrgMember;
   isAssigned: boolean;
+  mode?: 'single' | 'multiple';
   onToggle: () => void;
 }
 
-function MemberRow({ member, isAssigned, onToggle }: MemberRowProps) {
+function MemberRow({ member, isAssigned, mode = 'multiple', onToggle }: MemberRowProps) {
   const initials = getInitials(member.name, member.email);
   const gradientClass = getAvatarGradient(member.name || member.email || member.userId);
   const roleTitle = formatRole(member.role);
@@ -381,10 +559,10 @@ function MemberRow({ member, isAssigned, onToggle }: MemberRowProps) {
   return (
     <button
       type="button"
-      className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all group cursor-pointer ${
+      className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all duration-150 group cursor-pointer ${
         isAssigned
-          ? 'bg-primary/10 text-foreground border border-primary/25 shadow-xs'
-          : 'hover:bg-muted/70 text-foreground border border-transparent'
+          ? 'bg-primary/12 hover:bg-primary/18 text-foreground border border-primary/25 shadow-2xs'
+          : 'hover:bg-muted/60 text-foreground border border-transparent'
       }`}
       onClick={onToggle}
     >
@@ -395,17 +573,17 @@ function MemberRow({ member, isAssigned, onToggle }: MemberRowProps) {
             <img
               src={member.avatarUrl}
               alt={member.name || member.email}
-              className="w-7 h-7 rounded-full object-cover ring-1 ring-border"
+              className="w-7.5 h-7.5 rounded-full object-cover ring-1 ring-border/50"
             />
           ) : (
             <div
-              className={`w-7 h-7 rounded-full bg-gradient-to-br ${gradientClass} flex items-center justify-center text-[10px] font-bold shadow-xs`}
+              className={`w-7.5 h-7.5 rounded-full bg-gradient-to-br ${gradientClass} flex items-center justify-center text-[10px] font-bold shadow-xs text-white`}
             >
               {initials}
             </div>
           )}
           {isAssigned && (
-            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-primary ring-1.5 ring-background flex items-center justify-center text-primary-foreground">
+            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-primary ring-1.5 ring-background flex items-center justify-center text-primary-foreground">
               <Check className="w-2 h-2 stroke-[3]" />
             </div>
           )}
@@ -419,29 +597,39 @@ function MemberRow({ member, isAssigned, onToggle }: MemberRowProps) {
             </span>
             {roleTitle !== 'Member' && (
               <span
-                className={`text-[9px] px-1 py-0.2 rounded border font-medium ${roleBadgeClass}`}
+                className={`text-[9px] px-1.5 py-0.2 rounded-md border font-medium ${roleBadgeClass}`}
               >
                 {roleTitle}
               </span>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground truncate">
-            {member.email}
-          </p>
+          <p className="text-[11px] text-muted-foreground/80 truncate">{member.email}</p>
         </div>
       </div>
 
-      {/* Checkbox indicator */}
-      <div className="shrink-0">
-        <div
-          className={`w-5 h-5 rounded-lg flex items-center justify-center transition-colors ${
-            isAssigned
-              ? 'bg-primary text-primary-foreground shadow-xs'
-              : 'border border-border/80 group-hover:border-primary/60 group-hover:bg-primary/5 text-transparent group-hover:text-primary/40'
-          }`}
-        >
-          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-        </div>
+      {/* Selection indicator */}
+      <div className="shrink-0 pl-1">
+        {mode === 'single' ? (
+          <div
+            className={`w-4.5 h-4.5 rounded-full flex items-center justify-center transition-all ${
+              isAssigned
+                ? 'bg-primary text-primary-foreground shadow-xs scale-105'
+                : 'border border-border/80 group-hover:border-primary/60 group-hover:bg-primary/5 text-transparent'
+            }`}
+          >
+            {isAssigned && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+          </div>
+        ) : (
+          <div
+            className={`w-4.5 h-4.5 rounded-md flex items-center justify-center transition-all ${
+              isAssigned
+                ? 'bg-primary text-primary-foreground shadow-xs scale-105'
+                : 'border border-border/80 group-hover:border-primary/60 group-hover:bg-primary/5 text-transparent'
+            }`}
+          >
+            {isAssigned && <Check className="w-3 h-3 stroke-[3]" />}
+          </div>
+        )}
       </div>
     </button>
   );

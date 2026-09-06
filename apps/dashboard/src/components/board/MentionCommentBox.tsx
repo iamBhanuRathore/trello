@@ -4,6 +4,8 @@ import { Send, AtSign, Loader2 } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { orgService } from '../../lib/orgService';
 import { useAuthStore } from '../../store/authStore';
+import { Kbd } from '../ui/Kbd';
+import { formatShortcut } from '../../lib/platform';
 
 interface MentionCommentBoxProps {
   onSubmit: (body: string, mentionedUserIds: string[]) => Promise<void> | void;
@@ -14,8 +16,11 @@ interface MentionCommentBoxProps {
 export function MentionCommentBox({
   onSubmit,
   isSubmitting = false,
-  placeholder = 'Write a comment... (Type @ to tag a teammate, Cmd+Enter to post)',
+  placeholder,
 }: MentionCommentBoxProps) {
+  const effectivePlaceholder =
+    placeholder ||
+    `Write a comment... (Type @ to tag a teammate, ${formatShortcut('mod+enter')} to post)`;
   const { user } = useAuthStore();
   const orgId = user?.organizationId;
 
@@ -50,23 +55,26 @@ export function MentionCommentBox({
     const cursor = e.target.selectionStart;
     setText(val);
 
-    // Look backwards from cursor to see if we are in an @mention query
+    // Look for active @mention trigger immediately preceding the cursor
     const textBeforeCursor = val.slice(0, cursor);
-    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+    const match = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9_.-]+(?: [a-zA-Z0-9_.-]+)?)$/);
 
-    if (lastAtIndex !== -1) {
-      const charBeforeAt = lastAtIndex > 0 ? textBeforeCursor[lastAtIndex - 1] : ' ';
-      const querySinceAt = textBeforeCursor.slice(lastAtIndex + 1);
-
-      // Trigger mention if @ is at start of string or preceded by whitespace/punctuation and has no newlines
-      if (/[\s(]/.test(charBeforeAt) || lastAtIndex === 0) {
-        if (!/\n/.test(querySinceAt) && querySinceAt.length <= 25) {
-          setShowMentionMenu(true);
-          setMentionQuery(querySinceAt);
-          setMentionStartIndex(lastAtIndex);
-          return;
-        }
+    if (match) {
+      const query = match[1];
+      if (query.length <= 25) {
+        const matchIndex = textBeforeCursor.lastIndexOf('@' + query);
+        setShowMentionMenu(true);
+        setMentionQuery(query);
+        setMentionStartIndex(matchIndex);
+        return;
       }
+    }
+
+    if (/(?:^|\s)@$/.test(textBeforeCursor)) {
+      setShowMentionMenu(true);
+      setMentionQuery('');
+      setMentionStartIndex(textBeforeCursor.lastIndexOf('@'));
+      return;
     }
 
     setShowMentionMenu(false);
@@ -77,8 +85,10 @@ export function MentionCommentBox({
   const insertMention = (member: { id: string; userId?: string; name: string }) => {
     const targetUserId = member.userId || member.id;
     const beforeAt = text.slice(0, mentionStartIndex);
-    const afterCursor = text.slice(textareaRef.current?.selectionEnd || (mentionStartIndex + mentionQuery.length + 1));
-    
+    const afterCursor = text.slice(
+      textareaRef.current?.selectionEnd || mentionStartIndex + mentionQuery.length + 1
+    );
+
     // Insert structured mention @[Name](userId) or @Name
     const mentionTag = `@[${member.name}](${targetUserId}) `;
     const newText = `${beforeAt}${mentionTag}${afterCursor}`;
@@ -100,27 +110,32 @@ export function MentionCommentBox({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showMentionMenu && filteredMembers.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % filteredMembers.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex((prev) => (prev - 1 + filteredMembers.length) % filteredMembers.length);
-        return;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        const chosen = filteredMembers[selectedIndex];
-        if (chosen) {
-          insertMention(chosen);
-        }
-        return;
-      }
+    if (showMentionMenu) {
       if (e.key === 'Escape') {
         e.preventDefault();
+        setShowMentionMenu(false);
+        return;
+      }
+      if (filteredMembers.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSelectedIndex((prev) => (prev + 1) % filteredMembers.length);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSelectedIndex((prev) => (prev - 1 + filteredMembers.length) % filteredMembers.length);
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          const chosen = filteredMembers[selectedIndex];
+          if (chosen) {
+            insertMention(chosen);
+          }
+          return;
+        }
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
         setShowMentionMenu(false);
         return;
       }
@@ -162,7 +177,7 @@ export function MentionCommentBox({
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder={effectivePlaceholder}
           rows={3}
           className="w-full p-3.5 bg-transparent border-0 outline-none text-xs leading-relaxed resize-y placeholder:text-muted-foreground text-foreground"
         />
@@ -191,8 +206,8 @@ export function MentionCommentBox({
               <AtSign className="w-3 h-3 text-primary" />
               <span>Mention</span>
             </button>
-            <span className="hidden sm:inline text-muted-foreground/60">
-              Press <kbd className="font-mono text-[10px] px-1 py-0.5 bg-muted rounded border">Cmd+Enter</kbd> to send
+            <span className="hidden sm:inline-flex items-center gap-1 text-muted-foreground/60">
+              Press <Kbd shortcut="mod+enter" /> to send
             </span>
           </div>
 
@@ -246,14 +261,21 @@ export function MentionCommentBox({
               filteredMembers.map((member: any, idx: number) => {
                 const isSelected = idx === selectedIndex;
                 const initials = member.name
-                  ? member.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
+                  ? member.name
+                      .split(' ')
+                      .map((n: string) => n[0])
+                      .join('')
+                      .substring(0, 2)
+                      .toUpperCase()
                   : 'U';
 
                 return (
                   <div
                     key={member.id}
                     className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                      isSelected ? 'bg-primary/15 text-primary' : 'hover:bg-muted/60 text-foreground'
+                      isSelected
+                        ? 'bg-primary/15 text-primary'
+                        : 'hover:bg-muted/60 text-foreground'
                     }`}
                     onClick={() => insertMention(member)}
                     onMouseEnter={() => setSelectedIndex(idx)}

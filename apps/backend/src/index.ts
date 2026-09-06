@@ -13,7 +13,7 @@ import { workspaceRoutes } from './modules/workspaces/routes';
 import { projectRoutes } from './modules/projects/routes';
 import { boardRoutes } from './modules/boards/routes';
 import { listRoutes } from './modules/lists/routes';
-import { cardRoutes } from './modules/cards/routes';
+import { cardRoutes, cardPublicRoutes } from './modules/cards/routes';
 import { realtimeRoutes, setupRealtimeEventBus } from './modules/realtime/routes';
 import { notificationRoutes } from './modules/notifications/routes';
 import { setupNotificationListeners } from './modules/notifications/service';
@@ -92,16 +92,7 @@ const app = new Elysia()
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-      allowedHeaders: [
-        'Content-Type',
-        'Authorization',
-        'x-organization-id',
-        'x-requested-with',
-        'Accept',
-        'Origin',
-        'baggage',
-        'sentry-trace',
-      ],
+      allowedHeaders: true,
       exposeHeaders: true,
       maxAge: 86400,
     })
@@ -143,8 +134,10 @@ const app = new Elysia()
       delete (set.headers as any)['Access-Control-Allow-Credentials'];
       set.headers['access-control-allow-methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD';
       delete (set.headers as any)['Access-Control-Allow-Methods'];
+      const reqHeaders = request.headers.get('access-control-request-headers');
       set.headers['access-control-allow-headers'] =
-        'Content-Type, Authorization, x-organization-id, x-requested-with, Accept, Origin, baggage, sentry-trace';
+        reqHeaders ||
+        'Content-Type, Authorization, x-organization-id, x-requested-with, Accept, Origin, baggage, sentry-trace, Cache-Control, Pragma';
       delete (set.headers as any)['Access-Control-Allow-Headers'];
     }
 
@@ -175,6 +168,7 @@ const app = new Elysia()
       .use(projectRoutes)
       .use(boardRoutes)
       .use(listRoutes)
+      .use(cardPublicRoutes)
       .use(cardRoutes)
       .use(realtimeRoutes)
       .use(notificationRoutes)

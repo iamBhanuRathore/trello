@@ -18,6 +18,8 @@ import {
   SidebarRail,
   useSidebar,
 } from '@boardly/ui/sidebar';
+import { Kbd } from './ui/Kbd';
+import { formatShortcut } from '../lib/platform';
 import {
   LayoutDashboard,
   CheckSquare,
@@ -47,19 +49,13 @@ interface AppSidebarProps {
   onOpenAppearance?: () => void;
 }
 
-export const AppSidebar: React.FC<AppSidebarProps> = ({
-  onOpenTrash,
-  onOpenAppearance,
-}) => {
+export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppearance }) => {
   const location = useLocation();
   const { user } = useAuthStore();
   const { isMobile, setOpenMobile, state } = useSidebar();
   const isCollapsed = state === 'collapsed';
 
-  const isAdmin =
-    user?.isPlatformAdmin ||
-    user?.role === 'org_owner' ||
-    user?.role === 'org_admin';
+  const isAdmin = user?.isPlatformAdmin || user?.role === 'org_owner' || user?.role === 'org_admin';
 
   // Fetch workspaces & projects tree
   const { data: workspaces = [], isLoading: isWsLoading } = useQuery({
@@ -126,7 +122,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       className="border-r border-sidebar-border bg-sidebar select-none transition-all duration-200"
     >
       {/* ─── Header: Brand & Search Action ─── */}
-      <SidebarHeader className={`border-b border-sidebar-border/60 ${isCollapsed ? 'p-2' : 'p-3'}`}>
+      <SidebarHeader
+        className={`sticky top-0 z-10 bg-sidebar/98 backdrop-blur-md border-b border-sidebar-border/60 shrink-0 ${isCollapsed ? 'p-2' : 'p-3'}`}
+      >
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-2">
             <Link
@@ -140,7 +138,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             <button
               type="button"
               onClick={triggerSearchPalette}
-              title="Search or jump to... (⌘K)"
+              title={`Search or jump to... (${formatShortcut('mod+k')})`}
               className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-sidebar-accent border border-sidebar-border/80 rounded-lg transition-colors cursor-pointer"
             >
               <Search className="w-3.5 h-3.5" />
@@ -149,11 +147,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2 px-1">
-              <Link
-                to="/"
-                onClick={handleNavClick}
-                className="flex items-center gap-2.5 min-w-0"
-              >
+              <Link to="/" onClick={handleNavClick} className="flex items-center gap-2.5 min-w-0">
                 <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-xs shrink-0 group-hover:scale-105 transition-transform">
                   <LayoutDashboard className="w-4 h-4" />
                 </div>
@@ -183,16 +177,16 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 <Search className="w-3.5 h-3.5 text-muted-foreground/70" />
                 <span>Search or jump to...</span>
               </div>
-              <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-background/80 border border-border text-muted-foreground">
-                ⌘K
-              </kbd>
+              <Kbd shortcut="mod+k" className="bg-background/80" />
             </button>
           </div>
         )}
       </SidebarHeader>
 
       {/* ─── Main Content Nav Groups ─── */}
-      <SidebarContent className={`overflow-y-auto overflow-x-hidden ${isCollapsed ? 'p-1.5 space-y-2' : 'p-2 space-y-4'}`}>
+      <SidebarContent
+        className={`sidebar-scroll overscroll-contain overflow-y-auto overflow-x-hidden ${isCollapsed ? 'p-1.5 space-y-2' : 'p-2 space-y-4'}`}
+      >
         {/* 1. Core Primary Views */}
         <SidebarGroup className={isCollapsed ? 'p-0 items-center' : 'p-1'}>
           {!isCollapsed && (
@@ -208,9 +202,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   asChild
                   isActive={location.pathname === '/'}
                   tooltip="Workspaces"
-                  className={isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''}
+                  className={
+                    isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''
+                  }
                 >
-                  <Link to="/" onClick={handleNavClick} title={isCollapsed ? 'Workspaces' : undefined}>
+                  <Link
+                    to="/"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? 'Workspaces' : undefined}
+                  >
                     <LayoutDashboard className="w-4 h-4 text-sky-500 shrink-0" />
                     {!isCollapsed && <span>Workspaces</span>}
                   </Link>
@@ -223,9 +223,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   asChild
                   isActive={location.pathname === '/my-tasks' || location.pathname === '/tasks'}
                   tooltip="My Tasks"
-                  className={isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''}
+                  className={
+                    isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''
+                  }
                 >
-                  <Link to="/my-tasks" onClick={handleNavClick} title={isCollapsed ? 'My Tasks' : undefined}>
+                  <Link
+                    to="/my-tasks"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? 'My Tasks' : undefined}
+                  >
                     <CheckSquare className="w-4 h-4 text-emerald-500 shrink-0" />
                     {!isCollapsed && <span>My Tasks</span>}
                   </Link>
@@ -238,9 +244,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   asChild
                   isActive={location.pathname === '/timesheets'}
                   tooltip="Timesheets"
-                  className={isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''}
+                  className={
+                    isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''
+                  }
                 >
-                  <Link to="/timesheets" onClick={handleNavClick} title={isCollapsed ? 'Timesheets' : undefined}>
+                  <Link
+                    to="/timesheets"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? 'Timesheets' : undefined}
+                  >
                     <Clock className="w-4 h-4 text-amber-500 shrink-0" />
                     {!isCollapsed && <span>Timesheets</span>}
                   </Link>
@@ -253,9 +265,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   asChild
                   isActive={location.pathname === '/marketplace'}
                   tooltip="Power-Ups & Apps"
-                  className={isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''}
+                  className={
+                    isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''
+                  }
                 >
-                  <Link to="/marketplace" onClick={handleNavClick} title={isCollapsed ? 'Power-Ups & Apps' : undefined}>
+                  <Link
+                    to="/marketplace"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? 'Power-Ups & Apps' : undefined}
+                  >
                     <Sparkles className="w-4 h-4 text-purple-500 shrink-0" />
                     {!isCollapsed && <span>Power-Ups &amp; Apps</span>}
                   </Link>
@@ -424,7 +442,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                                               }`}
                                             >
                                               <Columns className="w-3 h-3 text-teal-500 shrink-0" />
-                                              <span className="truncate">{b.title}</span>
+                                              <span className="truncate">{b.name || b.title}</span>
                                             </Link>
                                           );
                                         })
@@ -527,9 +545,17 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                         asChild
                         isActive={location.pathname.startsWith('/admin')}
                         tooltip="Admin Panel"
-                        className={isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''}
+                        className={
+                          isCollapsed
+                            ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg'
+                            : ''
+                        }
                       >
-                        <Link to="/admin/users" onClick={handleNavClick} title={isCollapsed ? 'Admin Panel' : undefined}>
+                        <Link
+                          to="/admin/users"
+                          onClick={handleNavClick}
+                          title={isCollapsed ? 'Admin Panel' : undefined}
+                        >
                           <Shield className="w-4 h-4 text-sky-500 shrink-0" />
                           {!isCollapsed && <span>Admin Panel</span>}
                         </Link>
@@ -542,7 +568,11 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                       <SidebarMenuButton
                         asChild
                         tooltip="Super Admin Portal"
-                        className={isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''}
+                        className={
+                          isCollapsed
+                            ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg'
+                            : ''
+                        }
                       >
                         <a
                           href="http://localhost:5174"
@@ -564,7 +594,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       </SidebarContent>
 
       {/* ─── Footer: Utilities & User Profile Popover ─── */}
-      <SidebarFooter className={`border-t border-sidebar-border/60 ${isCollapsed ? 'p-1.5 flex flex-col items-center gap-1.5' : 'p-2 space-y-1'}`}>
+      <SidebarFooter
+        className={`sticky bottom-0 z-10 bg-sidebar/98 backdrop-blur-md border-t border-sidebar-border/60 shrink-0 ${isCollapsed ? 'p-1.5 flex flex-col items-center gap-1.5' : 'p-2 space-y-1'}`}
+      >
         {/* Quick Utilities: Trash & Appearance */}
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-1.5">

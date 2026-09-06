@@ -14,6 +14,8 @@ import {
   listSubtasks,
   listComments,
   createComment,
+  updateComment,
+  deleteComment,
   listAttachments,
   createAttachmentRecord,
   deleteAttachment,
@@ -36,7 +38,41 @@ import {
   getCardWatchers,
   getMyTasks,
 } from './service';
-import { generatePresignedUploadUrl } from '../../lib/s3';
+import path from 'path';
+import { generatePresignedUploadUrl, LOCAL_UPLOADS_DIR } from '../../lib/s3';
+
+/** Public card routes (e.g. uploaded file serving and local upload buffer) */
+export const cardPublicRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
+  .put('/attachments/local-upload', async ({ query, request, set }) => {
+    try {
+      const key = (query as any)?.key;
+      if (!key) {
+        set.status = 400;
+        return { error: 'Missing key parameter' };
+      }
+      const safeKey = path.basename(key);
+      const filePath = path.join(LOCAL_UPLOADS_DIR, safeKey);
+      const arrayBuffer = await request.arrayBuffer();
+      await Bun.write(filePath, arrayBuffer);
+      return { success: true };
+    } catch (err: any) {
+      return handleRouteError(err, set);
+    }
+  })
+  .get('/attachments/file/:key', async ({ params, set }) => {
+    try {
+      const safeKey = path.basename(params.key);
+      const filePath = path.join(LOCAL_UPLOADS_DIR, safeKey);
+      const file = Bun.file(filePath);
+      if (!(await file.exists())) {
+        set.status = 404;
+        return 'File not found';
+      }
+      return file;
+    } catch (err: any) {
+      return handleRouteError(err, set);
+    }
+  });
 
 /** Card routes — /v1/cards/* */
 export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
@@ -317,6 +353,46 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }),
     }
   )
+  .patch(
+    '/comments/:commentId',
+    async ({ params, body, user, set }) => {
+      try {
+        return await updateComment(
+          db,
+          params.commentId,
+          user.userId,
+          user.organizationId,
+          body.body,
+          user.isPlatformAdmin
+        );
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ commentId: t.String({ format: 'uuid' }) }),
+      body: t.Object({ body: t.String() }),
+    }
+  )
+  .delete(
+    '/comments/:commentId',
+    async ({ params, user, set }) => {
+      try {
+        return await deleteComment(
+          db,
+          params.commentId,
+          user.userId,
+          user.organizationId,
+          user.isPlatformAdmin
+        );
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ commentId: t.String({ format: 'uuid' }) }),
+    }
+  )
 
   // Attachments
   .get('/:id/attachments', async ({ params, set }) => {
@@ -542,6 +618,41 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     }
   )
   .delete('/:id/watch/:userId', async ({ params, user, set }) => {
+    try {
+      return await unwatchCard(db, params.id, params.userId, user.organizationId);
+    } catch (err: any) {
+      return handleRouteError(err, set);
+    }
+  })
+  .post(
+    '/:id/unwatch',
+    async ({ params, user, body, set }) => {
+      try {
+        const targetUserId = (body as any)?.userId || user.userId;
+        return await unwatchCard(db, params.id, targetUserId, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      body: t.Optional(t.Object({ userId: t.Optional(t.String({ format: 'uuid' })) })),
+    }
+  )
+  .delete(
+    '/:id/unwatch',
+    async ({ params, user, body, set }) => {
+      try {
+        const targetUserId = (body as any)?.userId || user.userId;
+        return await unwatchCard(db, params.id, targetUserId, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      body: t.Optional(t.Object({ userId: t.Optional(t.String({ format: 'uuid' })) })),
+    }
+  )
+  .delete('/:id/unwatch/:userId', async ({ params, user, set }) => {
     try {
       return await unwatchCard(db, params.id, params.userId, user.organizationId);
     } catch (err: any) {

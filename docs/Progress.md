@@ -1396,6 +1396,204 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
      - Connected `Start` button with live time tracking timer, live state display, and automatic stage transition.
      - Connected `Complete` button with instant stage movement, batch checklist completion, and success notifications.
      - Fixed date formatting from `12:00 AM43` to clean standard `July 26, 2026` / `MMM d, yyyy · h:mm a`.
-  5. **Verification**:
-     - Verified `PATCH /v1/cards/checklist-items/:itemId` returns `200 OK` with updated `isDone: true` data payload.
-     - Full monorepo typecheck (`turbo run typecheck`) and dashboard build (`turbo run build --filter=dashboard`) passing with 0 errors.
+
+---
+
+### 2026-09-06 — Member & Label Popover Double Border Resolution & UI Modernization
+
+- **What was done:**
+  1. **Root Cause of Double Borders on Floating Popovers**:
+     - Both the wrapper containers in `TaskDetailView.tsx` (`assigneePickerRef`, `participantPickerRef`, `watcherPickerRef`, `labelPickerRef`) and the child components (`MemberPicker.tsx`, `LabelPicker.tsx`) defined full card frames (`rounded-2xl`, `border border-border`, `bg-popover/98`, `shadow-2xl`).
+     - In addition, child pickers had `mt-2` which pushed them 8px down inside the outer container, causing the outer container's top border and background to show as a secondary border bar.
+  2. **Container Normalization**:
+     - Stripped redundant visual styles (`border`, `background`, `shadow`, `backdrop-blur`) from the outer wrapper divs in `TaskDetailView.tsx`, retaining only positioning and sizing (`absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96`).
+     - Removed nested `mt-2` offsets in `MemberPicker.tsx` and `LabelPicker.tsx`.
+  3. **MemberPicker UI Enhancement**:
+     - Modernized header with sleek icon badge, rounded close action, and soft primary counter pill.
+     - Refined search box with inset icon, smooth hover/focus transitions, and clean clear button.
+     - Redesigned "Assign to me" quick action into an integrated card banner with sparkle icon and hover micro-animations.
+     - Eliminated rigid `divide-y` borders between list rows.
+     - Elevated member row items with enhanced avatar rings, role badges, and crisp high-contrast check indicators (`single` mode radio vs `multiple` mode checkbox).
+     - Modernized status footer with keyboard shortcut badge (`Esc`).
+  4. **Client-Side Query Caching**:
+     - Diagnosed repeated network calls to `/v1/orgs/:orgId/members` and `/v1/boards/:boardId/labels` upon re-opening popovers caused by TanStack Query's default `staleTime: 0`.
+     - Added global `defaultOptions` on `QueryClient` in `main.tsx` (`staleTime: 60s`, `gcTime: 10m`, `refetchOnWindowFocus: false`).
+     - Added explicit 5-minute `staleTime` and 10-minute `gcTime` on `MemberPicker` and `LabelPicker` queries to ensure instantaneous popup rendering with zero redundant HTTP requests.
+  5. **Role Filter Chips & Progressive Pagination**:
+     - Added quick filter pill chips (`All`, `Selected`, `Admins`, `Members`) below the search bar for 1-click group isolation.
+     - Implemented progressive chunking (20 members per batch) with an expandable `Show more (+X remaining)` button to prevent rendering hundreds of DOM rows at once.
+     - Integrated instant search that bypasses chunking when actively filtering by text.
+  6. **Task Page Full-Bleed Layout Normalization**:
+     - Diagnosed massive empty void spaces on the sides and top of `/cards/:cardId` caused by triple-nested padding: `DashboardLayout` (`p-4 md:p-6`), `TaskPage` (`p-2 sm:p-4 lg:p-6 bg-muted/20`), and `TaskDetailView` (`max-w-[1700px] mx-auto rounded-2xl border shadow-md`).
+     - Converted `TaskPage.tsx` to negative margin full-bleed container (`-m-4 md:-m-6 flex-1 flex flex-col h-[calc(100vh-3.5rem)] overflow-hidden`).
+     - Removed artificial `max-w-[1700px] mx-auto` and card borders from `TaskDetailView.tsx` so the workspace seamlessly fills the screen edge-to-edge.
+  7. **Cross-Platform OS Shortcut Detection & Normalization**:
+     - Eliminated clunky multi-OS labels (e.g. `⌘/Ctrl+Enter`) and hardcoded `Cmd+` strings across the website.
+     - Built centralized `platform.ts` utility utilizing modern User-Agent Client Hints (`navigator.userAgentData.platform`) with fallback to `navigator.platform` / `navigator.userAgent`.
+     - Built reusable `<Kbd shortcut="..." />` component that automatically renders `⌘ + Enter` / `⌘K` on macOS/iOS and `Ctrl + Enter` / `Ctrl+K` on Windows/Linux.
+     - Unified shortcut presentations across `TaskDetailView`, `MentionCommentBox`, `SearchPalette`, and `AppSidebar`.
+  8. **Verification**:
+     - `bun run --cwd apps/dashboard typecheck` and `bun run --cwd apps/dashboard build` succeeded with 0 errors.
+
+### 2026-09-06 — Light Theme Contrast & Board Card CSS Gradient Rendering Resolution
+
+- **What was done:**
+  1. **Root Cause Diagnosis of Invisible Board Text in Light Theme**:
+     - In `Workspaces.tsx`, `board.background` (which for seeded boards is a CSS gradient string like `'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)'`) was interpolated directly into `className` instead of `style={{ background: ... }}`.
+     - Tailwind CSS ignored the raw CSS gradient syntax in `className`, causing the background `div` to render completely transparent.
+     - In light mode, `<Card>` defaults to white (`bg-card` = `#ffffff`) while the title was styled with `<CardTitle className="text-white">`. This created white text on a white card background, rendering the board names completely invisible.
+  2. **Board Background Engine Normalization (`getBoardBackgroundStyle`)**:
+     - Added robust helper `getBoardBackgroundStyle` that parses CSS gradients, hex codes, rgb/hsl, image URLs, Tailwind classes, and empty values.
+     - Applied CSS gradients directly via `style={{ background }}` and Tailwind gradient strings via `className`.
+     - Explicitly enforced a solid dark base on `<Card className="... bg-slate-900 text-white shadow-xs">` so that even if a gradient is partially transparent, the base behind `text-white` is guaranteed dark in both light and dark themes.
+     - Added a subtle contrast scrim overlay (`bg-gradient-to-t from-black/60 via-black/20 to-transparent`) and `drop-shadow-xs` on `<CardTitle>` for guaranteed legibility across any bright or colorful gradients.
+  3. **Board Theme Presets & Edit Integration**:
+     - Created `BOARD_GRADIENTS` palette presets (`Indigo Dream`, `Ocean Sky`, `Emerald Forest`, `Sunset Rose`, `Warm Amber`, `Midnight Navy`).
+     - Added an interactive theme swatch picker in `CreateBoardDialog` and `EditBoardDialog` allowing users to customize board gradients with real-time feedback.
+  4. **Sidebar & Search Board Title Fallbacks**:
+     - Corrected `AppSidebar.tsx` and `SearchPalette.tsx` to handle `b.name || b.title` so board labels never render blank.
+     - Fixed `Integrations.tsx` GitHub icon contrast with `text-gray-900 dark:text-gray-100`.
+
+### 2026-09-06 — Notification Dialog Click-Outside Dismiss & Text Overlap Resolution
+
+- **What was done:**
+  1. **Root Cause of Notification Dropdown Not Closing on Outside Click**:
+     - The navbar `<header>` in `DashboardLayout.tsx` defines `backdrop-blur-md`. Per CSS specifications, `backdrop-filter` establishes a new containing block for all `position: fixed` descendants.
+     - Consequently, the inner `<div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />` was constrained exclusively to the 56px height of the navbar rather than the viewport. Clicks outside the header went directly to the underlying page elements, bypassing the backdrop handler.
+  2. **Robust Click-Outside & Escape Dismissal**:
+     - Replaced the broken `fixed inset-0` div with `useRef` (`dropdownRef`) and a global `document.addEventListener` for `'mousedown'`, `'touchstart'`, and `'keydown'` (`Escape`).
+     - Clicking anywhere outside the dropdown across the entire viewport or pressing `Escape` now instantly closes the dropdown.
+  3. **Notification Background Opacity Normalization**:
+     - Replaced `bg-popover/95 backdrop-blur-xl` and `bg-card/60` with solid opaque `bg-popover text-popover-foreground shadow-2xl` so background elements behind the dropdown (e.g. task chat titles, dates) never bleed through.
+  4. **TaskDetailView Scrum & Stage Text Overlap Fix**:
+     - Added `min-w-0` and `flex-1` to the Scrum board label and Stage column containers in `TaskDetailView.tsx` (`#section-project`). Long board names like "Cloud Infrastructure & Kubernetes Architecture Board" now cleanly truncate with ellipsis instead of colliding across the grid into the Stage picker.
+
+### 2026-09-06 — Professional Board Color Palette & Background Normalization
+
+- **What was done:**
+  1. **Replaced Garish Neon Gradient with Professional Executive Palettes**:
+     - Replaced the flashy `from-indigo-600 via-purple-600 to-pink-600` fallback with enterprise-grade `PROFESSIONAL_BOARD_FALLBACK = 'bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950'`.
+     - Modernized `BOARD_GRADIENTS` presets with refined executive tones: `Executive Slate` (`#0f172a` → `#1e293b`), `Midnight Indigo` (`#1e1b4b` → `#0f172a`), `Deep Cobalt` (`#0c2340` → `#172554`), `Forest Teal` (`#064e3b` → `#0f172a`), `Imperial Plum` (`#2e1065` → `#0f172a`), and `Carbon Graphite` (`#18181b` → `#27272a`).
+  2. **Implemented Requested Dynamic Background Pattern in [Workspaces.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/Workspaces.tsx)**:
+     - Applied inline `style={board.background && !isTailwindBg ? { background: board.background } : undefined}` and conditional fallback class name.
+
+### 2026-09-06 — Server-Side Pagination & Safe Infinite Member Query Architecture
+
+- **What was done:**
+  1. **Server-Side Infinite Query in [MemberPicker.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/MemberPicker.tsx)**:
+     - Replaced client-side array slicing with `@tanstack/react-query`'s `useInfiniteQuery` fetching progressive 20-member batches via SQL `LIMIT` and `OFFSET`.
+     - Added an infinite scroll listener (`handleScroll`) triggering `fetchNextPage()` when within 60px of the container bottom, alongside a manual "Load next 20 members" button with spinner.
+     - Added a dedicated pinned query (`pinnedOrgMembers`) targeting `assignedUserIds` and `currentUserId` (`userIds` param) to guarantee assigned members and "Assign to me" options remain persistently visible regardless of pagination offset.
+     - Connected debounced search query (250ms) and role filter switches directly to the server query parameters.
+  2. **Backend Scalability & Compatibility in [routes.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/organizations/routes.ts) and [service.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/organizations/service.ts)**:
+     - Added `countMembers` in `service.ts` to return total matching records alongside paginated results.
+     - Enhanced `listMembers` and `countMembers` to support `userIds` filtering (`inArray`) and handle admin role grouping (`['org_owner', 'org_admin', 'workspace_admin']`).
+     - Maintained 100% backward compatibility for `GET /v1/orgs/:orgId/members`: response returns the raw `OrgMember[]` array, while exposing `x-total-count` in headers.
+  3. **Universal Client Callers Audited & Verified**:
+     - Updated `orgService.getMembers` and added `orgService.getMembersWithCount` in [orgService.ts](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/lib/orgService.ts).
+     - Verified all other callers: [MentionCommentBox.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/MentionCommentBox.tsx), [TaskChatPane.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskChatPane.tsx), [BoardView.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/BoardView.tsx), and [Users.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/admin/Users.tsx) continue functioning smoothly without breaking changes.
+
+### 2026-09-06 — Premium Auto-Hiding Sidebar Scrollbar & Pinned Elevation
+
+- **What was done:**
+  1. **Custom Auto-Hiding Scrollbar Across All Themes ([index.css](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/index.css))**:
+     - Introduced `.sidebar-scroll` and `[data-sidebar="content"]` custom styling: by default, the scrollbar is completely invisible (`scrollbar-color: transparent transparent` and transparent thumb), eliminating clutter in the 256px navigation column.
+     - On hover or scroll over the sidebar, an ultra-thin 4px floating pill thumb smoothly fades in with zero track background, preventing text or chevron overlap.
+     - Added tailored translucent thumb colors across all 7 color schemes: Light mode (`rgba(15, 23, 42, 0.18)`), Dark Slate (`rgba(255, 255, 255, 0.18)`), Midnight OLED (`rgba(255, 255, 255, 0.15)`), Oceanic Azure (`rgba(56, 189, 248, 0.28)`), Emerald Forest (`rgba(16, 185, 129, 0.28)`), Synthwave Sunset (`rgba(244, 63, 94, 0.32)`), and Nordic Frost (`rgba(136, 192, 208, 0.28)`).
+     - Added `overscroll-behavior-y: contain` so mouse wheel scrolling within the sidebar never chains into the Kanban board or main window.
+     - Added `.sidebar-no-scrollbar` and `.no-scrollbar` utility classes for instant 100% scrollbar suppression.
+  2. **Pinned Elevation & Boundary Containment ([AppSidebar.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/AppSidebar.tsx), [AdminLayout.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/layouts/AdminLayout.tsx), [sidebar.tsx](file:///Users/bhanurathore/projects/trello/packages/ui/src/components/sidebar.tsx))**:
+     - Equipped `SidebarHeader` and `SidebarFooter` with `sticky`, `z-10`, `bg-sidebar/98 backdrop-blur-md`, and crisp boundary borders so scrolled workspace/project items tuck underneath smoothly without bleeding through the brand or user profile headers.
+
+### 2026-09-06 — Interactive Task Chat, Quoted Replies, RBAC Permissions & Task Conversion
+
+- **What was done:**
+  1. **Interactive Message Replying ([TaskChatPane.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskChatPane.tsx))**:
+     - Added an active reply banner above the chat composer input with author name, message snippet, and cancel button.
+     - Stored quoted message references using standard blockquote formatting (`> **Author** [ref:UUID]: Snippet\n\nBody`).
+     - Rendered sleek, interactive quoted preview cards inside chat bubbles with a primary accent border.
+     - Implemented click-to-scroll navigation that smoothly centers the original quoted message and pulses a temporary highlight ring.
+  2. **Message Action & Context Menu ([TaskChatPane.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskChatPane.tsx))**:
+     - Built a floating hover action pill on chat bubbles featuring quick reply and a three-dots (`•••`) menu toggle.
+     - Replicated the reference enterprise action menu containing: **Reply**, **Copy**, **Edit**, **Forward / Share**, **Create task**, **Add to status summaries**, and **Delete**.
+     - Explicitly omitted AI/CoPilot actions per user specifications.
+  3. **Role-Based Permissions (Frontend & Backend)**:
+     - Enforced RBAC rules where only the message author (`comment.userId === user.id`) or organization/workspace administrators (`org_owner`, `org_admin`, `workspace_admin`, `admin`, or platform admin) have permission to **Edit** or **Delete** messages.
+     - Reply, Copy, and Create Task remain accessible to all team members.
+     - Added inline message editing mode with Save and Cancel buttons, displaying a subtle `(edited)` indicator on modified comments.
+  4. **"Create Task from Message" Modal ([CreateTaskFromMessageModal.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/CreateTaskFromMessageModal.tsx))**:
+     - Replicated the reference dialog design: Task name title input, flame priority toggle, close button, quoted context preview block (`Chat: [Card Title]`, author name, message snippet).
+     - Integrated form controls for Assignee (team member selector), Deadline (date-time picker), Target List (board columns), and auxiliary property tags (Files, Checklists, Project).
+     - Wired submission to `POST /v1/cards` with automatic board and list cache invalidation.
+  5. **Backend API Endpoints & RBAC Validation ([routes.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/cards/routes.ts) & [service.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/cards/service.ts))**:
+     - Added `PATCH /v1/cards/comments/:commentId` with `updateComment` service method and `comment.updated` realtime event broadcast.
+     - Added `DELETE /v1/cards/comments/:commentId` with `deleteComment` soft-deletion service method and `comment.deleted` realtime event broadcast.
+     - Connected mutations in [TaskDetailView.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskDetailView.tsx).
+  6. **Mention Autocomplete Textbox Lock & Trigger Fix ([TaskChatPane.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskChatPane.tsx) & [MentionCommentBox.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/MentionCommentBox.tsx))**:
+     - Fixed an issue where typing message text after tagging a teammate continued matching the `@` from the completed mention, leaving the popover stuck open with `No teammate found matching...`.
+     - Replaced unbounded string searching with tokenized regex `(?:^|\s)@([a-zA-Z0-9_.-]+(?: [a-zA-Z0-9_.-]+)?)$`, which correctly concludes the mention when a space is entered.
+     - Repositioned the autocomplete and emoji popovers with `bottom-full mb-2` relative to the composer so they always float cleanly above the input box and never cover the textarea or block clicks.
+     - Enhanced keyboard navigation so Escape and Enter dismiss empty suggestion states without interfering with message composition.
+
+### 2026-09-06 — Task Chat File Attachment & Screenshot Clipboard Paste Fix
+
+- **What was done:**
+  1. **Backend Local Storage Fallback ([s3.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/lib/s3.ts))**:
+     - Resolved the error `S3 storage is not configured on the server` when uploading attachments locally without S3 credentials.
+     - Added local disk fallback to `uploads/` directory with automatic directory creation.
+     - Generated local endpoint URLs: upload destination `/v1/cards/attachments/local-upload?key=...` and public serving URL `/v1/cards/attachments/file/...`.
+  2. **Public Binary Serving Route ([routes.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/cards/routes.ts) & [index.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/index.ts))**:
+     - Exported `cardPublicRoutes` containing `PUT /attachments/local-upload` (saves uploaded binary `ArrayBuffer` directly to disk) and `GET /attachments/file/:key` (publicly serves files via `Bun.file(filePath)` without requiring `Authorization: Bearer` headers so `<img>` tags render properly).
+     - Mounted `cardPublicRoutes` before `authPlugin` under `/v1` in backend `index.ts`.
+  3. **Clipboard Screenshot & File Paste ([TaskChatPane.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskChatPane.tsx))**:
+     - Added `onPaste` handler on the composer `<textarea>` intercepting `e.clipboardData.items` for file/image data (`kind === 'file'`).
+     - Normalized generic clipboard screenshot names (`image.png`) into timestamped names (`Screenshot_YYYY-MM-DD_HH-mm-ss.png`).
+     - Added drag-and-drop file upload support (`handleDragOver`, `handleDragLeave`, `handleDrop`) with animated dropzone highlight.
+     - Enabled `multiple` file uploads via the paperclip button, staging selected items into the pending attachments tray.
+  4. **Composer Pending Attachments Tray & Upload Lifecycle ([TaskChatPane.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskChatPane.tsx) & [TaskDetailView.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskDetailView.tsx))**:
+     - Built a responsive preview tray displaying pending files and thumbnail previews for pasted screenshots with file sizes and remove (`X`) buttons.
+     - Updated `handleSend` to upload pending files sequentially, returning public URLs and appending markdown image links (`![name](url)`) or document links (`[📎 name](url)`).
+     - Fixed `onUploadAttachment` in `TaskDetailView.tsx` to return the uploaded attachment record so public URLs resolve cleanly in the chat pane.
+  5. **Rich Inline Image Markdown Rendering ([MarkdownRenderer.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/MarkdownRenderer.tsx))**:
+     - Added markdown image parsing `(!\[([^\]]*)\]\(([^)]+)\))` so images and screenshots render inline with rounded borders and new-tab preview links.
+     - Enhanced `TaskDetailView.tsx` Files section to render image thumbnail previews instead of generic extension icons.
+  6. **Task Chat Participant Picker Anchoring Fix ([TaskChatPane.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskChatPane.tsx) & [TaskDetailView.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskDetailView.tsx))**:
+     - Fixed an issue where clicking the `UserPlus` button in the Task Chat header (next to the Meet button) incorrectly toggled the participant popover inside the left details section (`#section-participants`), opening hundreds of pixels away from where the user clicked.
+     - Passed `participantUserIds`, `onAddParticipant`, and `onRemoveParticipant` directly to `TaskChatPane`.
+     - Embedded a dedicated `MemberPicker` popover directly into the `TaskChatPane` header anchored immediately below the `UserPlus` button (`top-full right-0 mt-2`).
+     - Added toggle debouncing to prevent click-outside mousedown events from instantly re-triggering the popover.
+  7. **Workspaces Board Tile Card Colors & Gradient Redesign ([Workspaces.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/Workspaces.tsx))**:
+     - Fixed the issue where board cards appeared as heavy, pitch-black/midnight-navy slabs across light and dark themes.
+     - Replaced legacy near-black hex presets (`#0f172a`, `#1e1b4b`, `#0c2340`, `#064e3b`, `#2e1065`, `#18181b`) with a curated palette of 9 vibrant, high-contrast, modern gradients (Oceanic Blue, Royal Purple, Emerald Teal, Sunset Coral, Rose Berry, Cyan Sky, Golden Amber, Deep Indigo, and Modern Slate).
+     - Implemented `resolveBoardGradient` to dynamically upgrade legacy pitch-black database seed backgrounds into colorful, differentiated palettes based on board position/name.
+     - Redesigned board tile cards: replaced the heavy `from-black/60` dark overlay with subtle lighting depth (`from-black/35 to-white/10`), added a glassmorphic `Kanban` icon badge in the top-left, and upgraded hover animation to a smooth lift with border glow.
+  8. **Notification Etiquette & Codebase-Wide Toast Cleanup ([TaskChatPane.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskChatPane.tsx), [TaskDetailView.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskDetailView.tsx), [App.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/App.tsx) & [AGENTS.md](file:///Users/bhanurathore/projects/trello/AGENTS.md))**:
+     - Removed redundant `toast.success` popups across routine client actions that already provide direct on-screen visual feedback (e.g. file upload staging, comment updates/deletions, checklist creations/removals, member assignments, observer toggles, subtask additions, requirement text saves, and ID copying).
+     - Moved global `<Toaster>` from `position="bottom-right"` to `position="top-right"` in `App.tsx`, preventing toast alerts from ever covering the chat composer, text inputs, or bottom task ribbons.
+     - Documented strict UI/UX Toast Etiquette in `AGENTS.md` §5: never show noisy success toasts for routine local interactions; reserve popups strictly for failures (`toast.error`) or background jobs, keeping inputs unobstructed.
+  9. **Observer Addition Timeline Timestamp Fix ([TaskDetailView.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskDetailView.tsx) & [service.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/cards/service.ts))**:
+     - Fixed a bug where observers added to a card were timestamped with `card.updatedAt` (e.g. August 24, 2026) instead of their actual addition timestamp, causing newly added observers to appear grouped under old dates in the task chat activity stream.
+     - Updated `TaskDetailView.tsx` `systemActivities` mapping to prioritize `w.subscribedAt || w.createdAt || w.addedAt` and fallback to `new Date().toISOString()`, and removed arbitrary `.slice(0, 2)` limiting which observers appear in activity.
+     - Updated backend `getCard` and `getCardWatchers` in `service.ts` to return both `subscribedAt` and `createdAt` from `cardWatchers`.
+     - Updated `watchCard` and `addParticipantToCard` to use `onConflictDoUpdate` to refresh `subscribedAt` and `addedAt` to the current timestamp on re-addition.
+  10. **Shadcn Tooltip & Global Title Replacement ([tooltip.tsx](file:///Users/bhanurathore/projects/trello/packages/ui/src/components/tooltip.tsx), [GlobalTooltip.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/GlobalTooltip.tsx) & [Workspaces.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/Workspaces.tsx))**:
+      - Built a first-class shadcn/Base UI `Tooltip` (and `Title` alias) component in `@boardly/ui` supporting both standard compound composition (`<Tooltip><TooltipTrigger>...</TooltipTrigger><TooltipContent>...</TooltipContent></Tooltip>`) and direct single-prop wrapper (`<Tooltip content="...">...</Tooltip>`).
+      - Created `GlobalTooltip` bridge mounted in `App.tsx` within `<TooltipProvider>` that automatically intercepts HTML `title="..."` and `data-tooltip="..."` attributes across the entire codebase, suppressing the ugly native OS/browser tooltip boxes and rendering animated, high-contrast, theme-adaptive shadcn tooltips.
+      - Updated board tile cards in `Workspaces.tsx` to use `<Tooltip content={board.name}>`.
+  11. **Card Unwatch Route Endpoints Fix ([routes.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/cards/routes.ts))**:
+      - Fixed a 404 "Resource not found" error when unwatching a card or removing observers from the card modal.
+      - Registered `POST /:id/unwatch`, `DELETE /:id/unwatch`, and `DELETE /:id/unwatch/:userId` in `routes.ts` matching the frontend's `api.post('/cards/${cardId}/unwatch', { userId })` mutation.
+  12. **Stage Templates Read Permission Fix ([routes.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/stages/routes.ts) & [TaskDetailView.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskDetailView.tsx))**:
+      - Fixed a 403 `Forbidden — missing permission: org.update` error when standard team members (e.g. Aria Montgomery) open a task card modal.
+      - Decoupled `GET /orgs/:orgId/templates` and `GET /templates/:id` to require `org.read` (granted to all org members) so team members can view stages and populate the task stage dropdown, reserving `org.update` strictly for template mutations (`POST`, `PATCH`, `DELETE`).
+      - Added fallback error handling to `TaskDetailView.tsx` stage templates query.
+  13. **Super Admin CORS & Browser Preflight Rejection Fix ([index.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/index.ts), [vite.config.ts](file:///Users/bhanurathore/projects/trello/apps/super-admin/vite.config.ts) & [api.ts](file:///Users/bhanurathore/projects/trello/apps/super-admin/src/lib/api.ts))**:
+      - Fixed a CORS error when attempting to sign in to the Super Admin console (`http://localhost:5174/login`) with `alex.vance@acme.corp`.
+      - Identified root cause: with Chrome/Brave DevTools open and **"Disable cache"** enabled, the browser automatically attaches `Cache-Control: no-cache` and `Pragma: no-cache` to outgoing XHR/fetch requests. Because `@elysiajs/cors` in `index.ts` had a hardcoded `allowedHeaders` array missing `Cache-Control` and `Pragma`, the preflight `OPTIONS` request was blocked by the browser.
+      - Updated `allowedHeaders: true` in `index.ts` so `@elysiajs/cors` dynamically echoes requested preflight headers, and updated `onError` to preserve dynamically requested headers.
+      - Configured Vite development proxy in `apps/super-admin/vite.config.ts` for `/v1` pointing to `http://localhost:3001` and set `baseURL: import.meta.env.VITE_API_URL || '/v1'` in `apps/super-admin/src/lib/api.ts`, eliminating cross-origin preflights during local development.
+  14. **Member Role Permission Matrix Tightening ([seed.ts](file:///Users/bhanurathore/projects/trello/apps/backend/src/db/seed.ts))**:
+      - Identified that the `Member` system role had 37 permissions including structural/destructive powers that should be Admin-only (workspace.create, workspace.update, project.create, project.update, project.archive, board.create, board.update, board.archive, label.create, label.update, list.create, list.update, list.archive, card.archive, card.sprint.assign).
+      - Redesigned `memberPermKeys` to 22 collaboration-only permissions: all `card.*` task operations (create, read, update, move, assign, watch, label, due_date, stage, subtask, checklist, attachment, comment, time_log) plus read access to org/workspace/project/board.
+      - Added a `memberRevoke` idempotent cleanup block that runs before `assignPerm` — deletes the 15 overpowered permissions from the live Member role in `role_permissions` so `bun run db:seed` fixes existing environments without a migration file.
+      - Verified live DB: `SELECT` confirms exactly 22 Member permissions, none structural.
