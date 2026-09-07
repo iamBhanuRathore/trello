@@ -125,8 +125,53 @@ function parseQuotedMessage(body: string) {
     author: null,
     refId: null,
     snippet: null,
-    content: body,
+    content: body || '',
   };
+}
+
+/**
+ * Detects if a comment is an automated system/activity log (e.g. checklist, watcher, status changes)
+ */
+function isActivityComment(body: string): boolean {
+  if (!body) return false;
+  const trimmed = body.trim();
+  return (
+    trimmed.startsWith('📋 Added checklist') ||
+    trimmed.startsWith('➕ Added checklist') ||
+    trimmed.startsWith('☑️ Completed checklist') ||
+    trimmed.startsWith('⬜ Marked checklist') ||
+    trimmed.startsWith('🗑️ Removed checklist') ||
+    trimmed.startsWith('⚡') ||
+    trimmed.startsWith('📌') ||
+    trimmed.startsWith('🏷️')
+  );
+}
+
+/**
+ * Formats activity text for rendering in centered system activity pills
+ */
+function formatActivityText(c: ChatMessage): string {
+  const author = c.authorName || c.authorEmail?.split('@')[0] || 'Teammate';
+  const body = c.body.trim();
+
+  // Strip markdown bold asterisks **text** -> text
+  const cleanBody = body.replace(/\*\*(.*?)\*\*/g, '$1');
+
+  // First line in case of multiline lists
+  const firstLine = cleanBody.split('\n')[0].trim();
+
+  // Remove leading emojis like 📋, ➕, ☑️, ⬜, 🗑️, etc. and trim
+  const textWithoutEmoji = firstLine
+    .replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\s]+/u, '')
+    .trim();
+
+  // Lowercase initial verb: "Added checklist..." -> "added checklist..."
+  const verbLower = textWithoutEmoji.charAt(0).toLowerCase() + textWithoutEmoji.slice(1);
+
+  // Clean trailing colon if it was followed by a list
+  const cleanVerb = verbLower.replace(/:$/, '');
+
+  return `${author} ${cleanVerb}`;
 }
 
 export function TaskChatPane({
@@ -226,12 +271,25 @@ export function TaskChatPane({
     }> = [];
 
     comments.forEach((c) => {
-      rawItems.push({
-        id: `msg-${c.id}`,
-        type: 'message',
-        date: new Date(c.createdAt),
-        data: c,
-      });
+      if (isActivityComment(c.body)) {
+        rawItems.push({
+          id: `act-${c.id}`,
+          type: 'system',
+          date: new Date(c.createdAt),
+          data: {
+            id: c.id,
+            text: formatActivityText(c),
+            createdAt: c.createdAt,
+          },
+        });
+      } else {
+        rawItems.push({
+          id: `msg-${c.id}`,
+          type: 'message',
+          date: new Date(c.createdAt),
+          data: c,
+        });
+      }
     });
 
     systemActivities.forEach((act) => {

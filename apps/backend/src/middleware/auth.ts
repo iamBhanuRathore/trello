@@ -186,36 +186,54 @@ export function requirePermission(permissionKey: PermissionKey) {
 
     const activeOrgId = orgId;
 
-    // Look up the user's role permissions for this org
-    const result = await db
-      .select({ permKey: permissions.key })
-      .from(rolePermissions)
-      .innerJoin(roles, eq(roles.id, rolePermissions.roleId))
-      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
-      .innerJoin(
-        organizationMembers,
-        and(
-          eq(organizationMembers.organizationId, activeOrgId),
-          eq(organizationMembers.userId, user.userId),
-          isNull(organizationMembers.deletedAt),
-          eq(organizationMembers.status, 'active'),
-          sql`(CASE 
-            WHEN ${organizationMembers.role}::text = 'org_owner' THEN 'Org Owner'
-            WHEN ${organizationMembers.role}::text = 'org_admin' THEN 'Org Admin'
-            WHEN ${organizationMembers.role}::text = 'billing_manager' THEN 'Billing Manager'
-            WHEN ${organizationMembers.role}::text = 'workspace_admin' THEN 'Workspace Admin'
-            WHEN ${organizationMembers.role}::text = 'member' THEN 'Member'
-            WHEN ${organizationMembers.role}::text = 'viewer' THEN 'Viewer'
-            ELSE 'Member'
-          END) = ${roles.name}`
+    try {
+      // Look up the user's role permissions for this org
+      const result = await db
+        .select({ permKey: permissions.key })
+        .from(rolePermissions)
+        .innerJoin(roles, eq(roles.id, rolePermissions.roleId))
+        .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+        .innerJoin(
+          organizationMembers,
+          and(
+            eq(organizationMembers.organizationId, activeOrgId),
+            eq(organizationMembers.userId, user.userId),
+            isNull(organizationMembers.deletedAt),
+            eq(organizationMembers.status, 'active'),
+            sql`(CASE 
+              WHEN ${organizationMembers.role}::text = 'org_owner' THEN 'Org Owner'
+              WHEN ${organizationMembers.role}::text = 'org_admin' THEN 'Org Admin'
+              WHEN ${organizationMembers.role}::text = 'billing_manager' THEN 'Billing Manager'
+              WHEN ${organizationMembers.role}::text = 'workspace_admin' THEN 'Workspace Admin'
+              WHEN ${organizationMembers.role}::text = 'member' THEN 'Member'
+              WHEN ${organizationMembers.role}::text = 'viewer' THEN 'Viewer'
+              ELSE 'Member'
+            END) = ${roles.name}`
+          )
         )
-      )
-      .where(permCondition)
-      .limit(1);
+        .where(
+          and(
+            permCondition,
+            or(
+              eq(roles.organizationId, activeOrgId),
+              and(eq(roles.isSystemRole, true), isNull(roles.organizationId))
+            )
+          )
+        )
+        .limit(1);
 
-    if (result.length === 0) {
-      set.status = 403;
-      return { error: `Forbidden — missing permission: ${permissionKey}` };
+      if (result.length === 0) {
+        set.status = 403;
+        return { error: `Forbidden — missing permission: ${permissionKey}` };
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { err: errMsg, permissionKey, userId: user.userId },
+        'Error checking permissions'
+      );
+      set.status = 500;
+      return { error: 'Internal error verifying user permissions' };
     }
 
     return undefined;

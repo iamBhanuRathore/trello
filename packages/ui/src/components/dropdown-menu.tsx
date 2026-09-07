@@ -19,21 +19,12 @@ function DropdownMenuTrigger({
   nativeButton,
   ...props
 }: MenuPrimitive.Trigger.Props & { asChild?: boolean }) {
-  const isNonButton =
-    (React.isValidElement(render) &&
-      (typeof render.type !== 'string' || render.type !== 'button')) ||
-    (React.isValidElement(children) &&
-      (typeof children.type !== 'string' || children.type !== 'button'));
-
-  const resolvedNativeButton =
-    nativeButton !== undefined ? nativeButton : isNonButton ? false : undefined;
-
   if ((asChild || React.isValidElement(children)) && !render) {
     return (
       <MenuPrimitive.Trigger
         data-slot="dropdown-menu-trigger"
         render={children as React.ReactElement<any>}
-        nativeButton={resolvedNativeButton}
+        nativeButton={nativeButton}
         {...props}
       />
     );
@@ -42,7 +33,7 @@ function DropdownMenuTrigger({
     <MenuPrimitive.Trigger
       data-slot="dropdown-menu-trigger"
       render={render}
-      nativeButton={resolvedNativeButton}
+      nativeButton={nativeButton}
       {...props}
     >
       {children}

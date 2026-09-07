@@ -1,5 +1,4 @@
 import { Elysia } from 'elysia';
-import { cors } from '@elysiajs/cors';
 import { swagger } from '@elysiajs/swagger';
 import { env } from './lib/env';
 import { logger } from './lib/logger';
@@ -65,38 +64,93 @@ await connectRedis();
 
 const allowedOrigins = [...(env.DASHBOARD_URL?.split(',').map((s) => s.trim()) || [])];
 
-const isAllowedOrigin = (origin: string | null): boolean => {
+export const isAllowedOrigin = (origin: string | null): boolean => {
   if (!origin) return true;
+  // Always permit in development or test mode
+  if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') return true;
   if (allowedOrigins.includes(origin)) return true;
-  // Always permit local development hosts regardless of port/protocol/127.0.0.1 vs localhost
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  // Localhost, 127.0.0.1, 0.0.0.0, [::1], or private LAN IPs
+  if (
+    /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(
+      origin
+    )
+  ) {
+    return true;
+  }
   return false;
 };
 
-const app = new Elysia()
-  // ── In-flight Tracking & Logging ───────────────────────────────────────────
-  .onRequest(({ request }) => {
+export const resolveOrigin = (request: Request): string => {
+  const origin = request.headers.get('origin');
+  if (origin && isAllowedOrigin(origin)) {
+    return origin;
+  }
+  const referer = request.headers.get('referer');
+  if (referer) {
+    try {
+      const refOrigin = new URL(referer).origin;
+      if (isAllowedOrigin(refOrigin)) {
+        return refOrigin;
+      }
+    } catch {}
+  }
+  if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') {
+    return 'http://localhost:5173';
+  }
+  return allowedOrigins[0] || 'http://localhost:5173';
+};
+
+export const applyCorsHeaders = (headers: Record<string, any>, request: Request) => {
+  const origin = resolveOrigin(request);
+  headers['access-control-allow-origin'] = origin;
+  headers['access-control-allow-credentials'] = 'true';
+  headers['access-control-allow-methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD';
+
+  const reqHeaders = request.headers.get('access-control-request-headers');
+  headers['access-control-allow-headers'] = reqHeaders
+    ? reqHeaders
+    : 'Content-Type, Authorization, x-organization-id, x-requested-with, Accept, Origin, baggage, sentry-trace, Cache-Control, Pragma, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform';
+
+  // Chromium & Brave Private Network Access (PNA) preflight support
+  if (
+    request.headers.get('access-control-request-private-network') === 'true' ||
+    env.NODE_ENV === 'development' ||
+    env.NODE_ENV === 'test'
+  ) {
+    headers['access-control-allow-private-network'] = 'true';
+  }
+
+  headers['access-control-expose-headers'] =
+    'Content-Length, Content-Type, Date, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After, X-Total-Count';
+  headers['vary'] = 'Origin';
+};
+
+export const app = new Elysia()
+  // ── In-flight Tracking, CORS Preflight & Logging ───────────────────────────
+  .onRequest(({ request }): Response | void => {
     inFlight++;
     logger.info({ method: request.method, url: request.url, inFlight }, 'Incoming request');
+
+    if (request.method === 'OPTIONS') {
+      const maxAge = env.NODE_ENV === 'development' || env.NODE_ENV === 'test' ? '0' : '86400';
+      const headers: Record<string, string> = {
+        'access-control-max-age': maxAge,
+      };
+      applyCorsHeaders(headers, request);
+      return new Response(null, { status: 204, headers });
+    }
+    return undefined;
   })
   .onAfterResponse(() => {
     inFlight = Math.max(0, inFlight - 1);
   })
 
-  // ── Global middleware ──────────────────────────────────────────────────────
-  .use(
-    cors({
-      origin: (request: Request): boolean => {
-        const origin = request.headers.get('origin');
-        return isAllowedOrigin(origin);
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-      allowedHeaders: true,
-      exposeHeaders: true,
-      maxAge: 86400,
-    })
-  )
+  // mapResponse fires for EVERY response — including ones short-circuited by
+  // beforeHandle (auth, rate-limiter, permission checks) and handlers returning errors.
+  .mapResponse(({ request, set }) => {
+    if (!set.headers) set.headers = {};
+    applyCorsHeaders(set.headers as Record<string, any>, request);
+  })
   .use(
     swagger({
       path: '/docs',
@@ -125,21 +179,8 @@ const app = new Elysia()
   .onError(({ error, code, set, request }) => {
     inFlight = Math.max(0, inFlight - 1);
 
-    // Ensure single clean CORS headers are ALWAYS attached on error responses
-    const origin = request.headers.get('origin');
-    if (isAllowedOrigin(origin)) {
-      set.headers['access-control-allow-origin'] = origin || '*';
-      delete (set.headers as any)['Access-Control-Allow-Origin'];
-      set.headers['access-control-allow-credentials'] = 'true';
-      delete (set.headers as any)['Access-Control-Allow-Credentials'];
-      set.headers['access-control-allow-methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD';
-      delete (set.headers as any)['Access-Control-Allow-Methods'];
-      const reqHeaders = request.headers.get('access-control-request-headers');
-      set.headers['access-control-allow-headers'] =
-        reqHeaders ||
-        'Content-Type, Authorization, x-organization-id, x-requested-with, Accept, Origin, baggage, sentry-trace, Cache-Control, Pragma';
-      delete (set.headers as any)['Access-Control-Allow-Headers'];
-    }
+    if (!set.headers) set.headers = {};
+    applyCorsHeaders(set.headers as Record<string, any>, request);
 
     if (code === 'VALIDATION') {
       set.status = 422;

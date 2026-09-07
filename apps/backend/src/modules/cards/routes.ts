@@ -1,7 +1,7 @@
 import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
-import { handleRouteError } from '../../lib/errors';
+import { formatErrorResponse, handleRouteError } from '../../lib/errors';
 import {
   createCard,
   getCard,
@@ -24,9 +24,11 @@ import {
   removeLabelFromCard,
   getCardChecklists,
   createChecklist,
+  createBulkChecklistItems,
   createChecklistItem,
   updateChecklistItem,
   deleteChecklistItem,
+  updateChecklist,
   deleteChecklist,
   assignUserToCard,
   removeUserFromCard,
@@ -497,20 +499,47 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   })
   .post(
     '/:id/checklists',
-    async ({ params, body, set }) => {
+    async ({ params, body, user, set }) => {
       try {
-        return await createChecklist(db, params.id, body.title, body.position);
+        return await createChecklist(
+          db,
+          params.id,
+          body.title,
+          body.position,
+          user.userId,
+          body.items
+        );
       } catch (err: any) {
         return handleRouteError(err, set);
       }
     },
     {
-      body: t.Object({ title: t.String(), position: t.Number() }),
+      body: t.Object({
+        title: t.String(),
+        position: t.Number(),
+        items: t.Optional(t.Array(t.String())),
+      }),
+    }
+  )
+  .post(
+    '/checklists/:checklistId/bulk-items',
+    async ({ params, body, user, set }) => {
+      try {
+        return await createBulkChecklistItems(db, params.checklistId, body.items, user.userId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ checklistId: t.String() }),
+      body: t.Object({
+        items: t.Array(t.String()),
+      }),
     }
   )
   .post(
     '/checklists/:checklistId/items',
-    async ({ params, body, set }) => {
+    async ({ params, body, user, set }) => {
       try {
         return await createChecklistItem(
           db,
@@ -518,7 +547,8 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           body.text,
           body.position,
           body.assignedTo,
-          body.dueDate ? new Date(body.dueDate) : undefined
+          body.dueDate ? new Date(body.dueDate) : undefined,
+          user.userId
         );
       } catch (err: any) {
         return handleRouteError(err, set);
@@ -535,15 +565,14 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   )
   .patch(
     '/checklist-items/:itemId',
-    async ({ params, body, set }) => {
+    async ({ params, body, user, set }) => {
       try {
-        return await updateChecklistItem(db, params.itemId, body);
+        return await updateChecklistItem(db, params.itemId, body, user.userId);
       } catch (err: any) {
         return handleRouteError(err, set);
       }
     },
     {
-      beforeHandle: requirePermission('card.update'),
       params: t.Object({ itemId: t.String() }),
       body: t.Object({
         text: t.Optional(t.String()),
@@ -554,9 +583,9 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   )
   .delete(
     '/checklist-items/:itemId',
-    async ({ params, set }) => {
+    async ({ params, user, set }) => {
       try {
-        return await deleteChecklistItem(db, params.itemId);
+        return await deleteChecklistItem(db, params.itemId, user.userId);
       } catch (err: any) {
         return handleRouteError(err, set);
       }
@@ -566,17 +595,30 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       params: t.Object({ itemId: t.String() }),
     }
   )
-  .delete(
+  .patch(
     '/checklists/:checklistId',
-    async ({ params, set }) => {
+    async ({ params, body, user, set }) => {
       try {
-        return await deleteChecklist(db, params.checklistId);
+        return await updateChecklist(db, params.checklistId, body.title, user.userId);
       } catch (err: any) {
         return handleRouteError(err, set);
       }
     },
     {
-      beforeHandle: requirePermission('card.update'),
+      params: t.Object({ checklistId: t.String() }),
+      body: t.Object({ title: t.String() }),
+    }
+  )
+  .delete(
+    '/checklists/:checklistId',
+    async ({ params, user, set }) => {
+      try {
+        return await deleteChecklist(db, params.checklistId, user.userId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
       params: t.Object({ checklistId: t.String() }),
     }
   )

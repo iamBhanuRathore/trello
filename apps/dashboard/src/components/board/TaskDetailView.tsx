@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../../lib/api';
+import { api, getApiErrorMessage } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { stagesService } from '../../lib/stagesService';
 import { sprintsService } from '../../lib/sprintsService';
@@ -15,6 +15,7 @@ import {
   Trash2,
   Clock,
   Plus,
+  ListChecks,
   Maximize2,
   Minimize2,
   Copy,
@@ -121,6 +122,15 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const [showLabelPicker, setShowLabelPicker] = useState<boolean>(false);
     const [showNewChecklist, setShowNewChecklist] = useState<boolean>(false);
     const [newChecklistTitle, setNewChecklistTitle] = useState<string>('');
+    const [draftTitle, setDraftTitle] = useState<string>('Checklist #1');
+    const [draftItems, setDraftItems] = useState<{ id: string; text: string; isDone: boolean }[]>(
+      []
+    );
+    const [collapsedChecklistIds, setCollapsedChecklistIds] = useState<Set<string>>(new Set());
+    const [editingChecklistId, setEditingChecklistId] = useState<string | null>(null);
+    const [editingChecklistTitle, setEditingChecklistTitle] = useState<string>('');
+    const [addingItemChecklistId, setAddingItemChecklistId] = useState<string | null>(null);
+    const [addingItemText, setAddingItemText] = useState<string>('');
     const [newSubtaskTitle, setNewSubtaskTitle] = useState<string>('');
     const [newSubtaskAssigneeId, setNewSubtaskAssigneeId] = useState<string>('');
     const [subtaskFilter, setSubtaskFilter] = useState<'all' | 'mine'>('all');
@@ -457,12 +467,29 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     });
 
     const addChecklistMutation = useMutation({
-      mutationFn: async (title: string) =>
-        await api.post(`/cards/${cardId}/checklists`, { title, position: 0 }),
+      mutationFn: async ({ title, items }: { title: string; items?: string[] }) =>
+        await api.post(`/cards/${cardId}/checklists`, { title, position: 0, items }),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
         setNewChecklistTitle('');
         setShowNewChecklist(false);
+      },
+      onError: (err: any) => {
+        toast.error(getApiErrorMessage(err, 'Failed to add checklist'));
+      },
+    });
+
+    const updateChecklistMutation = useMutation({
+      mutationFn: async ({ checklistId, title }: { checklistId: string; title: string }) =>
+        await api.patch(`/cards/checklists/${checklistId}`, { title }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
+        setEditingChecklistId(null);
+      },
+      onError: (err: any) => {
+        toast.error(getApiErrorMessage(err, 'Failed to update checklist'));
       },
     });
 
@@ -471,13 +498,44 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         await api.delete(`/cards/checklists/${checklistId}`),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
+      },
+      onError: (err: any) => {
+        toast.error(getApiErrorMessage(err, 'Failed to delete checklist'));
       },
     });
+
+    const toggleChecklistCollapse = (checklistId: string) => {
+      setCollapsedChecklistIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(checklistId)) next.delete(checklistId);
+        else next.add(checklistId);
+        return next;
+      });
+    };
 
     const addItemMutation = useMutation({
       mutationFn: async ({ checklistId, text }: { checklistId: string; text: string }) =>
         await api.post(`/cards/checklists/${checklistId}/items`, { text, position: 0 }),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
+      },
+      onError: (err: any) => {
+        toast.error(getApiErrorMessage(err, 'Failed to add checklist item'));
+      },
+    });
+
+    const addBulkItemsMutation = useMutation({
+      mutationFn: async ({ checklistId, items }: { checklistId: string; items: string[] }) =>
+        await api.post(`/cards/checklists/${checklistId}/bulk-items`, { items }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
+      },
+      onError: (err: any) => {
+        toast.error(getApiErrorMessage(err, 'Failed to add checklist items'));
+      },
     });
 
     const toggleItemMutation = useMutation({
@@ -497,21 +555,92 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         });
         return { previous };
       },
-      onError: (_err, _vars, context) => {
+      onError: (err: any, _vars, context) => {
         if (context?.previous) {
           queryClient.setQueryData(['card', cardId, 'checklists'], context.previous);
         }
-        toast.error('Failed to update checklist item');
+        toast.error(getApiErrorMessage(err, 'Failed to update checklist item'));
       },
       onSettled: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
       },
     });
 
     const deleteChecklistItemMutation = useMutation({
       mutationFn: async (itemId: string) => await api.delete(`/cards/checklist-items/${itemId}`),
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
+        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
+      },
+      onError: (err: any) => {
+        toast.error(getApiErrorMessage(err, 'Failed to delete checklist item'));
+      },
     });
+
+    const handleSaveItemOrBulk = async (checklistId: string, items: string[]) => {
+      const cleanItems = items.map((t) => t.trim()).filter(Boolean);
+      if (cleanItems.length === 0) return;
+
+      if (checklistId === 'draft') {
+        await addChecklistMutation.mutateAsync({
+          title: draftTitle || 'Checklist #1',
+          items: cleanItems,
+        });
+        setDraftItems([]);
+        setAddingItemChecklistId(null);
+        setAddingItemText('');
+      } else {
+        if (cleanItems.length > 1) {
+          await addBulkItemsMutation.mutateAsync({ checklistId, items: cleanItems });
+        } else if (cleanItems.length === 1) {
+          await addItemMutation.mutateAsync({ checklistId, text: cleanItems[0] });
+        }
+        setAddingItemChecklistId(null);
+        setAddingItemText('');
+      }
+    };
+
+    const handleChecklistSave = async () => {
+      // 1. If currently adding an item with text
+      if (addingItemChecklistId && addingItemText.trim()) {
+        const val = addingItemText.trim();
+        const lines = val.includes('\n')
+          ? val
+              .split('\n')
+              .map((l) => l.trim())
+              .filter(Boolean)
+          : [val];
+        await handleSaveItemOrBulk(addingItemChecklistId, lines);
+      }
+
+      // 2. If editing a checklist title
+      if (editingChecklistId && editingChecklistTitle.trim()) {
+        if (editingChecklistId !== 'draft') {
+          await updateChecklistMutation.mutateAsync({
+            checklistId: editingChecklistId,
+            title: editingChecklistTitle.trim(),
+          });
+        } else {
+          setDraftTitle(editingChecklistTitle.trim());
+          setEditingChecklistId(null);
+        }
+      }
+
+      // 3. If draft checklist exists with items
+      if (draftItems.length > 0) {
+        await addChecklistMutation.mutateAsync({
+          title: draftTitle || `Checklist #${(checklists.length || 0) + 1}`,
+          items: draftItems.map((i: any) => i.text),
+        });
+        setDraftItems([]);
+      }
+
+      // 4. If description is dirty, save it as well
+      if (isDescDirty) {
+        await handleSaveDescription();
+      }
+    };
 
     const uploadAttachmentMutation = useMutation({
       mutationFn: async (file: File) => {
@@ -1151,13 +1280,10 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 px-2 text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5"
+                className="h-8 px-2 text-muted-foreground hover:text-foreground cursor-pointer"
                 onClick={handleAttemptClose}
                 title="Close (Esc)"
               >
-                <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-muted text-muted-foreground border border-border leading-none">
-                  ESC
-                </kbd>
                 <X className="w-4 h-4" />
               </Button>
             )}
@@ -2245,42 +2371,370 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             {/* ─── CARD 8: CHECKLISTS & ACCEPTANCE CRITERIA ─── */}
             <div
               id="section-checklists"
-              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs space-y-3"
+              className="p-4 sm:p-5 rounded-xl border border-border/80 bg-card shadow-2xs space-y-4"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CheckSquare className="w-4 h-4 text-emerald-500" />
-                  <span className="text-sm font-bold text-foreground">Checklists</span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs gap-1 cursor-pointer"
-                  onClick={() => setShowNewChecklist(!showNewChecklist)}
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add Checklist
-                </Button>
-              </div>
+              {/* Checklists List */}
+              {(checklists && checklists.length > 0
+                ? checklists
+                : [{ id: 'draft', title: draftTitle || 'Checklist #1', items: draftItems }]
+              ).map((cl: any) => {
+                const totalItems = cl.items?.length || 0;
+                const doneItems = cl.items?.filter((i: any) => i.isDone).length || 0;
+                const pct = totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : 0;
+                const isCollapsed = collapsedChecklistIds.has(cl.id);
+                const isEditingTitle = editingChecklistId === cl.id;
+                const isAddingItem = addingItemChecklistId === cl.id;
 
+                return (
+                  <div key={cl.id} className="space-y-2.5">
+                    {/* Header Row */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                        <ListChecks className="w-4 h-4 sm:w-5 sm:h-5 text-sky-500 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          {isEditingTitle ? (
+                            <div className="flex items-center gap-2 max-w-sm">
+                              <Input
+                                value={editingChecklistTitle}
+                                onChange={(e) => setEditingChecklistTitle(e.target.value)}
+                                className="h-7 text-xs bg-background"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && editingChecklistTitle.trim()) {
+                                    if (cl.id && cl.id !== 'draft') {
+                                      updateChecklistMutation.mutate({
+                                        checklistId: cl.id,
+                                        title: editingChecklistTitle.trim(),
+                                      });
+                                    } else {
+                                      setDraftTitle(editingChecklistTitle.trim());
+                                      setEditingChecklistId(null);
+                                    }
+                                  } else if (e.key === 'Escape') {
+                                    setEditingChecklistId(null);
+                                  }
+                                }}
+                                autoFocus
+                              />
+                              <Button
+                                size="sm"
+                                className="h-7 px-2.5 text-xs font-semibold"
+                                disabled={
+                                  !editingChecklistTitle.trim() || updateChecklistMutation.isPending
+                                }
+                                onClick={() => {
+                                  if (editingChecklistTitle.trim()) {
+                                    if (cl.id && cl.id !== 'draft') {
+                                      updateChecklistMutation.mutate({
+                                        checklistId: cl.id,
+                                        title: editingChecklistTitle.trim(),
+                                      });
+                                    } else {
+                                      setDraftTitle(editingChecklistTitle.trim());
+                                      setEditingChecklistId(null);
+                                    }
+                                  }
+                                }}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => setEditingChecklistId(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="space-y-0.5">
+                              <h4
+                                className="text-sm sm:text-base font-bold text-foreground hover:text-primary cursor-pointer truncate transition-colors inline-block"
+                                onClick={() => {
+                                  setEditingChecklistId(cl.id);
+                                  setEditingChecklistTitle(cl.title || 'Checklist #1');
+                                }}
+                                title="Click to rename checklist"
+                              >
+                                {cl.title || 'Checklist #1'}
+                              </h4>
+                              {/* Subtitle with Progress Bar */}
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground font-normal">
+                                <span>
+                                  Completed {doneItems} out of {totalItems}
+                                </span>
+                                <div className="w-20 sm:w-28 bg-muted/80 rounded-full h-1.5 overflow-hidden inline-flex align-middle">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-300 ${
+                                      pct === 100 ? 'bg-emerald-500' : 'bg-sky-500'
+                                    }`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Header Actions */}
+                      <div className="flex items-center gap-1 shrink-0 text-muted-foreground">
+                        {/* More Menu */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground cursor-pointer rounded-lg"
+                                title="Checklist options"
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            }
+                          />
+                          <DropdownMenuContent
+                            align="end"
+                            className="w-44 p-1 rounded-xl border border-border shadow-md bg-popover"
+                          >
+                            <DropdownMenuItem
+                              className="text-xs gap-2 cursor-pointer font-medium"
+                              onClick={() => {
+                                setEditingChecklistId(cl.id);
+                                setEditingChecklistTitle(cl.title || 'Checklist #1');
+                              }}
+                            >
+                              <Edit3 className="w-3.5 h-3.5" /> Rename checklist
+                            </DropdownMenuItem>
+                            {cl.id && cl.id !== 'draft' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-xs gap-2 cursor-pointer font-medium text-destructive focus:text-destructive"
+                                  onClick={() => deleteChecklistMutation.mutate(cl.id)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Delete checklist
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {/* Chevron Collapse / Expand */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground cursor-pointer rounded-lg"
+                          onClick={() => toggleChecklistCollapse(cl.id)}
+                          title={isCollapsed ? 'Expand checklist' : 'Collapse checklist'}
+                        >
+                          {isCollapsed ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronUp className="w-4 h-4" />
+                          )}
+                        </Button>
+
+                        {/* Delete / Close X */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive cursor-pointer rounded-lg"
+                          onClick={() => {
+                            if (cl.id && cl.id !== 'draft') {
+                              deleteChecklistMutation.mutate(cl.id);
+                            } else {
+                              setDraftItems([]);
+                              setAddingItemChecklistId(null);
+                              setAddingItemText('');
+                            }
+                          }}
+                          title="Delete checklist"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-border/60 my-2" />
+
+                    {/* Items Body */}
+                    {!isCollapsed && (
+                      <div className="space-y-1.5 min-h-[36px]">
+                        {/* Add Item Button / Input */}
+                        {isAddingItem ? (
+                          <div className="flex items-center gap-2 py-1">
+                            <Input
+                              placeholder="Add checklist item (paste multiple lines to bulk add)..."
+                              className="h-8 text-xs bg-background flex-1"
+                              value={addingItemText}
+                              onChange={(e) => setAddingItemText(e.target.value)}
+                              onPaste={(e) => {
+                                const pasted = e.clipboardData.getData('text');
+                                if (pasted && pasted.includes('\n')) {
+                                  const lines = pasted
+                                    .split('\n')
+                                    .map((l) => l.trim())
+                                    .filter(Boolean);
+                                  if (lines.length > 1) {
+                                    e.preventDefault();
+                                    handleSaveItemOrBulk(cl.id, lines);
+                                  }
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && addingItemText.trim()) {
+                                  const val = addingItemText.trim();
+                                  if (val.includes('\n')) {
+                                    const lines = val
+                                      .split('\n')
+                                      .map((l) => l.trim())
+                                      .filter(Boolean);
+                                    handleSaveItemOrBulk(cl.id, lines);
+                                  } else {
+                                    handleSaveItemOrBulk(cl.id, [val]);
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  setAddingItemChecklistId(null);
+                                  setAddingItemText('');
+                                }
+                              }}
+                              autoFocus
+                            />
+                            <Button
+                              size="sm"
+                              className="h-8 text-xs font-semibold"
+                              disabled={
+                                !addingItemText.trim() ||
+                                addItemMutation.isPending ||
+                                addBulkItemsMutation.isPending
+                              }
+                              onClick={() => {
+                                if (addingItemText.trim()) {
+                                  const val = addingItemText.trim();
+                                  if (val.includes('\n')) {
+                                    const lines = val
+                                      .split('\n')
+                                      .map((l) => l.trim())
+                                      .filter(Boolean);
+                                    handleSaveItemOrBulk(cl.id, lines);
+                                  } else {
+                                    handleSaveItemOrBulk(cl.id, [val]);
+                                  }
+                                }
+                              }}
+                            >
+                              Add
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-xs"
+                              onClick={() => {
+                                setAddingItemChecklistId(null);
+                                setAddingItemText('');
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="flex items-center gap-1.5 text-xs sm:text-sm text-muted-foreground hover:text-foreground font-normal py-1 px-1 rounded-md transition-colors cursor-pointer w-fit"
+                            onClick={() => {
+                              setAddingItemChecklistId(cl.id);
+                              setAddingItemText('');
+                            }}
+                          >
+                            <Plus className="w-4 h-4 text-muted-foreground" />
+                            <span>Add item</span>
+                          </button>
+                        )}
+
+                        {/* Items List */}
+                        {cl.items?.map((item: any) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-muted/40 group/item transition-colors"
+                          >
+                            <label className="flex items-center gap-2.5 cursor-pointer text-xs sm:text-sm flex-1 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={item.isDone}
+                                onChange={(e) => {
+                                  if (cl.id !== 'draft') {
+                                    toggleItemMutation.mutate({
+                                      itemId: item.id,
+                                      isDone: e.target.checked,
+                                    });
+                                  } else {
+                                    setDraftItems((prev) =>
+                                      prev.map((it) =>
+                                        it.id === item.id ? { ...it, isDone: e.target.checked } : it
+                                      )
+                                    );
+                                  }
+                                }}
+                                className="w-3.5 h-3.5 rounded accent-sky-500 cursor-pointer shrink-0"
+                              />
+                              <span
+                                className={`truncate ${
+                                  item.isDone
+                                    ? 'line-through text-muted-foreground'
+                                    : 'text-foreground'
+                                }`}
+                              >
+                                {item.text}
+                              </span>
+                            </label>
+                            <button
+                              type="button"
+                              className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity p-0.5 cursor-pointer text-muted-foreground"
+                              onClick={() => {
+                                if (cl.id !== 'draft') {
+                                  deleteChecklistItemMutation.mutate(item.id);
+                                } else {
+                                  setDraftItems((prev) => prev.filter((it) => it.id !== item.id));
+                                }
+                              }}
+                              title="Delete item"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Add New Checklist Form (when opened) */}
               {showNewChecklist && (
-                <div className="flex items-center gap-2 p-3 bg-muted/30 border border-border rounded-xl">
+                <div className="flex items-center gap-2 p-2.5 bg-muted/30 border border-border rounded-xl">
                   <Input
-                    placeholder="Checklist title (e.g. Acceptance Criteria)..."
-                    className="h-8 text-sm bg-background"
+                    placeholder="Checklist title (e.g. Acceptance Criteria, Verification Steps)..."
+                    className="h-8 text-xs bg-background flex-1"
                     value={newChecklistTitle}
                     onChange={(e) => setNewChecklistTitle(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && newChecklistTitle.trim()) {
-                        addChecklistMutation.mutate(newChecklistTitle.trim());
+                        addChecklistMutation.mutate({ title: newChecklistTitle.trim() });
+                      } else if (e.key === 'Escape') {
+                        setShowNewChecklist(false);
                       }
                     }}
+                    autoFocus
                   />
                   <Button
                     size="sm"
-                    className="h-8 text-xs"
+                    className="h-8 text-xs font-semibold"
+                    disabled={!newChecklistTitle.trim() || addChecklistMutation.isPending}
                     onClick={() => {
                       if (newChecklistTitle.trim()) {
-                        addChecklistMutation.mutate(newChecklistTitle.trim());
+                        addChecklistMutation.mutate({ title: newChecklistTitle.trim() });
                       }
                     }}
                   >
@@ -2290,104 +2744,44 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     variant="ghost"
                     size="sm"
                     className="h-8 text-xs"
-                    onClick={() => setShowNewChecklist(false)}
+                    onClick={() => {
+                      setShowNewChecklist(false);
+                      setNewChecklistTitle('');
+                    }}
                   >
                     Cancel
                   </Button>
                 </div>
               )}
 
-              {checklists.map((cl: any) => {
-                const totalItems = cl.items?.length || 0;
-                const doneItems = cl.items?.filter((i: any) => i.isDone).length || 0;
-                const pct = totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : 0;
+              {/* Bottom Actions Bar */}
+              <div className="flex items-center justify-between pt-3 border-t border-border/60 mt-4">
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-xs sm:text-sm text-muted-foreground hover:text-foreground font-normal py-1.5 px-1 rounded-md transition-colors cursor-pointer"
+                  onClick={() => {
+                    const nextNum = (checklists?.length || 0) + 1;
+                    addChecklistMutation.mutate({ title: `Checklist #${nextNum}` });
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>New checklist</span>
+                </button>
 
-                return (
-                  <div
-                    key={cl.id}
-                    className="p-3.5 rounded-xl border border-border bg-muted/15 space-y-2.5 group/cl"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-foreground">{cl.title}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-muted-foreground">
-                          {doneItems}/{totalItems} ({pct}%)
-                        </span>
-                        <button
-                          type="button"
-                          className="opacity-0 group-hover/cl:opacity-100 hover:text-destructive transition-opacity p-0.5 cursor-pointer text-muted-foreground"
-                          onClick={() => deleteChecklistMutation.mutate(cl.id)}
-                          title="Delete checklist"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          pct === 100 ? 'bg-emerald-500' : 'bg-primary'
-                        }`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-
-                    <div className="space-y-1 mt-2">
-                      {cl.items?.map((item: any) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between py-1 px-2 rounded-lg hover:bg-muted/40 group/item"
-                        >
-                          <label className="flex items-center gap-2 cursor-pointer text-xs flex-1 min-w-0">
-                            <input
-                              type="checkbox"
-                              checked={item.isDone}
-                              onChange={(e) =>
-                                toggleItemMutation.mutate({
-                                  itemId: item.id,
-                                  isDone: e.target.checked,
-                                })
-                              }
-                              className="w-3.5 h-3.5 rounded accent-primary cursor-pointer shrink-0"
-                            />
-                            <span
-                              className={`truncate ${
-                                item.isDone
-                                  ? 'line-through text-muted-foreground'
-                                  : 'text-foreground'
-                              }`}
-                            >
-                              {item.text}
-                            </span>
-                          </label>
-                          <button
-                            type="button"
-                            className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity p-0.5 cursor-pointer text-muted-foreground"
-                            onClick={() => deleteChecklistItemMutation.mutate(item.id)}
-                            title="Delete item"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                      <Input
-                        placeholder="Add checklist item..."
-                        className="h-7 text-xs bg-transparent border-dashed mt-1"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                            addItemMutation.mutate({
-                              checklistId: cl.id,
-                              text: e.currentTarget.value.trim(),
-                            });
-                            e.currentTarget.value = '';
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs sm:text-sm px-5 py-1.5 h-8 rounded-lg shadow-xs transition-all duration-150 active:scale-95 cursor-pointer"
+                  onClick={handleChecklistSave}
+                  disabled={
+                    addChecklistMutation.isPending ||
+                    addItemMutation.isPending ||
+                    updateChecklistMutation.isPending
+                  }
+                >
+                  Save
+                </Button>
+              </div>
             </div>
 
             {/* ─── CARD 9: FILES & ATTACHMENTS ─── */}

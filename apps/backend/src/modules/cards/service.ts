@@ -1168,10 +1168,98 @@ export async function createChecklist(
   db: Database,
   cardId: string,
   title: string,
-  position: number
+  position: number,
+  actorUserId?: string,
+  items?: string[]
 ) {
   const [checklist] = await db.insert(checklists).values({ cardId, title, position }).returning();
-  return checklist;
+  if (!checklist) throw httpError(500, 'Failed to create checklist');
+
+  let insertedItems: any[] = [];
+  const validItems = (items || []).map((t) => t.trim()).filter(Boolean);
+  if (validItems.length > 0) {
+    insertedItems = await db
+      .insert(checklistItems)
+      .values(
+        validItems.map((text, idx) => ({
+          checklistId: checklist.id,
+          text,
+          position: idx,
+        }))
+      )
+      .returning();
+  }
+
+  if (actorUserId) {
+    let bodyText = `📋 Added checklist: **${title}**`;
+    if (validItems.length > 0) {
+      bodyText += `\n` + validItems.map((t) => `- [ ] ${t}`).join('\n');
+    }
+    await db
+      .insert(comments)
+      .values({
+        cardId,
+        userId: actorUserId,
+        body: bodyText,
+      })
+      .catch(() => {});
+  }
+  return { ...checklist, items: insertedItems };
+}
+
+export async function createBulkChecklistItems(
+  db: Database,
+  checklistId: string,
+  items: string[],
+  actorUserId?: string
+) {
+  const [cl] = await db
+    .select({ cardId: checklists.cardId, title: checklists.title })
+    .from(checklists)
+    .where(eq(checklists.id, checklistId));
+  if (!cl) throw httpError(404, 'Checklist not found');
+
+  const validItems = items.map((t) => t.trim()).filter(Boolean);
+  if (validItems.length === 0) return [];
+
+  const existingItems = await db
+    .select({ position: checklistItems.position })
+    .from(checklistItems)
+    .where(eq(checklistItems.checklistId, checklistId));
+
+  const maxPos = existingItems.reduce((max, it) => Math.max(max, it.position), -1);
+
+  const inserted = await db
+    .insert(checklistItems)
+    .values(
+      validItems.map((text, idx) => ({
+        checklistId,
+        text,
+        position: maxPos + 1 + idx,
+      }))
+    )
+    .returning();
+
+  if (actorUserId && cl.cardId) {
+    let bodyText: string;
+    if (validItems.length === 1) {
+      bodyText = `➕ Added checklist item: **${validItems[0]}**`;
+    } else {
+      bodyText =
+        `➕ Added ${validItems.length} checklist items to **${cl.title}**:\n` +
+        validItems.map((t) => `- [ ] ${t}`).join('\n');
+    }
+    await db
+      .insert(comments)
+      .values({
+        cardId: cl.cardId,
+        userId: actorUserId,
+        body: bodyText,
+      })
+      .catch(() => {});
+  }
+
+  return inserted;
 }
 
 export async function createChecklistItem(
@@ -1180,38 +1268,175 @@ export async function createChecklistItem(
   text: string,
   position: number,
   assignedTo?: string,
-  dueDate?: Date
+  dueDate?: Date,
+  actorUserId?: string
 ) {
+  if (text.includes('\n')) {
+    const lines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length > 1) {
+      const items = await createBulkChecklistItems(db, checklistId, lines, actorUserId);
+      return items[0] || null;
+    }
+    text = lines[0] || text.trim();
+  }
+
   const [item] = await db
     .insert(checklistItems)
     .values({ checklistId, text, position, assignedTo, dueDate })
     .returning();
+
+  if (actorUserId && item) {
+    const [cl] = await db
+      .select({ cardId: checklists.cardId })
+      .from(checklists)
+      .where(eq(checklists.id, checklistId));
+    if (cl?.cardId) {
+      await db
+        .insert(comments)
+        .values({
+          cardId: cl.cardId,
+          userId: actorUserId,
+          body: `➕ Added checklist item: **${text}**`,
+        })
+        .catch(() => {});
+    }
+  }
+
   return item;
 }
 
-export async function updateChecklistItem(db: Database, itemId: string, input: any) {
+export async function updateChecklistItem(
+  db: Database,
+  itemId: string,
+  input: any,
+  actorUserId?: string
+) {
+  const [existing] = await db
+    .select({
+      id: checklistItems.id,
+      text: checklistItems.text,
+      isDone: checklistItems.isDone,
+      cardId: checklists.cardId,
+    })
+    .from(checklistItems)
+    .innerJoin(checklists, eq(checklists.id, checklistItems.checklistId))
+    .where(eq(checklistItems.id, itemId));
+
   const [item] = await db
     .update(checklistItems)
     .set({ ...input, updatedAt: new Date() })
     .where(eq(checklistItems.id, itemId))
     .returning();
   if (!item) throw httpError(404, 'Checklist item not found');
+
+  if (
+    existing?.cardId &&
+    actorUserId &&
+    input.isDone !== undefined &&
+    input.isDone !== existing.isDone
+  ) {
+    const actionText = input.isDone
+      ? `☑️ Completed checklist item: **${existing.text}**`
+      : `⬜ Marked checklist item incomplete: **${existing.text}**`;
+    await db
+      .insert(comments)
+      .values({
+        cardId: existing.cardId,
+        userId: actorUserId,
+        body: actionText,
+      })
+      .catch(() => {});
+  }
+
   return item;
 }
 
-export async function deleteChecklistItem(db: Database, itemId: string) {
+export async function deleteChecklistItem(db: Database, itemId: string, actorUserId?: string) {
+  const [existing] = await db
+    .select({
+      text: checklistItems.text,
+      cardId: checklists.cardId,
+    })
+    .from(checklistItems)
+    .innerJoin(checklists, eq(checklists.id, checklistItems.checklistId))
+    .where(eq(checklistItems.id, itemId));
+
   const [deleted] = await db
     .delete(checklistItems)
     .where(eq(checklistItems.id, itemId))
     .returning();
   if (!deleted) throw httpError(404, 'Checklist item not found');
+
+  if (existing?.cardId && actorUserId) {
+    await db
+      .insert(comments)
+      .values({
+        cardId: existing.cardId,
+        userId: actorUserId,
+        body: `🗑️ Removed checklist item: **${existing.text}**`,
+      })
+      .catch(() => {});
+  }
+
   return { success: true, deletedId: itemId };
 }
 
-export async function deleteChecklist(db: Database, checklistId: string) {
+export async function updateChecklist(
+  db: Database,
+  checklistId: string,
+  title: string,
+  actorUserId?: string
+) {
+  const [existing] = await db
+    .select({ cardId: checklists.cardId, title: checklists.title })
+    .from(checklists)
+    .where(eq(checklists.id, checklistId));
+
+  const [updated] = await db
+    .update(checklists)
+    .set({ title, updatedAt: new Date() })
+    .where(eq(checklists.id, checklistId))
+    .returning();
+  if (!updated) throw httpError(404, 'Checklist not found');
+
+  if (existing?.cardId && actorUserId && existing.title !== title) {
+    await db
+      .insert(comments)
+      .values({
+        cardId: existing.cardId,
+        userId: actorUserId,
+        body: `📋 Renamed checklist to: **${title}**`,
+      })
+      .catch(() => {});
+  }
+
+  return updated;
+}
+
+export async function deleteChecklist(db: Database, checklistId: string, actorUserId?: string) {
+  const [existing] = await db
+    .select({ cardId: checklists.cardId, title: checklists.title })
+    .from(checklists)
+    .where(eq(checklists.id, checklistId));
+
   await db.delete(checklistItems).where(eq(checklistItems.checklistId, checklistId));
   const [deleted] = await db.delete(checklists).where(eq(checklists.id, checklistId)).returning();
   if (!deleted) throw httpError(404, 'Checklist not found');
+
+  if (existing?.cardId && actorUserId) {
+    await db
+      .insert(comments)
+      .values({
+        cardId: existing.cardId,
+        userId: actorUserId,
+        body: `🗑️ Removed checklist: **${existing.title}**`,
+      })
+      .catch(() => {});
+  }
+
   return { success: true, deletedId: checklistId };
 }
 

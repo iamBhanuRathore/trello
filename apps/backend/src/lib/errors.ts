@@ -235,8 +235,14 @@ export function formatValidationError(error: any): {
 /**
  * Route handler helper to be used in try/catch blocks.
  * Sets the HTTP response status code and returns the sanitized error body.
+ *
+ * NOTE: Do NOT set CORS headers here. The global onAfterHandle hook in index.ts
+ * reflects the correct origin on every response (including error responses returned
+ * from route handlers). Manually setting `*` here was causing browsers to reject
+ * credentialed requests because `Authorization` + `ACAO: *` is forbidden by the
+ * CORS spec.
  */
-export function handleRouteError(err: unknown, set: { status?: number | string }) {
+export function handleRouteError(err: unknown, set: { status?: any; [key: string]: any }) {
   const { status, body } = formatErrorResponse(err);
   set.status = status;
   return body;
