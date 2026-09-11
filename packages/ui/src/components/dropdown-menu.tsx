@@ -16,7 +16,6 @@ function DropdownMenuTrigger({
   asChild,
   render,
   children,
-  nativeButton,
   ...props
 }: MenuPrimitive.Trigger.Props & { asChild?: boolean }) {
   if ((asChild || React.isValidElement(children)) && !render) {
@@ -24,18 +23,12 @@ function DropdownMenuTrigger({
       <MenuPrimitive.Trigger
         data-slot="dropdown-menu-trigger"
         render={children as React.ReactElement<any>}
-        nativeButton={nativeButton}
         {...props}
       />
     );
   }
   return (
-    <MenuPrimitive.Trigger
-      data-slot="dropdown-menu-trigger"
-      render={render}
-      nativeButton={nativeButton}
-      {...props}
-    >
+    <MenuPrimitive.Trigger data-slot="dropdown-menu-trigger" render={render} {...props}>
       {children}
     </MenuPrimitive.Trigger>
   );

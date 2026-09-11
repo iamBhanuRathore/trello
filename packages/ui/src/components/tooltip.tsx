@@ -14,36 +14,20 @@ function TooltipTrigger({
   asChild,
   render,
   children,
-  nativeButton,
   ...props
 }: TooltipPrimitive.Trigger.Props & { asChild?: boolean }) {
-  const isNonButton =
-    (React.isValidElement(render) &&
-      (typeof render.type !== 'string' || render.type !== 'button')) ||
-    (React.isValidElement(children) &&
-      (typeof children.type !== 'string' || children.type !== 'button'));
-
-  const resolvedNativeButton =
-    nativeButton !== undefined ? nativeButton : isNonButton ? false : undefined;
-
   if ((asChild || React.isValidElement(children)) && !render) {
     return (
       <TooltipPrimitive.Trigger
         data-slot="tooltip-trigger"
         render={children as React.ReactElement<any>}
-        nativeButton={resolvedNativeButton}
         {...props}
       />
     );
   }
 
   return (
-    <TooltipPrimitive.Trigger
-      data-slot="tooltip-trigger"
-      render={render}
-      nativeButton={resolvedNativeButton}
-      {...props}
-    >
+    <TooltipPrimitive.Trigger data-slot="tooltip-trigger" render={render} {...props}>
       {children}
     </TooltipPrimitive.Trigger>
   );
@@ -88,6 +72,7 @@ function TooltipContent({
 }
 
 interface TooltipRootProps extends TooltipPrimitive.Root.Props {
+  children?: React.ReactNode;
   content?: React.ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left' | 'inline-start' | 'inline-end';
   sideOffset?: number;

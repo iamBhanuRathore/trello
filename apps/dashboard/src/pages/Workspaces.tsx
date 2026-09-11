@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
-import { Card, CardHeader, CardTitle } from '@boardly/ui/card';
+import { Card } from '@boardly/ui/card';
 import { Button } from '@boardly/ui/button';
 import {
   Dialog,

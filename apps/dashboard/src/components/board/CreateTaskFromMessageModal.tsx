@@ -146,7 +146,6 @@ export function CreateTaskFromMessageModal({
   if (!isOpen || !comment) return null;
 
   const rawCommentText = comment.body.replace(/^>.*?\n\n/s, '').trim();
-  const selectedMember = members.find((m: any) => (m.userId || m.id) === assigneeId);
 
   return (
     <div
