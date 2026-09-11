@@ -32,6 +32,20 @@ export interface SearchableSelectProps {
   align?: 'left' | 'right';
   renderOption?: (option: SelectOption, isSelected: boolean) => React.ReactNode;
   renderTrigger?: (selectedOption?: SelectOption) => React.ReactNode;
+  /**
+   * Async mode (enterprise scale): when provided, client-side filtering is
+   * disabled and every keystroke is forwarded so the parent can query the
+   * server (debounced) instead of holding thousands of rows in memory.
+   */
+  onSearchChange?: (query: string) => void;
+  /** Shows a loading row while the first async page resolves. */
+  isLoadingOptions?: boolean;
+  /** Infinite scroll: called when the options list nears the bottom. */
+  onReachEnd?: () => void;
+  /** Shows a "loading more" row during pagination fetches. */
+  isLoadingMore?: boolean;
+  /** Footer slot (e.g. "25 of 4,120 — keep typing to narrow"). */
+  footer?: React.ReactNode;
 }
 
 export function SearchableSelect({
@@ -50,6 +64,11 @@ export function SearchableSelect({
   align = 'left',
   renderOption,
   renderTrigger,
+  onSearchChange,
+  isLoadingOptions = false,
+  onReachEnd,
+  isLoadingMore = false,
+  footer,
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,7 +77,12 @@ export function SearchableSelect({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const [coords, setCoords] = useState<{ left: number; top: number; width: number; placeAbove: boolean }>({
+  const [coords, setCoords] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    placeAbove: boolean;
+  }>({
     left: 0,
     top: 0,
     width: 240,
@@ -70,15 +94,19 @@ export function SearchableSelect({
   }, [options, value]);
 
   const filteredOptions = useMemo(() => {
+    // Async mode: the server already filtered — render rows as-is.
+    if (onSearchChange) return options;
     const query = searchQuery.trim().toLowerCase();
     if (!query) return options;
     return options.filter((opt) => {
       const matchLabel = opt.label.toLowerCase().includes(query);
       const matchSub = opt.sublabel ? opt.sublabel.toLowerCase().includes(query) : false;
-      const matchKeywords = opt.keywords ? opt.keywords.some((k) => k.toLowerCase().includes(query)) : false;
+      const matchKeywords = opt.keywords
+        ? opt.keywords.some((k) => k.toLowerCase().includes(query))
+        : false;
       return matchLabel || matchSub || matchKeywords;
     });
-  }, [options, searchQuery]);
+  }, [options, searchQuery, onSearchChange]);
 
   const updateCoords = useCallback(() => {
     if (!triggerRef.current) return;
@@ -241,7 +269,9 @@ export function SearchableSelect({
               <X className="w-3 h-3" />
             </span>
           )}
-          <ChevronDown className={cn('w-3.5 h-3.5 transition-transform duration-150', isOpen && 'rotate-180')} />
+          <ChevronDown
+            className={cn('w-3.5 h-3.5 transition-transform duration-150', isOpen && 'rotate-180')}
+          />
         </div>
       </button>
 
@@ -275,6 +305,7 @@ export function SearchableSelect({
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
                     setHighlightedIndex(0);
+                    onSearchChange?.(e.target.value);
                   }}
                   placeholder={searchPlaceholder}
                   className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none font-medium"
@@ -291,8 +322,22 @@ export function SearchableSelect({
               </div>
 
               {/* Options List */}
-              <div className="flex-1 overflow-y-auto p-1 space-y-0.5 max-h-[220px]">
-                {filteredOptions.length === 0 ? (
+              <div
+                className="flex-1 overflow-y-auto p-1 space-y-0.5 max-h-[220px]"
+                onScroll={(e) => {
+                  if (!onReachEnd) return;
+                  const el = e.currentTarget;
+                  if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) {
+                    onReachEnd();
+                  }
+                }}
+              >
+                {isLoadingOptions && filteredOptions.length === 0 ? (
+                  <div className="py-6 px-3 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                    <span>Searching…</span>
+                  </div>
+                ) : filteredOptions.length === 0 ? (
                   <div className="py-6 px-3 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-1.5">
                     <Search className="w-4 h-4 opacity-40" />
                     <span>{emptyText}</span>
@@ -310,7 +355,9 @@ export function SearchableSelect({
                         className={cn(
                           'w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs font-medium cursor-pointer transition-colors',
                           opt.disabled && 'opacity-40 cursor-not-allowed pointer-events-none',
-                          isSelected ? 'bg-primary/15 text-primary font-semibold' : 'text-foreground',
+                          isSelected
+                            ? 'bg-primary/15 text-primary font-semibold'
+                            : 'text-foreground',
                           isHighlighted && !isSelected && 'bg-muted/70 text-foreground'
                         )}
                       >
@@ -340,7 +387,9 @@ export function SearchableSelect({
                             <div className="min-w-0 flex-1">
                               <div className="truncate">{opt.label}</div>
                               {opt.sublabel && (
-                                <div className="text-[10px] text-muted-foreground truncate">{opt.sublabel}</div>
+                                <div className="text-[10px] text-muted-foreground truncate">
+                                  {opt.sublabel}
+                                </div>
                               )}
                             </div>
 
@@ -353,6 +402,13 @@ export function SearchableSelect({
                     );
                   })
                 )}
+                {isLoadingMore && (
+                  <div className="py-2 px-3 text-center text-[11px] text-muted-foreground flex items-center justify-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                    <span>Loading more…</span>
+                  </div>
+                )}
+                {footer}
               </div>
             </div>
           </div>,

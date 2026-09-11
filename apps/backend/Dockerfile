@@ -3,8 +3,11 @@ FROM oven/bun:1.2-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/backend/package.json ./apps/backend/
+COPY apps/dashboard/package.json ./apps/dashboard/
+COPY apps/super-admin/package.json ./apps/super-admin/
+COPY apps/mobile/package.json ./apps/mobile/
 COPY packages/ ./packages/
-RUN bun install --frozen-lockfile --production
+RUN bun install --frozen-lockfile --production --ignore-scripts
 
 # Stage 2 — minimal runtime image
 FROM oven/bun:1.2-alpine AS runner

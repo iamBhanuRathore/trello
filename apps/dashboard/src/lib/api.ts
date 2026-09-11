@@ -1,4 +1,7 @@
 import axios from 'axios';
+import { toast } from 'sonner';
+import { edenV1 } from './eden';
+import type { ImportTasksBody, ImportTrelloBody } from '@boardly/backend/modules/importers/schema';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/v1';
 
@@ -18,6 +21,17 @@ export function getApiErrorMessage(
   err: any,
   fallbackMessage: string = 'An error occurred. Please try again.'
 ): string {
+  // Request cancellations are intentional — never surface them as errors.
+  if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return fallbackMessage;
+
+  // No HTTP response at all: the request died before the server answered
+  // (backend down/restarting, offline, or browser-blocked). DevTools labels
+  // these as "CORS errors" even though the server's CORS headers are fine —
+  // the response simply never arrived. Name the real cause instead.
+  if (!err?.response) {
+    return 'Cannot reach the API server — it may be restarting or offline. Wait a moment and try again.';
+  }
+
   const data = err?.response?.data;
   if (!data) return err?.message || fallbackMessage;
 
@@ -37,6 +51,49 @@ export function getApiErrorMessage(
   }
 
   return fallbackMessage;
+}
+
+/**
+ * Convert an Eden Treaty `{ error }` into a readable message using the same
+ * backend-error parser as the axios calls. Eden carries the response body on
+ * `.value` (falls back to the error itself for network-level failures).
+ */
+export function edenErrorMessage(
+  error: unknown,
+  fallbackMessage: string = 'An error occurred. Please try again.'
+): string {
+  const body =
+    typeof error === 'object' && error !== null && 'value' in error
+      ? (error as { value: unknown }).value
+      : error;
+  return getApiErrorMessage({ response: { data: body } }, fallbackMessage);
+}
+
+/**
+ * Shared Eden Treaty unwrapper — use for EVERY Eden call instead of hand-rolling
+ * `{ data, error }` checks. Throws on transport errors AND on backend error-shape
+ * bodies (handlers return those inline, so Eden types `data` as a union), and
+ * narrows the error member out — callers keep the success shape with autocomplete.
+ */
+export async function edenCall<TData>(
+  request: Promise<{ data: TData; error: unknown }>,
+  fallbackMessage: string = 'An error occurred. Please try again.'
+): Promise<Exclude<TData, { error: string }>> {
+  const { data, error } = await request;
+  if (error) throw new Error(edenErrorMessage(error, fallbackMessage));
+  if (isEdenErrorBody(data)) {
+    throw new Error(edenErrorMessage({ value: data }, fallbackMessage));
+  }
+  return data as Exclude<TData, { error: string }>;
+}
+
+function isEdenErrorBody(data: unknown): data is { error: string } {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'error' in data &&
+    typeof (data as { error: unknown }).error === 'string'
+  );
 }
 
 // Notifications
@@ -133,24 +190,23 @@ export const getTimesheet = async (params?: {
   return data;
 };
 
-// Importers
+// Importers (Eden Treaty — typed body/query; unwrap via shared edenCall).
+// Payloads are annotated with the backend's exported `Static` body types
+// (`modules/importers/schema.ts`, single source with route validation), so
+// annotated literals complete on ANY TS language-server version.
 export const importTrelloBoard = async (projectId: string, trelloData: any) => {
-  const { data } = await api.post(`/import/projects/${projectId}/trello`, { trelloData });
-  return data;
+  const body: ImportTrelloBody = { trelloData };
+  return edenCall(
+    edenV1.import.projects({ projectId }).trello.post(body),
+    'Import failed. Please try again.'
+  );
 };
 
-export const importTasksData = async (
-  projectId: string,
-  payload: {
-    boardName: string;
-    lists: {
-      name: string;
-      tasks: { title: string; description?: string; storyPoints?: number; dueDate?: string }[];
-    }[];
-  }
-) => {
-  const { data } = await api.post(`/import/projects/${projectId}/tasks`, payload);
-  return data;
+export const importTasksData = async (projectId: string, payload: ImportTasksBody) => {
+  return edenCall(
+    edenV1.import.projects({ projectId }).tasks.post(payload),
+    'Import failed. Please try again.'
+  );
 };
 
 // Roles & Permissions
@@ -424,6 +480,10 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Cooldown so a burst of failing requests (e.g. during a backend restart)
+// shows one toast instead of stacking one per request.
+let lastUnreachableToastAt = 0;
+
 // Interceptor to handle token refresh if 401 occurs
 api.interceptors.response.use(
   (response) => response,
@@ -434,6 +494,25 @@ api.interceptors.response.use(
       originalRequest?.url?.includes('/auth/sign-up') ||
       originalRequest?.url?.includes('/auth/refresh') ||
       originalRequest?.url?.includes('/auth/sign-out');
+
+    // No HTTP response: the API never answered (server down/restarting,
+    // offline, or browser-blocked — DevTools mislabels these "CORS errors").
+    // Surface it once so failures are never silent, then let the caller's
+    // onError (via getApiErrorMessage) show the same cause.
+    if (
+      !error.response &&
+      !isAuthRoute &&
+      error?.code !== 'ERR_CANCELED' &&
+      error?.name !== 'CanceledError'
+    ) {
+      const now = Date.now();
+      if (now - lastUnreachableToastAt > 5000) {
+        lastUnreachableToastAt = now;
+        toast.error(
+          'Cannot reach the API server — it may be restarting. Please retry in a few seconds.'
+        );
+      }
+    }
 
     if (error.response?.status === 401 && !originalRequest?._retry && !isAuthRoute) {
       originalRequest._retry = true;

@@ -1,42 +1,100 @@
-import { useEffect } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
-import { Login } from './pages/Login';
-import { AuthCallback } from './pages/AuthCallback';
 import { Toaster } from 'sonner';
 import { TooltipProvider } from '@boardly/ui';
 import { GlobalTooltip } from './components/GlobalTooltip';
-import { SignUp } from './pages/SignUp';
-import { AcceptInvite } from './pages/AcceptInvite';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { AdminLayout } from './layouts/AdminLayout';
-import { BoardView } from './pages/BoardView';
-import { Workspaces } from './pages/Workspaces';
-import { Users } from './pages/admin/Users';
-import { Billing } from './pages/admin/Billing';
-import { Branding } from './pages/admin/Branding';
-import { StageTemplates } from './pages/admin/StageTemplates';
-import { ProjectSprints } from './pages/ProjectSprints';
-import { ProjectPhases } from './pages/ProjectPhases';
-import { ProjectReports } from './pages/ProjectReports';
-import { ProjectDocs } from './pages/ProjectDocs';
-import { Timesheets } from './pages/Timesheets';
-import { MyTasks } from './pages/MyTasks';
-import { CustomRoles } from './pages/admin/CustomRoles';
-import { AuditLogs } from './pages/admin/AuditLogs';
-import { SSOSettings } from './pages/admin/SSOSettings';
-import { DeveloperSettings } from './pages/admin/DeveloperSettings';
-import { LabelsAdmin } from './pages/admin/LabelsAdmin';
-import { Marketplace } from './pages/Marketplace';
-import { PublicFormView } from './pages/PublicFormView';
-import { PortfolioDashboard } from './pages/PortfolioDashboard';
-import { NotificationSettings } from './pages/Settings/NotificationSettings';
-import { WebhookSettings } from './pages/Settings/WebhookSettings';
-import { Integrations } from './pages/Integrations';
-import { TaskPage } from './pages/TaskPage';
-import { Pricing } from './pages/Pricing';
-import { ProfileSettings } from './pages/ProfileSettings';
-import { NotFound } from './pages/NotFound';
+import { RouteFallback } from './components/common/RouteFallback';
+
+// ─── Code-split routes ─────────────────────────────────────────────
+// Convention: EVERY page is React.lazy-loaded so each route ships as its
+// own chunk. Layouts stay eager (they are the persistent shell).
+// When adding a new page: lazy-import it here + wrap its route element in
+// <Suspense fallback={<RouteFallback />}> (or rely on the <Routes>-level
+// Suspense below). Never static-import a page into App.tsx.
+const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })));
+const SignUp = lazy(() => import('./pages/SignUp').then((m) => ({ default: m.SignUp })));
+const AcceptInvite = lazy(() =>
+  import('./pages/AcceptInvite').then((m) => ({ default: m.AcceptInvite }))
+);
+const AuthCallback = lazy(() =>
+  import('./pages/AuthCallback').then((m) => ({ default: m.AuthCallback }))
+);
+const Pricing = lazy(() => import('./pages/Pricing').then((m) => ({ default: m.Pricing })));
+const PublicFormView = lazy(() =>
+  import('./pages/PublicFormView').then((m) => ({ default: m.PublicFormView }))
+);
+const NotFound = lazy(() => import('./pages/NotFound').then((m) => ({ default: m.NotFound })));
+
+// Main app routes
+const Workspaces = lazy(() =>
+  import('./pages/Workspaces').then((m) => ({ default: m.Workspaces }))
+);
+const BoardView = lazy(() => import('./pages/BoardView').then((m) => ({ default: m.BoardView })));
+const TaskPage = lazy(() => import('./pages/TaskPage').then((m) => ({ default: m.TaskPage })));
+const Marketplace = lazy(() =>
+  import('./pages/Marketplace').then((m) => ({ default: m.Marketplace }))
+);
+const PortfolioDashboard = lazy(() =>
+  import('./pages/PortfolioDashboard').then((m) => ({ default: m.PortfolioDashboard }))
+);
+const ProjectSprints = lazy(() =>
+  import('./pages/ProjectSprints').then((m) => ({ default: m.ProjectSprints }))
+);
+const ProjectPhases = lazy(() =>
+  import('./pages/ProjectPhases').then((m) => ({ default: m.ProjectPhases }))
+);
+const ProjectReports = lazy(() =>
+  import('./pages/ProjectReports').then((m) => ({ default: m.ProjectReports }))
+);
+const ProjectDocs = lazy(() =>
+  import('./pages/ProjectDocs').then((m) => ({ default: m.ProjectDocs }))
+);
+const Timesheets = lazy(() =>
+  import('./pages/Timesheets').then((m) => ({ default: m.Timesheets }))
+);
+const MyTasks = lazy(() => import('./pages/MyTasks').then((m) => ({ default: m.MyTasks })));
+const Integrations = lazy(() =>
+  import('./pages/Integrations').then((m) => ({ default: m.Integrations }))
+);
+const ProfileSettings = lazy(() =>
+  import('./pages/ProfileSettings').then((m) => ({ default: m.ProfileSettings }))
+);
+const NotificationSettings = lazy(() =>
+  import('./pages/Settings/NotificationSettings').then((m) => ({
+    default: m.NotificationSettings,
+  }))
+);
+
+// Admin routes
+const Users = lazy(() => import('./pages/admin/Users').then((m) => ({ default: m.Users })));
+const CustomRoles = lazy(() =>
+  import('./pages/admin/CustomRoles').then((m) => ({ default: m.CustomRoles }))
+);
+const SSOSettings = lazy(() =>
+  import('./pages/admin/SSOSettings').then((m) => ({ default: m.SSOSettings }))
+);
+const DeveloperSettings = lazy(() =>
+  import('./pages/admin/DeveloperSettings').then((m) => ({ default: m.DeveloperSettings }))
+);
+const AuditLogs = lazy(() =>
+  import('./pages/admin/AuditLogs').then((m) => ({ default: m.AuditLogs }))
+);
+const Billing = lazy(() => import('./pages/admin/Billing').then((m) => ({ default: m.Billing })));
+const Branding = lazy(() =>
+  import('./pages/admin/Branding').then((m) => ({ default: m.Branding }))
+);
+const StageTemplates = lazy(() =>
+  import('./pages/admin/StageTemplates').then((m) => ({ default: m.StageTemplates }))
+);
+const LabelsAdmin = lazy(() =>
+  import('./pages/admin/LabelsAdmin').then((m) => ({ default: m.LabelsAdmin }))
+);
+const WebhookSettings = lazy(() =>
+  import('./pages/Settings/WebhookSettings').then((m) => ({ default: m.WebhookSettings }))
+);
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -56,67 +114,69 @@ export function App() {
   }, [checkAuth]);
 
   return (
-    <TooltipProvider delay={200} closeDelay={150}>
+    <TooltipProvider delay={500} closeDelay={300}>
       <BrowserRouter>
-        <Routes>
-          <Route path="/pricing" element={<Pricing />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<SignUp />} />
-          <Route path="/invite" element={<AcceptInvite />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/forms/:slug" element={<PublicFormView />} />
+        <Suspense fallback={<RouteFallback label="Loading page…" />}>
+          <Routes>
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<SignUp />} />
+            <Route path="/invite" element={<AcceptInvite />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/forms/:slug" element={<PublicFormView />} />
 
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Workspaces />} />
-            <Route path="b/:boardId" element={<BoardView />} />
-            <Route path="b/:boardId/c/:cardId" element={<TaskPage />} />
-            <Route path="cards/:cardId" element={<TaskPage />} />
-            <Route path="marketplace" element={<Marketplace />} />
-            <Route path="workspaces/:workspaceId/portfolio" element={<PortfolioDashboard />} />
-            <Route path="projects/:projectId/sprints" element={<ProjectSprints />} />
-            <Route path="projects/:projectId/phases" element={<ProjectPhases />} />
-            <Route path="projects/:projectId/reports" element={<ProjectReports />} />
-            <Route path="projects/:projectId/docs" element={<ProjectDocs />} />
-            <Route path="timesheets" element={<Timesheets />} />
-            <Route path="my-tasks" element={<MyTasks />} />
-            <Route path="tasks" element={<MyTasks />} />
-            <Route path="profile" element={<ProfileSettings />} />
-            <Route path="settings/profile" element={<ProfileSettings />} />
-            <Route path="settings/notifications" element={<NotificationSettings />} />
-          </Route>
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Workspaces />} />
+              <Route path="b/:boardId" element={<BoardView />} />
+              <Route path="b/:boardId/c/:cardId" element={<TaskPage />} />
+              <Route path="cards/:cardId" element={<TaskPage />} />
+              <Route path="marketplace" element={<Marketplace />} />
+              <Route path="workspaces/:workspaceId/portfolio" element={<PortfolioDashboard />} />
+              <Route path="projects/:projectId/sprints" element={<ProjectSprints />} />
+              <Route path="projects/:projectId/phases" element={<ProjectPhases />} />
+              <Route path="projects/:projectId/reports" element={<ProjectReports />} />
+              <Route path="projects/:projectId/docs" element={<ProjectDocs />} />
+              <Route path="timesheets" element={<Timesheets />} />
+              <Route path="my-tasks" element={<MyTasks />} />
+              <Route path="tasks" element={<MyTasks />} />
+              <Route path="profile" element={<ProfileSettings />} />
+              <Route path="settings/profile" element={<ProfileSettings />} />
+              <Route path="settings/notifications" element={<NotificationSettings />} />
+            </Route>
 
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute>
-                <AdminLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="users" replace />} />
-            <Route path="users" element={<Users />} />
-            <Route path="roles" element={<CustomRoles />} />
-            <Route path="sso" element={<SSOSettings />} />
-            <Route path="developer" element={<DeveloperSettings />} />
-            <Route path="audit-logs" element={<AuditLogs />} />
-            <Route path="billing" element={<Billing />} />
-            <Route path="branding" element={<Branding />} />
-            <Route path="stages" element={<StageTemplates />} />
-            <Route path="labels" element={<LabelsAdmin />} />
-            <Route path="webhooks" element={<WebhookSettings />} />
-            <Route path="integrations" element={<Integrations />} />
-          </Route>
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="users" replace />} />
+              <Route path="users" element={<Users />} />
+              <Route path="roles" element={<CustomRoles />} />
+              <Route path="sso" element={<SSOSettings />} />
+              <Route path="developer" element={<DeveloperSettings />} />
+              <Route path="audit-logs" element={<AuditLogs />} />
+              <Route path="billing" element={<Billing />} />
+              <Route path="branding" element={<Branding />} />
+              <Route path="stages" element={<StageTemplates />} />
+              <Route path="labels" element={<LabelsAdmin />} />
+              <Route path="webhooks" element={<WebhookSettings />} />
+              <Route path="integrations" element={<Integrations />} />
+            </Route>
 
-          {/* 404 Catch-All Route */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+            {/* 404 Catch-All Route */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
         <GlobalTooltip />
         <Toaster richColors position="top-right" closeButton />
       </BrowserRouter>

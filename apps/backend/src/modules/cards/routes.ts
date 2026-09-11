@@ -1,7 +1,7 @@
 import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
-import { formatErrorResponse, handleRouteError } from '../../lib/errors';
+import { handleRouteError } from '../../lib/errors';
 import {
   createCard,
   getCard,
@@ -149,6 +149,11 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           storyPoints: body.storyPoints,
           estimateMinutes: body.estimateMinutes,
           assigneeId: body.assigneeId,
+          labelIds: body.labelIds,
+          participantIds: body.participantIds,
+          watcherIds: body.watcherIds,
+          checklist: body.checklist,
+          actorId: user.userId,
         });
       } catch (err: any) {
         return handleRouteError(err, set);
@@ -167,6 +172,15 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
         storyPoints: t.Optional(t.Number()),
         estimateMinutes: t.Optional(t.Number()),
         assigneeId: t.Optional(t.String()),
+        labelIds: t.Optional(t.Array(t.String())),
+        participantIds: t.Optional(t.Array(t.String())),
+        watcherIds: t.Optional(t.Array(t.String())),
+        checklist: t.Optional(
+          t.Object({
+            title: t.Optional(t.String()),
+            items: t.Optional(t.Array(t.String())),
+          })
+        ),
       }),
     }
   )
@@ -294,9 +308,9 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       body: t.Object({ userId: t.String({ format: 'uuid' }) }),
     }
   )
-  .delete('/:id/assignees/:userId', async ({ params, set }) => {
+  .delete('/:id/assignees/:userId', async ({ params, user, set }) => {
     try {
-      return await removeUserFromCard(db, params.id, params.userId);
+      return await removeUserFromCard(db, params.id, params.userId, user.userId);
     } catch (err: any) {
       return handleRouteError(err, set);
     }
@@ -323,9 +337,9 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       body: t.Object({ userId: t.String({ format: 'uuid' }) }),
     }
   )
-  .delete('/:id/participants/:userId', async ({ params, set }) => {
+  .delete('/:id/participants/:userId', async ({ params, user, set }) => {
     try {
-      return await removeParticipantFromCard(db, params.id, params.userId);
+      return await removeParticipantFromCard(db, params.id, params.userId, user.userId);
     } catch (err: any) {
       return handleRouteError(err, set);
     }
@@ -476,9 +490,9 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   )
   .delete(
     '/:id/labels/:labelId',
-    async ({ params, set }) => {
+    async ({ params, user, set }) => {
       try {
-        return await removeLabelFromCard(db, params.id, params.labelId);
+        return await removeLabelFromCard(db, params.id, params.labelId, user.userId);
       } catch (err: any) {
         return handleRouteError(err, set);
       }
@@ -636,7 +650,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, body, set }) => {
       try {
         const targetUserId = (body as any)?.userId || user.userId;
-        return await watchCard(db, params.id, targetUserId, user.organizationId);
+        return await watchCard(db, params.id, targetUserId, user.organizationId, user.userId);
       } catch (err: any) {
         return handleRouteError(err, set);
       }
@@ -650,7 +664,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, body, set }) => {
       try {
         const targetUserId = (body as any)?.userId || user.userId;
-        return await unwatchCard(db, params.id, targetUserId, user.organizationId);
+        return await unwatchCard(db, params.id, targetUserId, user.organizationId, user.userId);
       } catch (err: any) {
         return handleRouteError(err, set);
       }
@@ -661,7 +675,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   )
   .delete('/:id/watch/:userId', async ({ params, user, set }) => {
     try {
-      return await unwatchCard(db, params.id, params.userId, user.organizationId);
+      return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
     } catch (err: any) {
       return handleRouteError(err, set);
     }
@@ -671,7 +685,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, body, set }) => {
       try {
         const targetUserId = (body as any)?.userId || user.userId;
-        return await unwatchCard(db, params.id, targetUserId, user.organizationId);
+        return await unwatchCard(db, params.id, targetUserId, user.organizationId, user.userId);
       } catch (err: any) {
         return handleRouteError(err, set);
       }
@@ -685,7 +699,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, body, set }) => {
       try {
         const targetUserId = (body as any)?.userId || user.userId;
-        return await unwatchCard(db, params.id, targetUserId, user.organizationId);
+        return await unwatchCard(db, params.id, targetUserId, user.organizationId, user.userId);
       } catch (err: any) {
         return handleRouteError(err, set);
       }
@@ -696,7 +710,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   )
   .delete('/:id/unwatch/:userId', async ({ params, user, set }) => {
     try {
-      return await unwatchCard(db, params.id, params.userId, user.organizationId);
+      return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
     } catch (err: any) {
       return handleRouteError(err, set);
     }

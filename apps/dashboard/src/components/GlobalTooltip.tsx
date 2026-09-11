@@ -79,7 +79,9 @@ export function GlobalTooltip() {
       if (isRecentRef.current) {
         show();
       } else {
-        timerRef.current = setTimeout(show, 200);
+        // Enterprise-standard hover intent delay: avoids accidental popups
+        // while scanning the UI, matching the Base UI TooltipProvider below.
+        timerRef.current = setTimeout(show, 500);
       }
     };
 
@@ -95,15 +97,24 @@ export function GlobalTooltip() {
       setState((prev) => ({ ...prev, visible: false }));
 
       if (recentTimerRef.current) clearTimeout(recentTimerRef.current);
+      // Skip-delay grace window: moving between adjacent triggers shows
+      // instantly within this window (Radix/enterprise default: 300ms).
       recentTimerRef.current = setTimeout(() => {
         isRecentRef.current = false;
-      }, 350);
+      }, 300);
     };
 
     const handleScrollOrDown = () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       activeElementRef.current = null;
       setState((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+
+      // Same grace-window reset as mouseout: without this, hiding via
+      // scroll/click leaves the instant-show flag stuck on forever.
+      if (recentTimerRef.current) clearTimeout(recentTimerRef.current);
+      recentTimerRef.current = setTimeout(() => {
+        isRecentRef.current = false;
+      }, 300);
     };
 
     document.addEventListener('mouseover', handleMouseOver, { passive: true });

@@ -2,6 +2,7 @@ export * from './components/avatar';
 export * from './components/button';
 export * from './components/card';
 export * from './components/confirm-dialog';
+export * from './components/date-picker';
 export * from './components/dialog';
 export * from './components/dropdown-menu';
 export * from './components/enterprise-data-grid';

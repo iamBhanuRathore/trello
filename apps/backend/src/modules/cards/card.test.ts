@@ -8,10 +8,20 @@ import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
 import { createList } from '../lists/service';
-import { createCard, getCard, moveCard, archiveCard, watchCard, unwatchCard, getCardWatchers } from './service';
+import {
+  createCard,
+  getCard,
+  moveCard,
+  archiveCard,
+  watchCard,
+  unwatchCard,
+  getCardWatchers,
+  listComments,
+} from './service';
 
 const TEST_DB_URL =
-  process.env['DATABASE_TEST_URL'] ?? 'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
+  process.env['DATABASE_TEST_URL'] ??
+  'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
 
 let client: ReturnType<typeof postgres>;
 let db: Database;
@@ -24,7 +34,6 @@ beforeAll(() => {
 afterAll(async () => {
   await client.end();
 });
-
 
 beforeEach(async () => {
   // isolated per-test tenant creation
@@ -42,8 +51,16 @@ describe('Cards Service', () => {
     });
 
     const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
-    const proj = await createProject(db, { organizationId: organization.id, workspaceId: ws!.id, name: 'App' });
-    const board = await createBoard(db, { organizationId: organization.id, projectId: proj!.id, name: 'Board 1' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board 1',
+    });
     const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
 
     const card = await createCard(db, organization.id, { listId: list!.id, title: 'Write tests' });
@@ -66,13 +83,21 @@ describe('Cards Service', () => {
     });
 
     const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
-    const proj = await createProject(db, { organizationId: organization.id, workspaceId: ws!.id, name: 'App' });
-    const board = await createBoard(db, { organizationId: organization.id, projectId: proj!.id, name: 'Board 1' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board 1',
+    });
     const list1 = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
     const list2 = await createList(db, organization.id, { boardId: board!.id, name: 'Doing' });
 
     const card = await createCard(db, organization.id, { listId: list1!.id, title: 'Task' });
-    
+
     const moved = await moveCard(db, card!.id, organization.id, list2!.id, 100);
     expect(moved.listId).toBe(list2!.id);
     expect(moved.position).toBe(100);
@@ -89,15 +114,31 @@ describe('Cards Service', () => {
     });
 
     const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
-    const proj = await createProject(db, { organizationId: organization.id, workspaceId: ws!.id, name: 'App' });
-    const board = await createBoard(db, { organizationId: organization.id, projectId: proj!.id, name: 'Board 1' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board 1',
+    });
     const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
 
     const parent = await createCard(db, organization.id, { listId: list!.id, title: 'Epic' });
-    const subtask = await createCard(db, organization.id, { listId: list!.id, title: 'Task', parentCardId: parent!.id });
-    
+    const subtask = await createCard(db, organization.id, {
+      listId: list!.id,
+      title: 'Task',
+      parentCardId: parent!.id,
+    });
+
     await expect(
-      createCard(db, organization.id, { listId: list!.id, title: 'Sub-subtask', parentCardId: subtask!.id })
+      createCard(db, organization.id, {
+        listId: list!.id,
+        title: 'Sub-subtask',
+        parentCardId: subtask!.id,
+      })
     ).rejects.toMatchObject({ status: 400 });
   });
 
@@ -112,8 +153,16 @@ describe('Cards Service', () => {
     });
 
     const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
-    const proj = await createProject(db, { organizationId: organization.id, workspaceId: ws!.id, name: 'App' });
-    const board = await createBoard(db, { organizationId: organization.id, projectId: proj!.id, name: 'Board 1' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board 1',
+    });
     const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
 
     const card = await createCard(db, organization.id, { listId: list!.id, title: 'Archive me' });
@@ -133,17 +182,28 @@ describe('Cards Service', () => {
     });
 
     const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
-    const proj = await createProject(db, { organizationId: organization.id, workspaceId: ws!.id, name: 'App' });
-    const board = await createBoard(db, { organizationId: organization.id, projectId: proj!.id, name: 'Board 1' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board 1',
+    });
     const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
-    const card = await createCard(db, organization.id, { listId: list!.id, title: 'Watchable Card' });
+    const card = await createCard(db, organization.id, {
+      listId: list!.id,
+      title: 'Watchable Card',
+    });
 
     // Initially 0 watchers
     const initialWatchers = await getCardWatchers(db, card!.id);
     expect(initialWatchers.length).toBe(0);
 
-    // Watch card
-    const watchRes = await watchCard(db, card!.id, user.id, organization.id);
+    // Watch card (as actor → writes task history)
+    const watchRes = await watchCard(db, card!.id, user.id, organization.id, user.id);
     expect(watchRes.success).toBe(true);
     expect(watchRes.watched).toBe(true);
 
@@ -158,12 +218,18 @@ describe('Cards Service', () => {
     expect(fetched.watchers.length).toBe(1);
     expect(fetched.watchers[0]?.id).toBe(user.id);
 
-    // Unwatch card
-    const unwatchRes = await unwatchCard(db, card!.id, user.id, organization.id);
+    // Unwatch card (as actor → writes task history)
+    const unwatchRes = await unwatchCard(db, card!.id, user.id, organization.id, user.id);
     expect(unwatchRes.success).toBe(true);
     expect(unwatchRes.watched).toBe(false);
 
     const remainingWatchers = await getCardWatchers(db, card!.id);
     expect(remainingWatchers.length).toBe(0);
+
+    // Task history must contain both the watch and the unwatch events
+    const history = await listComments(db, card!.id);
+    const bodies = history.map((c: any) => c.body);
+    expect(bodies.some((b: string) => b.includes('Started watching'))).toBe(true);
+    expect(bodies.some((b: string) => b.includes('Stopped watching'))).toBe(true);
   });
 });

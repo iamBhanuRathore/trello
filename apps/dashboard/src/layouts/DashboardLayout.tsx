@@ -1,26 +1,21 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@boardly/ui/button';
-import {
-  Plus,
-  ChevronRight,
-  Home,
-  Briefcase,
-  FolderPlus,
-  Layout,
-} from 'lucide-react';
-import {
-  SidebarProvider,
-  SidebarInset,
-  SidebarTrigger,
-} from '@boardly/ui/sidebar';
+import { Plus, ChevronRight, Home, Briefcase, FolderPlus, Layout } from 'lucide-react';
+import { SidebarProvider, SidebarInset, SidebarTrigger } from '@boardly/ui/sidebar';
 import { AppSidebar } from '../components/AppSidebar';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { SearchPalette } from '../components/SearchPalette';
 import { ThemeToggle } from '../components/ThemeToggle';
-import { TrashBinModal } from '../components/trash/TrashBinModal';
-import { AppearanceModal } from '../components/AppearanceModal';
 import { UserProfileDropdown } from '../components/UserProfileDropdown';
+// Rarely-opened global modals are code-split so they never bloat the shell.
+const TrashBinModal = lazy(() =>
+  import('../components/trash/TrashBinModal').then((m) => ({ default: m.TrashBinModal }))
+);
+const AppearanceModal = lazy(() =>
+  import('../components/AppearanceModal').then((m) => ({ default: m.AppearanceModal }))
+);
+import { RouteFallback } from '../components/common/RouteFallback';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -40,18 +35,29 @@ export function DashboardLayout() {
     const path = location.pathname;
 
     if (path === '/') return [{ label: 'Workspaces', to: '/' }];
-    if (path === '/my-tasks' || path === '/tasks') return [{ label: 'Workspaces', to: '/' }, { label: 'My Tasks' }];
+    if (path === '/my-tasks' || path === '/tasks')
+      return [{ label: 'Workspaces', to: '/' }, { label: 'My Tasks' }];
     if (path === '/timesheets') return [{ label: 'Workspaces', to: '/' }, { label: 'Timesheets' }];
-    if (path === '/marketplace') return [{ label: 'Workspaces', to: '/' }, { label: 'Power-Ups & Apps' }];
-    if (path === '/profile' || path === '/settings/profile') return [{ label: 'Settings', to: '/profile' }, { label: 'Profile' }];
-    if (path === '/settings/notifications') return [{ label: 'Settings', to: '/profile' }, { label: 'Notifications' }];
-    if (path.includes('/portfolio')) return [{ label: 'Workspaces', to: '/' }, { label: 'Portfolio Health' }];
-    if (path.includes('/docs')) return [{ label: 'Workspaces', to: '/' }, { label: 'Docs & Knowledge Base' }];
-    if (path.includes('/sprints')) return [{ label: 'Workspaces', to: '/' }, { label: 'Sprint Planner' }];
-    if (path.includes('/phases')) return [{ label: 'Workspaces', to: '/' }, { label: 'Lifecycle Phases' }];
-    if (path.includes('/reports')) return [{ label: 'Workspaces', to: '/' }, { label: 'Reports & Analytics' }];
-    if (path.startsWith('/b/')) return [{ label: 'Workspaces', to: '/' }, { label: 'Kanban Board' }];
-    if (path.startsWith('/cards/')) return [{ label: 'Workspaces', to: '/' }, { label: 'Task Card' }];
+    if (path === '/marketplace')
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Power-Ups & Apps' }];
+    if (path === '/profile' || path === '/settings/profile')
+      return [{ label: 'Settings', to: '/profile' }, { label: 'Profile' }];
+    if (path === '/settings/notifications')
+      return [{ label: 'Settings', to: '/profile' }, { label: 'Notifications' }];
+    if (path.includes('/portfolio'))
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Portfolio Health' }];
+    if (path.includes('/docs'))
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Docs & Knowledge Base' }];
+    if (path.includes('/sprints'))
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Sprint Planner' }];
+    if (path.includes('/phases'))
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Lifecycle Phases' }];
+    if (path.includes('/reports'))
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Reports & Analytics' }];
+    if (path.startsWith('/b/'))
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Kanban Board' }];
+    if (path.startsWith('/cards/'))
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Task Card' }];
 
     return [{ label: 'Dashboard', to: '/' }];
   };
@@ -90,9 +96,7 @@ export function DashboardLayout() {
                   <div key={idx} className="flex items-center gap-1.5 truncate">
                     <ChevronRight className="w-3 h-3 text-muted-foreground/60 shrink-0" />
                     {isLast || !crumb.to ? (
-                      <span className="font-semibold text-foreground truncate">
-                        {crumb.label}
-                      </span>
+                      <span className="font-semibold text-foreground truncate">{crumb.label}</span>
                     ) : (
                       <Link
                         to={crumb.to}
@@ -127,7 +131,11 @@ export function DashboardLayout() {
                   <span className="hidden md:inline">Create</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" sideOffset={8} className="w-52 min-w-[210px] p-1.5 rounded-xl border border-border/80 shadow-lg bg-popover/95 backdrop-blur-md">
+              <DropdownMenuContent
+                align="end"
+                sideOffset={8}
+                className="w-52 min-w-[210px] p-1.5 rounded-xl border border-border/80 shadow-lg bg-popover/95 backdrop-blur-md"
+              >
                 <DropdownMenuItem
                   className="cursor-pointer text-xs font-medium px-2.5 py-2 rounded-lg gap-2.5"
                   onClick={() => navigate('/')}
@@ -168,9 +176,17 @@ export function DashboardLayout() {
         </main>
       </SidebarInset>
 
-      {/* Global Modals */}
-      <TrashBinModal open={isTrashOpen} onOpenChange={setIsTrashOpen} />
-      <AppearanceModal open={isAppearanceOpen} onOpenChange={setIsAppearanceOpen} />
+      {/* Global Modals — mounted only when opened, each in its own chunk */}
+      {isTrashOpen && (
+        <Suspense fallback={<RouteFallback label="Loading…" />}>
+          <TrashBinModal open={isTrashOpen} onOpenChange={setIsTrashOpen} />
+        </Suspense>
+      )}
+      {isAppearanceOpen && (
+        <Suspense fallback={<RouteFallback label="Loading…" />}>
+          <AppearanceModal open={isAppearanceOpen} onOpenChange={setIsAppearanceOpen} />
+        </Suspense>
+      )}
     </SidebarProvider>
   );
 }

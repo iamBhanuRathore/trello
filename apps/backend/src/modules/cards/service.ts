@@ -34,6 +34,12 @@ export interface CreateCardInput {
   storyPoints?: number;
   estimateMinutes?: number;
   assigneeId?: string;
+  /** Applied at creation so the full composer can set everything in one call. */
+  labelIds?: string[];
+  participantIds?: string[];
+  watcherIds?: string[];
+  checklist?: { title?: string; items?: string[] };
+  actorId?: string;
 }
 
 async function verifyListAccess(db: Database, listId: string, organizationId: string) {
@@ -56,6 +62,26 @@ async function getBoardIdForCard(db: Database, cardId: string) {
     .where(eq(cards.id, cardId))
     .limit(1);
   return result?.boardId;
+}
+
+// ─── Task history (persistent activity feed) ────────────────────────────────
+// Every card mutation writes a `comments` row in the same emoji-prefixed style
+// as the checklist loggers below, so the task history is event-sourced and
+// complete. Fire-and-forget: history must never break the mutation itself.
+async function logCardHistory(db: Database, cardId: string, userId: string, body: string) {
+  await db
+    .insert(comments)
+    .values({ cardId, userId, body })
+    .catch(() => {});
+}
+
+async function getUserDisplayName(db: Database, userId: string): Promise<string> {
+  const [u] = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return u?.name || u?.email || 'Someone';
 }
 
 export async function createCard(db: Database, organizationId: string, input: CreateCardInput) {
@@ -154,6 +180,49 @@ export async function createCard(db: Database, organizationId: string, input: Cr
         assignedBy: input.assigneeId,
       })
       .onConflictDoNothing();
+  }
+
+  // Full-composer relations: labels, participants, observers + initial checklist.
+  // Best-effort per row so one bad id never fails the creation.
+  if (card) {
+    const validIds = (ids?: string[]) => (ids || []).filter((id) => isValidUuid(id));
+    for (const labelId of validIds(input.labelIds)) {
+      await db
+        .insert(cardLabels)
+        .values({ cardId: card.id, labelId })
+        .onConflictDoNothing()
+        .catch(() => {});
+    }
+    for (const participantId of validIds(input.participantIds)) {
+      await db
+        .insert(cardParticipants)
+        .values({
+          cardId: card.id,
+          userId: participantId,
+          addedBy: input.actorId,
+          addedAt: new Date(),
+        })
+        .onConflictDoNothing()
+        .catch(() => {});
+    }
+    for (const watcherId of validIds(input.watcherIds)) {
+      await db
+        .insert(cardWatchers)
+        .values({ cardId: card.id, userId: watcherId, subscribedAt: new Date() })
+        .onConflictDoNothing()
+        .catch(() => {});
+    }
+    const checklistItems = (input.checklist?.items || []).map((t) => t.trim()).filter(Boolean);
+    if (checklistItems.length > 0) {
+      await createChecklist(
+        db,
+        card.id,
+        input.checklist?.title?.trim() || 'Checklist #1',
+        0,
+        input.actorId,
+        checklistItems
+      ).catch(() => {});
+    }
   }
 
   eventBus.broadcast(`board:${boardInfo!.boardId}`, 'card.created', card);
@@ -307,8 +376,9 @@ export async function listSubtasks(db: Database, parentCardId: string, organizat
   await getCard(db, parentCardId, organizationId);
 
   const subtaskCards = await db
-    .select()
+    .select({ card: cards, listName: lists.name })
     .from(cards)
+    .innerJoin(lists, eq(lists.id, cards.listId))
     .where(
       and(
         eq(cards.parentCardId, parentCardId),
@@ -318,7 +388,7 @@ export async function listSubtasks(db: Database, parentCardId: string, organizat
     )
     .orderBy(cards.position);
 
-  const subtaskIds = subtaskCards.map((s) => s.id);
+  const subtaskIds = subtaskCards.map((s) => s.card.id);
   if (subtaskIds.length === 0) return [];
 
   const subtaskAssignees = await db
@@ -344,9 +414,10 @@ export async function listSubtasks(db: Database, parentCardId: string, organizat
   });
 
   return subtaskCards.map((s) => ({
-    ...s,
-    assignee: assigneesBySubtask.get(s.id) || null,
-    assignees: assigneesBySubtask.has(s.id) ? [assigneesBySubtask.get(s.id)] : [],
+    ...s.card,
+    listName: s.listName,
+    assignee: assigneesBySubtask.get(s.card.id) || null,
+    assignees: assigneesBySubtask.has(s.card.id) ? [assigneesBySubtask.get(s.card.id)] : [],
   }));
 }
 
@@ -911,6 +982,14 @@ export async function attachLabelToCard(
   }
   await db.insert(cardLabels).values({ cardId, labelId }).onConflictDoNothing();
   const boardId = await getBoardIdForCard(db, cardId);
+  if (actorId) {
+    const [label] = await db
+      .select({ name: labels.name })
+      .from(labels)
+      .where(eq(labels.id, labelId))
+      .limit(1);
+    await logCardHistory(db, cardId, actorId, `🏷️ Added label **${label?.name || 'label'}**`);
+  }
   if (boardId) {
     const [board] = await db
       .select({ organizationId: boards.organizationId })
@@ -928,13 +1007,24 @@ export async function attachLabelToCard(
   return { success: true };
 }
 
-export async function removeLabelFromCard(db: Database, cardId: string, labelId: string) {
+export async function removeLabelFromCard(
+  db: Database,
+  cardId: string,
+  labelId: string,
+  actorId?: string
+) {
   if (!isValidUuid(cardId) || !isValidUuid(labelId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
   }
+  const [label] = actorId
+    ? await db.select({ name: labels.name }).from(labels).where(eq(labels.id, labelId)).limit(1)
+    : [];
   await db
     .delete(cardLabels)
     .where(and(eq(cardLabels.cardId, cardId), eq(cardLabels.labelId, labelId)));
+  if (actorId) {
+    await logCardHistory(db, cardId, actorId, `🏷️ Removed label **${label?.name || 'label'}**`);
+  }
   return { success: true };
 }
 
@@ -954,6 +1044,12 @@ export async function assignUserToCard(
     .insert(cardAssignees)
     .values({ cardId, userId, assignedBy: actorId })
     .onConflictDoNothing();
+  await logCardHistory(
+    db,
+    cardId,
+    actorId,
+    `👤 Assigned **${await getUserDisplayName(db, userId)}**`
+  );
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.assigned', { cardId, assigneeId: userId });
@@ -973,13 +1069,22 @@ export async function assignUserToCard(
   return { success: true };
 }
 
-export async function removeUserFromCard(db: Database, cardId: string, userId: string) {
+export async function removeUserFromCard(
+  db: Database,
+  cardId: string,
+  userId: string,
+  actorId?: string
+) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
+  const name = actorId ? await getUserDisplayName(db, userId) : null;
   await db
     .delete(cardAssignees)
     .where(and(eq(cardAssignees.cardId, cardId), eq(cardAssignees.userId, userId)));
+  if (actorId) {
+    await logCardHistory(db, cardId, actorId, `👤 Unassigned **${name}**`);
+  }
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.unassigned', { cardId, userId });
@@ -1004,6 +1109,12 @@ export async function addParticipantToCard(
       target: [cardParticipants.cardId, cardParticipants.userId],
       set: { addedAt: new Date(), addedBy: actorId },
     });
+  await logCardHistory(
+    db,
+    cardId,
+    actorId,
+    `🤝 Added **${await getUserDisplayName(db, userId)}** as a participant`
+  );
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.participant_added', { cardId, userId });
@@ -1023,13 +1134,22 @@ export async function addParticipantToCard(
   return { success: true };
 }
 
-export async function removeParticipantFromCard(db: Database, cardId: string, userId: string) {
+export async function removeParticipantFromCard(
+  db: Database,
+  cardId: string,
+  userId: string,
+  actorId?: string
+) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
+  const name = actorId ? await getUserDisplayName(db, userId) : null;
   await db
     .delete(cardParticipants)
     .where(and(eq(cardParticipants.cardId, cardId), eq(cardParticipants.userId, userId)));
+  if (actorId) {
+    await logCardHistory(db, cardId, actorId, `🤝 Removed **${name}** from participants`);
+  }
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.participant_removed', { cardId, userId });
@@ -1058,7 +1178,8 @@ export async function watchCard(
   db: Database,
   cardId: string,
   userId: string,
-  organizationId?: string
+  organizationId?: string,
+  actorUserId?: string
 ) {
   if (organizationId) {
     await getCard(db, cardId, organizationId);
@@ -1070,6 +1191,13 @@ export async function watchCard(
       target: [cardWatchers.cardId, cardWatchers.userId],
       set: { subscribedAt: new Date() },
     });
+  if (actorUserId) {
+    const body =
+      actorUserId === userId
+        ? '👀 Started watching this task'
+        : `👀 Added **${await getUserDisplayName(db, userId)}** as an observer`;
+    await logCardHistory(db, cardId, actorUserId, body);
+  }
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.watched', { cardId, userId });
@@ -1093,7 +1221,8 @@ export async function unwatchCard(
   db: Database,
   cardId: string,
   userId: string,
-  organizationId?: string
+  organizationId?: string,
+  actorUserId?: string
 ) {
   if (organizationId) {
     await getCard(db, cardId, organizationId);
@@ -1101,6 +1230,13 @@ export async function unwatchCard(
   await db
     .delete(cardWatchers)
     .where(and(eq(cardWatchers.cardId, cardId), eq(cardWatchers.userId, userId)));
+  if (actorUserId) {
+    const body =
+      actorUserId === userId
+        ? '👀 Stopped watching this task'
+        : `👀 Removed **${await getUserDisplayName(db, userId)}** from observers`;
+    await logCardHistory(db, cardId, actorUserId, body);
+  }
   const boardId = await getBoardIdForCard(db, cardId);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.unwatched', { cardId, userId });

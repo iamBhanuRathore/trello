@@ -1631,3 +1631,16 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   18. **Dashboard Mutation Error Parsing ([TaskDetailView.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/board/TaskDetailView.tsx))**:
       - Integrated `getApiErrorMessage` from `apps/dashboard/src/lib/api.ts` into all checklist mutations (`addChecklistMutation`, `updateChecklistMutation`, `deleteChecklistMutation`, `addItemMutation`, `addBulkItemsMutation`, `toggleItemMutation`, `deleteChecklistItemMutation`).
       - On any mutation failure, user-facing error toasts now render the actual server response message instead of generic network errors.
+
+### 2026-09-09 — Dashboard Route-Level Code Splitting (React.lazy + manualChunks)
+
+- **What was done:**
+  1. **Lazy routes ([App.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/App.tsx))**:
+     - Converted all ~30 static page imports to `React.lazy` (`.then(m => ({ default: m.X }))` mapping for named exports) under one `<Suspense fallback={<RouteFallback />}>`.
+     - Layouts (`DashboardLayout`, `AdminLayout`) stay eager as the persistent shell.
+  2. **Lazy heavy modals ([BoardView.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/BoardView.tsx), [DashboardLayout.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/layouts/DashboardLayout.tsx), [AdminLayout.tsx](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/layouts/AdminLayout.tsx))**:
+     - `CardModal` / `AutomationsModal` / `FormBuilderModal`, `TrashBinModal` / `AppearanceModal` load on first open and mount only when opened.
+     - New shared fallback `components/common/RouteFallback.tsx`.
+  3. **Stable vendor chunks ([vite.config.ts](file:///Users/bhanurathore/projects/trello/apps/dashboard/vite.config.ts))**:
+     - `manualChunks` for `vendor-react`, `vendor-query`, `vendor-dnd`, `vendor-ui` so third-party code stays cached while route chunks change independently.
+  4. **Convention docs**: `PROMPT_PATTERNS.md` §4 now mandates lazy registration for every new page; decision logged in `Decisions.md` (2026-09-09).

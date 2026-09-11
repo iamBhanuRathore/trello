@@ -143,7 +143,10 @@ function isActivityComment(body: string): boolean {
     trimmed.startsWith('🗑️ Removed checklist') ||
     trimmed.startsWith('⚡') ||
     trimmed.startsWith('📌') ||
-    trimmed.startsWith('🏷️')
+    trimmed.startsWith('🏷️') ||
+    trimmed.startsWith('👀') ||
+    trimmed.startsWith('👤') ||
+    trimmed.startsWith('🤝')
   );
 }
 
@@ -663,7 +666,10 @@ export function TaskChatPane({
   return (
     <div className="flex flex-col h-full bg-[#f8fbfa] dark:bg-card/90 border-l border-border/70 relative">
       {/* ─── Task Chat Header ─── */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/70 bg-card/90 backdrop-blur-md shrink-0">
+      {/* relative z-30: lifts the header (and its dropdowns) above the message
+          rows below. Without this, the backdrop-blur traps the z-50 popover in
+          a z-auto context and later-DOM relative rows paint over it. */}
+      <div className="relative z-30 flex items-center justify-between px-4 py-3 border-b border-border/70 bg-card/90 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
             <MessageSquare className="w-4 h-4" />

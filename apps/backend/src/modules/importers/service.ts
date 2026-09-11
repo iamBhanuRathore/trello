@@ -1,5 +1,6 @@
 import { eq, and } from 'drizzle-orm';
 import type { Database } from '../../db/index';
+import type { ImportTasksBody } from './schema';
 import {
   projects,
   boards,
@@ -203,18 +204,7 @@ export async function importGenericTasks(
   db: Database,
   organizationId: string,
   projectId: string,
-  input: {
-    boardName: string;
-    lists: {
-      name: string;
-      tasks: {
-        title: string;
-        description?: string;
-        storyPoints?: number;
-        dueDate?: string;
-      }[];
-    }[];
-  }
+  input: ImportTasksBody
 ) {
   const [project] = await db
     .select()

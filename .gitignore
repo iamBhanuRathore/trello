@@ -15,8 +15,14 @@ build
 
 # Environment
 .env
+.env.development
+.env.production
 .env.local
 .env.*.local
+# Keep committed templates
+!.env.example
+!.env.development.example
+!.env.production.example
 
 # Logs
 *.log

@@ -22,6 +22,14 @@
     "erasableSyntaxOnly": true,
     "paths": {
       "@/*": ["./src/*"],
+      "@boardly/backend": ["../backend/src/index.ts"],
+      "@boardly/backend/eden": ["../backend/src/eden.ts"],
+      "@boardly/backend/*": ["../backend/src/*"],
+      // Single-copy rule: bun installs one elysia per peer graph (backend vs
+      // @elysiajs/eden), and Elysia's private fields make cross-copy App types
+      // fail treaty's Elysia<any,…> constraint (TS2344). Pin type resolution to
+      // the backend copy so treaty<App> unifies. Runtime bundling unaffected.
+      "elysia": ["../backend/node_modules/elysia"],
       "@boardly/ui": ["../../packages/ui/src/index.ts"],
       "@boardly/ui/utils": ["../../packages/ui/src/utils.ts"],
       "@boardly/ui/button": ["../../packages/ui/src/components/button.tsx"],

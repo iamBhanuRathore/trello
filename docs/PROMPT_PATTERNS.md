@@ -54,6 +54,8 @@ Rules to follow:
 
 The module must handle: [list the specific operations, e.g. "create card, update card, move card between lists, archive card"]
 
+Enterprise standard (AGENTS.md §7): match Linear/Jira/Notion interaction quality — optimistic UI with rollback, loading/empty/error states for every async surface, no dead controls. State the benchmark product for each operation.
+
 Reference: project.md §[N] for the data model context.
 ```
 
@@ -63,7 +65,7 @@ Reference: project.md §[N] for the data model context.
 
 Template for asking an agent to build a React component:
 
-```
+````
 Build the `[ComponentName]` component at `apps/dashboard/src/components/[path]/[ComponentName].tsx`.
 
 Design tokens to use (from DESIGN_TOKENS.md):
@@ -82,7 +84,27 @@ Tests: write a Vitest + React Testing Library test at [ComponentName].test.tsx
 - Test component behavior (what the user sees/clicks), NOT implementation internals
 - Mock backend calls with MSW
 
+Code-splitting (mandatory for every new page/route — see Decisions.md 2026-09-09):
+- NEVER static-import a page into `App.tsx`. Register it as a `React.lazy` chunk:
+  ```tsx
+  const MyPage = lazy(() => import('./pages/MyPage').then((m) => ({ default: m.MyPage })));
+````
+
+(`.then()` mapping is required because pages use named exports, not default exports.)
+
+- The `<Routes>` tree is already wrapped in `<Suspense fallback={<RouteFallback />}>` — new routes inherit it automatically.
+- Heavy below-the-fold UI (modals, drawers, wizards opened on click) MUST also be `React.lazy` + mounted only when opened (`{isOpen && <Suspense>…}`), following `BoardView.tsx` (`CardModal`/`AutomationsModal`/`FormBuilderModal`) and `DashboardLayout.tsx` (`TrashBinModal`/`AppearanceModal`).
+- Shared fallback lives at `apps/dashboard/src/components/common/RouteFallback.tsx` — reuse it, don't invent per-page spinners.
+
+Enterprise standard (AGENTS.md §7): match Linear/Jira/Notion interaction quality —
+
+- Keyboard: `Enter` submits, `Shift+Enter` newline in multi-line inputs, `Escape` cancels.
+- Save buttons are dirty-tracked (disabled when pristine, with explanatory tooltip).
+- Every async surface has loading/empty/error states; mutations are optimistic with rollback.
+- No control that silently does nothing.
+
 Reference: [architecture doc section] for the feature context.
+
 ```
 
 ---
@@ -92,6 +114,7 @@ Reference: [architecture doc section] for the feature context.
 When you realize a route or component is missing a permission gate:
 
 ```
+
 Add a permission check to [route/component].
 
 Permission key: '[correct.key]' — verify this exists in PERMISSIONS_MATRIX.md before using it.
@@ -101,8 +124,10 @@ Backend: wrap the route with requirePermission('[key]') using the Elysia plugin 
 Frontend: wrap the UI element with usePermission('[key]') and hide/disable it when the user lacks permission — do NOT just hide it, also disable it to prevent keyboard/screenreader access.
 
 Add a test asserting:
+
 - A user WITH the permission CAN perform the action
 - A user WITHOUT the permission gets a 403 (backend) / sees the element hidden (frontend)
+
 ```
 
 ---
@@ -112,20 +137,23 @@ Add a test asserting:
 When adding a new table or column:
 
 ```
+
 Add [describe the change] to the database schema.
 
 1. Update DATABASE_SCHEMA.md §[N] first with the Drizzle ORM definition
 2. Add the schema to apps/backend/src/db/schema/[file].ts
-3. Run: bun drizzle-kit generate  (this generates the migration file — DO NOT edit migration files manually)
+3. Run: bun drizzle-kit generate (this generates the migration file — DO NOT edit migration files manually)
 4. Follow additive-first discipline (project-tech-stack.md §9.1): if this adds a NOT NULL column to an existing table, make it nullable first and note that a backfill + NOT NULL constraint should follow in a subsequent migration
 
 Every new table must have:
+
 - UUID primary key with defaultRandom()
 - organization_id FK (if it's a tenant-scoped table)
 - created_at, updated_at timestamps
 - deleted_at (nullable) for soft deletes
 
 Do not apply the migration yet — I'll run it manually after reviewing the generated file.
+
 ```
 
 ---
@@ -135,21 +163,25 @@ Do not apply the migration yet — I'll run it manually after reviewing the gene
 When asking specifically for tests:
 
 ```
+
 Write tests for [feature/function] in [file path].
 
 Test tool: [bun test / Vitest / Playwright — match the app]
 
 Test pyramid priority:
+
 1. Unit tests for business logic in service.ts — these should be fast and not hit the DB
 2. Integration tests for DB queries — use the test Postgres instance (DATABASE_TEST_URL env var) via testcontainers or Docker
 3. E2E only if this is a critical user flow from Playwright's 15-25 designated flows
 
 Non-negotiable test cases to include (see project-tech-stack.md §8.3):
+
 - [list any that apply: permission checks, multi-tenant isolation, state transitions, billing calculations]
 
 Use shared fixtures from @boardly/test-fixtures — specifically createOrgWithUsers(), createBoardWithCards() etc. — do NOT hand-roll test data setup.
 
-Test file location: co-located with the source file ([filename].test.ts), NOT in a separate __tests__ directory.
+Test file location: co-located with the source file ([filename].test.ts), NOT in a separate **tests** directory.
+
 ```
 
 ---
@@ -159,17 +191,20 @@ Test file location: co-located with the source file ([filename].test.ts), NOT in
 Use this pattern anytime you're unsure whether a new query is properly tenant-scoped:
 
 ```
+
 Review this query/function for multi-tenant data isolation:
 
 [paste the query or function]
 
 Verify:
+
 1. Is organization_id present in the WHERE clause at the application layer?
 2. Does the Drizzle query use the organization_id variable from the authenticated user's session, NOT from a URL param that could be spoofed?
 3. Is there a corresponding Postgres RLS policy on this table? (RLS is the last line of defense per Agents.md §7)
 4. Write an integration test that creates two separate orgs (Org A and Org B), seeds data in both, makes an API call authenticated as Org A, and asserts that Org B's data is NEVER returned.
 
 Flag any issue as a security concern, not a bug.
+
 ```
 
 ---
@@ -179,9 +214,11 @@ Flag any issue as a security concern, not a bug.
 Before merging a PR or finishing a feature, ask the agent to self-audit:
 
 ```
+
 Audit the code in [path or list of files] before I consider it done.
 
 Check for:
+
 1. Missing permission checks (every mutating route should call requirePermission())
 2. Missing organization_id scoping in any Drizzle query
 3. Any `any` TypeScript types (Agents.md §3 forbids these)
@@ -189,8 +226,10 @@ Check for:
 5. Missing tests for any business logic added (Agents.md §6)
 6. Hardcoded hex colors or pixel values that should use design tokens (DESIGN_TOKENS.md)
 7. Any import that should come from @boardly/shared-types but was defined locally instead
+8. Enterprise-standard gaps (AGENTS.md §7): single-line inputs where multi-line is expected, missing Enter/Shift+Enter/Escape handling, enabled buttons with nothing to do, missing loading/empty/error states
 
 Report issues as a numbered list. Fix them in order, one at a time.
+
 ```
 
 ---
@@ -198,6 +237,7 @@ Report issues as a numbered list. Fix them in order, one at a time.
 ## 10. Debugging a Failing Test
 
 ```
+
 This test is failing. Debug it without changing the test unless the test itself is wrong.
 
 Test file: [path]
@@ -205,11 +245,13 @@ Test name: "[exact test name]"
 Error output: [paste the error]
 
 Approach:
+
 1. Read the test and understand what it's asserting
 2. Read the implementation it's testing
 3. Identify the gap
 4. Fix the implementation, not the test assertion (unless the test assertion is provably wrong)
 5. Confirm the fix makes conceptual sense against the relevant spec in project.md or DATABASE_SCHEMA.md
+
 ```
 
 ---
@@ -219,6 +261,7 @@ Approach:
 Always end a session with this prompt:
 
 ```
+
 We're wrapping up this session. Please update the following files:
 
 1. markdowns/Progresss.md:
@@ -234,6 +277,7 @@ We're wrapping up this session. Please update the following files:
    - Add an entry for any non-trivial technical decisions made today (use today's date, follow the template at the top of that file)
 
 Do these updates in order. Summarize what was done in one paragraph after updating.
+
 ```
 
 ---
@@ -261,3 +305,4 @@ Quick prompts for small tasks:
 - **"What's next?"** → `"Read Progresss.md and Roadmap.md. What is the next unchecked task in priority order? Describe what building it will involve before starting."`
 - **"Is this type safe?"** → `"Run tsc --noEmit across the whole monorepo and report any type errors. Fix them without weakening strictness."`
 - **"Clean up this PR"** → `"Run the code audit from PROMPT_PATTERNS.md §9 on all changed files. Fix every issue found."`
+```

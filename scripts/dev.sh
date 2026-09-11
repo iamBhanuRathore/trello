@@ -42,14 +42,15 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-# 3. Ensure .env exists
-if [ ! -f "$ROOT_DIR/.env" ]; then
-  echo -e "${YELLOW}⚠️  .env not found. Running setup first...${NC}"
-  bash "$SCRIPT_DIR/setup.sh"
+# 3. Ensure env exists (APP_ENV=production to dry-run prod config, default development)
+APP_ENV="${APP_ENV:-development}"
+if [ ! -f "$ROOT_DIR/.env.${APP_ENV}" ]; then
+  echo -e "${YELLOW}⚠️  .env.${APP_ENV} not found. Running setup first...${NC}"
+  APP_ENV="$APP_ENV" bash "$SCRIPT_DIR/setup.sh"
 fi
 
-# Ensure backend .env is synchronized
-cp "$ROOT_DIR/.env" "$ROOT_DIR/apps/backend/.env" 2>/dev/null || true
+# Ensure backend .env is synchronized (Bun loads apps/backend/.env, not .env.development)
+cp "$ROOT_DIR/.env.${APP_ENV}" "$ROOT_DIR/apps/backend/.env" 2>/dev/null || true
 
 # 4. Start Docker Containers if needed
 echo -e "${BLUE}🐳 Ensuring PostgreSQL & Redis containers are running...${NC}"

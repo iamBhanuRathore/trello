@@ -5,7 +5,14 @@ import { sprintsService } from '../lib/sprintsService';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@boardly/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@boardly/ui/dialog';
+import { DatePicker } from '@boardly/ui';
 import { format } from 'date-fns';
 import { Calendar, Target, Flag, ArrowLeft, Play, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@boardly/ui/card';
@@ -22,8 +29,9 @@ export const ProjectSprints = () => {
   });
 
   const updateSprintMutation = useMutation({
-    mutationFn: (data: { id: string; status: string }) => sprintsService.updateSprint(data.id, { status: data.status }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] })
+    mutationFn: (data: { id: string; status: string }) =>
+      sprintsService.updateSprint(data.id, { status: data.status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] }),
   });
 
   if (isLoading) return <div className="p-8">Loading sprints...</div>;
@@ -36,7 +44,10 @@ export const ProjectSprints = () => {
     <div className="w-full max-w-6xl mx-auto flex flex-col gap-8 py-8">
       <div className="flex items-center justify-between">
         <div>
-          <Link to="/" className="text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2">
+          <Link
+            to="/"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2"
+          >
             <ArrowLeft className="h-4 w-4" /> Back to Dashboard
           </Link>
           <h1 className="text-3xl font-bold tracking-tight">Sprint Planner</h1>
@@ -51,7 +62,11 @@ export const ProjectSprints = () => {
           </h2>
           <div className="grid gap-4 md:grid-cols-2">
             {activeSprints.map((sprint: any) => (
-              <SprintCard key={sprint.id} sprint={sprint} onUpdateStatus={(status) => updateSprintMutation.mutate({ id: sprint.id, status })} />
+              <SprintCard
+                key={sprint.id}
+                sprint={sprint}
+                onUpdateStatus={(status) => updateSprintMutation.mutate({ id: sprint.id, status })}
+              />
             ))}
           </div>
         </div>
@@ -61,10 +76,16 @@ export const ProjectSprints = () => {
         <h2 className="text-xl font-bold flex items-center gap-2">
           <Calendar className="h-5 w-5" /> Planned Sprints
         </h2>
-        {plannedSprints.length === 0 && <p className="text-muted-foreground">No planned sprints.</p>}
+        {plannedSprints.length === 0 && (
+          <p className="text-muted-foreground">No planned sprints.</p>
+        )}
         <div className="grid gap-4 md:grid-cols-2">
           {plannedSprints.map((sprint: any) => (
-            <SprintCard key={sprint.id} sprint={sprint} onUpdateStatus={(status) => updateSprintMutation.mutate({ id: sprint.id, status })} />
+            <SprintCard
+              key={sprint.id}
+              sprint={sprint}
+              onUpdateStatus={(status) => updateSprintMutation.mutate({ id: sprint.id, status })}
+            />
           ))}
         </div>
       </div>
@@ -85,11 +106,19 @@ export const ProjectSprints = () => {
   );
 };
 
-function SprintCard({ sprint, onUpdateStatus, readOnly = false }: { sprint: any, onUpdateStatus?: (s: string) => void, readOnly?: boolean }) {
+function SprintCard({
+  sprint,
+  onUpdateStatus,
+  readOnly = false,
+}: {
+  sprint: any;
+  onUpdateStatus?: (s: string) => void;
+  readOnly?: boolean;
+}) {
   // Fetch cards for this sprint
   const { data: sprintCards } = useQuery({
     queryKey: ['sprintCards', sprint.id],
-    queryFn: () => sprintsService.getSprintCards(sprint.id)
+    queryFn: () => sprintsService.getSprintCards(sprint.id),
   });
 
   return (
@@ -100,16 +129,23 @@ function SprintCard({ sprint, onUpdateStatus, readOnly = false }: { sprint: any,
           {!readOnly && (
             <div>
               {sprint.status === 'planned' && (
-                <Button size="sm" onClick={() => onUpdateStatus?.('active')}>Start Sprint</Button>
+                <Button size="sm" onClick={() => onUpdateStatus?.('active')}>
+                  Start Sprint
+                </Button>
               )}
               {sprint.status === 'active' && (
-                <Button size="sm" variant="secondary" onClick={() => onUpdateStatus?.('completed')}>Complete</Button>
+                <Button size="sm" variant="secondary" onClick={() => onUpdateStatus?.('completed')}>
+                  Complete
+                </Button>
               )}
             </div>
           )}
         </div>
         <div className="text-sm text-muted-foreground flex gap-4 mt-2">
-          <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {format(new Date(sprint.startDate), 'MMM d')} - {format(new Date(sprint.endDate), 'MMM d, yyyy')}</span>
+          <span className="flex items-center gap-1">
+            <Calendar className="h-3 w-3" /> {format(new Date(sprint.startDate), 'MMM d')} -{' '}
+            {format(new Date(sprint.endDate), 'MMM d, yyyy')}
+          </span>
           <span className="capitalize">{sprint.type}</span>
         </div>
       </CardHeader>
@@ -127,14 +163,18 @@ function SprintCard({ sprint, onUpdateStatus, readOnly = false }: { sprint: any,
           </h4>
           <div className="space-y-1">
             {sprintCards?.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic">No cards added to this sprint yet.</p>
+              <p className="text-sm text-muted-foreground italic">
+                No cards added to this sprint yet.
+              </p>
             ) : (
-              sprintCards?.slice(0, 5).map((cs: any) => (
-                <SprintCardItem key={cs.cardId} cardId={cs.cardId} />
-              ))
+              sprintCards
+                ?.slice(0, 5)
+                .map((cs: any) => <SprintCardItem key={cs.cardId} cardId={cs.cardId} />)
             )}
             {sprintCards && sprintCards.length > 5 && (
-              <p className="text-xs text-muted-foreground mt-2">...and {sprintCards.length - 5} more cards</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                ...and {sprintCards.length - 5} more cards
+              </p>
             )}
           </div>
         </div>
@@ -146,23 +186,25 @@ function SprintCard({ sprint, onUpdateStatus, readOnly = false }: { sprint: any,
 function SprintCardItem({ cardId }: { cardId: string }) {
   const { data: card } = useQuery({
     queryKey: ['card', cardId],
-    queryFn: async () => (await api.get(`/cards/${cardId}`)).data
+    queryFn: async () => (await api.get(`/cards/${cardId}`)).data,
   });
 
   if (!card) return <div className="h-6 bg-muted/50 rounded animate-pulse w-full"></div>;
-  return <div className="text-sm truncate p-1.5 border rounded bg-card shadow-xs">{card.title}</div>;
+  return (
+    <div className="text-sm truncate p-1.5 border rounded bg-card shadow-xs">{card.title}</div>
+  );
 }
 
 function CreateSprintDialog({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
-  
+
   const [formData, setFormData] = useState({
     name: 'Sprint 1',
     type: 'biweekly',
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    goal: ''
+    goal: '',
   });
 
   const createMutation = useMutation({
@@ -170,7 +212,7 @@ function CreateSprintDialog({ projectId }: { projectId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sprints', projectId] });
       setOpen(false);
-    }
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -190,11 +232,19 @@ function CreateSprintDialog({ projectId }: { projectId: string }) {
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
           <div className="grid gap-2">
             <Label>Sprint Name</Label>
-            <Input required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+            <Input
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
           </div>
           <div className="grid gap-2">
             <Label>Sprint Type</Label>
-            <select className="border rounded-md px-3 py-2 text-sm" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
+            <select
+              className="border rounded-md px-3 py-2 text-sm"
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+            >
               <option value="weekly">Weekly</option>
               <option value="biweekly">Biweekly</option>
               <option value="monthly">Monthly</option>
@@ -204,18 +254,37 @@ function CreateSprintDialog({ projectId }: { projectId: string }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label>Start Date</Label>
-              <Input type="date" required value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} />
+              <DatePicker
+                required
+                value={formData.startDate}
+                onChange={(v) => setFormData({ ...formData, startDate: v })}
+                placeholder="Select start date"
+              />
             </div>
             <div className="grid gap-2">
               <Label>End Date</Label>
-              <Input type="date" required value={formData.endDate} onChange={e => setFormData({...formData, endDate: e.target.value})} />
+              <DatePicker
+                required
+                value={formData.endDate}
+                onChange={(v) => setFormData({ ...formData, endDate: v })}
+                placeholder="Select end date"
+                min={formData.startDate || undefined}
+              />
             </div>
           </div>
           <div className="grid gap-2">
             <Label>Sprint Goal (Optional)</Label>
-            <Input value={formData.goal} onChange={e => setFormData({...formData, goal: e.target.value})} placeholder="Deliver feature X..." />
+            <Input
+              value={formData.goal}
+              onChange={(e) => setFormData({ ...formData, goal: e.target.value })}
+              placeholder="Deliver feature X..."
+            />
           </div>
-          <Button type="submit" className="mt-2" disabled={createMutation.isPending}>
+          <Button
+            type="submit"
+            className="mt-2"
+            disabled={createMutation.isPending || !formData.startDate || !formData.endDate}
+          >
             {createMutation.isPending ? 'Creating...' : 'Create Sprint'}
           </Button>
         </form>

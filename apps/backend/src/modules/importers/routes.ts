@@ -3,6 +3,7 @@ import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { handleRouteError } from '../../lib/errors';
 import { importTrelloBoard, importGenericTasks } from './service';
+import { ImportTasksBodySchema, ImportTrelloBodySchema } from './schema';
 
 export const importerRoutes = new Elysia({ prefix: '/import', tags: ['Importers'] })
   .use(authPlugin)
@@ -20,9 +21,7 @@ export const importerRoutes = new Elysia({ prefix: '/import', tags: ['Importers'
     {
       beforeHandle: requirePermission('board.create'),
       params: t.Object({ projectId: t.String() }),
-      body: t.Object({
-        trelloData: t.Any(),
-      }),
+      body: ImportTrelloBodySchema,
     }
   )
 
@@ -39,21 +38,6 @@ export const importerRoutes = new Elysia({ prefix: '/import', tags: ['Importers'
     {
       beforeHandle: requirePermission('board.create'),
       params: t.Object({ projectId: t.String() }),
-      body: t.Object({
-        boardName: t.String(),
-        lists: t.Array(
-          t.Object({
-            name: t.String(),
-            tasks: t.Array(
-              t.Object({
-                title: t.String(),
-                description: t.Optional(t.String()),
-                storyPoints: t.Optional(t.Number()),
-                dueDate: t.Optional(t.String()),
-              })
-            ),
-          })
-        ),
-      }),
+      body: ImportTasksBodySchema,
     }
   );

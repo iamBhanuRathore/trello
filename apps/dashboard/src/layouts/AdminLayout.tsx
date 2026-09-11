@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { Outlet, NavLink, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Button } from '@boardly/ui/button';
@@ -22,8 +22,12 @@ import {
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { SearchPalette } from '../components/SearchPalette';
-import { AppearanceModal } from '../components/AppearanceModal';
 import { UserProfileDropdown } from '../components/UserProfileDropdown';
+// Rarely-opened modal is code-split so it never bloats the admin shell.
+const AppearanceModal = lazy(() =>
+  import('../components/AppearanceModal').then((m) => ({ default: m.AppearanceModal }))
+);
+import { RouteFallback } from '../components/common/RouteFallback';
 import {
   Users,
   CreditCard,
@@ -338,8 +342,12 @@ export const AdminLayout: React.FC = () => {
         </SidebarInset>
       </div>
 
-      {/* Global Modals */}
-      <AppearanceModal open={isAppearanceOpen} onOpenChange={setIsAppearanceOpen} />
+      {/* Global Modals — mounted only when opened, in its own chunk */}
+      {isAppearanceOpen && (
+        <Suspense fallback={<RouteFallback label="Loading…" />}>
+          <AppearanceModal open={isAppearanceOpen} onOpenChange={setIsAppearanceOpen} />
+        </Suspense>
+      )}
     </SidebarProvider>
   );
 };

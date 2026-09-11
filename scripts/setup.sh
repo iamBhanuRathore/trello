@@ -35,32 +35,42 @@ if ! docker info >/dev/null 2>&1; then
 fi
 echo -e "${GREEN}✅ Prerequisites verified.${NC}"
 
-# 2. Environment Configuration
-echo -e "\n${BLUE}⚙️  Configuring environment variables...${NC}"
+# 2. Environment Configuration (APP_ENV=production for prod template, default development)
+APP_ENV="${APP_ENV:-development}"
+ENV_SRC="$ROOT_DIR/.env.${APP_ENV}.example"
+if [ ! -f "$ENV_SRC" ]; then
+  ENV_SRC="$ROOT_DIR/.env.example"
+fi
+ENV_DST="$ROOT_DIR/.env.${APP_ENV}"
+if [ ! -f "$ENV_DST" ]; then
+  echo "Creating $ENV_DST from $(basename "$ENV_SRC")..."
+  cp "$ENV_SRC" "$ENV_DST"
+fi
+# Back-compat: legacy .env path used by older scripts
 if [ ! -f "$ROOT_DIR/.env" ]; then
-  echo "Creating .env from .env.example..."
-  cp "$ROOT_DIR/.env.example" "$ROOT_DIR/.env"
+  cp "$ENV_DST" "$ROOT_DIR/.env"
 fi
 
 # Generate strong secrets if placeholder remains
-if grep -q "replace-me" "$ROOT_DIR/.env" 2>/dev/null; then
+if grep -q "replace-me" "$ENV_DST" 2>/dev/null; then
   echo "Generating secure random JWT secrets..."
   SECRET1=$(openssl rand -base64 36 2>/dev/null || node -e "console.log(require('crypto').randomBytes(36).toString('base64'))")
   SECRET2=$(openssl rand -base64 36 2>/dev/null || node -e "console.log(require('crypto').randomBytes(36).toString('base64'))")
   
-  # Replace in .env
+  # Replace in env file
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|JWT_SECRET=replace-me.*|JWT_SECRET=$SECRET1|g" "$ROOT_DIR/.env"
-    sed -i '' "s|REFRESH_TOKEN_SECRET=replace-me.*|REFRESH_TOKEN_SECRET=$SECRET2|g" "$ROOT_DIR/.env"
+    sed -i '' "s|JWT_SECRET=replace-me.*|JWT_SECRET=$SECRET1|g" "$ENV_DST"
+    sed -i '' "s|REFRESH_TOKEN_SECRET=replace-me.*|REFRESH_TOKEN_SECRET=$SECRET2|g" "$ENV_DST"
   else
-    sed -i "s|JWT_SECRET=replace-me.*|JWT_SECRET=$SECRET1|g" "$ROOT_DIR/.env"
-    sed -i "s|REFRESH_TOKEN_SECRET=replace-me.*|REFRESH_TOKEN_SECRET=$SECRET2|g" "$ROOT_DIR/.env"
+    sed -i "s|JWT_SECRET=replace-me.*|JWT_SECRET=$SECRET1|g" "$ENV_DST"
+    sed -i "s|REFRESH_TOKEN_SECRET=replace-me.*|REFRESH_TOKEN_SECRET=$SECRET2|g" "$ENV_DST"
   fi
 fi
 
-# Sync to backend
-cp "$ROOT_DIR/.env" "$ROOT_DIR/apps/backend/.env"
-echo -e "${GREEN}✅ Environment files ready (.env & apps/backend/.env).${NC}"
+# Sync to backend (+ legacy .env for back-compat)
+cp "$ENV_DST" "$ROOT_DIR/apps/backend/.env"
+cp "$ENV_DST" "$ROOT_DIR/.env"
+echo -e "${GREEN}✅ Environment files ready ($ENV_DST, .env & apps/backend/.env).${NC}"
 
 # 3. Install dependencies
 echo -e "\n${BLUE}📦 Installing monorepo dependencies...${NC}"

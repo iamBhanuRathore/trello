@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -34,6 +34,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@boardly/ui/button';
+import { DatePicker } from '@boardly/ui';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Card, CardContent } from '@boardly/ui/card';
@@ -60,19 +61,28 @@ import {
   Edit2,
   AlertTriangle,
   Maximize2,
-  Sparkles,
   ListChecks,
   Eye,
 } from 'lucide-react';
 import { isPast, format } from 'date-fns';
-import { CardModal } from '../components/board/CardModal';
-import { AutomationsModal } from '../components/board/AutomationsModal';
-import { FormBuilderModal } from '../components/board/FormBuilderModal';
+// Heavy modals are code-split: each loads on first open, not with the board.
+const CardModal = lazy(() =>
+  import('../components/board/CardModal').then((m) => ({ default: m.CardModal }))
+);
+const AutomationsModal = lazy(() =>
+  import('../components/board/AutomationsModal').then((m) => ({ default: m.AutomationsModal }))
+);
+const FormBuilderModal = lazy(() =>
+  import('../components/board/FormBuilderModal').then((m) => ({ default: m.FormBuilderModal }))
+);
+const CreateTaskModal = lazy(() =>
+  import('../components/board/CreateTaskModal').then((m) => ({ default: m.CreateTaskModal }))
+);
+import { RouteFallback } from '../components/common/RouteFallback';
 import { PresenceAvatars } from '../components/board/PresenceAvatars';
 import { useRealtimeBoard } from '../hooks/useRealtimeBoard';
 import { useAuthStore } from '../store/authStore';
-import { orgService } from '../lib/orgService';
-import { MemberSearchableSelect, ListSearchableSelect } from '../components/ui/SearchableSelect';
+import { AsyncMemberSearchableSelect } from '../components/ui/AsyncMemberSelect';
 
 interface KanbanCard {
   id: string;
@@ -131,7 +141,9 @@ export function BoardView() {
   });
 
   const [lists, setLists] = useState<KanbanList[]>([]);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(searchParams.get('card') || null);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(
+    searchParams.get('card') || null
+  );
   const [activeCard, setActiveCard] = useState<KanbanCard | null>(null);
   const [clonedLists, setClonedLists] = useState<KanbanList[] | null>(null);
 
@@ -146,11 +158,14 @@ export function BoardView() {
     }
   }, [searchParams, emitCardFocus]);
 
-  const handleCardClick = useCallback((cardId: string) => {
-    setSelectedCardId(cardId);
-    emitCardFocus(cardId);
-    setSearchParams({ card: cardId });
-  }, [emitCardFocus, setSearchParams]);
+  const handleCardClick = useCallback(
+    (cardId: string) => {
+      setSelectedCardId(cardId);
+      emitCardFocus(cardId);
+      setSearchParams({ card: cardId });
+    },
+    [emitCardFocus, setSearchParams]
+  );
 
   const handleCloseModal = useCallback(() => {
     setSelectedCardId(null);
@@ -209,128 +224,146 @@ export function BoardView() {
     return closestCorners(args);
   }, []);
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    const { active } = event;
-    const card = lists.flatMap((l) => l.cards).find((c) => c.id === active.id);
-    if (card) {
-      setActiveCard(card);
-      setClonedLists(lists);
-    }
-  }, [lists]);
+  const handleDragStart = useCallback(
+    (event: DragStartEvent) => {
+      const { active } = event;
+      const card = lists.flatMap((l) => l.cards).find((c) => c.id === active.id);
+      if (card) {
+        setActiveCard(card);
+        setClonedLists(lists);
+      }
+    },
+    [lists]
+  );
 
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event;
+      if (!over) return;
 
-    const activeId = active.id as string;
-    const overId = over.id as string;
+      const activeId = active.id as string;
+      const overId = over.id as string;
 
-    const activeContainer = lists.find((l) => l.cards.some((c) => c.id === activeId));
-    const overContainer = lists.find((l) => l.id === overId || l.cards.some((c) => c.id === overId));
+      const activeContainer = lists.find((l) => l.cards.some((c) => c.id === activeId));
+      const overContainer = lists.find(
+        (l) => l.id === overId || l.cards.some((c) => c.id === overId)
+      );
 
-    if (!activeContainer || !overContainer || activeContainer.id === overContainer.id) {
-      return;
-    }
-
-    setLists((prev) => {
-      const sourceList = prev.find((l) => l.id === activeContainer.id);
-      const targetList = prev.find((l) => l.id === overContainer.id);
-      if (!sourceList || !targetList) return prev;
-
-      const activeIndex = sourceList.cards.findIndex((c) => c.id === activeId);
-      if (activeIndex === -1) return prev;
-
-      const movingCard = { ...sourceList.cards[activeIndex], listId: targetList.id };
-      let overIndex = targetList.cards.findIndex((c) => c.id === overId);
-
-      if (overIndex === -1) {
-        overIndex = targetList.cards.length;
+      if (!activeContainer || !overContainer || activeContainer.id === overContainer.id) {
+        return;
       }
 
-      return prev.map((l) => {
-        if (l.id === sourceList.id) {
-          return {
-            ...l,
-            cards: l.cards.filter((c) => c.id !== activeId),
-          };
+      setLists((prev) => {
+        const sourceList = prev.find((l) => l.id === activeContainer.id);
+        const targetList = prev.find((l) => l.id === overContainer.id);
+        if (!sourceList || !targetList) return prev;
+
+        const activeIndex = sourceList.cards.findIndex((c) => c.id === activeId);
+        if (activeIndex === -1) return prev;
+
+        const movingCard = { ...sourceList.cards[activeIndex], listId: targetList.id };
+        let overIndex = targetList.cards.findIndex((c) => c.id === overId);
+
+        if (overIndex === -1) {
+          overIndex = targetList.cards.length;
         }
-        if (l.id === targetList.id) {
-          const nextCards = [...l.cards];
-          nextCards.splice(overIndex, 0, movingCard);
-          return {
-            ...l,
-            cards: nextCards,
-          };
-        }
-        return l;
+
+        return prev.map((l) => {
+          if (l.id === sourceList.id) {
+            return {
+              ...l,
+              cards: l.cards.filter((c) => c.id !== activeId),
+            };
+          }
+          if (l.id === targetList.id) {
+            const nextCards = [...l.cards];
+            nextCards.splice(overIndex, 0, movingCard);
+            return {
+              ...l,
+              cards: nextCards,
+            };
+          }
+          return l;
+        });
       });
-    });
-  }, [lists]);
+    },
+    [lists]
+  );
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveCard(null);
-    setClonedLists(null);
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveCard(null);
+      setClonedLists(null);
 
-    if (!over) {
-      if (clonedLists) setLists(clonedLists);
-      return;
-    }
+      if (!over) {
+        if (clonedLists) setLists(clonedLists);
+        return;
+      }
 
-    const activeId = active.id as string;
-    const overId = over.id as string;
+      const activeId = active.id as string;
+      const overId = over.id as string;
 
-    const currentContainer = lists.find((l) => l.cards.some((c) => c.id === activeId));
-    if (!currentContainer) return;
+      const currentContainer = lists.find((l) => l.cards.some((c) => c.id === activeId));
+      if (!currentContainer) return;
 
-    const activeIndex = currentContainer.cards.findIndex((c) => c.id === activeId);
-    const overIndex = currentContainer.cards.findIndex((c) => c.id === overId);
+      const activeIndex = currentContainer.cards.findIndex((c) => c.id === activeId);
+      const overIndex = currentContainer.cards.findIndex((c) => c.id === overId);
 
-    let newCards = [...currentContainer.cards];
-    if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
-      newCards = arrayMove(newCards, activeIndex, overIndex);
-    }
+      let newCards = [...currentContainer.cards];
+      if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
+        newCards = arrayMove(newCards, activeIndex, overIndex);
+      }
 
-    // Calculate position
-    const targetIndex = newCards.findIndex((c) => c.id === activeId);
-    if (targetIndex === -1) return;
+      // Calculate position
+      const targetIndex = newCards.findIndex((c) => c.id === activeId);
+      if (targetIndex === -1) return;
 
-    const prevCard = newCards[targetIndex - 1];
-    const nextCard = newCards[targetIndex + 1];
+      const prevCard = newCards[targetIndex - 1];
+      const nextCard = newCards[targetIndex + 1];
 
-    let newPos: number;
-    if (!prevCard && !nextCard) {
-      newPos = 65536;
-    } else if (!prevCard) {
-      newPos = (nextCard.position || 65536) / 2;
-    } else if (!nextCard) {
-      newPos = (prevCard.position || 0) + 65536;
-    } else {
-      newPos = ((prevCard.position || 0) + (nextCard.position || 0)) / 2;
-    }
+      let newPos: number;
+      if (!prevCard && !nextCard) {
+        newPos = 65536;
+      } else if (!prevCard) {
+        newPos = (nextCard.position || 65536) / 2;
+      } else if (!nextCard) {
+        newPos = (prevCard.position || 0) + 65536;
+      } else {
+        newPos = ((prevCard.position || 0) + (nextCard.position || 0)) / 2;
+      }
 
-    const updatedCard = { ...newCards[targetIndex], position: newPos, listId: currentContainer.id };
-    newCards[targetIndex] = updatedCard;
+      const updatedCard = {
+        ...newCards[targetIndex],
+        position: newPos,
+        listId: currentContainer.id,
+      };
+      newCards[targetIndex] = updatedCard;
 
-    const updatedLists = lists.map((l) =>
-      l.id === currentContainer.id ? { ...l, cards: newCards } : l
-    );
-    setLists(updatedLists);
+      const updatedLists = lists.map((l) =>
+        l.id === currentContainer.id ? { ...l, cards: newCards } : l
+      );
+      setLists(updatedLists);
 
-    moveCardMutation.mutate({
-      cardId: activeId,
-      listId: currentContainer.id,
-      position: newPos,
-    });
-  }, [lists, clonedLists, moveCardMutation]);
+      moveCardMutation.mutate({
+        cardId: activeId,
+        listId: currentContainer.id,
+        position: newPos,
+      });
+    },
+    [lists, clonedLists, moveCardMutation]
+  );
 
-  const handleDragCancel = useCallback((_event: DragCancelEvent) => {
-    if (clonedLists) {
-      setLists(clonedLists);
-    }
-    setActiveCard(null);
-    setClonedLists(null);
-  }, [clonedLists]);
+  const handleDragCancel = useCallback(
+    (_event: DragCancelEvent) => {
+      if (clonedLists) {
+        setLists(clonedLists);
+      }
+      setActiveCard(null);
+      setClonedLists(null);
+    },
+    [clonedLists]
+  );
 
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -350,13 +383,6 @@ export function BoardView() {
   const [isEditingBoard, setIsEditingBoard] = useState(false);
   const [isDeletingBoard, setIsDeletingBoard] = useState(false);
   const [editBoardName, setEditBoardName] = useState('');
-
-  // Org members for task creation
-  const { data: members = [] } = useQuery({
-    queryKey: ['orgMembers', user?.organizationId],
-    queryFn: () => (user?.organizationId ? orgService.getMembers(user.organizationId) : Promise.resolve([])),
-    enabled: !!user?.organizationId,
-  });
 
   const deleteBoardMutation = useMutation({
     mutationFn: async () => await api.delete(`/boards/${boardId}`),
@@ -501,46 +527,62 @@ export function BoardView() {
           </DragOverlay>
         </DndContext>
       </div>
-      <CardModal
-        cardId={selectedCardId}
-        open={!!selectedCardId}
-        onOpenChange={(open) => {
-          if (!open) {
-            handleCloseModal();
-          }
-        }}
-        onSelectCard={(id) => handleCardClick(id)}
-      />
+      {selectedCardId && (
+        <Suspense fallback={<RouteFallback label="Loading task…" />}>
+          <CardModal
+            cardId={selectedCardId}
+            open={!!selectedCardId}
+            onOpenChange={(open) => {
+              if (!open) {
+                handleCloseModal();
+              }
+            }}
+            onSelectCard={(id) => handleCardClick(id)}
+          />
+        </Suspense>
+      )}
       {boardId && (
         <>
-          <AutomationsModal
-            boardId={boardId}
-            isOpen={isAutomationsOpen}
-            onClose={() => setIsAutomationsOpen(false)}
-            lists={lists}
-          />
-          <FormBuilderModal
-            boardId={boardId}
-            lists={lists}
-            isOpen={isFormsOpen}
-            onClose={() => setIsFormsOpen(false)}
-          />
+          {isAutomationsOpen && (
+            <Suspense fallback={<RouteFallback label="Loading automations…" />}>
+              <AutomationsModal
+                boardId={boardId}
+                isOpen={isAutomationsOpen}
+                onClose={() => setIsAutomationsOpen(false)}
+                lists={lists}
+              />
+            </Suspense>
+          )}
+          {isFormsOpen && (
+            <Suspense fallback={<RouteFallback label="Loading forms…" />}>
+              <FormBuilderModal
+                boardId={boardId}
+                lists={lists}
+                isOpen={isFormsOpen}
+                onClose={() => setIsFormsOpen(false)}
+              />
+            </Suspense>
+          )}
 
           {/* Create Task Modal */}
           {createTaskConfig.isOpen && (
-            <CreateTaskModal
-              lists={lists}
-              members={members}
-              currentUser={user}
-              isOpen={createTaskConfig.isOpen}
-              initialData={createTaskConfig.initialData}
-              onClose={() => setCreateTaskConfig({ isOpen: false })}
-              onTaskCreated={(card) => {
-                queryClient.invalidateQueries({ queryKey: ['lists', boardId] });
-                setCreateTaskConfig({ isOpen: false });
-                if (card?.id) handleCardClick(card.id);
-              }}
-            />
+            <Suspense fallback={<RouteFallback label="Loading composer…" />}>
+              <CreateTaskModal
+                lists={lists}
+                members={[]}
+                currentUser={user}
+                isOpen={createTaskConfig.isOpen}
+                initialData={createTaskConfig.initialData}
+                boardId={boardId}
+                orgId={user?.organizationId}
+                onClose={() => setCreateTaskConfig({ isOpen: false })}
+                onTaskCreated={(card) => {
+                  queryClient.invalidateQueries({ queryKey: ['lists', boardId] });
+                  setCreateTaskConfig({ isOpen: false });
+                  if (card?.id) handleCardClick(card.id);
+                }}
+              />
+            </Suspense>
           )}
 
           {/* Edit Board Dialog */}
@@ -571,7 +613,12 @@ export function BoardView() {
                     />
                   </div>
                   <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditingBoard(false)}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsEditingBoard(false)}
+                    >
                       Cancel
                     </Button>
                     <Button type="submit" size="sm" disabled={updateBoardMutation.isPending}>
@@ -594,14 +641,24 @@ export function BoardView() {
                 </DialogHeader>
                 <div className="space-y-3 py-2 text-xs text-muted-foreground">
                   <p>
-                    Are you sure you want to delete board <strong className="text-foreground">{board?.name}</strong>?
+                    Are you sure you want to delete board{' '}
+                    <strong className="text-foreground">{board?.name}</strong>?
                   </p>
                   <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs space-y-1">
                     <p className="font-semibold">This board will be moved to Trash.</p>
-                    <p>All lists, cards, checklist items, and comments will be moved to the Recycle Bin and automatically purged after 30 days. You can restore them from Trash before then.</p>
+                    <p>
+                      All lists, cards, checklist items, and comments will be moved to the Recycle
+                      Bin and automatically purged after 30 days. You can restore them from Trash
+                      before then.
+                    </p>
                   </div>
                   <div className="flex justify-end gap-2 pt-3">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setIsDeletingBoard(false)}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsDeletingBoard(false)}
+                    >
                       Cancel
                     </Button>
                     <Button
@@ -672,12 +729,7 @@ function ListColumn({
     }
   }, [user?.id]);
 
-  // Org members for quick assignee selector
-  const { data: members = [] } = useQuery({
-    queryKey: ['orgMembers', user?.organizationId],
-    queryFn: () => (user?.organizationId ? orgService.getMembers(user.organizationId) : Promise.resolve([])),
-    enabled: !!user?.organizationId,
-  });
+  // Quick assignee selector uses server-side search (async) — no full fetch.
 
   const deleteListMutation = useMutation({
     mutationFn: async () => await api.delete(`/lists/${list.id}`),
@@ -754,7 +806,11 @@ function ListColumn({
         {/* List Actions Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger>
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            >
               <MoreHorizontal className="w-3.5 h-3.5" />
             </Button>
           </DropdownMenuTrigger>
@@ -806,10 +862,19 @@ function ListColumn({
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditingList(false)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsEditingList(false)}
+                >
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" disabled={!editListName.trim() || updateListMutation.isPending}>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={!editListName.trim() || updateListMutation.isPending}
+                >
                   {updateListMutation.isPending ? 'Saving...' : 'Save'}
                 </Button>
               </div>
@@ -829,11 +894,17 @@ function ListColumn({
             </DialogHeader>
             <div className="py-2 space-y-3">
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Are you sure you want to delete <strong className="text-foreground">"{list.name}"</strong>? All{' '}
-                {list.cards.length} cards inside will be permanently removed.
+                Are you sure you want to delete{' '}
+                <strong className="text-foreground">"{list.name}"</strong>? All {list.cards.length}{' '}
+                cards inside will be permanently removed.
               </p>
               <div className="flex justify-end gap-2 pt-3">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setIsDeletingList(false)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsDeletingList(false)}
+                >
                   Cancel
                 </Button>
                 <Button
@@ -916,11 +987,12 @@ function ListColumn({
             <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
               {/* Assignee Searchable Picker */}
               <div className="max-w-[130px] min-w-[95px]">
-                <MemberSearchableSelect
-                  members={members}
+                <AsyncMemberSearchableSelect
+                  orgId={user?.organizationId}
                   currentUser={user}
                   value={assigneeId}
                   onChange={setAssigneeId}
+                  pinnedIds={assigneeId ? [assigneeId] : []}
                   size="sm"
                   triggerClassName="h-6 px-1.5 text-[11px] bg-muted/60 hover:bg-muted/90 border-border/70 rounded-md"
                 />
@@ -929,12 +1001,14 @@ function ListColumn({
               {/* Due Date */}
               <div className="flex items-center gap-1 bg-muted/60 hover:bg-muted/90 px-2 py-0.5 rounded-md border border-border/70 text-xs transition-colors">
                 <Calendar className="w-3 h-3 text-muted-foreground shrink-0" />
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="bg-transparent text-[11px] text-foreground outline-none cursor-pointer w-[95px]"
-                />
+                <div className="w-[95px]">
+                  <DatePicker
+                    value={dueDate}
+                    onChange={setDueDate}
+                    placeholder="Date"
+                    triggerClassName="h-6 px-1 text-[11px] bg-transparent border-transparent hover:bg-transparent"
+                  />
+                </div>
               </div>
 
               {/* Story Points */}
@@ -1164,9 +1238,7 @@ function CardHoverPreviewPortal({
             </span>
           </div>
         )}
-        <div className="text-sm font-bold text-foreground leading-snug">
-          {card.title}
-        </div>
+        <div className="text-sm font-bold text-foreground leading-snug">{card.title}</div>
       </div>
 
       {/* Description Excerpt */}
@@ -1175,9 +1247,7 @@ function CardHoverPreviewPortal({
           {card.description}
         </div>
       ) : (
-        <div className="text-xs text-muted-foreground/60 italic">
-          No description provided.
-        </div>
+        <div className="text-xs text-muted-foreground/60 italic">No description provided.</div>
       )}
 
       {/* Checklist Progress */}
@@ -1239,9 +1309,7 @@ function CardHoverPreviewPortal({
 
       {/* Footer Action */}
       <div className="pt-2 border-t border-border/40 flex items-center justify-between">
-        <span className="text-[10px] text-muted-foreground/60 font-mono">
-          Click card to edit
-        </span>
+        <span className="text-[10px] text-muted-foreground/60 font-mono">Click card to edit</span>
         <Button
           size="sm"
           variant="secondary"
@@ -1355,23 +1423,25 @@ function KanbanCardView({
           {/* Top: Labels + Hover Quick Peek Button */}
           <div className="flex items-center justify-between gap-1 min-h-[20px]">
             <div className="flex flex-wrap gap-1">
-              {card.labels && card.labels.length > 0 && card.labels.map((lbl) => (
-                <span
-                  key={lbl.id}
-                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1"
-                  style={{
-                    backgroundColor: `${lbl.color}20`,
-                    color: lbl.color,
-                    border: `1px solid ${lbl.color}35`,
-                  }}
-                >
+              {card.labels &&
+                card.labels.length > 0 &&
+                card.labels.map((lbl) => (
                   <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: lbl.color }}
-                  />
-                  <span className="truncate max-w-[90px]">{lbl.name}</span>
-                </span>
-              ))}
+                    key={lbl.id}
+                    className="px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1"
+                    style={{
+                      backgroundColor: `${lbl.color}20`,
+                      color: lbl.color,
+                      border: `1px solid ${lbl.color}35`,
+                    }}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: lbl.color }}
+                    />
+                    <span className="truncate max-w-[90px]">{lbl.name}</span>
+                  </span>
+                ))}
             </div>
 
             {/* Quick Peek Button on Card Hover */}
@@ -1433,7 +1503,12 @@ function KanbanCardView({
                   ) : (
                     <Calendar className="w-3 h-3" />
                   )}
-                  <span>{new Date(card.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                  <span>
+                    {new Date(card.dueDate).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </span>
                 </span>
               )}
 
@@ -1446,7 +1521,9 @@ function KanbanCardView({
                   title="Checklist completion"
                 >
                   <CheckSquare className="w-3 h-3" />
-                  <span>{card.checklistDone}/{card.checklistTotal}</span>
+                  <span>
+                    {card.checklistDone}/{card.checklistTotal}
+                  </span>
                 </span>
               )}
 
@@ -1459,7 +1536,10 @@ function KanbanCardView({
 
               {/* Comments Count */}
               {(card.commentsCount ?? 0) > 0 && (
-                <span className="inline-flex items-center gap-1 hover:text-foreground transition-colors" title="Comments">
+                <span
+                  className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                  title="Comments"
+                >
                   <MessageSquare className="w-3 h-3" />
                   <span>{card.commentsCount}</span>
                 </span>
@@ -1467,7 +1547,10 @@ function KanbanCardView({
 
               {/* Attachments Count */}
               {(card.attachmentsCount ?? 0) > 0 && (
-                <span className="inline-flex items-center gap-1 hover:text-foreground transition-colors" title="Attachments">
+                <span
+                  className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                  title="Attachments"
+                >
                   <Paperclip className="w-3 h-3" />
                   <span>{card.attachmentsCount}</span>
                 </span>
@@ -1488,12 +1571,17 @@ function KanbanCardView({
                   />
                 ) : (
                   <div className="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[9px] font-bold shadow-2xs">
-                    {primaryAssignee.name ? primaryAssignee.name.substring(0, 1).toUpperCase() : 'U'}
+                    {primaryAssignee.name
+                      ? primaryAssignee.name.substring(0, 1).toUpperCase()
+                      : 'U'}
                   </div>
                 )}
               </div>
             ) : (
-              <div className="w-4 h-4 rounded-full border border-dashed border-border/80 flex items-center justify-center text-[8px] text-muted-foreground/40 shrink-0" title="Unassigned">
+              <div
+                className="w-4 h-4 rounded-full border border-dashed border-border/80 flex items-center justify-center text-[8px] text-muted-foreground/40 shrink-0"
+                title="Unassigned"
+              >
                 +
               </div>
             )}
@@ -1563,211 +1651,5 @@ function AddListForm({ boardId, onAdd }: { boardId: string; onAdd: () => void })
         </Button>
       )}
     </div>
-  );
-}
-
-function CreateTaskModal({
-  lists,
-  members,
-  currentUser,
-  isOpen,
-  initialData,
-  onClose,
-  onTaskCreated,
-}: {
-  lists: KanbanList[];
-  members: any[];
-  currentUser: any;
-  isOpen: boolean;
-  initialData?: {
-    listId?: string;
-    title?: string;
-    description?: string;
-    assigneeId?: string;
-    dueDate?: string;
-    storyPoints?: string;
-  };
-  onClose: () => void;
-  onTaskCreated: (card: any) => void;
-}) {
-  const [title, setTitle] = useState(initialData?.title || '');
-  const [listId, setListId] = useState(initialData?.listId || lists[0]?.id || '');
-  const [description, setDescription] = useState(initialData?.description || '');
-  const [assigneeId, setAssigneeId] = useState(initialData?.assigneeId || currentUser?.id || '');
-  const [dueDate, setDueDate] = useState(initialData?.dueDate || '');
-  const [storyPoints, setStoryPoints] = useState<string>(initialData?.storyPoints || '');
-  const [estimateHours, setEstimateHours] = useState<string>('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (isOpen) {
-      setTitle(initialData?.title || '');
-      setListId(initialData?.listId || lists[0]?.id || '');
-      setDescription(initialData?.description || '');
-      setAssigneeId(initialData?.assigneeId || currentUser?.id || '');
-      setDueDate(initialData?.dueDate || '');
-      setStoryPoints(initialData?.storyPoints || '');
-      setEstimateHours('');
-    }
-  }, [isOpen, initialData, lists, currentUser?.id]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !listId) return;
-
-    setIsSubmitting(true);
-    try {
-      const payload: any = {
-        listId,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        assigneeId: assigneeId || undefined,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
-        storyPoints: storyPoints ? Number(storyPoints) : undefined,
-        estimateMinutes: estimateHours ? Math.round(Number(estimateHours) * 60) : undefined,
-      };
-
-      const res = await api.post('/cards', payload);
-      onTaskCreated(res.data);
-    } catch (err) {
-      console.error('Failed to create task', err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-xl max-h-[88vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
-        {/* ─── Fixed Header ─── */}
-        <div className="p-5 border-b border-border/80 bg-card/90 backdrop-blur-md flex items-center justify-between shrink-0 pr-8">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <div>
-              <DialogTitle className="text-base font-bold text-foreground">Create New Task</DialogTitle>
-              <p className="text-xs text-muted-foreground">Add a new item to your Kanban board</p>
-            </div>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          {/* ─── Scrollable Body ─── */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            {/* Target List & Title */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-1">
-                <Label className="text-xs font-semibold text-foreground mb-1.5 block">Board Column</Label>
-                <ListSearchableSelect
-                  lists={lists}
-                  value={listId}
-                  onChange={setListId}
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <Label className="text-xs font-semibold text-foreground mb-1.5 block">Task Title</Label>
-                <Input
-                  autoFocus
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Implement authentication microservice..."
-                  className="h-9 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Description */}
-            <div>
-              <Label className="text-xs font-semibold text-foreground mb-1.5 block">
-                Description / Requirements (Markdown supported)
-              </Label>
-              <textarea
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Provide background, checklist, or acceptance criteria..."
-                className="w-full text-xs rounded-lg border border-input bg-background p-3 outline-none focus:ring-1 focus:ring-primary resize-none placeholder:text-muted-foreground leading-relaxed"
-              />
-            </div>
-
-            {/* Assignee & Due Date */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-xs font-semibold text-foreground mb-1.5 block">Primary Assignee</Label>
-                <MemberSearchableSelect
-                  members={members}
-                  currentUser={currentUser}
-                  value={assigneeId}
-                  onChange={setAssigneeId}
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs font-semibold text-foreground mb-1.5 block">Due Date</Label>
-                <Input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="h-9 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Points & Hours Estimate */}
-            <div className="grid grid-cols-2 gap-4 pt-1">
-              <div>
-                <Label className="text-xs font-semibold text-foreground mb-1.5 block">Story Points</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  placeholder="e.g. 3, 5, 8"
-                  value={storyPoints}
-                  onChange={(e) => setStoryPoints(e.target.value)}
-                  className="h-9 text-xs"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs font-semibold text-foreground mb-1.5 block">Estimated Hours</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  placeholder="e.g. 4.5"
-                  value={estimateHours}
-                  onChange={(e) => setEstimateHours(e.target.value)}
-                  className="h-9 text-xs"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* ─── Fixed Bottom Footer ─── */}
-          <div className="p-4 sm:px-6 border-t border-border/80 bg-card/90 backdrop-blur-md shrink-0 flex items-center justify-end gap-2.5">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="cursor-pointer text-xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={!title.trim() || isSubmitting}
-              className="gap-1.5 cursor-pointer text-xs px-5"
-            >
-              {isSubmitting ? 'Creating...' : 'Create & Open Task'}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

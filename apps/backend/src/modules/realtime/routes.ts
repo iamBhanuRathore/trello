@@ -1,7 +1,8 @@
 import { Elysia } from 'elysia';
 import { verifyAccessToken } from '../../middleware/auth';
 import { eventBus } from '../../lib/event-bus';
-import { presenceStore, initializeRedisPubSub, onRedisBroadcast, PresenceUser } from '../../redis';
+import { presenceStore, initializeRedisPubSub, onRedisBroadcast } from '../../redis';
+import type { PresenceUser } from '../../redis';
 
 export type { PresenceUser };
 

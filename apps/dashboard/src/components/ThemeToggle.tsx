@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -9,11 +9,11 @@ import {
 } from '@boardly/ui/dropdown-menu';
 import { cn } from '@boardly/ui/utils';
 import { Sun, Moon, Laptop, Palette, Check, Sparkles } from 'lucide-react';
-import {
-  useThemeStore,
-  THEME_PALETTES,
-} from '../store/themeStore';
-import { AppearanceModal } from './AppearanceModal';
+import { useThemeStore, THEME_PALETTES } from '../store/themeStore';
+// Code-split: the appearance studio loads only when the user opens it.
+const AppearanceModal = lazy(() =>
+  import('./AppearanceModal').then((m) => ({ default: m.AppearanceModal }))
+);
 
 interface ThemeToggleProps {
   variant?: 'default' | 'outline' | 'ghost';
@@ -21,10 +21,7 @@ interface ThemeToggleProps {
   showLabel?: boolean;
 }
 
-export const ThemeToggle: React.FC<ThemeToggleProps> = ({
-  className = '',
-  showLabel = false,
-}) => {
+export const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '', showLabel = false }) => {
   const { mode, palette, resolvedIsDark, setMode, setPalette } = useThemeStore();
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -42,7 +39,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
       <DropdownMenu>
         <DropdownMenuTrigger
           className={cn(
-            "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-muted/80 hover:text-foreground h-9 w-9 relative cursor-pointer border border-transparent hover:border-border",
+            'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-muted/80 hover:text-foreground h-9 w-9 relative cursor-pointer border border-transparent hover:border-border',
             className
           )}
           title={`Current theme: ${mode === 'system' ? 'System' : mode} (${currentPalette.name})`}
@@ -156,7 +153,11 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AppearanceModal open={modalOpen} onOpenChange={setModalOpen} />
+      {modalOpen && (
+        <Suspense fallback={null}>
+          <AppearanceModal open={modalOpen} onOpenChange={setModalOpen} />
+        </Suspense>
+      )}
     </>
   );
 };

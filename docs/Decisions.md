@@ -24,6 +24,150 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-09 — Shared DatePicker replaces all native date inputs
+
+**Context:** Every date field used `<input type="date">`, whose popup is OS/browser chrome that ignores theming entirely (the broken-looking calendar in the report) and behaves inconsistently across browsers.
+
+**Decision:**
+
+1. New `DatePicker` in `@boardly/ui` (Base UI Popover + Portal + Positioner, same pattern as the menu/tooltip primitives): Monday-first ISO grid, month nav, Today/Clear footer, min/max bounds, clear button, `required` asterisk, full keyboard/ARIA wiring. Zero new dependencies (hand-rolled month math). Same `YYYY-MM-DD` string contract as the native inputs.
+2. Swapped all 8 usages: task Deadline, worklog Date, composer Due Date, board inline-composer date, sprint start/end (end bounded by start via `min`), phase start/end. Sprint create is now disabled until both required dates are set (replacing the lost native `required` gate).
+
+**Alternatives considered:** `react-day-picker` (rejected — dependency + styling override work for what ~200 lines of owned code covers, consistent with the hand-rolled SVG chart call).
+
+**Consequences:** No native date popup remains in the dashboard (verified by grep). Any new date field uses `DatePicker` from `@boardly/ui`.
+
+### 2026-09-09 — Subtask badge source fix, borderless checklist rename, tooltip stuck-instant bug
+
+**Context:** (1) New subtasks showed "Completed" — `listSubtasks` never joined `lists`, so `listName` was always undefined and the `|| 'Completed'` fallback lied. (2) Checklist rename swapped the header for an input + Save/Cancel row (layout shift, cramped). (3) Tooltips still felt instant despite the 500 ms standard.
+
+**Decision:**
+
+1. `listSubtasks` now joins `lists` and returns real `listName`; frontend fallback changed to `card?.listName || 'To Do'` so no missing value can ever render as "Completed" again.
+2. Checklist rename is Trello-style borderless: click title → inline input in place (progress bar stays), `Enter` saves, `Escape`/blur cancels. No buttons, no layout shift.
+3. Root-caused the fast tooltip: `GlobalTooltip`'s skip-delay flag was only reset on `mouseout` — hiding via scroll/mousedown left instant-show stuck on permanently. All hide paths now reset the 300 ms grace window.
+
+**Alternatives considered:** Frontend-only badge fallback to parent column (rejected — masks the missing join; real data is one join away).
+
+**Consequences:** Status pills are truthful by construction; tooltip timing is now actually 500 ms in all paths.
+
+### 2026-09-09 — Composer width, checklist placeholder, required-field convention (RHF deferred)
+
+**Context:** Composer felt cramped at `max-w-xl`; the multi-line checklist placeholder renders collapsed/misleading in browsers (placeholder text cannot contain line breaks); and nothing marked Task Title as mandatory.
+
+**Decision:**
+
+1. Dialog `max-w-xl` → `max-w-3xl`; checklist textarea single-line placeholder + `rows={4}` (live checkbox preview below already teaches the one-per-line format as they type).
+2. Required-field convention (new `RequiredMark` in the composer): red `*` + sr-only "(required)", muted "Required" hint under the field, `aria-required`/`aria-invalid`, inline `role="alert"` error on submit attempt. Submit stays clickable so the error can surface (with explanatory tooltip), instead of a dead disabled button.
+3. React Hook Form evaluated and **deferred**: this form has one required field and no cross-field rules — controlled state + inline error covers it with zero bundle cost. Graduate to RHF + zod when a form exceeds ~5 fields or needs cross-field/async validation; `RequiredMark`-style marking applies everywhere regardless.
+
+**Alternatives considered:** Adding RHF now for uniformity (rejected — dependency + refactor cost with no validation problem to solve yet); native `required` bubbles (rejected — inconsistent styling, no custom messaging).
+
+**Consequences:** Any new form copies the asterisk + inline-error pattern; RHF adoption has a clear trigger threshold.
+
+### 2026-09-09 — Composer dialog space + live checklist preview, subtask popup-only
+
+**Context:** The enriched composer felt cramped at `max-w-xl`, typed checklist lines had no visual confirmation (raw textarea only), and the task view still kept a redundant inline subtask input next to the Full Editor path.
+
+**Decision:**
+
+1. Dialog widened to `max-w-2xl`; Participants/Observers paired side-by-side in a 2-col grid.
+2. Checklist section gained a live preview: each parsed line renders as a checkbox row with position counter and hover-remove (removal edits the source text, so preview is always truthful).
+3. Inline subtask input deleted entirely — header + Add and all menu entries open the composer popup directly; dead state/mutations (`addSubtaskMutation`, inline title/assignee state) removed with it.
+
+**Alternatives considered:** Tabs/wizard steps in the composer (rejected — single scrolling form with grouped sections matches Jira and keeps everything one submit); keeping inline quick-add alongside (rejected — two paths doing the same job caused the original "still broken" confusion).
+
+**Consequences:** One subtask creation path. Composer sections now own the full creation surface.
+
+### 2026-09-09 — Server-side member search for all composer dropdowns
+
+**Context:** Assignee/participant/observer dropdowns rendered a fully-downloaded org directory (`GET /orgs/:id/members` with no limit) and filtered client-side — breaks at thousands of employees (payload, memory, DOM rows). Backend already supports `search`/`limit`/`offset` + `X-Total-Count`; `MemberPicker` already used it, but the composer selects did not.
+
+**Decision:**
+
+1. `packages/ui/searchable-select`: backward-compatible async props — `onSearchChange` (disables client filtering, forwards keystrokes), `onReachEnd`/`isLoadingMore` (infinite scroll), `isLoadingOptions`, `footer`. No existing consumer affected (all optional).
+2. Dashboard `useOrgMemberSearch` hook: 250 ms debounce + `useInfiniteQuery` (25/page) + 2-min stale / 5-min gc caching, mirroring `MemberPicker`.
+3. `AsyncMemberSearchableSelect` (single, You + Unassigned pinned, pinned-id resolution, "N of M" footer) and `AsyncMemberChipPicker` (multi, search box, selections pinned on top) in `components/ui/AsyncMemberSelect.tsx`.
+4. Composer uses async variants whenever `orgId` is known (both call sites pass it); removed BoardView's unbounded `getMembers` fetch that existed only for the modal. Static-array fallbacks stay for callers without org context.
+
+**Alternatives considered:** Extending `MemberPicker` popovers into the dialog (rejected — popover-in-dialog stacking/focus issues; chips + async select fit the form better); raising the fetch limit (rejected — just moves the cliff).
+
+**Consequences:** Composer member traffic is now ~25-row cached pages + debounced search. Rule going forward: no unbounded directory fetch for any dropdown (PROMPT_PATTERNS.md §9 audit).
+
+### 2026-09-09 — Shared subtask composer with locked parent (Jira benchmark)
+
+**Context:** Subtask creation was a title-only inline form (assignee defaulted silently, no description/dates/estimates), which is why it felt "broken" next to the full task composer. Benchmark: Jira's create-subtask dialog — full field set with the parent fixed.
+
+**Decision:**
+
+1. Extracted `CreateTaskModal` from `BoardView.tsx` into `components/board/CreateTaskModal.tsx` (zero behavior change for board usage) with `parentCardId`/`parentCardTitle` props: subtask mode shows a locked "Parent Task" row, retitles to "Create Subtask", and posts `parentCardId` (already supported by `POST /cards`).
+2. Task detail subtask form gained a "Full Editor" button opening the composer with parent = current task, column = current column, typed title carried over; on create it refreshes subtasks and opens the new subtask. Modal is `React.lazy` in both call sites (own 5.7 kB chunk).
+3. Quick inline add stays for rapid entry; full composer covers description, assignee, due date, story points, estimates.
+
+**Alternatives considered:** New standalone subtask page/route (rejected — modal keeps context; Jira/Linear both use dialogs); duplicating the composer in TaskDetailView (rejected — shared component, one source of truth).
+
+**Consequences:** Board and subtask creation share one composer going forward — field additions apply to both.
+
+### 2026-09-09 — Event-sourced task history for people/label/watcher changes
+
+**Context:** The activity feed showed "X is now an observer" but never "stopped watching" — observer entries were synthesized on the frontend from the _current_ watchers list, so deleting the row erased the event. Audit found the same gap class everywhere: assign/unassign, participant add/remove, label attach/detach, and unwatch wrote no history rows at all (only checklist ops did, via `comments`-channel entries).
+
+**Decision:**
+
+1. All 8 mutations now write persistent `comments`-channel history rows in the existing emoji style (`👀` watch, `👤` assignee, `🤝` participant, `🏷️` label), fire-and-forget (`.catch(() => {})`) so history never breaks the mutation. Self vs. admin-acted wording handled (`Started watching` vs. `Added **Name** as an observer`). Actor threaded through routes; automation callers already pass `actorId`.
+2. Frontend `systemActivities` no longer synthesizes watcher entries (would duplicate the persistent rows); `isActivityComment` recognizes the 3 new emoji prefixes so they render as history pills with the existing verb-lowercasing.
+3. `card.test.ts` watch test extended to assert both history rows exist.
+
+**Alternatives considered:** Separate `activity_log` table reads for the feed (rejected — feed already renders the comments channel; new table = new API + migration for identical UX); keeping frontend synthesis alongside backend rows (rejected — duplicates every watch).
+
+**Consequences:** History is now append-only and complete for people/label/watcher events. Rule going forward: any new card mutation must write a history row (add to the `PROMPT_PATTERNS.md` §9 audit).
+
+### 2026-09-09 — Enterprise interaction standard + checklist input/save fixes
+
+**Context:** Two checklist UX defects showed features shipping below market standard: (1) the section Save button was always enabled but a silent no-op when nothing was pending (everything auto-saves instantly); (2) the add-item field was single-line, so `Shift+Enter` couldn't create new lines. Standing rule added as `AGENTS.md` §7: every feature must match Linear/Jira/Notion interaction quality — never a minimal local-product implementation.
+
+**Decision:**
+
+1. Checklist add-item `<Input>` → auto-growing `<textarea>`: `Enter` saves, `Shift+Enter` newline, `Escape` cancels, IME-composition guard. Benchmark: Notion/Linear comment editors. Multi-line submit reuses the existing bulk-add split path, so pasted/typed lines still fan out into separate items.
+2. Section Save is now dirty-tracked (`hasPendingChecklistChanges` over new-checklist form, item text, title edit, draft items, dirty description): disabled with explanatory tooltip when pristine, and now also flushes a typed new-checklist title.
+3. `PROMPT_PATTERNS.md` §§3–4, 9 updated so all future build/audit prompts enforce the standard.
+
+**Alternatives considered:** Keeping single-line + documenting "paste lines to bulk add" (rejected — typing multi-item lists is core checklist behavior in every competitor); hiding Save when pristine instead of disabling (rejected — disabled-with-tooltip teaches the auto-save model better).
+
+**Consequences:** Checklist section is now the reference implementation for §7. Rule going forward: no enabled button that silently does nothing; no single-line input where competitors allow multi-line.
+
+### 2026-09-09 — Dashboard route-level code splitting (React.lazy + manualChunks)
+
+**Context:** `apps/dashboard/src/App.tsx` static-imported all ~30 pages, so every user downloaded the entire dashboard (BoardView's dnd-kit tree, reports, docs, all admin screens) on first load.
+
+**Decision:**
+
+1. Every route page is `React.lazy`-loaded (`.then(m => ({ default: m.X }))` mapping since pages use named exports) under a single `<Suspense fallback={<RouteFallback />}>` in `App.tsx`. Layouts stay eager (persistent shell).
+2. Heavy on-demand modals are split too and mount only when opened: `CardModal`/`AutomationsModal`/`FormBuilderModal` in `BoardView.tsx`, `TrashBinModal`/`AppearanceModal` in `DashboardLayout.tsx`, `AppearanceModal` in `AdminLayout.tsx`. Shared fallback: `components/common/RouteFallback.tsx`.
+3. `vite.config.ts` adds stable `manualChunks` (`vendor-react`, `vendor-query`, `vendor-dnd`, `vendor-ui`) so third-party code stays cached across deploys while route chunks change independently.
+4. Convention locked in `docs/PROMPT_PATTERNS.md` §4: new pages MUST be lazy-registered, never static-imported.
+
+**Alternatives considered:** Per-route `<Suspense>` wrappers (rejected — one wrapper covers all routes with less boilerplate); eager layouts split too (rejected — shell flickers on every navigation); leaving modals eager (rejected — CardModal pulls the heaviest board dependency tree).
+
+**Consequences:** Initial bundle is shell + current route only; new pages automatically get their own chunk if the author follows §4. Rule going forward: `App.tsx` must never contain a static page import — flag it in review (PROMPT_PATTERNS.md §9 audit).
+
+### 2026-09-09 — Shared enums as const objects + Eden Treaty end-to-end types
+
+**Context:** Wiring Eden Treaty (`treaty<App>`) in the dashboard pulled backend sources into a program with `erasableSyntaxOnly`, where `packages/shared-types` runtime `enum`s are illegal (15x TS1294). Bun also installs one `elysia` copy per peer graph, and Elysia's private fields made cross-copy `App` fail treaty's constraint (TS2344).
+
+**Decision:**
+
+1. `packages/shared-types/src/enums`: all 15 `enum`s → `const` object + union type (same names/values; runtime shape byte-identical to old string enums, `z.nativeEnum` untouched). Locked by DB-free `apps/backend/src/db/enums.test.ts` asserting shared values mirror Drizzle `pgEnum` sets.
+2. Dashboard `tsconfig.app.json` pins type-resolution `elysia` → backend copy (single-copy rule; runtime bundling unaffected).
+3. Dashboard `src/lib/eden.ts` is now `treaty<App>` (`import type { App }` from `@boardly/backend`); axios client stays for existing calls + token refresh.
+4. Fixed 4 trivial backend lints exposed by the stricter cross-program check (`import type` x3, one unused import) — backend `typecheck` is now fully green.
+
+**Alternatives considered:** Relaxing dashboard `erasableSyntaxOnly` (rejected — deliberate strictness); generated `.d.ts` contract package (rejected — drift surface for what source imports already solve); untyped `treaty()` client (rejected — loses the autocomplete/type errors this migration was for).
+
+**Consequences:** Frontend gets compile-time API drift detection (wrong query key = type error). Rule going forward: never reintroduce `enum` in `shared-types`; keep `elysia`/`@elysiajs/eden` versions in sync across backend + dashboard. Route body schemas live in per-module `schema.ts` with exported `Static` types — dashboard annotates Eden payloads with them so completions work even on older TS language servers (verified on 5.9.3), which can't expand Eden's deep conditional body types inline.
+
+---
+
 ### 2026-09-02 — K8s Deployment, Helm GitOps & Multi-Tenant Isolation Architecture
 
 **Context:** Boardly backend needed enterprise-grade containerization, horizontal autoscaling on AWS EKS, zero-downtime deployment pipelines with GitOps/ArgoCD, multi-tenant noisy neighbor isolation, RDS Proxy transaction pooling compatibility, and Row-Level Security (RLS) enforcement.
