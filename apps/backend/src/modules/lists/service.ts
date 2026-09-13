@@ -18,6 +18,7 @@ import {
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
+import { cachedBoardRead, bumpBoardCache } from '../../lib/cache';
 
 export interface CreateListInput {
   boardId: string;
@@ -63,17 +64,21 @@ export async function createList(db: Database, organizationId: string, input: Cr
 
   if (!list) throw httpError(500, 'Failed to create list');
   eventBus.broadcast(`board:${list.boardId}`, 'list.created', list);
+  await bumpBoardCache(list.boardId);
   return list;
 }
 
 export async function listLists(db: Database, boardId: string, organizationId: string) {
   await verifyBoardAccess(db, boardId, organizationId);
 
-  return db
-    .select()
-    .from(lists)
-    .where(and(eq(lists.boardId, boardId), eq(lists.isArchived, false), isNull(lists.deletedAt)))
-    .orderBy(lists.position);
+  const { data } = await cachedBoardRead(boardId, 'lists', 'lists', () =>
+    db
+      .select()
+      .from(lists)
+      .where(and(eq(lists.boardId, boardId), eq(lists.isArchived, false), isNull(lists.deletedAt)))
+      .orderBy(lists.position)
+  );
+  return data;
 }
 
 export async function updateList(
@@ -99,6 +104,7 @@ export async function updateList(
     .returning();
 
   eventBus.broadcast(`board:${existingList.boardId}`, 'list.updated', updatedList);
+  await bumpBoardCache(existingList.boardId);
   return updatedList;
 }
 
@@ -149,5 +155,6 @@ export async function deleteList(db: Database, id: string, organizationId: strin
   const [deletedList] = await db.delete(lists).where(eq(lists.id, id)).returning();
 
   eventBus.broadcast(`board:${existingList.boardId}`, 'list.deleted', deletedList);
+  await bumpBoardCache(existingList.boardId);
   return deletedList;
 }

@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-13 — Upstash read cache (versioned, 1-RTT reads)
+
+**Context:** Neon free tier makes every DB round-trip ~100-300ms from IN; a card open fires ~10 requests × (permission join + N queries). Upstash Singapore chosen (closest to user + Neon SG).
+
+**Decision:** `lib/cache.ts` versioned read-through cache: board version `bv:{board}` scopes `listLists`/`listCards`, card version `cv:{card}` scopes `getCard`; reads are 1 Redis RTT via Lua (version+payload); mutations bump versions (card→board map with DB fallback, no SCAN). RBAC allows cached 60s (denials never), plan tier TTL 60→300s, rate-limiter Redis timeout 50→400ms for remote RTT. Fixed `z.coerce.boolean` silently disabling Redis on `"false"`, Upstash auto-TLS, credential redaction in logs.
+
+**Alternatives considered:** TTL-only caching (stale-board risk on drag-move); batch card endpoint (still recommended next — cache shrinks each request, batching shrinks count).
+
+**Consequences:** Repeat reads skip Neon entirely; 60s stale-allow window after role changes (documented); mutations pay ~2 Redis RTTs for bumps.
+
 ### 2026-09-13 — Dev boot seed: skip-when-complete + batched base seed
 
 **Context:** `dev.sh` runs `db:seed` on every boot; it replayed the full enterprise seed (~3-4 min, thousands of sequential auto-commit statements over Docker fsync) and grew append-only log tables (time/audit/activity have no conflict guard) on every boot.

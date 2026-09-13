@@ -14,6 +14,7 @@ import {
 import { eq, and, or, isNull, sql } from 'drizzle-orm';
 import { type PermissionKey, PlanTier } from '@boardly/shared-types';
 import { getDataClient, isRedisAvailable } from '../redis/client';
+import { getCachedAllow, setCachedAllow } from '../lib/cache';
 import { logger } from '../lib/logger';
 
 const JWT_SECRET = new TextEncoder().encode(env.JWT_SECRET);
@@ -26,7 +27,7 @@ export interface AuthContext {
 
 /**
  * Resolves the plan tier for an organization.
- * Uses Redis cache (`org:meta:{orgId}`) with a 60s TTL,
+ * Uses Redis cache (`org:meta:{orgId}`) with a 300s TTL,
  * falling back to a database lookup on cache miss.
  */
 export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
@@ -57,7 +58,7 @@ export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
 
     if (isRedisAvailable() && redis) {
       try {
-        await redis.set(cacheKey, tier, 'EX', 60);
+        await redis.set(cacheKey, tier, 'EX', 300);
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);
         logger.warn({ err: errMsg, org_id: orgId }, 'Redis org metadata cache write failed');
@@ -186,6 +187,12 @@ export function requirePermission(permissionKey: PermissionKey) {
 
     const activeOrgId = orgId;
 
+    // Cached allow: 1 Redis RTT instead of a 4-table Neon join per request.
+    // Denials are never cached; 60s TTL bounds stale allows after role changes.
+    if (await getCachedAllow(activeOrgId, user.userId, permissionKey)) {
+      return undefined;
+    }
+
     try {
       // Look up the user's role permissions for this org
       const result = await db
@@ -226,6 +233,8 @@ export function requirePermission(permissionKey: PermissionKey) {
         set.status = 403;
         return { error: `Forbidden — missing permission: ${permissionKey}` };
       }
+
+      await setCachedAllow(activeOrgId, user.userId, permissionKey);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logger.error(

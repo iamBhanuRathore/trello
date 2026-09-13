@@ -20,7 +20,12 @@ const envSchema = z.object({
   // Redis
   REDIS_URL: z.string().default('redis://localhost:6379'),
   REDIS_CHANNEL: z.string().default('boardly:realtime'),
-  REDIS_DISABLED: z.coerce.boolean().default(false),
+  // NOTE: z.coerce.boolean() treats ANY non-empty string (incl. "false") as
+  // true, which silently disabled Redis. Parse explicitly instead.
+  REDIS_DISABLED: z.preprocess(
+    (v) => v === true || v === 'true' || v === '1',
+    z.boolean().default(false)
+  ),
   PRESENCE_TTL_SECONDS: z.coerce.number().default(60),
 
   // Auth

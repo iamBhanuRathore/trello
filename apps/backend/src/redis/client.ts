@@ -8,10 +8,31 @@ let dataClient: Redis | null = null;
 let isAvailable = false;
 let isConnecting = false;
 
-function createClientOptions(): RedisOptions {
+/** Upstash mandates TLS even when the URL uses the `redis://` scheme. */
+function isUpstashUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.endsWith('.upstash.io');
+  } catch {
+    return false;
+  }
+}
+
+/** Host-only, for logs — never log credentials from the URL. */
+export function redactedRedisHost(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return '(invalid REDIS_URL)';
+  }
+}
+
+function createClientOptions(url: string): RedisOptions {
   return {
     lazyConnect: true,
     maxRetriesPerRequest: 3,
+    // Upstash requires TLS; auto-upgrade plain `redis://…upstash.io` URLs.
+    ...(isUpstashUrl(url) && !url.startsWith('rediss://') ? { tls: {} } : {}),
     retryStrategy(times) {
       if (times > 10) {
         logger.warn(
@@ -50,7 +71,7 @@ export async function connectRedis(): Promise<boolean> {
   isConnecting = true;
 
   try {
-    const options = createClientOptions();
+    const options = createClientOptions(env.REDIS_URL);
 
     pubClient = new Redis(env.REDIS_URL, options);
     subClient = new Redis(env.REDIS_URL, options);
@@ -75,7 +96,10 @@ export async function connectRedis(): Promise<boolean> {
     await Promise.all([pubClient.connect(), subClient.connect(), dataClient.connect()]);
 
     isAvailable = true;
-    logger.info({ url: env.REDIS_URL }, ' Connected to Redis (Pub/Sub + Data clients ready)');
+    logger.info(
+      { host: redactedRedisHost(env.REDIS_URL) },
+      ' Connected to Redis (Pub/Sub + Data clients ready)'
+    );
     return true;
   } catch (error: any) {
     isAvailable = false;

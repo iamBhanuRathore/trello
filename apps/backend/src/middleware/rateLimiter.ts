@@ -142,7 +142,7 @@ interface RateLimiterContext {
  * Token-bucket rate limiter middleware.
  * Enforces per-org rate limits after JWT authentication.
  *
- * Fail-Open Policy: If Redis is unavailable or times out (>50ms),
+ * Fail-Open Policy: If Redis is unavailable or times out (>400ms),
  * the request is allowed through and metric is incremented.
  */
 export const rateLimiterMiddleware = () =>
@@ -165,17 +165,18 @@ export const rateLimiterMiddleware = () =>
       }
 
       try {
-        // Enforce 50ms hard timeout for Redis rate-limiter check
+        // 400ms hard timeout: local Redis answers in ~1ms, remote (Upstash)
+        // in ~50-100ms. Failing open on timeout keeps latency bounded.
         const resultPromise = executeLuaTokenBucket(key, config.burst, config.rps, nowSec, 1);
         const timeoutPromise = new Promise<{ timeout: true }>((resolve) =>
-          setTimeout(() => resolve({ timeout: true }), 50)
+          setTimeout(() => resolve({ timeout: true }), 400)
         );
 
         const outcome = await Promise.race([resultPromise, timeoutPromise]);
 
         if ('timeout' in outcome) {
           metrics.rateLimiterFailOpenTotal++;
-          logger.warn({ org_id: orgId }, 'Rate limiter fail-open: Redis check timed out (>50ms)');
+          logger.warn({ org_id: orgId }, 'Rate limiter fail-open: Redis check timed out (>400ms)');
           return undefined;
         }
 

@@ -1658,3 +1658,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - Decisions made: skip keeps dev deletions across reboots; full reseed via `--force`/`db:reset` (see `Decisions.md` 2026-09-13).
 - Tests added: none (dev-only script, state verified identical: role counts 95/82/22/7, 0 revoked keys on Member).
 - What's next: re-measure board load with indexes applied; batch endpoints.
+
+### 2026-09-13 — Upstash Redis Read Cache
+
+- What was done: `lib/cache.ts` (Lua 1-RTT versioned reads); cached `listCards`/`listLists`/`getCard` + bump on all card/list mutations; RBAC allow cache 60s; plan TTL 300s; limiter timeout 400ms; fixed `REDIS_DISABLED="false"` parsing as true; Upstash auto-TLS; redacted Redis URL logging. Verified locally: hits equal, misses reload, bumps invalidate, 404s throw uncached.
+- Decisions made: version-bump (not TTL) correctness; denials uncached (see `Decisions.md` 2026-09-13).
+- Tests added: none (smoke scripts, removed after); `tsc` clean, targeted tests unchanged (pre-existing stale-test-DB failures only).
+- What's next: user sets `REDIS_URL`+`REDIS_DISABLED=false` in `.env.development`, restarts `dev.sh`; batch card-modal endpoint.

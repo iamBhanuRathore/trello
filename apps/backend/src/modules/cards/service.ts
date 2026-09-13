@@ -22,6 +22,16 @@ import {
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
+import {
+  cachedBoardRead,
+  cachedCardRead,
+  bumpBoardCache,
+  bumpCardAndBoard,
+  cachedBoardIdForCard,
+  cachedCardIdForChecklist,
+  rememberCardBoard,
+  rememberChecklistCard,
+} from '../../lib/cache';
 
 export interface CreateCardInput {
   listId: string;
@@ -44,7 +54,7 @@ export interface CreateCardInput {
 
 async function verifyListAccess(db: Database, listId: string, organizationId: string) {
   const [list] = await db
-    .select({ listId: lists.id })
+    .select({ listId: lists.id, boardId: boards.id })
     .from(lists)
     .innerJoin(boards, eq(boards.id, lists.boardId))
     .where(and(eq(lists.id, listId), eq(boards.organizationId, organizationId)))
@@ -62,6 +72,29 @@ async function getBoardIdForCard(db: Database, cardId: string) {
     .where(eq(cards.id, cardId))
     .limit(1);
   return result?.boardId;
+}
+
+/** Bump card + board versions after a card mutation (cached cb map first, DB fallback). */
+async function bumpForCard(db: Database, cardId: string, knownBoardId?: string | null) {
+  let boardId = knownBoardId ?? (await cachedBoardIdForCard(cardId));
+  if (!boardId) boardId = (await getBoardIdForCard(db, cardId)) ?? null;
+  await bumpCardAndBoard(cardId, boardId);
+}
+
+/** Bump versions after a checklist-level mutation (resolves card via map, then DB). */
+async function bumpForChecklist(db: Database, checklistId: string, knownCardId?: string | null) {
+  let cardId = knownCardId ?? (await cachedCardIdForChecklist(checklistId));
+  if (!cardId) {
+    const [row] = await db
+      .select({ cardId: checklists.cardId })
+      .from(checklists)
+      .where(eq(checklists.id, checklistId))
+      .limit(1);
+    cardId = row?.cardId ?? null;
+    if (!cardId) return;
+  }
+  await rememberChecklistCard(checklistId, cardId);
+  await bumpForCard(db, cardId);
 }
 
 // ─── Task history (persistent activity feed) ────────────────────────────────
@@ -232,144 +265,149 @@ export async function createCard(db: Database, organizationId: string, input: Cr
     actorId: 'system',
     organizationId: boardInfo!.organizationId,
   });
+  await bumpBoardCache(boardInfo!.boardId);
   return card;
 }
 
 export async function listCards(db: Database, listId: string, organizationId: string) {
-  await verifyListAccess(db, listId, organizationId);
-  const cardRows = await db
-    .select()
-    .from(cards)
-    .where(and(eq(cards.listId, listId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
-    .orderBy(cards.position);
+  const { boardId } = await verifyListAccess(db, listId, organizationId);
+  // Hot board-loop read: 1 Redis RTT on hit, zero Neon queries.
+  const { data } = await cachedBoardRead(boardId, `cards:${listId}`, 'cards', async () => {
+    const cardRows = await db
+      .select()
+      .from(cards)
+      .where(and(eq(cards.listId, listId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
+      .orderBy(cards.position);
 
-  const cardIds = cardRows.map((c) => c.id);
-  if (cardIds.length === 0) return [];
+    const cardIds = cardRows.map((c) => c.id);
+    if (cardIds.length === 0) return [];
 
-  // Enrichment queries are independent — fan out concurrently (was 6 sequential
-  // round-trips; pool + Docker RTT made each list ~1s).
-  const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
-  const [assigneeRows, labelRows, stageRows, checklistItemsRows, commentRows, attachmentRows] =
-    await Promise.all([
-      // 1. Assignees
-      db
-        .select({
-          cardId: cardAssignees.cardId,
-          id: users.id,
-          name: users.name,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
-        })
-        .from(cardAssignees)
-        .innerJoin(users, eq(users.id, cardAssignees.userId))
-        .where(inArray(cardAssignees.cardId, cardIds)),
-      // 2. Labels
-      db
-        .select({
-          cardId: cardLabels.cardId,
-          id: labels.id,
-          name: labels.name,
-          color: labels.color,
-        })
-        .from(cardLabels)
-        .innerJoin(labels, eq(labels.id, cardLabels.labelId))
-        .where(inArray(cardLabels.cardId, cardIds)),
-      // 3. Stages
-      stageIds.length > 0
-        ? db
-            .select({
-              id: stages.id,
-              name: stages.name,
-              color: stages.color,
-              category: stages.category,
-            })
-            .from(stages)
-            .where(inArray(stages.id, stageIds))
-        : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
-      // 4. Checklist counts
-      db
-        .select({
-          cardId: checklists.cardId,
-          itemId: checklistItems.id,
-          isDone: checklistItems.isDone,
-        })
-        .from(checklists)
-        .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
-        .where(inArray(checklists.cardId, cardIds)),
-      // 5. Comments counts
-      db
-        .select({
-          cardId: comments.cardId,
-          id: comments.id,
-        })
-        .from(comments)
-        .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
-      // 6. Attachments counts
-      db
-        .select({
-          cardId: attachments.cardId,
-          id: attachments.id,
-        })
-        .from(attachments)
-        .where(inArray(attachments.cardId, cardIds)),
-    ]);
+    // Enrichment queries are independent — fan out concurrently (was 6 sequential
+    // round-trips; pool + Docker RTT made each list ~1s).
+    const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
+    const [assigneeRows, labelRows, stageRows, checklistItemsRows, commentRows, attachmentRows] =
+      await Promise.all([
+        // 1. Assignees
+        db
+          .select({
+            cardId: cardAssignees.cardId,
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            avatarUrl: users.avatarUrl,
+          })
+          .from(cardAssignees)
+          .innerJoin(users, eq(users.id, cardAssignees.userId))
+          .where(inArray(cardAssignees.cardId, cardIds)),
+        // 2. Labels
+        db
+          .select({
+            cardId: cardLabels.cardId,
+            id: labels.id,
+            name: labels.name,
+            color: labels.color,
+          })
+          .from(cardLabels)
+          .innerJoin(labels, eq(labels.id, cardLabels.labelId))
+          .where(inArray(cardLabels.cardId, cardIds)),
+        // 3. Stages
+        stageIds.length > 0
+          ? db
+              .select({
+                id: stages.id,
+                name: stages.name,
+                color: stages.color,
+                category: stages.category,
+              })
+              .from(stages)
+              .where(inArray(stages.id, stageIds))
+          : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
+        // 4. Checklist counts
+        db
+          .select({
+            cardId: checklists.cardId,
+            itemId: checklistItems.id,
+            isDone: checklistItems.isDone,
+          })
+          .from(checklists)
+          .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
+          .where(inArray(checklists.cardId, cardIds)),
+        // 5. Comments counts
+        db
+          .select({
+            cardId: comments.cardId,
+            id: comments.id,
+          })
+          .from(comments)
+          .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
+        // 6. Attachments counts
+        db
+          .select({
+            cardId: attachments.cardId,
+            id: attachments.id,
+          })
+          .from(attachments)
+          .where(inArray(attachments.cardId, cardIds)),
+      ]);
 
-  const assigneesByCard = new Map<string, any>();
-  assigneeRows.forEach((a) => {
-    assigneesByCard.set(a.cardId, {
-      id: a.id,
-      name: a.name,
-      email: a.email,
-      avatarUrl: a.avatarUrl,
+    const assigneesByCard = new Map<string, any>();
+    assigneeRows.forEach((a) => {
+      assigneesByCard.set(a.cardId, {
+        id: a.id,
+        name: a.name,
+        email: a.email,
+        avatarUrl: a.avatarUrl,
+      });
+    });
+
+    const labelsByCard = new Map<string, any[]>();
+    labelRows.forEach((l) => {
+      if (!labelsByCard.has(l.cardId)) labelsByCard.set(l.cardId, []);
+      labelsByCard.get(l.cardId)!.push({ id: l.id, name: l.name, color: l.color });
+    });
+
+    const stagesByStageId = new Map<string, any>();
+    stageRows.forEach((s) => stagesByStageId.set(s.id, s));
+
+    const checklistStatsByCard = new Map<string, { total: number; done: number }>();
+    checklistItemsRows.forEach((row) => {
+      if (!checklistStatsByCard.has(row.cardId)) {
+        checklistStatsByCard.set(row.cardId, { total: 0, done: 0 });
+      }
+      if (row.itemId) {
+        const stats = checklistStatsByCard.get(row.cardId)!;
+        stats.total += 1;
+        if (row.isDone) stats.done += 1;
+      }
+    });
+
+    const commentsCountByCard = new Map<string, number>();
+    commentRows.forEach((c) => {
+      commentsCountByCard.set(c.cardId, (commentsCountByCard.get(c.cardId) || 0) + 1);
+    });
+
+    const attachmentsCountByCard = new Map<string, number>();
+    attachmentRows.forEach((a) => {
+      attachmentsCountByCard.set(a.cardId, (attachmentsCountByCard.get(a.cardId) || 0) + 1);
+    });
+
+    return cardRows.map((card) => {
+      const clStats = checklistStatsByCard.get(card.id) || { total: 0, done: 0 };
+      const assignee = assigneesByCard.get(card.id) || null;
+      return {
+        ...card,
+        assignee,
+        assignees: assignee ? [assignee] : [],
+        labels: labelsByCard.get(card.id) || [],
+        stage: card.stageId ? stagesByStageId.get(card.stageId) || null : null,
+        checklistTotal: clStats.total,
+        checklistDone: clStats.done,
+        commentsCount: commentsCountByCard.get(card.id) || 0,
+        attachmentsCount: attachmentsCountByCard.get(card.id) || 0,
+      };
     });
   });
-
-  const labelsByCard = new Map<string, any[]>();
-  labelRows.forEach((l) => {
-    if (!labelsByCard.has(l.cardId)) labelsByCard.set(l.cardId, []);
-    labelsByCard.get(l.cardId)!.push({ id: l.id, name: l.name, color: l.color });
-  });
-
-  const stagesByStageId = new Map<string, any>();
-  stageRows.forEach((s) => stagesByStageId.set(s.id, s));
-
-  const checklistStatsByCard = new Map<string, { total: number; done: number }>();
-  checklistItemsRows.forEach((row) => {
-    if (!checklistStatsByCard.has(row.cardId)) {
-      checklistStatsByCard.set(row.cardId, { total: 0, done: 0 });
-    }
-    if (row.itemId) {
-      const stats = checklistStatsByCard.get(row.cardId)!;
-      stats.total += 1;
-      if (row.isDone) stats.done += 1;
-    }
-  });
-
-  const commentsCountByCard = new Map<string, number>();
-  commentRows.forEach((c) => {
-    commentsCountByCard.set(c.cardId, (commentsCountByCard.get(c.cardId) || 0) + 1);
-  });
-
-  const attachmentsCountByCard = new Map<string, number>();
-  attachmentRows.forEach((a) => {
-    attachmentsCountByCard.set(a.cardId, (attachmentsCountByCard.get(a.cardId) || 0) + 1);
-  });
-
-  return cardRows.map((card) => {
-    const clStats = checklistStatsByCard.get(card.id) || { total: 0, done: 0 };
-    const assignee = assigneesByCard.get(card.id) || null;
-    return {
-      ...card,
-      assignee,
-      assignees: assignee ? [assignee] : [],
-      labels: labelsByCard.get(card.id) || [],
-      stage: card.stageId ? stagesByStageId.get(card.stageId) || null : null,
-      checklistTotal: clStats.total,
-      checklistDone: clStats.done,
-      commentsCount: commentsCountByCard.get(card.id) || 0,
-      attachmentsCount: attachmentsCountByCard.get(card.id) || 0,
-    };
-  });
+  return data;
 }
 
 export async function listSubtasks(db: Database, parentCardId: string, organizationId: string) {
@@ -423,132 +461,142 @@ export async function listSubtasks(db: Database, parentCardId: string, organizat
 }
 
 export async function getCard(db: Database, id: string, organizationId: string) {
-  const [card] = await db
-    .select({
-      id: cards.id,
-      taskNumber: cards.taskNumber,
-      key: cards.key,
-      organizationId: cards.organizationId,
-      listId: cards.listId,
-      listName: lists.name,
-      boardId: boards.id,
-      boardName: boards.name,
-      projectId: boards.projectId,
-      projectKey: projects.key,
-      projectName: projects.name,
-      parentCardId: cards.parentCardId,
-      title: cards.title,
-      description: cards.description,
-      position: cards.position,
-      dueDate: cards.dueDate,
-      stageId: cards.stageId,
-      coverImage: cards.coverImage,
-      storyPoints: cards.storyPoints,
-      estimateMinutes: cards.estimateMinutes,
-      subtasksTotal: cards.subtasksTotal,
-      subtasksDone: cards.subtasksDone,
-      isArchived: cards.isArchived,
-      createdAt: cards.createdAt,
-      updatedAt: cards.updatedAt,
-    })
-    .from(cards)
-    .innerJoin(lists, eq(lists.id, cards.listId))
-    .innerJoin(boards, eq(boards.id, lists.boardId))
-    .leftJoin(projects, eq(projects.id, boards.projectId))
-    .where(and(eq(cards.id, id), eq(cards.organizationId, organizationId), isNull(cards.deletedAt)))
-    .limit(1);
+  // Hot modal read: 1 Redis RTT on hit, zero Neon queries.
+  // 404s thrown by the loader are never cached (store happens only on success).
+  const { data, hit } = await cachedCardRead(id, 'full', 'card', async () => {
+    const [card] = await db
+      .select({
+        id: cards.id,
+        taskNumber: cards.taskNumber,
+        key: cards.key,
+        organizationId: cards.organizationId,
+        listId: cards.listId,
+        listName: lists.name,
+        boardId: boards.id,
+        boardName: boards.name,
+        projectId: boards.projectId,
+        projectKey: projects.key,
+        projectName: projects.name,
+        parentCardId: cards.parentCardId,
+        title: cards.title,
+        description: cards.description,
+        position: cards.position,
+        dueDate: cards.dueDate,
+        stageId: cards.stageId,
+        coverImage: cards.coverImage,
+        storyPoints: cards.storyPoints,
+        estimateMinutes: cards.estimateMinutes,
+        subtasksTotal: cards.subtasksTotal,
+        subtasksDone: cards.subtasksDone,
+        isArchived: cards.isArchived,
+        createdAt: cards.createdAt,
+        updatedAt: cards.updatedAt,
+      })
+      .from(cards)
+      .innerJoin(lists, eq(lists.id, cards.listId))
+      .innerJoin(boards, eq(boards.id, lists.boardId))
+      .leftJoin(projects, eq(projects.id, boards.projectId))
+      .where(
+        and(eq(cards.id, id), eq(cards.organizationId, organizationId), isNull(cards.deletedAt))
+      )
+      .limit(1);
 
-  if (!card) throw httpError(404, 'Card not found');
+    if (!card) throw httpError(404, 'Card not found');
 
-  // Independent sub-fetches — fan out concurrently (was 6 sequential round-trips).
-  const [assignees, participants, watchers, cardLabelsList, stageRows, parentRows] =
-    await Promise.all([
-      // Assignees (single primary assignee model)
-      db
-        .select({
-          id: users.id,
-          name: users.name,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
-        })
-        .from(cardAssignees)
-        .innerJoin(users, eq(users.id, cardAssignees.userId))
-        .where(eq(cardAssignees.cardId, id)),
-      // Participants (multiple collaborators)
-      db
-        .select({
-          id: users.id,
-          name: users.name,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
-          addedAt: cardParticipants.addedAt,
-          createdAt: cardParticipants.addedAt,
-        })
-        .from(cardParticipants)
-        .innerJoin(users, eq(users.id, cardParticipants.userId))
-        .where(eq(cardParticipants.cardId, id)),
-      // Watchers (multiple observers)
-      db
-        .select({
-          id: users.id,
-          name: users.name,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
-          subscribedAt: cardWatchers.subscribedAt,
-          createdAt: cardWatchers.subscribedAt,
-        })
-        .from(cardWatchers)
-        .innerJoin(users, eq(users.id, cardWatchers.userId))
-        .where(eq(cardWatchers.cardId, id)),
-      // Labels
-      db
-        .select({
-          id: labels.id,
-          name: labels.name,
-          color: labels.color,
-        })
-        .from(cardLabels)
-        .innerJoin(labels, eq(labels.id, cardLabels.labelId))
-        .where(eq(cardLabels.cardId, id)),
-      // Stage (skip query when no stageId)
-      card.stageId
-        ? db
-            .select({
-              id: stages.id,
-              name: stages.name,
-              color: stages.color,
-              category: stages.category,
-            })
-            .from(stages)
-            .where(eq(stages.id, card.stageId))
-            .limit(1)
-        : Promise.resolve([]),
-      // Parent card (skip query when no parentCardId)
-      card.parentCardId
-        ? db
-            .select({
-              id: cards.id,
-              title: cards.title,
-            })
-            .from(cards)
-            .where(eq(cards.id, card.parentCardId))
-            .limit(1)
-        : Promise.resolve([]),
-    ]);
+    // Independent sub-fetches — fan out concurrently (was 6 sequential round-trips).
+    const [assignees, participants, watchers, cardLabelsList, stageRows, parentRows] =
+      await Promise.all([
+        // Assignees (single primary assignee model)
+        db
+          .select({
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            avatarUrl: users.avatarUrl,
+          })
+          .from(cardAssignees)
+          .innerJoin(users, eq(users.id, cardAssignees.userId))
+          .where(eq(cardAssignees.cardId, id)),
+        // Participants (multiple collaborators)
+        db
+          .select({
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            avatarUrl: users.avatarUrl,
+            addedAt: cardParticipants.addedAt,
+            createdAt: cardParticipants.addedAt,
+          })
+          .from(cardParticipants)
+          .innerJoin(users, eq(users.id, cardParticipants.userId))
+          .where(eq(cardParticipants.cardId, id)),
+        // Watchers (multiple observers)
+        db
+          .select({
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            avatarUrl: users.avatarUrl,
+            subscribedAt: cardWatchers.subscribedAt,
+            createdAt: cardWatchers.subscribedAt,
+          })
+          .from(cardWatchers)
+          .innerJoin(users, eq(users.id, cardWatchers.userId))
+          .where(eq(cardWatchers.cardId, id)),
+        // Labels
+        db
+          .select({
+            id: labels.id,
+            name: labels.name,
+            color: labels.color,
+          })
+          .from(cardLabels)
+          .innerJoin(labels, eq(labels.id, cardLabels.labelId))
+          .where(eq(cardLabels.cardId, id)),
+        // Stage (skip query when no stageId)
+        card.stageId
+          ? db
+              .select({
+                id: stages.id,
+                name: stages.name,
+                color: stages.color,
+                category: stages.category,
+              })
+              .from(stages)
+              .where(eq(stages.id, card.stageId))
+              .limit(1)
+          : Promise.resolve([]),
+        // Parent card (skip query when no parentCardId)
+        card.parentCardId
+          ? db
+              .select({
+                id: cards.id,
+                title: cards.title,
+              })
+              .from(cards)
+              .where(eq(cards.id, card.parentCardId))
+              .limit(1)
+          : Promise.resolve([]),
+      ]);
 
-  const stage = stageRows[0] || null;
-  const parentCard = parentRows[0] || null;
+    const stage = stageRows[0] || null;
+    const parentCard = parentRows[0] || null;
 
-  return {
-    ...card,
-    assignee: assignees[0] || null,
-    assignees: assignees.slice(0, 1),
-    participants,
-    watchers,
-    labels: cardLabelsList,
-    stage,
-    parentCard,
-  };
+    return {
+      ...card,
+      assignee: assignees[0] || null,
+      assignees: assignees.slice(0, 1),
+      participants,
+      watchers,
+      labels: cardLabelsList,
+      stage,
+      parentCard,
+    };
+  });
+  if (!hit && (data as { boardId?: string })?.boardId) {
+    await rememberCardBoard(id, (data as { boardId: string }).boardId);
+  }
+  return data;
 }
 
 export async function deleteCard(db: Database, id: string, organizationId: string) {
@@ -563,6 +611,7 @@ export async function deleteCard(db: Database, id: string, organizationId: strin
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.deleted', { cardId: id });
   }
+  await bumpCardAndBoard(id, boardId ?? null);
   return { success: true, id };
 }
 
@@ -612,6 +661,7 @@ export async function updateCard(db: Database, id: string, organizationId: strin
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.updated', card);
   }
+  await bumpCardAndBoard(id, boardId ?? null);
   return card;
 }
 
@@ -641,7 +691,10 @@ export async function moveCard(
       actorId: actorId || 'system',
       organizationId,
     });
+    // New board always bumped; old board (if different) via cached card->board map.
+    await bumpBoardCache(boardId);
   }
+  await bumpForCard(db, id);
   return card;
 }
 
@@ -668,6 +721,7 @@ export async function archiveCard(
       organizationId,
     });
   }
+  await bumpCardAndBoard(id, boardId ?? null);
   return card;
 }
 
@@ -771,6 +825,7 @@ export async function createComment(
     });
   }
 
+  await bumpForCard(db, cardId);
   return comment;
 }
 
@@ -848,6 +903,7 @@ export async function updateComment(
     });
   }
 
+  await bumpCardAndBoard(comment.cardId, boardId ?? null);
   return updated;
 }
 
@@ -915,6 +971,7 @@ export async function deleteComment(
     });
   }
 
+  await bumpCardAndBoard(comment.cardId, boardId ?? null);
   return { success: true, id: commentId };
 }
 
@@ -940,6 +997,7 @@ export async function createAttachmentRecord(
     .insert(attachments)
     .values({ cardId, uploadedBy: userId, url, fileName, fileType, sizeBytes })
     .returning();
+  await bumpForCard(db, cardId);
   return attachment;
 }
 
@@ -950,6 +1008,7 @@ export async function deleteAttachment(db: Database, attachmentId: string, userI
     .where(and(eq(attachments.id, attachmentId), eq(attachments.uploadedBy, userId)))
     .returning();
   if (!attachment) throw httpError(404, 'Attachment not found or not authorized to delete');
+  await bumpForCard(db, attachment.cardId);
   return attachment;
 }
 
@@ -1003,6 +1062,7 @@ export async function attachLabelToCard(
       });
     }
   }
+  await bumpForCard(db, cardId);
   return { success: true };
 }
 
@@ -1024,6 +1084,7 @@ export async function removeLabelFromCard(
   if (actorId) {
     await logCardHistory(db, cardId, actorId, `🏷️ Removed label **${label?.name || 'label'}**`);
   }
+  await bumpForCard(db, cardId);
   return { success: true };
 }
 
@@ -1065,6 +1126,7 @@ export async function assignUserToCard(
       });
     }
   }
+  await bumpCardAndBoard(cardId, boardId ?? null);
   return { success: true };
 }
 
@@ -1088,6 +1150,7 @@ export async function removeUserFromCard(
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.unassigned', { cardId, userId });
   }
+  await bumpCardAndBoard(cardId, boardId ?? null);
   return { success: true };
 }
 
@@ -1130,6 +1193,7 @@ export async function addParticipantToCard(
       });
     }
   }
+  await bumpCardAndBoard(cardId, boardId ?? null);
   return { success: true };
 }
 
@@ -1153,6 +1217,7 @@ export async function removeParticipantFromCard(
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.participant_removed', { cardId, userId });
   }
+  await bumpCardAndBoard(cardId, boardId ?? null);
   return { success: true };
 }
 
@@ -1213,6 +1278,7 @@ export async function watchCard(
       });
     }
   }
+  await bumpCardAndBoard(cardId, boardId ?? null);
   return { success: true, watched: true };
 }
 
@@ -1252,6 +1318,7 @@ export async function unwatchCard(
       });
     }
   }
+  await bumpCardAndBoard(cardId, boardId ?? null);
   return { success: true, watched: false };
 }
 
@@ -1341,6 +1408,7 @@ export async function createChecklist(
       })
       .catch(() => {});
   }
+  await bumpForChecklist(db, checklist.id, cardId);
   return { ...checklist, items: insertedItems };
 }
 
@@ -1396,6 +1464,7 @@ export async function createBulkChecklistItems(
       .catch(() => {});
   }
 
+  await bumpForChecklist(db, checklistId, cl.cardId);
   return inserted;
 }
 
@@ -1442,6 +1511,7 @@ export async function createChecklistItem(
     }
   }
 
+  await bumpForChecklist(db, checklistId);
   return item;
 }
 
@@ -1488,6 +1558,9 @@ export async function updateChecklistItem(
       .catch(() => {});
   }
 
+  if (existing?.cardId) {
+    await bumpForCard(db, existing.cardId);
+  }
   return item;
 }
 
@@ -1518,6 +1591,9 @@ export async function deleteChecklistItem(db: Database, itemId: string, actorUse
       .catch(() => {});
   }
 
+  if (existing?.cardId) {
+    await bumpForCard(db, existing.cardId);
+  }
   return { success: true, deletedId: itemId };
 }
 
@@ -1550,6 +1626,7 @@ export async function updateChecklist(
       .catch(() => {});
   }
 
+  await bumpForChecklist(db, checklistId, existing?.cardId ?? null);
   return updated;
 }
 
@@ -1574,6 +1651,7 @@ export async function deleteChecklist(db: Database, checklistId: string, actorUs
       .catch(() => {});
   }
 
+  await bumpForChecklist(db, checklistId, existing?.cardId ?? null);
   return { success: true, deletedId: checklistId };
 }
 
@@ -2013,6 +2091,11 @@ export async function cloneCard(
 
   if (boardInfo) {
     eventBus.broadcast(`board:${boardInfo.boardId}`, 'card.created', cloned);
+    await bumpBoardCache(boardInfo.boardId);
+  }
+  if (input.parentCardId) {
+    // Parent's subtask counters changed — its caches are stale.
+    await bumpForCard(db, input.parentCardId);
   }
 
   return await getCard(db, cloned.id, organizationId);
