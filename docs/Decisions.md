@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-13 — Dev boot seed: skip-when-complete + batched base seed
+
+**Context:** `dev.sh` runs `db:seed` on every boot; it replayed the full enterprise seed (~3-4 min, thousands of sequential auto-commit statements over Docker fsync) and grew append-only log tables (time/audit/activity have no conflict guard) on every boot.
+
+**Decision:** (1) `seedFullOrganization()` fast-path: skip when `acme-corp` has 50 members + cards (<1s); `--force` replays. (2) Base seed batched: multi-row permission insert, one DELETE with IN-subquery for Member revoke, one INSERT..SELECT per role (was ~500 sequential statements → ~10). 3:44 → ~4s. Same final state (verified counts 95/82/22/7).
+
+**Alternatives considered:** Wrapping seed in one transaction (bigger change, lock risk); removing seed from `dev.sh` (loses first-boot provisioning).
+
+**Consequences:** Dev deletions of seed data now survive reboots; `db:seed:org --force` or `db:reset` restores full seed. Noticed but untouched: `org.delete` duplicated in `ALL_PERMISSION_KEYS` (95 unique of 96).
+
 ### 2026-09-13 — Query perf via indexes + Promise.all, no endpoint changes
 
 **Context:** Board load fired 5x `GET /cards?listId` at 3-5s each and login cascades at ~500ms-1.6s on localhost. EXPLAIN showed `Seq Scan` on every FK filter (only PKs/unique constraints indexed); each request also paid 6-8 sequential DB round-trips plus per-request auth/permission/rate-limit overhead.

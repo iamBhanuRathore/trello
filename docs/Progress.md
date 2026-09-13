@@ -1651,3 +1651,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - Decisions made: indexes-first, no new endpoints/limits in this pass (see `Decisions.md` 2026-09-13).
 - Tests added: none (behavior-preserving refactor); `tsc --noEmit` clean, `oxlint` clean, targeted `bun test` identical before/after (2 pass/8 fail — pre-existing stale `boardly_test` DB missing `task_number`, unrelated).
 - What's next: batch endpoints (`cards?boardId=`, `boards?projectIds=`), `pg_trgm` for search, permission-check caching.
+
+### 2026-09-13 — Dev Boot Seed Fix (3:44 → ~4s)
+
+- What was done: `seedFullOrganization()` skips when complete (`--force` overrides); base seed batched (multi-row permission insert, single revoke DELETE, INSERT..SELECT per role). Measured `db:seed` 3:44 → ~4s. `tsc`/`oxlint` clean, targeted tests unchanged (pre-existing stale-test-DB failures only).
+- Decisions made: skip keeps dev deletions across reboots; full reseed via `--force`/`db:reset` (see `Decisions.md` 2026-09-13).
+- Tests added: none (dev-only script, state verified identical: role counts 95/82/22/7, 0 revoked keys on Member).
+- What's next: re-measure board load with indexes applied; batch endpoints.

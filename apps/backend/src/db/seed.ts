@@ -6,7 +6,7 @@
  */
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { sql } from 'drizzle-orm';
+import { sql, inArray, and, eq } from 'drizzle-orm';
 import { plans, permissions, rolePermissions } from './schema/index';
 import {
   ALL_PERMISSION_KEYS,
@@ -68,10 +68,12 @@ for (const plan of defaultPlans) {
 }
 
 // ─── 2. Seed Permissions ──────────────────────────────────────────────────────
+// Single multi-row INSERT (was one statement per key).
 console.log('🌱  Seeding permissions...');
-for (const key of ALL_PERMISSION_KEYS) {
-  await db.insert(permissions).values({ key, description: key }).onConflictDoNothing();
-}
+await db
+  .insert(permissions)
+  .values(ALL_PERMISSION_KEYS.map((key) => ({ key, description: key })))
+  .onConflictDoNothing();
 
 // ─── 3. Seed System Roles ─────────────────────────────────────────────────────
 console.log('🌱  Seeding system roles...');
@@ -119,40 +121,47 @@ const memberRevoke = [
 ];
 const memberRoleId = roleMap['Member'];
 if (memberRoleId) {
-  for (const key of memberRevoke) {
-    await db.execute(sql`
-      DELETE FROM role_permissions
-      WHERE role_id = ${memberRoleId}
-        AND permission_id = (
-          SELECT id FROM permissions WHERE key = ${key} LIMIT 1
+  // Single DELETE with IN-subquery (was one DELETE per key).
+  await db
+    .delete(rolePermissions)
+    .where(
+      and(
+        eq(rolePermissions.roleId, memberRoleId),
+        inArray(
+          rolePermissions.permissionId,
+          db
+            .select({ id: permissions.id })
+            .from(permissions)
+            .where(inArray(permissions.key, memberRevoke))
         )
-    `);
-  }
+      )
+    );
 }
 
 // ─── 4. Assign Permissions to Roles ──────────────────────────────────────────
 console.log('🌱  Assigning permissions to roles...');
 
-// Helper: get permission id by key
-async function getPermId(key: string): Promise<string | null> {
-  const res = (await db.execute(sql`SELECT id FROM permissions WHERE key = ${key} LIMIT 1`)) as {
-    id: string;
-  }[];
-  return res[0]?.id ?? null;
-}
-
-// Helper: assign perm to role
-async function assignPerm(roleName: string, permKey: string) {
+// One INSERT..SELECT per role (was 2 statements per key — ~400 round-trips).
+// Missing keys are skipped by the SELECT filter, same as the old per-key guard.
+async function assignPerms(roleName: string, permKeys: readonly string[] | string[]) {
   const roleId = roleMap[roleName];
-  const permId = await getPermId(permKey);
-  if (!roleId || !permId) return;
-  await db.insert(rolePermissions).values({ roleId, permissionId: permId }).onConflictDoNothing();
+  if (!roleId || permKeys.length === 0) return;
+  await db
+    .insert(rolePermissions)
+    .select(
+      db
+        .select({
+          roleId: sql<string>`${roleId}::uuid`.as('roleId'),
+          permissionId: permissions.id,
+        })
+        .from(permissions)
+        .where(inArray(permissions.key, [...permKeys]))
+    )
+    .onConflictDoNothing();
 }
 
 // Org Owner — gets everything
-for (const key of ALL_PERMISSION_KEYS) {
-  await assignPerm('Org Owner', key);
-}
+await assignPerms('Org Owner', ALL_PERMISSION_KEYS);
 
 // Org Admin — gets everything except platform + ownership transfer + SSO + security + billing manage
 const adminExclude = new Set([
@@ -170,9 +179,11 @@ const adminExclude = new Set([
   'security_policy.manage',
   'billing.manage',
 ]);
+const adminKeys: string[] = [];
 for (const key of ALL_PERMISSION_KEYS) {
-  if (!adminExclude.has(key)) await assignPerm('Org Admin', key);
+  if (!adminExclude.has(key)) adminKeys.push(key);
 }
+await assignPerms('Org Admin', adminKeys);
 
 // Member — task collaboration only; no structural create/update/archive powers
 //
@@ -208,9 +219,7 @@ const memberPermKeys = [
   CARD_PERMISSIONS.CREATE_TIME_LOG,
   CARD_PERMISSIONS.UPDATE_TIME_LOG,
 ];
-for (const key of memberPermKeys) {
-  await assignPerm('Member', key);
-}
+await assignPerms('Member', memberPermKeys);
 
 // Viewer — read-only
 const viewerPermKeys = [
@@ -222,9 +231,7 @@ const viewerPermKeys = [
   CARD_PERMISSIONS.WATCH,
   CARD_PERMISSIONS.CREATE_COMMENT,
 ];
-for (const key of viewerPermKeys) {
-  await assignPerm('Viewer', key);
-}
+await assignPerms('Viewer', viewerPermKeys);
 
 console.log('✅  Base system seed complete.');
 
