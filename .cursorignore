@@ -1,3 +1,11 @@
+# ─── Secrets — AI must never read real env files ──────────────────────────────
+**/.env
+**/.env.development
+**/.env.production
+**/.env.local
+**/.env.*.local
+!**/*.example
+
 # ─── Large Lockfiles & Generated Bundles ──────────────────────────────────────
 bun.lock
 package-lock.json
