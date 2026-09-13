@@ -1,0 +1,33 @@
+name: Migrate Production DB
+
+on:
+  # Auto-run when migration files change on main
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/backend/src/db/migrations/**'
+  # Manual button: Actions → Migrate Production DB → Run workflow
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    name: Run Drizzle migrations on Neon
+    runs-on: ubuntu-latest
+    environment: production # optional: add required reviewers in repo settings
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Apply migrations
+        run: bun run apps/backend/src/db/migrate.ts
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
