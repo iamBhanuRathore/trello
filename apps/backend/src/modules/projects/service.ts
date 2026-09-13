@@ -83,7 +83,16 @@ export async function getProject(db: Database, id: string, organizationId: strin
   return project;
 }
 
-export async function updateProject(db: Database, id: string, organizationId: string, input: { name?: string; status?: 'active' | 'on_hold' | 'completed' | 'archived'; description?: string }) {
+export async function updateProject(
+  db: Database,
+  id: string,
+  organizationId: string,
+  input: {
+    name?: string;
+    status?: 'active' | 'on_hold' | 'completed' | 'archived';
+    description?: string;
+  }
+) {
   const [project] = await db
     .update(projects)
     .set({ ...input, updatedAt: new Date() })
@@ -114,10 +123,12 @@ export async function deleteProject(db: Database, id: string, organizationId: st
     await deleteBoard(db, b.id, organizationId);
   }
 
-  // 2. Delete project phases, sprints, documents if any
-  await db.delete(phases).where(eq(phases.projectId, id));
-  await db.delete(sprints).where(eq(sprints.projectId, id));
-  await db.delete(documents).where(eq(documents.projectId, id));
+  // 2. Delete project phases, sprints, documents if any — independent tables.
+  await Promise.all([
+    db.delete(phases).where(eq(phases.projectId, id)),
+    db.delete(sprints).where(eq(sprints.projectId, id)),
+    db.delete(documents).where(eq(documents.projectId, id)),
+  ]);
 
   // 3. Mark project as deleted
   const [project] = await db

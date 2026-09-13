@@ -63,11 +63,7 @@ export async function getBoard(db: Database, id: string, organizationId: string)
     .select()
     .from(boards)
     .where(
-      and(
-        eq(boards.id, id),
-        eq(boards.organizationId, organizationId),
-        isNull(boards.deletedAt)
-      )
+      and(eq(boards.id, id), eq(boards.organizationId, organizationId), isNull(boards.deletedAt))
     )
     .limit(1);
 
@@ -75,16 +71,17 @@ export async function getBoard(db: Database, id: string, organizationId: string)
   return board;
 }
 
-export async function updateBoard(db: Database, id: string, organizationId: string, input: { name?: string; background?: string }) {
+export async function updateBoard(
+  db: Database,
+  id: string,
+  organizationId: string,
+  input: { name?: string; background?: string }
+) {
   const [board] = await db
     .update(boards)
     .set({ ...input, updatedAt: new Date() })
     .where(
-      and(
-        eq(boards.id, id),
-        eq(boards.organizationId, organizationId),
-        isNull(boards.deletedAt)
-      )
+      and(eq(boards.id, id), eq(boards.organizationId, organizationId), isNull(boards.deletedAt))
     )
     .returning();
 
@@ -97,11 +94,7 @@ export async function archiveBoard(db: Database, id: string, organizationId: str
     .update(boards)
     .set({ isArchived: true, updatedAt: new Date() })
     .where(
-      and(
-        eq(boards.id, id),
-        eq(boards.organizationId, organizationId),
-        isNull(boards.deletedAt)
-      )
+      and(eq(boards.id, id), eq(boards.organizationId, organizationId), isNull(boards.deletedAt))
     )
     .returning();
 
@@ -115,11 +108,7 @@ export async function deleteBoard(db: Database, id: string, organizationId: stri
     .update(boards)
     .set({ deletedAt: new Date(), updatedAt: new Date() })
     .where(
-      and(
-        eq(boards.id, id),
-        eq(boards.organizationId, organizationId),
-        isNull(boards.deletedAt)
-      )
+      and(eq(boards.id, id), eq(boards.organizationId, organizationId), isNull(boards.deletedAt))
     )
     .returning();
 
@@ -132,12 +121,7 @@ export async function hardDeleteBoard(db: Database, id: string, organizationId: 
   const [board] = await db
     .select()
     .from(boards)
-    .where(
-      and(
-        eq(boards.id, id),
-        eq(boards.organizationId, organizationId)
-      )
-    )
+    .where(and(eq(boards.id, id), eq(boards.organizationId, organizationId)))
     .limit(1);
 
   if (!board) throw httpError(404, 'Board not found');
@@ -155,16 +139,19 @@ export async function hardDeleteBoard(db: Database, id: string, organizationId: 
     const cardIds = cardRows.map((c) => c.id);
 
     if (cardIds.length > 0) {
-      // Delete all card associations
-      await db.delete(cardAssignees).where(inArray(cardAssignees.cardId, cardIds));
-      await db.delete(cardParticipants).where(inArray(cardParticipants.cardId, cardIds));
-      await db.delete(cardWatchers).where(inArray(cardWatchers.cardId, cardIds));
-      await db.delete(cardLabels).where(inArray(cardLabels.cardId, cardIds));
-      await db.delete(cardSprints).where(inArray(cardSprints.cardId, cardIds));
-      await db.delete(cardPhase).where(inArray(cardPhase.cardId, cardIds));
-      await db.delete(timeLogs).where(inArray(timeLogs.cardId, cardIds));
-      await db.delete(comments).where(inArray(comments.cardId, cardIds));
-      await db.delete(attachments).where(inArray(attachments.cardId, cardIds));
+      // Delete all card associations — independent tables, run concurrently.
+      // (cards themselves are deleted after, sequentially, due to FK.)
+      await Promise.all([
+        db.delete(cardAssignees).where(inArray(cardAssignees.cardId, cardIds)),
+        db.delete(cardParticipants).where(inArray(cardParticipants.cardId, cardIds)),
+        db.delete(cardWatchers).where(inArray(cardWatchers.cardId, cardIds)),
+        db.delete(cardLabels).where(inArray(cardLabels.cardId, cardIds)),
+        db.delete(cardSprints).where(inArray(cardSprints.cardId, cardIds)),
+        db.delete(cardPhase).where(inArray(cardPhase.cardId, cardIds)),
+        db.delete(timeLogs).where(inArray(timeLogs.cardId, cardIds)),
+        db.delete(comments).where(inArray(comments.cardId, cardIds)),
+        db.delete(attachments).where(inArray(attachments.cardId, cardIds)),
+      ]);
 
       // Checklists & Items
       const checklistRows = await db
@@ -185,21 +172,19 @@ export async function hardDeleteBoard(db: Database, id: string, organizationId: 
     await db.delete(lists).where(inArray(lists.id, listIds));
   }
 
-  // 2. Delete board-level modules: labels, members, automations, intake forms
-  await db.delete(labels).where(eq(labels.boardId, id));
-  await db.delete(boardMembers).where(eq(boardMembers.boardId, id));
-  await db.delete(automations).where(eq(automations.boardId, id));
-  await db.delete(intakeForms).where(eq(intakeForms.boardId, id));
+  // 2. Delete board-level modules: labels, members, automations, intake forms.
+  // Independent tables — run concurrently (board record goes last).
+  await Promise.all([
+    db.delete(labels).where(eq(labels.boardId, id)),
+    db.delete(boardMembers).where(eq(boardMembers.boardId, id)),
+    db.delete(automations).where(eq(automations.boardId, id)),
+    db.delete(intakeForms).where(eq(intakeForms.boardId, id)),
+  ]);
 
   // 3. Delete the board record
   const [deletedBoard] = await db
     .delete(boards)
-    .where(
-      and(
-        eq(boards.id, id),
-        eq(boards.organizationId, organizationId)
-      )
-    )
+    .where(and(eq(boards.id, id), eq(boards.organizationId, organizationId)))
     .returning();
 
   return deletedBoard;

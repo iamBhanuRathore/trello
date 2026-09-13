@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-13 — Query perf via indexes + Promise.all, no endpoint changes
+
+**Context:** Board load fired 5x `GET /cards?listId` at 3-5s each and login cascades at ~500ms-1.6s on localhost. EXPLAIN showed `Seq Scan` on every FK filter (only PKs/unique constraints indexed); each request also paid 6-8 sequential DB round-trips plus per-request auth/permission/rate-limit overhead.
+
+**Decision:** (1) Additive index migration `0015` (47 indexes on FK/sort/user-lookup columns) — no table rewrites, applies via normal CI auto-migrate. (2) Fan out independent awaits with `Promise.all`, keeping queries and return shapes byte-identical. (3) Escape `%_\\` in LIKE terms + early-return empty search. Deferred: batch endpoints, result limits, `pg_trgm`, permission caching.
+
+**Alternatives considered:** New batch endpoints (`cards?boardId=`) would cut round-trips further but change API + frontend; limits/pagination would change contracts. Saved for a follow-up with frontend coordination.
+
+**Consequences:** Same API, fewer round-trips per request (e.g. `listCards` 8→2 sequential hops), index scans once tables grow. FK-ordered deletes stay sequential where constraints require it (items-before-checklists).
+
 ### 2026-09-09 — Shared DatePicker replaces all native date inputs
 
 **Context:** Every date field used `<input type="date">`, whose popup is OS/browser chrome that ignores theming entirely (the broken-looking calendar in the report) and behaves inconsistently across browsers.

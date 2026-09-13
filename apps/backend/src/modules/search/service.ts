@@ -9,74 +9,69 @@ export function httpError(status: number, message: string): Error & { status: nu
 }
 
 export async function performSearch(db: Database, organizationId: string, query: string) {
-  const searchTerm = `%${query}%`;
+  const trimmed = query.trim();
+  // Empty / wildcard-only queries would full-scan — return early.
+  const literal = trimmed.replace(/[\\%_]/g, (m) => `\\${m}`);
+  if (!literal) return [];
+  const searchTerm = `%${literal}%`;
 
-  // Search Cards
-  const matchedCards = await db
-    .select({
-      id: cards.id,
-      key: cards.key,
-      taskNumber: cards.taskNumber,
-      title: cards.title,
-      boardId: lists.boardId,
-      boardName: boards.name,
-      projectName: projects.name,
-      projectKey: projects.key,
-    })
-    .from(cards)
-    .innerJoin(lists, eq(lists.id, cards.listId))
-    .innerJoin(boards, eq(boards.id, lists.boardId))
-    .innerJoin(projects, eq(projects.id, boards.projectId))
-    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
-    .where(
-      and(
-        eq(workspaces.organizationId, organizationId),
-        or(
-          ilike(cards.title, searchTerm),
-          ilike(cards.description, searchTerm),
-          ilike(cards.key, searchTerm)
+  // Three searches are independent — fan out concurrently (was 3 sequential).
+  const [matchedCards, matchedBoards, matchedProjects] = await Promise.all([
+    // Search Cards
+    db
+      .select({
+        id: cards.id,
+        key: cards.key,
+        taskNumber: cards.taskNumber,
+        title: cards.title,
+        boardId: lists.boardId,
+        boardName: boards.name,
+        projectName: projects.name,
+        projectKey: projects.key,
+      })
+      .from(cards)
+      .innerJoin(lists, eq(lists.id, cards.listId))
+      .innerJoin(boards, eq(boards.id, lists.boardId))
+      .innerJoin(projects, eq(projects.id, boards.projectId))
+      .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+      .where(
+        and(
+          eq(workspaces.organizationId, organizationId),
+          or(
+            ilike(cards.title, searchTerm),
+            ilike(cards.description, searchTerm),
+            ilike(cards.key, searchTerm)
+          )
         )
       )
-    )
-    .limit(10);
-
-  // Search Boards
-  const matchedBoards = await db
-    .select({
-      id: boards.id,
-      title: boards.name
-    })
-    .from(boards)
-    .innerJoin(projects, eq(projects.id, boards.projectId))
-    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
-    .where(
-      and(
-        eq(workspaces.organizationId, organizationId),
-        ilike(boards.name, searchTerm)
-      )
-    )
-    .limit(5);
-
-  // Search Projects
-  const matchedProjects = await db
-    .select({
-      id: projects.id,
-      title: projects.name
-    })
-    .from(projects)
-    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
-    .where(
-      and(
-        eq(workspaces.organizationId, organizationId),
-        ilike(projects.name, searchTerm)
-      )
-    )
-    .limit(5);
+      .limit(10),
+    // Search Boards
+    db
+      .select({
+        id: boards.id,
+        title: boards.name,
+      })
+      .from(boards)
+      .innerJoin(projects, eq(projects.id, boards.projectId))
+      .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+      .where(and(eq(workspaces.organizationId, organizationId), ilike(boards.name, searchTerm)))
+      .limit(5),
+    // Search Projects
+    db
+      .select({
+        id: projects.id,
+        title: projects.name,
+      })
+      .from(projects)
+      .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+      .where(and(eq(workspaces.organizationId, organizationId), ilike(projects.name, searchTerm)))
+      .limit(5),
+  ]);
 
   return [
-    ...matchedCards.map(c => ({ ...c, type: 'card' })),
-    ...matchedBoards.map(b => ({ ...b, type: 'board' })),
-    ...matchedProjects.map(p => ({ ...p, type: 'project' }))
+    ...matchedCards.map((c) => ({ ...c, type: 'card' })),
+    ...matchedBoards.map((b) => ({ ...b, type: 'board' })),
+    ...matchedProjects.map((p) => ({ ...p, type: 'project' })),
   ];
 }
 
@@ -103,7 +98,7 @@ export async function createSavedSearch(
       userId,
       name: input.name,
       query: input.query,
-      filters: input.filters || {}
+      filters: input.filters || {},
     })
     .returning();
   return savedSearch;
@@ -114,7 +109,7 @@ export async function deleteSavedSearch(db: Database, userId: string, id: string
     .delete(savedSearches)
     .where(and(eq(savedSearches.id, id), eq(savedSearches.userId, userId)))
     .returning();
-  
+
   if (!deleted) throw httpError(404, 'Saved search not found');
   return deleted;
 }

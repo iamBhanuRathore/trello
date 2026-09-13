@@ -26,12 +26,13 @@ export interface CreateListInput {
 }
 
 async function verifyBoardAccess(db: Database, boardId: string, organizationId: string) {
+  // Existence check only — fetch minimal columns (callers ignore the row).
   const [board] = await db
-    .select()
+    .select({ id: boards.id })
     .from(boards)
     .where(and(eq(boards.id, boardId), eq(boards.organizationId, organizationId)))
     .limit(1);
-    
+
   if (!board) throw httpError(404, 'Board not found or access denied');
   return board;
 }
@@ -40,14 +41,14 @@ export async function createList(db: Database, organizationId: string, input: Cr
   await verifyBoardAccess(db, input.boardId, organizationId);
 
   let position = input.position;
-  
+
   if (position === undefined) {
     // Append to end: max position + 65536
     const [result] = await db
       .select({ maxPos: max(lists.position) })
       .from(lists)
       .where(eq(lists.boardId, input.boardId));
-      
+
     position = (result?.maxPos ?? 0) + 65536;
   }
 
@@ -75,7 +76,12 @@ export async function listLists(db: Database, boardId: string, organizationId: s
     .orderBy(lists.position);
 }
 
-export async function updateList(db: Database, id: string, organizationId: string, input: { name?: string; position?: number; isArchived?: boolean }) {
+export async function updateList(
+  db: Database,
+  id: string,
+  organizationId: string,
+  input: { name?: string; position?: number; isArchived?: boolean }
+) {
   // We need to verify that this list belongs to a board in the user's org
   const [existingList] = await db
     .select({ listId: lists.id, boardId: lists.boardId })
@@ -111,16 +117,18 @@ export async function deleteList(db: Database, id: string, organizationId: strin
   const cardIds = cardRows.map((c) => c.id);
 
   if (cardIds.length > 0) {
-    // Delete all child card associations
-    await db.delete(cardAssignees).where(inArray(cardAssignees.cardId, cardIds));
-    await db.delete(cardParticipants).where(inArray(cardParticipants.cardId, cardIds));
-    await db.delete(cardWatchers).where(inArray(cardWatchers.cardId, cardIds));
-    await db.delete(cardLabels).where(inArray(cardLabels.cardId, cardIds));
-    await db.delete(cardSprints).where(inArray(cardSprints.cardId, cardIds));
-    await db.delete(cardPhase).where(inArray(cardPhase.cardId, cardIds));
-    await db.delete(timeLogs).where(inArray(timeLogs.cardId, cardIds));
-    await db.delete(comments).where(inArray(comments.cardId, cardIds));
-    await db.delete(attachments).where(inArray(attachments.cardId, cardIds));
+    // Delete all child card associations — independent tables, run concurrently.
+    await Promise.all([
+      db.delete(cardAssignees).where(inArray(cardAssignees.cardId, cardIds)),
+      db.delete(cardParticipants).where(inArray(cardParticipants.cardId, cardIds)),
+      db.delete(cardWatchers).where(inArray(cardWatchers.cardId, cardIds)),
+      db.delete(cardLabels).where(inArray(cardLabels.cardId, cardIds)),
+      db.delete(cardSprints).where(inArray(cardSprints.cardId, cardIds)),
+      db.delete(cardPhase).where(inArray(cardPhase.cardId, cardIds)),
+      db.delete(timeLogs).where(inArray(timeLogs.cardId, cardIds)),
+      db.delete(comments).where(inArray(comments.cardId, cardIds)),
+      db.delete(attachments).where(inArray(attachments.cardId, cardIds)),
+    ]);
 
     // Checklists & Checklist Items
     const checklistRows = await db
@@ -129,6 +137,7 @@ export async function deleteList(db: Database, id: string, organizationId: strin
       .where(inArray(checklists.cardId, cardIds));
     const checklistIds = checklistRows.map((cl) => cl.id);
     if (checklistIds.length > 0) {
+      // Sequential: items reference checklists via FK — parent must go last.
       await db.delete(checklistItems).where(inArray(checklistItems.checklistId, checklistIds));
       await db.delete(checklists).where(inArray(checklists.id, checklistIds));
     }
@@ -137,10 +146,7 @@ export async function deleteList(db: Database, id: string, organizationId: strin
     await db.delete(cards).where(inArray(cards.id, cardIds));
   }
 
-  const [deletedList] = await db
-    .delete(lists)
-    .where(eq(lists.id, id))
-    .returning();
+  const [deletedList] = await db.delete(lists).where(eq(lists.id, id)).returning();
 
   eventBus.broadcast(`board:${existingList.boardId}`, 'list.deleted', deletedList);
   return deletedList;

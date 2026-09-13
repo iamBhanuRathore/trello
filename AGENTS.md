@@ -43,3 +43,9 @@
 - **Market-standard interactions are mandatory**: keyboard shortcuts (`Enter` to submit / `Shift+Enter` for newline, `Escape` to cancel, `Cmd/Ctrl+Enter` where applicable), optimistic UI with rollback on failure, dirty-tracked save buttons (disabled when pristine), loading/empty/error states for every async surface, and accessible focus management in modals and popovers.
 - **No dead or misleading UI**: every visible button must either act or be disabled with an explanatory tooltip. A control that silently does nothing is a defect, not a limitation.
 - **Benchmark before building**: when implementing a feature, explicitly compare against how Linear/Jira/Notion handle the same interaction and match or exceed it. Note the benchmark in `docs/Decisions.md` when the choice is non-trivial.
+
+## 8. Commit After Changes, Never Push (STRICT — NO EXCEPTIONS)
+
+- **Commit when done**: after completing all requested changes, create a checkpoint commit (`git add` only intended files, inspect `git status`/`git diff` first, concise message matching repo style). Commit the pre-change state first if the tree is dirty.
+- **Never push**: do NOT run `git push`, do NOT create PRs, do NOT force-push — CI/CD pipelines own deployment. Leave commits local for the user to push.
+- **Never amend a failed commit**: fix and create a new commit instead.

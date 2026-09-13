@@ -1644,3 +1644,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   3. **Stable vendor chunks ([vite.config.ts](file:///Users/bhanurathore/projects/trello/apps/dashboard/vite.config.ts))**:
      - `manualChunks` for `vendor-react`, `vendor-query`, `vendor-dnd`, `vendor-ui` so third-party code stays cached while route chunks change independently.
   4. **Convention docs**: `PROMPT_PATTERNS.md` §4 now mandates lazy registration for every new page; decision logged in `Decisions.md` (2026-09-09).
+
+### 2026-09-13 — Backend Query Performance (indexes + fan-out)
+
+- What was done: `0015_perf_hot_path_indexes` (47 FK/lookup indexes, additive only); fanned out sequential awaits to `Promise.all` in `listCards` (6), `getCard` (6), `getMyTasks` (4+2+2), `performSearch` (3), `getCardChecklists` (2), `deleteList`/`hardDeleteBoard` cascades, `updatePreferences`; `verifyBoardAccess` selects id only; LIKE wildcards escaped in search/my-tasks. No API shape changes.
+- Decisions made: indexes-first, no new endpoints/limits in this pass (see `Decisions.md` 2026-09-13).
+- Tests added: none (behavior-preserving refactor); `tsc --noEmit` clean, `oxlint` clean, targeted `bun test` identical before/after (2 pass/8 fail — pre-existing stale `boardly_test` DB missing `task_number`, unrelated).
+- What's next: batch endpoints (`cards?boardId=`, `boards?projectIds=`), `pg_trgm` for search, permission-check caching.

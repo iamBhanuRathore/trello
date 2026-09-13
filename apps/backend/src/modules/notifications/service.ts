@@ -65,35 +65,38 @@ export async function updatePreferences(
     quietHoursEnd?: number | null;
   }>
 ) {
-  const results = [];
-  for (const pref of preferences) {
-    const [updated] = await db
-      .insert(notificationPreferences)
-      .values({
-        userId,
-        organizationId,
-        eventType: pref.eventType,
-        channel: pref.channel,
-        frequency: pref.frequency,
-        quietHoursStart: pref.quietHoursStart,
-        quietHoursEnd: pref.quietHoursEnd,
-      })
-      .onConflictDoUpdate({
-        target: [
-          notificationPreferences.userId,
-          notificationPreferences.organizationId,
-          notificationPreferences.eventType,
-          notificationPreferences.channel,
-        ],
-        set: {
+  // Each upsert is independent — run concurrently, preserve input order.
+  // (Was sequential N round-trips for N preferences.)
+  const results = await Promise.all(
+    preferences.map((pref) =>
+      db
+        .insert(notificationPreferences)
+        .values({
+          userId,
+          organizationId,
+          eventType: pref.eventType,
+          channel: pref.channel,
           frequency: pref.frequency,
           quietHoursStart: pref.quietHoursStart,
           quietHoursEnd: pref.quietHoursEnd,
-        },
-      })
-      .returning();
-    results.push(updated);
-  }
+        })
+        .onConflictDoUpdate({
+          target: [
+            notificationPreferences.userId,
+            notificationPreferences.organizationId,
+            notificationPreferences.eventType,
+            notificationPreferences.channel,
+          ],
+          set: {
+            frequency: pref.frequency,
+            quietHoursStart: pref.quietHoursStart,
+            quietHoursEnd: pref.quietHoursEnd,
+          },
+        })
+        .returning()
+        .then(([updated]) => updated)
+    )
+  );
   return results;
 }
 

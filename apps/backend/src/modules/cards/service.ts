@@ -246,18 +246,73 @@ export async function listCards(db: Database, listId: string, organizationId: st
   const cardIds = cardRows.map((c) => c.id);
   if (cardIds.length === 0) return [];
 
-  // 1. Assignees
-  const assigneeRows = await db
-    .select({
-      cardId: cardAssignees.cardId,
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      avatarUrl: users.avatarUrl,
-    })
-    .from(cardAssignees)
-    .innerJoin(users, eq(users.id, cardAssignees.userId))
-    .where(inArray(cardAssignees.cardId, cardIds));
+  // Enrichment queries are independent — fan out concurrently (was 6 sequential
+  // round-trips; pool + Docker RTT made each list ~1s).
+  const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
+  const [assigneeRows, labelRows, stageRows, checklistItemsRows, commentRows, attachmentRows] =
+    await Promise.all([
+      // 1. Assignees
+      db
+        .select({
+          cardId: cardAssignees.cardId,
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+        })
+        .from(cardAssignees)
+        .innerJoin(users, eq(users.id, cardAssignees.userId))
+        .where(inArray(cardAssignees.cardId, cardIds)),
+      // 2. Labels
+      db
+        .select({
+          cardId: cardLabels.cardId,
+          id: labels.id,
+          name: labels.name,
+          color: labels.color,
+        })
+        .from(cardLabels)
+        .innerJoin(labels, eq(labels.id, cardLabels.labelId))
+        .where(inArray(cardLabels.cardId, cardIds)),
+      // 3. Stages
+      stageIds.length > 0
+        ? db
+            .select({
+              id: stages.id,
+              name: stages.name,
+              color: stages.color,
+              category: stages.category,
+            })
+            .from(stages)
+            .where(inArray(stages.id, stageIds))
+        : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
+      // 4. Checklist counts
+      db
+        .select({
+          cardId: checklists.cardId,
+          itemId: checklistItems.id,
+          isDone: checklistItems.isDone,
+        })
+        .from(checklists)
+        .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
+        .where(inArray(checklists.cardId, cardIds)),
+      // 5. Comments counts
+      db
+        .select({
+          cardId: comments.cardId,
+          id: comments.id,
+        })
+        .from(comments)
+        .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
+      // 6. Attachments counts
+      db
+        .select({
+          cardId: attachments.cardId,
+          id: attachments.id,
+        })
+        .from(attachments)
+        .where(inArray(attachments.cardId, cardIds)),
+    ]);
 
   const assigneesByCard = new Map<string, any>();
   assigneeRows.forEach((a) => {
@@ -269,50 +324,14 @@ export async function listCards(db: Database, listId: string, organizationId: st
     });
   });
 
-  // 2. Labels
-  const labelRows = await db
-    .select({
-      cardId: cardLabels.cardId,
-      id: labels.id,
-      name: labels.name,
-      color: labels.color,
-    })
-    .from(cardLabels)
-    .innerJoin(labels, eq(labels.id, cardLabels.labelId))
-    .where(inArray(cardLabels.cardId, cardIds));
-
   const labelsByCard = new Map<string, any[]>();
   labelRows.forEach((l) => {
     if (!labelsByCard.has(l.cardId)) labelsByCard.set(l.cardId, []);
     labelsByCard.get(l.cardId)!.push({ id: l.id, name: l.name, color: l.color });
   });
 
-  // 3. Stages
-  const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
   const stagesByStageId = new Map<string, any>();
-  if (stageIds.length > 0) {
-    const stageRows = await db
-      .select({
-        id: stages.id,
-        name: stages.name,
-        color: stages.color,
-        category: stages.category,
-      })
-      .from(stages)
-      .where(inArray(stages.id, stageIds));
-    stageRows.forEach((s) => stagesByStageId.set(s.id, s));
-  }
-
-  // 4. Checklist counts
-  const checklistItemsRows = await db
-    .select({
-      cardId: checklists.cardId,
-      itemId: checklistItems.id,
-      isDone: checklistItems.isDone,
-    })
-    .from(checklists)
-    .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
-    .where(inArray(checklists.cardId, cardIds));
+  stageRows.forEach((s) => stagesByStageId.set(s.id, s));
 
   const checklistStatsByCard = new Map<string, { total: number; done: number }>();
   checklistItemsRows.forEach((row) => {
@@ -326,28 +345,10 @@ export async function listCards(db: Database, listId: string, organizationId: st
     }
   });
 
-  // 5. Comments counts
-  const commentRows = await db
-    .select({
-      cardId: comments.cardId,
-      id: comments.id,
-    })
-    .from(comments)
-    .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt)));
-
   const commentsCountByCard = new Map<string, number>();
   commentRows.forEach((c) => {
     commentsCountByCard.set(c.cardId, (commentsCountByCard.get(c.cardId) || 0) + 1);
   });
-
-  // 6. Attachments counts
-  const attachmentRows = await db
-    .select({
-      cardId: attachments.cardId,
-      id: attachments.id,
-    })
-    .from(attachments)
-    .where(inArray(attachments.cardId, cardIds));
 
   const attachmentsCountByCard = new Map<string, number>();
   attachmentRows.forEach((a) => {
@@ -459,86 +460,84 @@ export async function getCard(db: Database, id: string, organizationId: string) 
 
   if (!card) throw httpError(404, 'Card not found');
 
-  // Fetch assignees (single primary assignee model)
-  const assignees = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      avatarUrl: users.avatarUrl,
-    })
-    .from(cardAssignees)
-    .innerJoin(users, eq(users.id, cardAssignees.userId))
-    .where(eq(cardAssignees.cardId, id));
+  // Independent sub-fetches — fan out concurrently (was 6 sequential round-trips).
+  const [assignees, participants, watchers, cardLabelsList, stageRows, parentRows] =
+    await Promise.all([
+      // Assignees (single primary assignee model)
+      db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+        })
+        .from(cardAssignees)
+        .innerJoin(users, eq(users.id, cardAssignees.userId))
+        .where(eq(cardAssignees.cardId, id)),
+      // Participants (multiple collaborators)
+      db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+          addedAt: cardParticipants.addedAt,
+          createdAt: cardParticipants.addedAt,
+        })
+        .from(cardParticipants)
+        .innerJoin(users, eq(users.id, cardParticipants.userId))
+        .where(eq(cardParticipants.cardId, id)),
+      // Watchers (multiple observers)
+      db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+          subscribedAt: cardWatchers.subscribedAt,
+          createdAt: cardWatchers.subscribedAt,
+        })
+        .from(cardWatchers)
+        .innerJoin(users, eq(users.id, cardWatchers.userId))
+        .where(eq(cardWatchers.cardId, id)),
+      // Labels
+      db
+        .select({
+          id: labels.id,
+          name: labels.name,
+          color: labels.color,
+        })
+        .from(cardLabels)
+        .innerJoin(labels, eq(labels.id, cardLabels.labelId))
+        .where(eq(cardLabels.cardId, id)),
+      // Stage (skip query when no stageId)
+      card.stageId
+        ? db
+            .select({
+              id: stages.id,
+              name: stages.name,
+              color: stages.color,
+              category: stages.category,
+            })
+            .from(stages)
+            .where(eq(stages.id, card.stageId))
+            .limit(1)
+        : Promise.resolve([]),
+      // Parent card (skip query when no parentCardId)
+      card.parentCardId
+        ? db
+            .select({
+              id: cards.id,
+              title: cards.title,
+            })
+            .from(cards)
+            .where(eq(cards.id, card.parentCardId))
+            .limit(1)
+        : Promise.resolve([]),
+    ]);
 
-  // Fetch participants (multiple collaborators)
-  const participants = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      avatarUrl: users.avatarUrl,
-      addedAt: cardParticipants.addedAt,
-      createdAt: cardParticipants.addedAt,
-    })
-    .from(cardParticipants)
-    .innerJoin(users, eq(users.id, cardParticipants.userId))
-    .where(eq(cardParticipants.cardId, id));
-
-  // Fetch watchers (multiple observers)
-  const watchers = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      avatarUrl: users.avatarUrl,
-      subscribedAt: cardWatchers.subscribedAt,
-      createdAt: cardWatchers.subscribedAt,
-    })
-    .from(cardWatchers)
-    .innerJoin(users, eq(users.id, cardWatchers.userId))
-    .where(eq(cardWatchers.cardId, id));
-
-  // Fetch labels
-  const cardLabelsList = await db
-    .select({
-      id: labels.id,
-      name: labels.name,
-      color: labels.color,
-    })
-    .from(cardLabels)
-    .innerJoin(labels, eq(labels.id, cardLabels.labelId))
-    .where(eq(cardLabels.cardId, id));
-
-  // Fetch stage if stageId is present
-  let stage = null;
-  if (card.stageId) {
-    const [s] = await db
-      .select({
-        id: stages.id,
-        name: stages.name,
-        color: stages.color,
-        category: stages.category,
-      })
-      .from(stages)
-      .where(eq(stages.id, card.stageId))
-      .limit(1);
-    stage = s || null;
-  }
-
-  // Fetch parent card if parentCardId is present
-  let parentCard = null;
-  if (card.parentCardId) {
-    const [p] = await db
-      .select({
-        id: cards.id,
-        title: cards.title,
-      })
-      .from(cards)
-      .where(eq(cards.id, card.parentCardId))
-      .limit(1);
-    parentCard = p || null;
-  }
+  const stage = stageRows[0] || null;
+  const parentCard = parentRows[0] || null;
 
   return {
     ...card,
@@ -1273,24 +1272,26 @@ export async function getCardWatchers(db: Database, cardId: string) {
 
 // ─── Checklists ───────────────────────────────────────────────────────────────
 export async function getCardChecklists(db: Database, cardId: string) {
-  const allChecklists = await db
-    .select()
-    .from(checklists)
-    .where(and(eq(checklists.cardId, cardId), isNull(checklists.deletedAt)))
-    .orderBy(checklists.position);
-
-  const allItems = await db
-    .select()
-    .from(checklistItems)
-    .innerJoin(checklists, eq(checklists.id, checklistItems.checklistId))
-    .where(
-      and(
-        eq(checklists.cardId, cardId),
-        isNull(checklists.deletedAt),
-        isNull(checklistItems.deletedAt)
+  // Independent queries (items re-derive cardId via join) — run concurrently.
+  const [allChecklists, allItems] = await Promise.all([
+    db
+      .select()
+      .from(checklists)
+      .where(and(eq(checklists.cardId, cardId), isNull(checklists.deletedAt)))
+      .orderBy(checklists.position),
+    db
+      .select()
+      .from(checklistItems)
+      .innerJoin(checklists, eq(checklists.id, checklistItems.checklistId))
+      .where(
+        and(
+          eq(checklists.cardId, cardId),
+          isNull(checklists.deletedAt),
+          isNull(checklistItems.deletedAt)
+        )
       )
-    )
-    .orderBy(checklistItems.position);
+      .orderBy(checklistItems.position),
+  ]);
 
   return allChecklists.map((cl) => ({
     ...cl,
@@ -1594,29 +1595,32 @@ export async function getMyTasks(
   userId: string,
   options?: GetMyTasksOptions
 ) {
-  // 1. Fetch user's assigned, watching, participating, and created card IDs
-  const assignedRows = await db
-    .select({ cardId: cardAssignees.cardId })
-    .from(cardAssignees)
-    .where(eq(cardAssignees.userId, userId));
+  // 1. Fetch user's assigned, watching, participating, and created card IDs.
+  // Independent lookups — fan out concurrently (was 4 sequential round-trips).
+  const [assignedRows, watchingRows, participatingRows, createdRows] = await Promise.all([
+    db
+      .select({ cardId: cardAssignees.cardId })
+      .from(cardAssignees)
+      .where(eq(cardAssignees.userId, userId)),
+    db
+      .select({ cardId: cardWatchers.cardId })
+      .from(cardWatchers)
+      .where(eq(cardWatchers.userId, userId)),
+    db
+      .select({ cardId: comments.cardId })
+      .from(comments)
+      .where(and(eq(comments.userId, userId), isNull(comments.deletedAt))),
+    db
+      .select({ cardId: cardAssignees.cardId })
+      .from(cardAssignees)
+      .where(eq(cardAssignees.assignedBy, userId)),
+  ]);
   const assignedCardIds = new Set(assignedRows.map((r) => r.cardId));
 
-  const watchingRows = await db
-    .select({ cardId: cardWatchers.cardId })
-    .from(cardWatchers)
-    .where(eq(cardWatchers.userId, userId));
   const watchingCardIds = new Set(watchingRows.map((r) => r.cardId));
 
-  const participatingRows = await db
-    .select({ cardId: comments.cardId })
-    .from(comments)
-    .where(and(eq(comments.userId, userId), isNull(comments.deletedAt)));
   const participatingCardIds = new Set(participatingRows.map((r) => r.cardId));
 
-  const createdRows = await db
-    .select({ cardId: cardAssignees.cardId })
-    .from(cardAssignees)
-    .where(eq(cardAssignees.assignedBy, userId));
   const createdCardIds = new Set(createdRows.map((r) => r.cardId));
 
   // Determine target card IDs based on filter
@@ -1667,7 +1671,8 @@ export async function getMyTasks(
   ];
 
   if (options?.search && options.search.trim()) {
-    const term = `%${options.search.trim()}%`;
+    // Escape LIKE wildcards so a literal `%`/`_` can't turn into a full scan.
+    const term = `%${options.search.trim().replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
     conditions.push(
       or(ilike(cards.title, term), ilike(cards.description, term), ilike(cards.key, term))
     );
@@ -1724,21 +1729,30 @@ export async function getMyTasks(
 
   const cardIds = rawTasks.map((t) => t.id);
 
-  // Fetch assignees for these cards
-  const allAssignees =
+  // Assignees + watchers are independent — fetch concurrently.
+  const [allAssignees, allWatchers] =
     cardIds.length > 0
-      ? await db
-          .select({
-            cardId: cardAssignees.cardId,
-            userId: users.id,
-            name: users.name,
-            email: users.email,
-            avatarUrl: users.avatarUrl,
-          })
-          .from(cardAssignees)
-          .innerJoin(users, eq(users.id, cardAssignees.userId))
-          .where(inArray(cardAssignees.cardId, cardIds))
-      : [];
+      ? await Promise.all([
+          db
+            .select({
+              cardId: cardAssignees.cardId,
+              userId: users.id,
+              name: users.name,
+              email: users.email,
+              avatarUrl: users.avatarUrl,
+            })
+            .from(cardAssignees)
+            .innerJoin(users, eq(users.id, cardAssignees.userId))
+            .where(inArray(cardAssignees.cardId, cardIds)),
+          db
+            .select({
+              cardId: cardWatchers.cardId,
+              userId: cardWatchers.userId,
+            })
+            .from(cardWatchers)
+            .where(inArray(cardWatchers.cardId, cardIds)),
+        ])
+      : [[], []];
 
   const assigneesByCard = new Map<string, any[]>();
   allAssignees.forEach((a) => {
@@ -1747,58 +1761,43 @@ export async function getMyTasks(
     assigneesByCard.set(a.cardId, list);
   });
 
-  // Fetch watchers count for these cards
-  const allWatchers =
-    cardIds.length > 0
-      ? await db
-          .select({
-            cardId: cardWatchers.cardId,
-            userId: cardWatchers.userId,
-          })
-          .from(cardWatchers)
-          .where(inArray(cardWatchers.cardId, cardIds))
-      : [];
-
   const watchersCountByCard = new Map<string, number>();
   allWatchers.forEach((w) => {
     watchersCountByCard.set(w.cardId, (watchersCountByCard.get(w.cardId) || 0) + 1);
   });
 
-  // Fetch comments count
-  const allComments =
+  // Comments + checklists are independent — fetch concurrently.
+  const [allComments, allChecklists] =
     cardIds.length > 0
-      ? await db
-          .select({
-            cardId: comments.cardId,
-            id: comments.id,
-          })
-          .from(comments)
-          .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt)))
-      : [];
+      ? await Promise.all([
+          db
+            .select({
+              cardId: comments.cardId,
+              id: comments.id,
+            })
+            .from(comments)
+            .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
+          db
+            .select({
+              cardId: checklists.cardId,
+              isCompleted: checklistItems.isDone,
+            })
+            .from(checklists)
+            .innerJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
+            .where(
+              and(
+                inArray(checklists.cardId, cardIds),
+                isNull(checklists.deletedAt),
+                isNull(checklistItems.deletedAt)
+              )
+            ),
+        ])
+      : [[], []];
 
   const commentsCountByCard = new Map<string, number>();
   allComments.forEach((c) => {
     commentsCountByCard.set(c.cardId, (commentsCountByCard.get(c.cardId) || 0) + 1);
   });
-
-  // Fetch checklists progress
-  const allChecklists =
-    cardIds.length > 0
-      ? await db
-          .select({
-            cardId: checklists.cardId,
-            isCompleted: checklistItems.isDone,
-          })
-          .from(checklists)
-          .innerJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
-          .where(
-            and(
-              inArray(checklists.cardId, cardIds),
-              isNull(checklists.deletedAt),
-              isNull(checklistItems.deletedAt)
-            )
-          )
-      : [];
 
   const checklistsProgressByCard = new Map<string, { total: number; completed: number }>();
   allChecklists.forEach((item) => {

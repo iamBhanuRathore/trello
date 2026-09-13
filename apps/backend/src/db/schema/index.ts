@@ -11,6 +11,7 @@ import {
   date,
   jsonb,
   uniqueIndex,
+  index,
   primaryKey,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -161,7 +162,11 @@ export const organizationMembers = pgTable(
     deactivatedBy: uuid('deactivated_by').references(() => users.id),
     ...timestamps,
   },
-  (t) => [uniqueIndex('org_members_org_user_idx').on(t.organizationId, t.userId)]
+  (t) => [
+    uniqueIndex('org_members_org_user_idx').on(t.organizationId, t.userId),
+    // signIn + RBAC look up membership by user first (unique above is (org,user) ordered).
+    index('org_members_user_idx').on(t.userId),
+  ]
 );
 
 // ─── Invitations ──────────────────────────────────────────────────────────────
@@ -257,16 +262,20 @@ export const seatChangeRequests = pgTable('seat_change_requests', {
 });
 
 // ─── Workspaces ───────────────────────────────────────────────────────────────
-export const workspaces = pgTable('workspaces', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  description: text('description'),
-  visibility: workspaceVisibilityEnum('visibility').notNull().default('org'),
-  ...timestamps,
-});
+export const workspaces = pgTable(
+  'workspaces',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    description: text('description'),
+    visibility: workspaceVisibilityEnum('visibility').notNull().default('org'),
+    ...timestamps,
+  },
+  (t) => [index('workspaces_org_idx').on(t.organizationId)]
+);
 
 export const workspaceMembers = pgTable(
   'workspace_members',
@@ -281,28 +290,38 @@ export const workspaceMembers = pgTable(
     role: workspaceMemberRoleEnum('role').notNull().default('member'),
     ...timestamps,
   },
-  (t) => [uniqueIndex('workspace_members_ws_user_idx').on(t.workspaceId, t.userId)]
+  (t) => [
+    uniqueIndex('workspace_members_ws_user_idx').on(t.workspaceId, t.userId),
+    index('workspace_members_user_idx').on(t.userId),
+  ]
 );
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
-export const projects = pgTable('projects', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  workspaceId: uuid('workspace_id')
-    .notNull()
-    .references(() => workspaces.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  key: varchar('key', { length: 10 }),
-  description: text('description'),
-  status: projectStatusEnum('status').notNull().default('active'),
-  taskCounter: integer('task_counter').notNull().default(0),
-  startDate: date('start_date'),
-  endDate: date('end_date'),
-  isArchived: boolean('is_archived').notNull().default(false),
-  ...timestamps,
-});
+export const projects = pgTable(
+  'projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    key: varchar('key', { length: 10 }),
+    description: text('description'),
+    status: projectStatusEnum('status').notNull().default('active'),
+    taskCounter: integer('task_counter').notNull().default(0),
+    startDate: date('start_date'),
+    endDate: date('end_date'),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [
+    index('projects_workspace_idx').on(t.workspaceId),
+    index('projects_org_idx').on(t.organizationId),
+  ]
+);
 
 export const projectMembers = pgTable(
   'project_members',
@@ -317,24 +336,31 @@ export const projectMembers = pgTable(
     role: projectMemberRoleEnum('role').notNull().default('member'),
     ...timestamps,
   },
-  (t) => [uniqueIndex('project_members_proj_user_idx').on(t.projectId, t.userId)]
+  (t) => [
+    uniqueIndex('project_members_proj_user_idx').on(t.projectId, t.userId),
+    index('project_members_user_idx').on(t.userId),
+  ]
 );
 
 // ─── Boards ───────────────────────────────────────────────────────────────────
-export const boards = pgTable('boards', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  background: varchar('background', { length: 255 }),
-  isArchived: boolean('is_archived').notNull().default(false),
-  isTemplate: boolean('is_template').notNull().default(false),
-  ...timestamps,
-});
+export const boards = pgTable(
+  'boards',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    background: varchar('background', { length: 255 }),
+    isArchived: boolean('is_archived').notNull().default(false),
+    isTemplate: boolean('is_template').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [index('boards_project_idx').on(t.projectId), index('boards_org_idx').on(t.organizationId)]
+);
 
 export const boardMembers = pgTable(
   'board_members',
@@ -349,80 +375,112 @@ export const boardMembers = pgTable(
     role: boardMemberRoleEnum('role').notNull().default('member'),
     ...timestamps,
   },
-  (t) => [uniqueIndex('board_members_board_user_idx').on(t.boardId, t.userId)]
+  (t) => [
+    uniqueIndex('board_members_board_user_idx').on(t.boardId, t.userId),
+    index('board_members_user_idx').on(t.userId),
+  ]
 );
 
-export const labels = pgTable('labels', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  boardId: uuid('board_id')
-    .notNull()
-    .references(() => boards.id),
-  name: varchar('name', { length: 100 }).notNull(),
-  color: varchar('color', { length: 7 }).notNull(),
-  ...timestamps,
-});
+export const labels = pgTable(
+  'labels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    boardId: uuid('board_id')
+      .notNull()
+      .references(() => boards.id),
+    name: varchar('name', { length: 100 }).notNull(),
+    color: varchar('color', { length: 7 }).notNull(),
+    ...timestamps,
+  },
+  (t) => [index('labels_board_idx').on(t.boardId)]
+);
 
 // ─── Lists ────────────────────────────────────────────────────────────────────
-export const lists = pgTable('lists', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  boardId: uuid('board_id')
-    .notNull()
-    .references(() => boards.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  position: real('position').notNull(),
-  isArchived: boolean('is_archived').notNull().default(false),
-  ...timestamps,
-});
+export const lists = pgTable(
+  'lists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    boardId: uuid('board_id')
+      .notNull()
+      .references(() => boards.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    position: real('position').notNull(),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [index('lists_board_idx').on(t.boardId)]
+);
 
 // ─── Custom Stages ────────────────────────────────────────────────────────────
-export const stageTemplates = pgTable('stage_templates', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  projectId: uuid('project_id').references(() => projects.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  isDefault: boolean('is_default').notNull().default(false),
-  ...timestamps,
-});
+export const stageTemplates = pgTable(
+  'stage_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    projectId: uuid('project_id').references(() => projects.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    isDefault: boolean('is_default').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [
+    index('stage_templates_org_idx').on(t.organizationId),
+    index('stage_templates_project_idx').on(t.projectId),
+  ]
+);
 
-export const stages = pgTable('stages', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  templateId: uuid('template_id')
-    .notNull()
-    .references(() => stageTemplates.id),
-  name: varchar('name', { length: 100 }).notNull(),
-  color: varchar('color', { length: 7 }).notNull(),
-  position: real('position').notNull(),
-  category: stageCategoryEnum('category').notNull(),
-  ...timestamps,
-});
+export const stages = pgTable(
+  'stages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => stageTemplates.id),
+    name: varchar('name', { length: 100 }).notNull(),
+    color: varchar('color', { length: 7 }).notNull(),
+    position: real('position').notNull(),
+    category: stageCategoryEnum('category').notNull(),
+    ...timestamps,
+  },
+  (t) => [index('stages_template_idx').on(t.templateId)]
+);
 
 // ─── Cards ────────────────────────────────────────────────────────────────────
-export const cards = pgTable('cards', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  listId: uuid('list_id')
-    .notNull()
-    .references(() => lists.id),
-  parentCardId: uuid('parent_card_id'), // self-ref FK added in migration
-  taskNumber: integer('task_number'),
-  key: varchar('key', { length: 30 }),
-  title: varchar('title', { length: 500 }).notNull(),
-  description: text('description'),
-  position: real('position').notNull(),
-  dueDate: timestamp('due_date'),
-  stageId: uuid('stage_id').references(() => stages.id),
-  coverImage: varchar('cover_image', { length: 2048 }),
-  storyPoints: integer('story_points'),
-  estimateMinutes: integer('estimate_minutes'),
-  subtasksTotal: integer('subtasks_total').notNull().default(0),
-  subtasksDone: integer('subtasks_done').notNull().default(0),
-  isArchived: boolean('is_archived').notNull().default(false),
-  ...timestamps,
-});
+export const cards = pgTable(
+  'cards',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    listId: uuid('list_id')
+      .notNull()
+      .references(() => lists.id),
+    parentCardId: uuid('parent_card_id'), // self-ref FK added in migration
+    taskNumber: integer('task_number'),
+    key: varchar('key', { length: 30 }),
+    title: varchar('title', { length: 500 }).notNull(),
+    description: text('description'),
+    position: real('position').notNull(),
+    dueDate: timestamp('due_date'),
+    stageId: uuid('stage_id').references(() => stages.id),
+    coverImage: varchar('cover_image', { length: 2048 }),
+    storyPoints: integer('story_points'),
+    estimateMinutes: integer('estimate_minutes'),
+    subtasksTotal: integer('subtasks_total').notNull().default(0),
+    subtasksDone: integer('subtasks_done').notNull().default(0),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [
+    // listCards WHERE list_id + archived + sort by position (hottest query).
+    index('cards_list_idx').on(t.listId),
+    index('cards_org_idx').on(t.organizationId),
+    index('cards_parent_idx').on(t.parentCardId),
+    index('cards_stage_idx').on(t.stageId),
+  ]
+);
 
 export const cardAssignees = pgTable(
   'card_assignees',
@@ -436,7 +494,12 @@ export const cardAssignees = pgTable(
     assignedAt: timestamp('assigned_at').notNull().defaultNow(),
     assignedBy: uuid('assigned_by').references(() => users.id),
   },
-  (t) => [primaryKey({ columns: [t.cardId, t.userId] })]
+  (t) => [
+    primaryKey({ columns: [t.cardId, t.userId] }),
+    // getMyTasks looks up by user.
+    index('card_assignees_user_idx').on(t.userId),
+    index('card_assignees_assigned_by_idx').on(t.assignedBy),
+  ]
 );
 
 export const cardParticipants = pgTable(
@@ -451,7 +514,10 @@ export const cardParticipants = pgTable(
     addedAt: timestamp('added_at').notNull().defaultNow(),
     addedBy: uuid('added_by').references(() => users.id),
   },
-  (t) => [primaryKey({ columns: [t.cardId, t.userId] })]
+  (t) => [
+    primaryKey({ columns: [t.cardId, t.userId] }),
+    index('card_participants_user_idx').on(t.userId),
+  ]
 );
 
 export const cardWatchers = pgTable(
@@ -465,7 +531,10 @@ export const cardWatchers = pgTable(
       .references(() => users.id),
     subscribedAt: timestamp('subscribed_at').notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.cardId, t.userId] })]
+  (t) => [
+    primaryKey({ columns: [t.cardId, t.userId] }),
+    index('card_watchers_user_idx').on(t.userId),
+  ]
 );
 
 export const cardLabels = pgTable(
@@ -478,76 +547,99 @@ export const cardLabels = pgTable(
       .notNull()
       .references(() => labels.id),
   },
-  (t) => [primaryKey({ columns: [t.cardId, t.labelId] })]
+  (t) => [
+    primaryKey({ columns: [t.cardId, t.labelId] }),
+    index('card_labels_label_idx').on(t.labelId),
+  ]
 );
 
 // ─── Card Content ─────────────────────────────────────────────────────────────
-export const checklists = pgTable('checklists', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  cardId: uuid('card_id')
-    .notNull()
-    .references(() => cards.id),
-  title: varchar('title', { length: 255 }).notNull(),
-  position: real('position').notNull(),
-  ...timestamps,
-});
+export const checklists = pgTable(
+  'checklists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id),
+    title: varchar('title', { length: 255 }).notNull(),
+    position: real('position').notNull(),
+    ...timestamps,
+  },
+  (t) => [index('checklists_card_idx').on(t.cardId)]
+);
 
-export const checklistItems = pgTable('checklist_items', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  checklistId: uuid('checklist_id')
-    .notNull()
-    .references(() => checklists.id),
-  text: varchar('text', { length: 1000 }).notNull(),
-  isDone: boolean('is_done').notNull().default(false),
-  position: real('position').notNull(),
-  assignedTo: uuid('assigned_to').references(() => users.id),
-  dueDate: timestamp('due_date'),
-  ...timestamps,
-});
+export const checklistItems = pgTable(
+  'checklist_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    checklistId: uuid('checklist_id')
+      .notNull()
+      .references(() => checklists.id),
+    text: varchar('text', { length: 1000 }).notNull(),
+    isDone: boolean('is_done').notNull().default(false),
+    position: real('position').notNull(),
+    assignedTo: uuid('assigned_to').references(() => users.id),
+    dueDate: timestamp('due_date'),
+    ...timestamps,
+  },
+  (t) => [index('checklist_items_checklist_idx').on(t.checklistId)]
+);
 
-export const comments = pgTable('comments', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  cardId: uuid('card_id')
-    .notNull()
-    .references(() => cards.id),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
-  body: text('body').notNull(),
-  isEdited: boolean('is_edited').notNull().default(false),
-  ...timestamps,
-});
+export const comments = pgTable(
+  'comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    body: text('body').notNull(),
+    isEdited: boolean('is_edited').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [index('comments_card_idx').on(t.cardId), index('comments_user_idx').on(t.userId)]
+);
 
-export const attachments = pgTable('attachments', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  cardId: uuid('card_id')
-    .notNull()
-    .references(() => cards.id),
-  uploadedBy: uuid('uploaded_by')
-    .notNull()
-    .references(() => users.id),
-  fileName: varchar('file_name', { length: 500 }).notNull(),
-  url: varchar('url', { length: 2048 }).notNull(),
-  fileType: varchar('file_type', { length: 100 }),
-  sizeBytes: integer('size_bytes'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  deletedAt: timestamp('deleted_at'),
-});
+export const attachments = pgTable(
+  'attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id),
+    uploadedBy: uuid('uploaded_by')
+      .notNull()
+      .references(() => users.id),
+    fileName: varchar('file_name', { length: 500 }).notNull(),
+    url: varchar('url', { length: 2048 }).notNull(),
+    fileType: varchar('file_type', { length: 100 }),
+    sizeBytes: integer('size_bytes'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at'),
+  },
+  (t) => [index('attachments_card_idx').on(t.cardId)]
+);
 
 // ─── Sprints & Phases ─────────────────────────────────────────────────────────
-export const sprints = pgTable('sprints', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  type: sprintTypeEnum('type').notNull(),
-  startDate: date('start_date').notNull(),
-  endDate: date('end_date').notNull(),
-  goal: text('goal'),
-  status: sprintStatusEnum('status').notNull().default('planned'),
-  ...timestamps,
-});
+export const sprints = pgTable(
+  'sprints',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    type: sprintTypeEnum('type').notNull(),
+    startDate: date('start_date').notNull(),
+    endDate: date('end_date').notNull(),
+    goal: text('goal'),
+    status: sprintStatusEnum('status').notNull().default('planned'),
+    ...timestamps,
+  },
+  (t) => [index('sprints_project_idx').on(t.projectId)]
+);
 
 export const cardSprints = pgTable(
   'card_sprints',
@@ -561,21 +653,29 @@ export const cardSprints = pgTable(
     addedAt: timestamp('added_at').notNull().defaultNow(),
     isActive: boolean('is_active').notNull().default(true),
   },
-  (t) => [primaryKey({ columns: [t.cardId, t.sprintId] })]
+  (t) => [
+    primaryKey({ columns: [t.cardId, t.sprintId] }),
+    // listSprintCards filters on sprint_id (2nd PK col) — PK unusable there.
+    index('card_sprints_sprint_idx').on(t.sprintId),
+  ]
 );
 
-export const phases = pgTable('phases', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  position: real('position').notNull(),
-  status: phaseStatusEnum('status').notNull().default('not_started'),
-  startDate: date('start_date'),
-  endDate: date('end_date'),
-  ...timestamps,
-});
+export const phases = pgTable(
+  'phases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    position: real('position').notNull(),
+    status: phaseStatusEnum('status').notNull().default('not_started'),
+    startDate: date('start_date'),
+    endDate: date('end_date'),
+    ...timestamps,
+  },
+  (t) => [index('phases_project_idx').on(t.projectId)]
+);
 
 export const cardPhase = pgTable(
   'card_phase',
@@ -587,24 +687,31 @@ export const cardPhase = pgTable(
       .notNull()
       .references(() => phases.id),
   },
-  (t) => [primaryKey({ columns: [t.cardId, t.phaseId] })]
+  (t) => [
+    primaryKey({ columns: [t.cardId, t.phaseId] }),
+    index('card_phase_phase_idx').on(t.phaseId),
+  ]
 );
 
 // ─── Time Tracking ────────────────────────────────────────────────────────────
-export const timeLogs = pgTable('time_logs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  cardId: uuid('card_id')
-    .notNull()
-    .references(() => cards.id),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
-  minutes: integer('minutes').notNull(),
-  description: varchar('description', { length: 500 }),
-  loggedDate: date('logged_date').notNull(),
-  isBillable: boolean('is_billable').notNull().default(false),
-  ...timestamps,
-});
+export const timeLogs = pgTable(
+  'time_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    minutes: integer('minutes').notNull(),
+    description: varchar('description', { length: 500 }),
+    loggedDate: date('logged_date').notNull(),
+    isBillable: boolean('is_billable').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [index('time_logs_card_idx').on(t.cardId), index('time_logs_user_idx').on(t.userId)]
+);
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 export const notificationPreferences = pgTable(
@@ -626,21 +733,25 @@ export const notificationPreferences = pgTable(
   (t) => [uniqueIndex('notif_pref_idx').on(t.userId, t.organizationId, t.eventType, t.channel)]
 );
 
-export const notifications = pgTable('notifications', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  eventType: varchar('event_type', { length: 100 }).notNull(),
-  payload: jsonb('payload').notNull().default('{}'),
-  isRead: boolean('is_read').notNull().default(false),
-  readAt: timestamp('read_at'),
-  isDispatched: boolean('is_dispatched').notNull().default(false), // For digest and queue logic
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    eventType: varchar('event_type', { length: 100 }).notNull(),
+    payload: jsonb('payload').notNull().default('{}'),
+    isRead: boolean('is_read').notNull().default(false),
+    readAt: timestamp('read_at'),
+    isDispatched: boolean('is_dispatched').notNull().default(false), // For digest and queue logic
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('notifications_user_org_created_idx').on(t.userId, t.organizationId, t.createdAt)]
+);
 
 // ─── Activity & Audit ─────────────────────────────────────────────────────────
 export const activityLog = pgTable('activity_log', {
@@ -672,29 +783,37 @@ export const auditLog = pgTable('audit_log', {
 });
 
 // ─── Automations & Webhooks ───────────────────────────────────────────────────
-export const automations = pgTable('automations', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  boardId: uuid('board_id')
-    .notNull()
-    .references(() => boards.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  triggerJson: jsonb('trigger_json').notNull(),
-  actionJson: jsonb('action_json').notNull(),
-  isEnabled: boolean('is_enabled').notNull().default(true),
-  ...timestamps,
-});
+export const automations = pgTable(
+  'automations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    boardId: uuid('board_id')
+      .notNull()
+      .references(() => boards.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    triggerJson: jsonb('trigger_json').notNull(),
+    actionJson: jsonb('action_json').notNull(),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [index('automations_board_idx').on(t.boardId)]
+);
 
 // ─── Search ───────────────────────────────────────────────────────────────────
-export const savedSearches = pgTable('saved_searches', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  query: text('query').notNull(),
-  filters: jsonb('filters'), // e.g. { type: 'card', status: 'active' }
-  ...timestamps,
-});
+export const savedSearches = pgTable(
+  'saved_searches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    query: text('query').notNull(),
+    filters: jsonb('filters'), // e.g. { type: 'card', status: 'active' }
+    ...timestamps,
+  },
+  (t) => [index('saved_searches_user_idx').on(t.userId)]
+);
 
 export const webhooks = pgTable('webhooks', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -721,20 +840,27 @@ export const integrations = pgTable('integrations', {
 });
 
 // ─── Card Events (append-only for reporting) ──────────────────────────────────
-export const cardEvents = pgTable('card_events', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  cardId: uuid('card_id')
-    .notNull()
-    .references(() => cards.id),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  eventType: varchar('event_type', { length: 100 }).notNull(),
-  fromValue: varchar('from_value', { length: 255 }),
-  toValue: varchar('to_value', { length: 255 }),
-  actorId: uuid('actor_id').references(() => users.id),
-  occurredAt: timestamp('occurred_at').notNull().defaultNow(),
-});
+export const cardEvents = pgTable(
+  'card_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    eventType: varchar('event_type', { length: 100 }).notNull(),
+    fromValue: varchar('from_value', { length: 255 }),
+    toValue: varchar('to_value', { length: 255 }),
+    actorId: uuid('actor_id').references(() => users.id),
+    occurredAt: timestamp('occurred_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('card_events_card_idx').on(t.cardId),
+    index('card_events_org_idx').on(t.organizationId),
+  ]
+);
 
 // ─── RBAC ─────────────────────────────────────────────────────────────────────
 export const roles = pgTable(
@@ -770,27 +896,35 @@ export const rolePermissions = pgTable(
       .notNull()
       .references(() => permissions.id),
   },
-  (t) => [primaryKey({ columns: [t.roleId, t.permissionId] })]
+  (t) => [
+    primaryKey({ columns: [t.roleId, t.permissionId] }),
+    // RBAC check joins permission_id — PK leads with role_id.
+    index('role_permissions_permission_idx').on(t.permissionId),
+  ]
 );
 
 // ─── Docs & Wiki ─────────────────────────────────────────────────────────────
-export const documents = pgTable('documents', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id),
-  title: varchar('title', { length: 255 }).notNull(),
-  slug: varchar('slug', { length: 255 }).notNull(),
-  content: text('content').notNull().default(''),
-  authorId: uuid('author_id')
-    .notNull()
-    .references(() => users.id),
-  isArchived: boolean('is_archived').notNull().default(false),
-  ...timestamps,
-});
+export const documents = pgTable(
+  'documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id),
+    title: varchar('title', { length: 255 }).notNull(),
+    slug: varchar('slug', { length: 255 }).notNull(),
+    content: text('content').notNull().default(''),
+    authorId: uuid('author_id')
+      .notNull()
+      .references(() => users.id),
+    isArchived: boolean('is_archived').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [index('documents_project_idx').on(t.projectId)]
+);
 
 export const documentCards = pgTable(
   'document_cards',
@@ -803,44 +937,61 @@ export const documentCards = pgTable(
       .references(() => cards.id),
     linkedAt: timestamp('linked_at').notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.documentId, t.cardId] })]
+  (t) => [
+    primaryKey({ columns: [t.documentId, t.cardId] }),
+    index('document_cards_card_idx').on(t.cardId),
+  ]
 );
 
 // ─── Intake Forms & SLAs ─────────────────────────────────────────────────────
-export const intakeForms = pgTable('intake_forms', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  boardId: uuid('board_id')
-    .notNull()
-    .references(() => boards.id),
-  listId: uuid('list_id')
-    .notNull()
-    .references(() => lists.id),
-  title: varchar('title', { length: 255 }).notNull(),
-  description: text('description'),
-  slug: varchar('slug', { length: 255 }).notNull().unique(),
-  fields: jsonb('fields').notNull().default('[]'),
-  isPublished: boolean('is_published').notNull().default(true),
-  defaultAssigneeId: uuid('default_assignee_id').references(() => users.id),
-  slaHours: integer('sla_hours'),
-  ...timestamps,
-});
+export const intakeForms = pgTable(
+  'intake_forms',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    boardId: uuid('board_id')
+      .notNull()
+      .references(() => boards.id),
+    listId: uuid('list_id')
+      .notNull()
+      .references(() => lists.id),
+    title: varchar('title', { length: 255 }).notNull(),
+    description: text('description'),
+    slug: varchar('slug', { length: 255 }).notNull().unique(),
+    fields: jsonb('fields').notNull().default('[]'),
+    isPublished: boolean('is_published').notNull().default(true),
+    defaultAssigneeId: uuid('default_assignee_id').references(() => users.id),
+    slaHours: integer('sla_hours'),
+    ...timestamps,
+  },
+  (t) => [
+    index('intake_forms_board_idx').on(t.boardId),
+    index('intake_forms_org_idx').on(t.organizationId),
+  ]
+);
 
-export const formSubmissions = pgTable('form_submissions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  formId: uuid('form_id')
-    .notNull()
-    .references(() => intakeForms.id),
-  cardId: uuid('card_id')
-    .notNull()
-    .references(() => cards.id),
-  submittedByEmail: varchar('submitted_by_email', { length: 255 }),
-  submittedByName: varchar('submitted_by_name', { length: 255 }),
-  data: jsonb('data').notNull().default('{}'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+export const formSubmissions = pgTable(
+  'form_submissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    formId: uuid('form_id')
+      .notNull()
+      .references(() => intakeForms.id),
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id),
+    submittedByEmail: varchar('submitted_by_email', { length: 255 }),
+    submittedByName: varchar('submitted_by_name', { length: 255 }),
+    data: jsonb('data').notNull().default('{}'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('form_submissions_form_idx').on(t.formId),
+    index('form_submissions_card_idx').on(t.cardId),
+  ]
+);
 
 // ─── SSO & SCIM Directory Sync ───────────────────────────────────────────────
 export const ssoConfigurations = pgTable('sso_configurations', {
@@ -907,17 +1058,21 @@ export const installedApps = pgTable('installed_apps', {
 });
 
 // ─── Mobile Push Devices ─────────────────────────────────────────────────────
-export const pushDevices = pgTable('push_devices', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  platform: varchar('platform', { length: 20 }).notNull().default('ios'),
-  token: varchar('token', { length: 512 }).notNull().unique(),
-  deviceName: varchar('device_name', { length: 255 }),
-  isActive: boolean('is_active').notNull().default(true),
-  ...timestamps,
-});
+export const pushDevices = pgTable(
+  'push_devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    platform: varchar('platform', { length: 20 }).notNull().default('ios'),
+    token: varchar('token', { length: 512 }).notNull().unique(),
+    deviceName: varchar('device_name', { length: 255 }),
+    isActive: boolean('is_active').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [index('push_devices_user_idx').on(t.userId)]
+);
