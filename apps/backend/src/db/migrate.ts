@@ -15,7 +15,6 @@ const sql = postgres(connectionString, { max: 1 });
 const db = drizzle(sql);
 
 const migrationsFolder = path.join(import.meta.dir, 'migrations');
-
 console.log('🔄  Running migrations from:', migrationsFolder);
 
 try {

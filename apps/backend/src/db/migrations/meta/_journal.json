@@ -92,6 +92,13 @@
       "when": 1788031895629,
       "tag": "0012_enable_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789259010877,
+      "tag": "0013_colossal_maestro",
+      "breakpoints": true
     }
   ]
 }

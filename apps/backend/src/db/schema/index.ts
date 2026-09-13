@@ -17,7 +17,12 @@ import { sql } from 'drizzle-orm';
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 export const planTierEnum = pgEnum('plan_tier', ['free', 'pro', 'business', 'enterprise']);
-export const invitationStatusEnum = pgEnum('invitation_status', ['pending', 'accepted', 'revoked', 'expired']);
+export const invitationStatusEnum = pgEnum('invitation_status', [
+  'pending',
+  'accepted',
+  'revoked',
+  'expired',
+]);
 export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'active',
   'past_due',
@@ -72,11 +77,7 @@ export const phaseStatusEnum = pgEnum('phase_status', [
   'completed',
   'blocked',
 ]);
-export const notificationChannelEnum = pgEnum('notification_channel', [
-  'in_app',
-  'email',
-  'push',
-]);
+export const notificationChannelEnum = pgEnum('notification_channel', ['in_app', 'email', 'push']);
 export const notificationFrequencyEnum = pgEnum('notification_frequency', [
   'instant',
   'digest_daily',
@@ -622,9 +623,7 @@ export const notificationPreferences = pgTable(
     quietHoursStart: integer('quiet_hours_start'),
     quietHoursEnd: integer('quiet_hours_end'),
   },
-  (t) => [
-    uniqueIndex('notif_pref_idx').on(t.userId, t.organizationId, t.eventType, t.channel),
-  ]
+  (t) => [uniqueIndex('notif_pref_idx').on(t.userId, t.organizationId, t.eventType, t.channel)]
 );
 
 export const notifications = pgTable('notifications', {
@@ -748,7 +747,9 @@ export const roles = pgTable(
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('system_role_name_idx').on(t.name).where(sql`is_system_role = true`),
+    uniqueIndex('system_role_name_idx')
+      .on(t.name)
+      .where(sql`is_system_role = true`),
     uniqueIndex('org_role_name_idx').on(t.organizationId, t.name),
   ]
 );
@@ -920,8 +921,3 @@ export const pushDevices = pgTable('push_devices', {
   isActive: boolean('is_active').notNull().default(true),
   ...timestamps,
 });
-
-
-
-
-
