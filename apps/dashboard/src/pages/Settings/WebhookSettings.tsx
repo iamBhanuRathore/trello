@@ -114,7 +114,7 @@ export function WebhookSettings() {
       </div>
 
       {loading ? (
-        <div className="space-y-4" aria-label="Loading webhooks">
+        <div className="space-y-4 min-h-[50vh]" aria-label="Loading webhooks">
           {[0, 1, 2].map((i) => (
             <div key={i} className="rounded-lg border bg-card p-5 space-y-3">
               <div className="flex items-center justify-between">
@@ -176,9 +176,9 @@ export function WebhookSettings() {
             </div>
           )}
 
-          <div className="space-y-4">
+          <div className="space-y-4 min-h-[50vh] flex flex-col">
             {webhooks.length === 0 && !isAdding ? (
-              <div className="text-center py-12 bg-muted/20 rounded-lg border border-dashed">
+              <div className="flex-1 flex items-center justify-center rounded-lg border border-dashed bg-muted/20 p-12 text-center">
                 <p className="text-muted-foreground">
                   No webhooks configured for this organization.
                 </p>
