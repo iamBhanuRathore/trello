@@ -1,12 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAuditLogs } from '../../lib/api';
-import {
-  FileText,
-  Eye,
-  ShieldCheck,
-  Globe,
-} from 'lucide-react';
+import { FileText, Eye, ShieldCheck, Globe } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import {
   Dialog,
@@ -45,7 +40,12 @@ export function AuditLogs() {
 
   const dates = getDates();
 
-  const { data: auditData, isLoading } = useQuery({
+  const {
+    data: auditData,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['auditLogs', dateRange],
     queryFn: () =>
       getAuditLogs({
@@ -200,6 +200,9 @@ export function AuditLogs() {
         columns={columns}
         data={logs}
         isLoading={isLoading}
+        isError={isError}
+        errorMessage="Couldn't load audit events. Check your connection and try again."
+        onRetry={() => refetch()}
         defaultPageSize={15}
         pageSizeOptions={[15, 30, 50, 100]}
         title="Compliance Event Stream"
@@ -218,8 +221,8 @@ export function AuditLogs() {
               Event Metadata: {inspectMetadata?.action}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Recorded on {inspectMetadata && new Date(inspectMetadata.createdAt).toLocaleString()} by{' '}
-              {inspectMetadata?.actor?.name || 'System'}.
+              Recorded on {inspectMetadata && new Date(inspectMetadata.createdAt).toLocaleString()}{' '}
+              by {inspectMetadata?.actor?.name || 'System'}.
             </DialogDescription>
           </DialogHeader>
 

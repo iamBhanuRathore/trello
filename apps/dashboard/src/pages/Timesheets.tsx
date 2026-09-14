@@ -2,14 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTimesheet, deleteTimeLog } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
-import {
-  Clock,
-  DollarSign,
-  Users,
-  Download,
-  Layers,
-  TrashIcon,
-} from 'lucide-react';
+import { Clock, DollarSign, Users, Download, Layers, TrashIcon } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { EnterpriseDataGrid, type ColumnDef } from '../components/common/EnterpriseDataGrid';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
@@ -51,7 +44,12 @@ export function Timesheets() {
 
   const dates = getDates();
 
-  const { data: timesheetData, isLoading } = useQuery({
+  const {
+    data: timesheetData,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['timesheets', selectedUserId, dateRange],
     queryFn: () =>
       getTimesheet({
@@ -60,6 +58,9 @@ export function Timesheets() {
         endDate: dates.endDate,
       }),
   });
+
+  // True while the first load is in flight (subsequent refetches keep old data).
+  const isInitialLoading = isLoading && !timesheetData;
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteTimeLog(id),
@@ -74,7 +75,15 @@ export function Timesheets() {
   const exportCSV = () => {
     if (entries.length === 0) return;
 
-    const headers = ['Date', 'User', 'Task', 'Project', 'Description', 'Duration (Hours)', 'Billable'];
+    const headers = [
+      'Date',
+      'User',
+      'Task',
+      'Project',
+      'Description',
+      'Duration (Hours)',
+      'Billable',
+    ];
     const rows = entries.map((e: any) => [
       `"${e.loggedDate}"`,
       `"${e.user?.name || 'Unknown'}"`,
@@ -92,7 +101,10 @@ export function Timesheets() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `timesheets_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute(
+      'download',
+      `timesheets_export_${new Date().toISOString().split('T')[0]}.csv`
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -230,9 +242,12 @@ export function Timesheets() {
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Timesheets &amp; Hours</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Timesheets &amp; Hours
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Track resource allocation, team timesheet entries, and billable work across all workspaces.
+            Track resource allocation, team timesheet entries, and billable work across all
+            workspaces.
           </p>
         </div>
 
@@ -299,7 +314,14 @@ export function Timesheets() {
             </div>
           </div>
           <div className="text-2xl font-black text-foreground">
-            {(timesheetData?.totalMinutes ? timesheetData.totalMinutes / 60 : 0).toFixed(1)} hrs
+            {isInitialLoading ? (
+              <span
+                className="inline-block h-7 w-20 rounded bg-muted animate-pulse"
+                aria-label="Loading"
+              />
+            ) : (
+              `${(timesheetData?.totalMinutes ? timesheetData.totalMinutes / 60 : 0).toFixed(1)} hrs`
+            )}
           </div>
           <p className="text-xs text-muted-foreground">Across selected period</p>
         </div>
@@ -315,7 +337,14 @@ export function Timesheets() {
             </div>
           </div>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
-            {(timesheetData?.billableMinutes ? timesheetData.billableMinutes / 60 : 0).toFixed(1)} hrs
+            {isInitialLoading ? (
+              <span
+                className="inline-block h-7 w-20 rounded bg-muted animate-pulse"
+                aria-label="Loading"
+              />
+            ) : (
+              `${(timesheetData?.billableMinutes ? timesheetData.billableMinutes / 60 : 0).toFixed(1)} hrs`
+            )}
           </div>
           <p className="text-xs text-muted-foreground">Client billable work</p>
         </div>
@@ -331,10 +360,18 @@ export function Timesheets() {
             </div>
           </div>
           <div className="text-2xl font-black text-foreground">
-            {timesheetData?.totalMinutes
-              ? Math.round((timesheetData.billableMinutes / timesheetData.totalMinutes) * 100)
-              : 0}
-            %
+            {isInitialLoading ? (
+              <span
+                className="inline-block h-7 w-12 rounded bg-muted animate-pulse"
+                aria-label="Loading"
+              />
+            ) : (
+              `${
+                timesheetData?.totalMinutes
+                  ? Math.round((timesheetData.billableMinutes / timesheetData.totalMinutes) * 100)
+                  : 0
+              }%`
+            )}
           </div>
           <p className="text-xs text-muted-foreground">Billable vs Non-billable</p>
         </div>
@@ -350,7 +387,14 @@ export function Timesheets() {
             </div>
           </div>
           <div className="text-2xl font-black text-foreground">
-            {timesheetData?.byUser?.length || 0}
+            {isInitialLoading ? (
+              <span
+                className="inline-block h-7 w-10 rounded bg-muted animate-pulse"
+                aria-label="Loading"
+              />
+            ) : (
+              timesheetData?.byUser?.length || 0
+            )}
           </div>
           <p className="text-xs text-muted-foreground">Team members logged time</p>
         </div>
@@ -361,7 +405,13 @@ export function Timesheets() {
         {/* User Breakdown */}
         <div className="p-5 rounded-2xl border bg-card/60 backdrop-blur-sm space-y-4">
           <h3 className="font-bold text-sm text-foreground">Logged Hours by Team Member</h3>
-          {timesheetData?.byUser && timesheetData.byUser.length > 0 ? (
+          {isInitialLoading ? (
+            <div className="space-y-3" aria-label="Loading breakdown">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-8 rounded-lg bg-muted/60 animate-pulse" />
+              ))}
+            </div>
+          ) : timesheetData?.byUser && timesheetData.byUser.length > 0 ? (
             <div className="space-y-3">
               {timesheetData.byUser.map((u: any) => {
                 const totalHours = (timesheetData.totalMinutes || 1) / 60;
@@ -400,14 +450,24 @@ export function Timesheets() {
               })}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground py-4 text-center">No member breakdown available.</p>
+            <p className="text-xs text-muted-foreground py-4 text-center">
+              {isError
+                ? 'Couldn’t load the breakdown. Try again.'
+                : 'No member breakdown available.'}
+            </p>
           )}
         </div>
 
         {/* Project Breakdown */}
         <div className="p-5 rounded-2xl border bg-card/60 backdrop-blur-sm space-y-4">
           <h3 className="font-bold text-sm text-foreground">Logged Hours by Project</h3>
-          {timesheetData?.byProject && timesheetData.byProject.length > 0 ? (
+          {isInitialLoading ? (
+            <div className="space-y-3" aria-label="Loading breakdown">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-8 rounded-lg bg-muted/60 animate-pulse" />
+              ))}
+            </div>
+          ) : timesheetData?.byProject && timesheetData.byProject.length > 0 ? (
             <div className="space-y-3">
               {timesheetData.byProject.map((p: any) => {
                 const totalHours = (timesheetData.totalMinutes || 1) / 60;
@@ -417,7 +477,9 @@ export function Timesheets() {
                 return (
                   <div key={p.projectId} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium text-foreground truncate max-w-xs">{p.projectName}</span>
+                      <span className="font-medium text-foreground truncate max-w-xs">
+                        {p.projectName}
+                      </span>
                       <span className="font-mono text-muted-foreground font-semibold">
                         {projHours.toFixed(1)} hrs ({pct}%)
                       </span>
@@ -433,7 +495,9 @@ export function Timesheets() {
               })}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground py-4 text-center">No project breakdown.</p>
+            <p className="text-xs text-muted-foreground py-4 text-center">
+              {isError ? 'Couldn’t load the breakdown. Try again.' : 'No project breakdown.'}
+            </p>
           )}
         </div>
       </div>
@@ -443,6 +507,9 @@ export function Timesheets() {
         columns={columns}
         data={entries}
         isLoading={isLoading}
+        isError={isError}
+        errorMessage="Couldn't load time entries. Check your connection and try again."
+        onRetry={() => refetch()}
         defaultPageSize={15}
         pageSizeOptions={[15, 30, 50, 100]}
         title="Detailed Log Entries"

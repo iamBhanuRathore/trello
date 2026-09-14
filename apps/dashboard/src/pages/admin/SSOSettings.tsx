@@ -1,19 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSSOConfig, updateSSOConfig, getSSOLoginUrl } from '../../lib/api';
-import {
-  KeyRound,
-  ShieldCheck,
-  Users,
-  Copy,
-  Check,
-  Lock,
-  Globe,
-} from 'lucide-react';
+import { KeyRound, ShieldCheck, Users, Copy, Check, Lock, Globe } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Switch } from '@boardly/ui/switch';
+import { QueryError } from '../../components/common/QueryError';
 
 export function SSOSettings() {
   const queryClient = useQueryClient();
@@ -32,7 +25,12 @@ export function SSOSettings() {
   const [testResult, setTestResult] = useState<any>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
-  const { data: config, isLoading } = useQuery({
+  const {
+    data: config,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['ssoConfig'],
     queryFn: () => getSSOConfig(),
   });
@@ -100,8 +98,23 @@ export function SSOSettings() {
       <div className="flex h-96 items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading SSO &amp; directory sync settings...</p>
+          <p className="text-sm text-muted-foreground">
+            Loading SSO &amp; directory sync settings...
+          </p>
         </div>
+      </div>
+    );
+  }
+
+  // Never render the form on a failed fetch — saving would overwrite the real
+  // IdP/SCIM config with blank defaults.
+  if (isError && !config) {
+    return (
+      <div className="max-w-5xl mx-auto py-8">
+        <QueryError
+          message="Couldn't load SSO settings. Your configuration was left untouched."
+          onRetry={() => refetch()}
+        />
       </div>
     );
   }
@@ -115,9 +128,12 @@ export function SSOSettings() {
             <KeyRound className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Enterprise SSO &amp; Directory Sync</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Enterprise SSO &amp; Directory Sync
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Configure SAML 2.0 / OIDC identity providers, automated SCIM provisioning, and authentication policies.
+              Configure SAML 2.0 / OIDC identity providers, automated SCIM provisioning, and
+              authentication policies.
             </p>
           </div>
         </div>
@@ -171,7 +187,8 @@ export function SSOSettings() {
               <Globe className="w-4 h-4 text-primary" /> Single Sign-On (SAML / OIDC)
             </h2>
             <p className="text-xs text-muted-foreground">
-              Select your enterprise identity provider to enable passwordless employee authentication.
+              Select your enterprise identity provider to enable passwordless employee
+              authentication.
             </p>
           </div>
 
@@ -208,7 +225,8 @@ export function SSOSettings() {
                 className="text-xs h-9"
               />
               <p className="text-[11px] text-muted-foreground">
-                Users attempting login with @{domain || 'yourdomain.com'} will be routed to your IdP.
+                Users attempting login with @{domain || 'yourdomain.com'} will be routed to your
+                IdP.
               </p>
             </div>
 
@@ -273,7 +291,8 @@ export function SSOSettings() {
                 <Users className="w-4 h-4 text-primary" /> SCIM 2.0 Directory Sync
               </h2>
               <p className="text-xs text-muted-foreground">
-                Automatically provision, update, and deactivate team accounts directly from your IdP directory.
+                Automatically provision, update, and deactivate team accounts directly from your IdP
+                directory.
               </p>
             </div>
             <Switch checked={scimEnabled} onCheckedChange={setScimEnabled} />
@@ -346,7 +365,8 @@ export function SSOSettings() {
                 <Lock className="w-4 h-4 text-amber-500" /> Enforce SSO for All Members
               </h2>
               <p className="text-xs text-muted-foreground">
-                Disable standard password-based sign in and mandate IdP authentication for all accounts on @{domain || 'yourdomain.com'}.
+                Disable standard password-based sign in and mandate IdP authentication for all
+                accounts on @{domain || 'yourdomain.com'}.
               </p>
             </div>
             <Switch checked={enforceSSO} onCheckedChange={setEnforceSSO} />

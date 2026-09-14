@@ -17,12 +17,18 @@ import { format } from 'date-fns';
 import { Calendar, ArrowLeft, Flag, GitBranch } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@boardly/ui/card';
 import { api } from '../lib/api';
+import { QueryError } from '../components/common/QueryError';
 
 export const ProjectPhases = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
 
-  const { data: phases, isLoading } = useQuery({
+  const {
+    data: phases = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['phases', projectId],
     queryFn: () => phasesService.getPhases(projectId!),
     enabled: !!projectId,
@@ -34,7 +40,28 @@ export const ProjectPhases = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['phases', projectId] }),
   });
 
-  if (isLoading) return <div className="p-8">Loading phases...</div>;
+  if (isLoading)
+    return (
+      <div
+        className="w-full max-w-6xl mx-auto flex flex-col gap-4 py-8"
+        aria-label="Loading phases"
+      >
+        <div className="h-9 w-56 rounded-lg bg-muted animate-pulse" />
+        {[0, 1].map((i) => (
+          <div key={i} className="h-44 rounded-2xl border bg-card/40 animate-pulse" />
+        ))}
+      </div>
+    );
+
+  if (isError && phases.length === 0)
+    return (
+      <div className="w-full max-w-6xl mx-auto py-8">
+        <QueryError
+          message="Couldn't load phases. Check your connection and try again."
+          onRetry={() => refetch()}
+        />
+      </div>
+    );
 
   return (
     <div className="w-full max-w-6xl mx-auto flex flex-col gap-8 py-8">
@@ -99,7 +126,11 @@ export const ProjectPhases = () => {
 
 function PhaseCard({ phase, onUpdateStatus }: { phase: any; onUpdateStatus: (s: string) => void }) {
   // Fetch cards for this phase
-  const { data: phaseCards } = useQuery({
+  const {
+    data: phaseCards,
+    isLoading: isCardsLoading,
+    isError: isCardsError,
+  } = useQuery({
     queryKey: ['phaseCards', phase.id],
     queryFn: () => phasesService.getPhaseCards(phase.id),
   });
@@ -148,7 +179,16 @@ function PhaseCard({ phase, onUpdateStatus }: { phase: any; onUpdateStatus: (s: 
             <Flag className="h-3 w-3" /> Cards in Phase ({phaseCards?.length || 0})
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {phaseCards?.length === 0 ? (
+            {isCardsLoading && !phaseCards ? (
+              <div
+                className="h-8 bg-muted/50 rounded animate-pulse w-full col-span-full"
+                aria-label="Loading cards"
+              />
+            ) : isCardsError && !phaseCards ? (
+              <p className="text-sm text-muted-foreground italic col-span-full">
+                Couldn&apos;t load phase cards.
+              </p>
+            ) : phaseCards?.length === 0 ? (
               <p className="text-sm text-muted-foreground italic col-span-full">
                 No cards added to this phase yet.
               </p>
@@ -163,11 +203,13 @@ function PhaseCard({ phase, onUpdateStatus }: { phase: any; onUpdateStatus: (s: 
 }
 
 function PhaseCardItem({ cardId }: { cardId: string }) {
-  const { data: card } = useQuery({
+  const { data: card, isError } = useQuery({
     queryKey: ['card', cardId],
     queryFn: async () => (await api.get(`/cards/${cardId}`)).data,
   });
 
+  if (isError)
+    return <div className="text-xs text-muted-foreground italic p-2">Couldn&apos;t load card.</div>;
   if (!card) return <div className="h-8 bg-muted/50 rounded animate-pulse w-full"></div>;
   return (
     <Link to={`/b/${card.list?.boardId}?card=${card.id}`} className="block hover:border-primary">

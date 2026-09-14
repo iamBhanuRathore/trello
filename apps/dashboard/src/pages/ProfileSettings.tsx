@@ -6,6 +6,7 @@ import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Dialog, DialogContent, DialogTitle } from '@boardly/ui/dialog';
+import { QueryError } from '../components/common/QueryError';
 import {
   User,
   Shield,
@@ -73,13 +74,23 @@ export function ProfileSettings() {
   const [permissionSearch, setPermissionSearch] = useState('');
 
   // Fetch full user profile
-  const { data: profile, isLoading } = useQuery({
+  const {
+    data: profile,
+    isLoading,
+    isError: isProfileError,
+    refetch: refetchProfile,
+  } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: async () => (await api.get('/auth/me')).data,
   });
 
   // Fetch detailed user RBAC permissions
-  const { data: permissionsData } = useQuery({
+  const {
+    data: permissionsData,
+    isLoading: isPermissionsLoading,
+    isError: isPermissionsError,
+    refetch: refetchPermissions,
+  } = useQuery({
     queryKey: ['auth', 'permissions'],
     queryFn: async () => (await api.get('/auth/permissions')).data,
   });
@@ -184,7 +195,12 @@ export function ProfileSettings() {
   // Flatten and filter permissions for modal view
   const allPermissionsList = useMemo(() => {
     if (!permissionsData?.categories) return [];
-    const list: Array<{ key: string; description: string; granted: boolean; categoryLabel: string }> = [];
+    const list: Array<{
+      key: string;
+      description: string;
+      granted: boolean;
+      categoryLabel: string;
+    }> = [];
 
     Object.values(permissionsData.categories).forEach((cat: any) => {
       cat.items.forEach((item: any) => {
@@ -197,11 +213,7 @@ export function ProfileSettings() {
 
     return list.filter((p) => {
       const matchesFilter =
-        permissionFilter === 'all'
-          ? true
-          : permissionFilter === 'granted'
-          ? p.granted
-          : !p.granted;
+        permissionFilter === 'all' ? true : permissionFilter === 'granted' ? p.granted : !p.granted;
       const matchesSearch =
         p.key.toLowerCase().includes(permissionSearch.toLowerCase()) ||
         p.description.toLowerCase().includes(permissionSearch.toLowerCase()) ||
@@ -221,13 +233,27 @@ export function ProfileSettings() {
     );
   }
 
+  // Never render the form on a failed profile fetch — saving would push blank
+  // values over the real profile.
+  if (isProfileError && !profile) {
+    return (
+      <div className="max-w-4xl mx-auto py-4">
+        <QueryError
+          message="Couldn't load your profile. Check your connection and try again."
+          onRetry={() => refetchProfile()}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-4 pb-16">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">User Profile & Account Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage your personal details, profile picture, preferences, and view your assigned access permissions.
+          Manage your personal details, profile picture, preferences, and view your assigned access
+          permissions.
         </p>
       </div>
 
@@ -275,7 +301,11 @@ export function ProfileSettings() {
             </span>
             {profile?.createdAt && (
               <span className="text-muted-foreground/80">
-                Joined {new Date(profile.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                Joined{' '}
+                {new Date(profile.createdAt).toLocaleDateString(undefined, {
+                  month: 'short',
+                  year: 'numeric',
+                })}
               </span>
             )}
           </div>
@@ -460,10 +490,13 @@ export function ProfileSettings() {
             {!profile?.hasPassword && (
               <div className="p-3 rounded-xl bg-primary/5 border border-primary/15 text-xs text-muted-foreground space-y-1">
                 <p className="font-semibold text-foreground flex items-center gap-1.5 text-xs">
-                  <Sparkles className="w-3.5 h-3.5 text-primary" /> Google OAuth Authentication Active
+                  <Sparkles className="w-3.5 h-3.5 text-primary" /> Google OAuth Authentication
+                  Active
                 </p>
                 <p className="text-[11px] leading-relaxed">
-                  You currently log in using your Google account without a password. If you would like to also sign in directly using email and password, you can set a password below.
+                  You currently log in using your Google account without a password. If you would
+                  like to also sign in directly using email and password, you can set a password
+                  below.
                 </p>
               </div>
             )}
@@ -522,12 +555,16 @@ export function ProfileSettings() {
                   {profile?.hasPassword ? (
                     <>
                       <Lock className="w-3.5 h-3.5" />
-                      {changePasswordMutation.isPending ? 'Updating password...' : 'Update Password'}
+                      {changePasswordMutation.isPending
+                        ? 'Updating password...'
+                        : 'Update Password'}
                     </>
                   ) : (
                     <>
                       <Key className="w-3.5 h-3.5 text-primary" />
-                      {changePasswordMutation.isPending ? 'Setting password...' : 'Set Account Password'}
+                      {changePasswordMutation.isPending
+                        ? 'Setting password...'
+                        : 'Set Account Password'}
                     </>
                   )}
                 </Button>
@@ -554,7 +591,9 @@ export function ProfileSettings() {
             <div className="space-y-2.5">
               <div className="p-3 rounded-xl bg-muted/40 border border-border/80 flex items-center justify-between text-xs">
                 <div>
-                  <span className="text-muted-foreground block text-[11px]">Active System Role</span>
+                  <span className="text-muted-foreground block text-[11px]">
+                    Active System Role
+                  </span>
                   <span className="font-bold text-foreground text-sm">
                     {permissionsData?.user?.roleTitle || getRoleLabel(profile?.role)}
                   </span>
@@ -572,7 +611,24 @@ export function ProfileSettings() {
 
               {/* Categorized preview chips */}
               <div className="grid grid-cols-2 gap-2 pt-1">
-                {permissionsData?.categories &&
+                {isPermissionsLoading && !permissionsData ? (
+                  [0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="h-14 rounded-xl bg-muted/60 animate-pulse"
+                      aria-label="Loading permissions"
+                    />
+                  ))
+                ) : isPermissionsError && !permissionsData ? (
+                  <div className="col-span-2">
+                    <QueryError
+                      compact
+                      message="Couldn't load permissions."
+                      onRetry={() => refetchPermissions()}
+                    />
+                  </div>
+                ) : (
+                  permissionsData?.categories &&
                   Object.entries(permissionsData.categories).map(([key, cat]: [string, any]) => {
                     const grantedInCat = cat.items.filter((i: any) => i.granted).length;
                     const totalInCat = cat.items.length;
@@ -599,7 +655,8 @@ export function ProfileSettings() {
                         </div>
                       </div>
                     );
-                  })}
+                  })
+                )}
               </div>
             </div>
           </div>
@@ -678,9 +735,9 @@ export function ProfileSettings() {
                     onClick={() => setPermissionFilter('restricted')}
                   >
                     Restricted (
-                      {(permissionsData?.totalPermissions || 0) -
-                        (permissionsData?.totalGranted || 0)}
-                      )
+                    {(permissionsData?.totalPermissions || 0) -
+                      (permissionsData?.totalGranted || 0)}
+                    )
                   </button>
                 </div>
               </div>
@@ -688,7 +745,18 @@ export function ProfileSettings() {
 
             {/* Permission Items List */}
             <div className="flex-1 overflow-y-auto divide-y divide-border/60 p-2 sm:p-4 space-y-1">
-              {allPermissionsList.length === 0 ? (
+              {isPermissionsLoading && !permissionsData ? (
+                <div className="p-4 space-y-2" aria-label="Loading permissions">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div key={i} className="h-12 rounded-xl bg-muted/60 animate-pulse" />
+                  ))}
+                </div>
+              ) : isPermissionsError && !permissionsData ? (
+                <QueryError
+                  message="Couldn't load permissions."
+                  onRetry={() => refetchPermissions()}
+                />
+              ) : allPermissionsList.length === 0 ? (
                 <div className="p-8 text-center text-xs text-muted-foreground">
                   No permissions matching your filter.
                 </div>
@@ -733,9 +801,15 @@ export function ProfileSettings() {
             {/* Footer */}
             <div className="p-3 border-t border-border bg-muted/20 flex items-center justify-between text-[11px] text-muted-foreground px-5">
               <span className="flex items-center gap-1">
-                <Info className="w-3.5 h-3.5" /> Permissions are governed by Organization &amp; Role-based Access Control (RBAC).
+                <Info className="w-3.5 h-3.5" /> Permissions are governed by Organization &amp;
+                Role-based Access Control (RBAC).
               </span>
-              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setIsPermissionsModalOpen(false)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs"
+                onClick={() => setIsPermissionsModalOpen(false)}
+              >
                 Close
               </Button>
             </div>

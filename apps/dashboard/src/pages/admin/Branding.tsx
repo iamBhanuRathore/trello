@@ -5,6 +5,7 @@ import { orgService } from '../../lib/orgService';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
+import { QueryError } from '../../components/common/QueryError';
 
 export const Branding = () => {
   const { user } = useAuthStore();
@@ -15,7 +16,12 @@ export const Branding = () => {
   const [logoUrl, setLogoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('#6366f1');
 
-  const { data: org, isLoading } = useQuery({
+  const {
+    data: org,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['org', orgId],
     queryFn: () => orgService.getOrg(orgId!),
     enabled: !!orgId,
@@ -30,7 +36,7 @@ export const Branding = () => {
   }, [org]);
 
   const updateMutation = useMutation({
-    mutationFn: (data: { name: string; logoUrl: string | null; primaryColor: string | null }) => 
+    mutationFn: (data: { name: string; logoUrl: string | null; primaryColor: string | null }) =>
       orgService.updateOrg(orgId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org', orgId] });
@@ -47,26 +53,42 @@ export const Branding = () => {
   };
 
   if (isLoading) {
-    return <div className="p-8 text-center text-muted-foreground">Loading branding settings...</div>;
+    return (
+      <div className="space-y-6" aria-label="Loading branding settings">
+        <div className="h-9 w-64 rounded-lg bg-muted animate-pulse" />
+        <div className="max-w-xl h-96 rounded-xl border bg-card/40 animate-pulse" />
+      </div>
+    );
+  }
+
+  // Never render the form on a failed fetch — saving would overwrite the real
+  // org name/logo/color with blank defaults.
+  if (isError && !org) {
+    return (
+      <QueryError
+        message="Couldn't load branding settings. Your configuration was left untouched."
+        onRetry={() => refetch()}
+      />
+    );
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Organization Branding</h1>
-        <p className="text-muted-foreground mt-1">Customize how your organization looks to members across workspaces.</p>
+        <p className="text-muted-foreground mt-1">
+          Customize how your organization looks to members across workspaces.
+        </p>
       </div>
 
       <div className="max-w-xl">
-        <form onSubmit={handleSubmit} className="space-y-6 rounded-xl border bg-card text-card-foreground shadow-xs p-6">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-6 rounded-xl border bg-card text-card-foreground shadow-xs p-6"
+        >
           <div className="space-y-2">
             <Label htmlFor="orgName">Organization Name</Label>
-            <Input
-              id="orgName"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <Input id="orgName" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
 
           <div className="space-y-2">
@@ -78,10 +100,20 @@ export const Branding = () => {
               value={logoUrl}
               onChange={(e) => setLogoUrl(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">Provide a URL for your company logo (square recommended).</p>
+            <p className="text-xs text-muted-foreground">
+              Provide a URL for your company logo (square recommended).
+            </p>
             {logoUrl && (
               <div className="mt-4 p-4 border rounded-lg bg-muted/40 inline-block">
-                <img src={logoUrl} alt="Logo Preview" className="h-16 w-16 object-contain" onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/64?text=Error'; }} />
+                <img
+                  src={logoUrl}
+                  alt="Logo Preview"
+                  className="h-16 w-16 object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://via.placeholder.com/64?text=Error';
+                  }}
+                />
               </div>
             )}
           </div>
@@ -104,15 +136,19 @@ export const Branding = () => {
                 pattern="^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"
               />
             </div>
-            <p className="text-xs text-muted-foreground">This default primary color can be used for tenant-level white-labeling.</p>
+            <p className="text-xs text-muted-foreground">
+              This default primary color can be used for tenant-level white-labeling.
+            </p>
           </div>
 
           <Button type="submit" disabled={updateMutation.isPending}>
             {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
           </Button>
-          
+
           {updateMutation.isSuccess && (
-            <p className="text-sm text-green-600 dark:text-green-400 mt-2 font-medium">Settings saved successfully!</p>
+            <p className="text-sm text-green-600 dark:text-green-400 mt-2 font-medium">
+              Settings saved successfully!
+            </p>
           )}
           {updateMutation.isError && (
             <p className="text-sm text-destructive mt-2 font-medium">Failed to save settings.</p>

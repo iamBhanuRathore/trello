@@ -30,6 +30,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@boardly/ui/dialog';
+import { QueryError } from '../components/common/QueryError';
 
 const CATEGORIES = [
   { id: 'all', label: 'All Apps' },
@@ -48,7 +49,12 @@ export function Marketplace() {
   const [configuringApp, setConfiguringApp] = useState<any>(null);
   const [appConfig, setAppConfig] = useState<Record<string, any>>({});
 
-  const { data: apps = [], isLoading } = useQuery({
+  const {
+    data: apps = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['marketplaceApps', selectedCategory, searchQuery],
     queryFn: () => getMarketplaceApps(selectedCategory, searchQuery),
   });
@@ -116,9 +122,12 @@ export function Marketplace() {
             <Store className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Boardly App Marketplace &amp; Power-Ups</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Boardly App Marketplace &amp; Power-Ups
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Supercharge your workflows with verified integrations, custom fields, and real-time syncing tools.
+              Supercharge your workflows with verified integrations, custom fields, and real-time
+              syncing tools.
             </p>
           </div>
         </div>
@@ -197,9 +206,7 @@ export function Marketplace() {
                 </div>
 
                 {/* Description */}
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {app.description}
-                </p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{app.description}</p>
               </div>
 
               {/* Action Buttons */}
@@ -237,6 +244,11 @@ export function Marketplace() {
             </div>
           ))}
         </div>
+      ) : isError && apps.length === 0 ? (
+        <QueryError
+          message="Couldn't load the Power-Ups catalog. Check your connection and try again."
+          onRetry={() => refetch()}
+        />
       ) : (
         <div className="p-12 text-center text-xs text-muted-foreground border rounded-2xl bg-muted/10 space-y-2">
           <Store className="w-8 h-8 mx-auto text-muted-foreground/40" />
@@ -291,7 +303,8 @@ export function Marketplace() {
               ))
             ) : (
               <div className="p-4 rounded-xl bg-muted/20 border text-xs text-muted-foreground text-center">
-                This power-up is operational and does not require additional configuration parameters.
+                This power-up is operational and does not require additional configuration
+                parameters.
               </div>
             )}
 

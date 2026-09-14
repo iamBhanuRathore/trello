@@ -1,15 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getRoles, getPermissions, createRole, updateRole, deleteRole } from '../../lib/api';
-import {
-  Shield,
-  Plus,
-  Trash2,
-  Edit2,
-  Check,
-  Lock,
-  Users,
-} from 'lucide-react';
+import { Shield, Plus, Trash2, Edit2, Check, Lock, Users } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
@@ -20,6 +12,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@boardly/ui/dialog';
+import { QueryError } from '../../components/common/QueryError';
 
 const CATEGORY_NAMES: Record<string, string> = {
   org: 'Organization & Members',
@@ -41,12 +34,22 @@ export function CustomRoles() {
   const [roleName, setRoleName] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
 
-  const { data: roles = [], isLoading: isRolesLoading } = useQuery({
+  const {
+    data: roles = [],
+    isLoading: isRolesLoading,
+    isError: isRolesError,
+    refetch: refetchRoles,
+  } = useQuery({
     queryKey: ['roles'],
     queryFn: getRoles,
   });
 
-  const { data: allPermissions = [] } = useQuery({
+  const {
+    data: allPermissions = [],
+    isLoading: isPermissionsLoading,
+    isError: isPermissionsError,
+    refetch: refetchPermissions,
+  } = useQuery({
     queryKey: ['permissions'],
     queryFn: getPermissions,
   });
@@ -135,6 +138,22 @@ export function CustomRoles() {
     );
   }
 
+  if (isRolesError && roles.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Custom Roles & Permissions</h1>
+          </div>
+        </div>
+        <QueryError
+          message="Couldn't load roles. Check your connection and try again."
+          onRetry={() => refetchRoles()}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -153,93 +172,111 @@ export function CustomRoles() {
           </div>
         </div>
 
-        <Button onClick={openCreateModal} className="gap-2 bg-purple-600 hover:bg-purple-700 text-white">
+        <Button
+          onClick={openCreateModal}
+          className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+        >
           <Plus className="w-4 h-4" /> Create Custom Role
         </Button>
       </div>
 
       {/* Role Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {roles.map((role: any) => (
-          <div
-            key={role.id}
-            className="p-5 rounded-2xl border bg-card/80 shadow-xs flex flex-col justify-between hover:border-purple-500/30 transition-all group"
-          >
-            <div>
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`p-2 rounded-lg ${
-                      role.isSystemRole
-                        ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400'
-                        : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
-                    }`}
-                  >
-                    {role.isSystemRole ? <Lock className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-sm">{role.name}</h3>
-                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
-                      {role.isSystemRole ? 'System Built-In' : 'Custom Organization Role'}
-                    </span>
-                  </div>
-                </div>
-
-                {!role.isSystemRole && (
-                  <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                      onClick={() => openEditModal(role)}
+      {roles.length === 0 ? (
+        <div className="p-10 text-center rounded-2xl border border-dashed border-border bg-card/40 space-y-2">
+          <p className="text-sm font-semibold text-foreground">No custom roles yet</p>
+          <p className="text-xs text-muted-foreground">
+            Create a custom role to grant a tailored set of permissions.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {roles.map((role: any) => (
+            <div
+              key={role.id}
+              className="p-5 rounded-2xl border bg-card/80 shadow-xs flex flex-col justify-between hover:border-purple-500/30 transition-all group"
+            >
+              <div>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`p-2 rounded-lg ${
+                        role.isSystemRole
+                          ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400'
+                          : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
+                      }`}
                     >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-rose-500"
-                      onClick={() => deleteMutation.mutate(role.id)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {/* Permissions Preview */}
-              <div className="space-y-2 pt-2 border-t mt-3">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Granted Permissions</span>
-                  <span className="font-mono font-bold text-foreground">
-                    {role.permissions?.length || (role.isSystemRole ? 'All' : 0)} active
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 pt-1 max-h-28 overflow-y-auto">
-                  {role.permissions && role.permissions.length > 0 ? (
-                    role.permissions.map((p: any) => (
-                      <span
-                        key={p.id}
-                        className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-muted text-muted-foreground"
-                      >
-                        {p.key}
+                      {role.isSystemRole ? (
+                        <Lock className="w-4 h-4" />
+                      ) : (
+                        <Shield className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-sm">{role.name}</h3>
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
+                        {role.isSystemRole ? 'System Built-In' : 'Custom Organization Role'}
                       </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-muted-foreground italic">
-                      {role.isSystemRole ? 'Full Administrative Access' : 'No explicit permissions assigned'}
-                    </span>
+                    </div>
+                  </div>
+
+                  {!role.isSystemRole && (
+                    <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        onClick={() => openEditModal(role)}
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-rose-500"
+                        onClick={() => deleteMutation.mutate(role.id)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   )}
                 </div>
+
+                {/* Permissions Preview */}
+                <div className="space-y-2 pt-2 border-t mt-3">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Granted Permissions</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {role.permissions?.length || (role.isSystemRole ? 'All' : 0)} active
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-1 max-h-28 overflow-y-auto">
+                    {role.permissions && role.permissions.length > 0 ? (
+                      role.permissions.map((p: any) => (
+                        <span
+                          key={p.id}
+                          className="px-2 py-0.5 rounded-md text-[10px] font-mono bg-muted text-muted-foreground"
+                        >
+                          {p.key}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">
+                        {role.isSystemRole
+                          ? 'Full Administrative Access'
+                          : 'No explicit permissions assigned'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 mt-3 border-t text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" /> Assignable to organization members
               </div>
             </div>
-
-            <div className="pt-4 mt-3 border-t text-[11px] text-muted-foreground flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5" /> Assignable to organization members
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Role Editor Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
@@ -300,50 +337,69 @@ export function CustomRoles() {
               </div>
 
               <div className="space-y-4">
-                {(Object.entries(groupedPermissions) as [string, any[]][]).map(([category, perms]) => (
-                  <div key={category} className="p-3.5 rounded-xl border bg-muted/20 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-foreground">
-                        {CATEGORY_NAMES[category] || category.toUpperCase()}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {perms.filter((p: any) => selectedPermissions.includes(p.id)).length} of{' '}
-                        {perms.length}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {perms.map((perm: any) => {
-                        const isChecked = selectedPermissions.includes(perm.id);
-                        return (
-                          <label
-                            key={perm.id}
-                            className={`flex items-start gap-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
-                              isChecked
-                                ? 'bg-purple-500/10 border-purple-500/30 text-purple-950 dark:text-purple-200'
-                                : 'bg-background hover:bg-muted/50 border-border text-foreground'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => togglePermission(perm.id)}
-                              className="mt-0.5 rounded border-muted cursor-pointer"
-                            />
-                            <div>
-                              <p className="font-mono font-medium text-[11px]">{perm.key}</p>
-                              {perm.description && (
-                                <p className="text-[10px] text-muted-foreground mt-0.5">
-                                  {perm.description}
-                                </p>
-                              )}
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
+                {isPermissionsLoading && allPermissions.length === 0 ? (
+                  <div className="space-y-2.5" aria-label="Loading permissions">
+                    {[0, 1].map((i) => (
+                      <div key={i} className="h-20 rounded-xl border bg-muted/20 animate-pulse" />
+                    ))}
                   </div>
-                ))}
+                ) : isPermissionsError && allPermissions.length === 0 ? (
+                  <QueryError
+                    compact
+                    message="Couldn't load permissions."
+                    onRetry={() => refetchPermissions()}
+                  />
+                ) : (
+                  (Object.entries(groupedPermissions) as [string, any[]][]).map(
+                    ([category, perms]) => (
+                      <div
+                        key={category}
+                        className="p-3.5 rounded-xl border bg-muted/20 space-y-2.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">
+                            {CATEGORY_NAMES[category] || category.toUpperCase()}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {perms.filter((p: any) => selectedPermissions.includes(p.id)).length} of{' '}
+                            {perms.length}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {perms.map((perm: any) => {
+                            const isChecked = selectedPermissions.includes(perm.id);
+                            return (
+                              <label
+                                key={perm.id}
+                                className={`flex items-start gap-2.5 p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                                  isChecked
+                                    ? 'bg-purple-500/10 border-purple-500/30 text-purple-950 dark:text-purple-200'
+                                    : 'bg-background hover:bg-muted/50 border-border text-foreground'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => togglePermission(perm.id)}
+                                  className="mt-0.5 rounded border-muted cursor-pointer"
+                                />
+                                <div>
+                                  <p className="font-mono font-medium text-[11px]">{perm.key}</p>
+                                  {perm.description && (
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                      {perm.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )
+                  )
+                )}
               </div>
             </div>
           </div>

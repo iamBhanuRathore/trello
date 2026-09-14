@@ -58,7 +58,12 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
   const isAdmin = user?.isPlatformAdmin || user?.role === 'org_owner' || user?.role === 'org_admin';
 
   // Fetch workspaces & projects tree (single aggregate request — was N+1).
-  const { data: workspaces = [], isLoading: isWsLoading } = useQuery({
+  const {
+    data: workspaces = [],
+    isLoading: isWsLoading,
+    isError: isWsError,
+    refetch: refetchWorkspaces,
+  } = useQuery({
     queryKey: ['workspaces', 'tree'],
     queryFn: async () => {
       const res = await api.get('/workspaces/tree');
@@ -310,6 +315,19 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
               !isCollapsed && (
                 <div className="px-3 py-2 text-xs text-muted-foreground italic">
                   Loading teams...
+                </div>
+              )
+            ) : isWsError && workspaces.length === 0 ? (
+              !isCollapsed && (
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  <p>Couldn&apos;t load teams.</p>
+                  <button
+                    type="button"
+                    onClick={() => refetchWorkspaces()}
+                    className="text-primary hover:underline text-[11px] mt-1 cursor-pointer"
+                  >
+                    Retry
+                  </button>
                 </div>
               )
             ) : workspaces.length === 0 ? (

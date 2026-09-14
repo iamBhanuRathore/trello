@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogTitle } from '@boardly/ui/dialog';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { QueryError } from '../common/QueryError';
 import { toast } from 'sonner';
 import {
   Trash2,
@@ -28,14 +29,21 @@ interface TrashBinModalProps {
 
 export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange }) => {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'all' | 'workspace' | 'project' | 'board' | 'card'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'workspace' | 'project' | 'board' | 'card'>(
+    'all'
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmEmptyOpen, setConfirmEmptyOpen] = useState(false);
   const [itemToDeleteForever, setItemToDeleteForever] = useState<TrashedItem | null>(null);
   const [itemToRestore, setItemToRestore] = useState<TrashedItem | null>(null);
 
   // Queries
-  const { data: trashedItems = [], isLoading } = useQuery({
+  const {
+    data: trashedItems = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['trash'],
     queryFn: trashService.getTrash,
     enabled: open,
@@ -273,6 +281,11 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
                 <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-2" />
                 Loading trash items...
               </div>
+            ) : isError && trashedItems.length === 0 ? (
+              <QueryError
+                message="Couldn't load trash. Check your connection and try again."
+                onRetry={() => refetch()}
+              />
             ) : filteredItems.length === 0 ? (
               <div className="py-16 text-center space-y-2 px-4">
                 <div className="w-10 h-10 rounded-full bg-muted/60 flex items-center justify-center mx-auto text-muted-foreground">
@@ -308,7 +321,8 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
                         )}
                         <span>•</span>
                         <span>
-                          Deleted {formatDistanceToNow(new Date(item.deletedAt), { addSuffix: true })}
+                          Deleted{' '}
+                          {formatDistanceToNow(new Date(item.deletedAt), { addSuffix: true })}
                         </span>
                       </div>
                     </div>
@@ -361,7 +375,9 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
           <div className="p-3 border-t border-border/70 bg-muted/20 flex items-center justify-between text-[11px] text-muted-foreground px-5 shrink-0">
             <span className="flex items-center gap-1.5">
               <Info className="w-3.5 h-3.5 text-primary shrink-0" />
-              <span>Restoring an item immediately brings back its child cards, boards, and lists.</span>
+              <span>
+                Restoring an item immediately brings back its child cards, boards, and lists.
+              </span>
             </span>
             <Button
               size="sm"

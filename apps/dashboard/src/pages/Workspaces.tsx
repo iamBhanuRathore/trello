@@ -133,7 +133,7 @@ export function Workspaces() {
     ) || 0;
 
   return (
-    <div className="w-full max-w-6xl mx-auto flex flex-col gap-6">
+    <div className="w-full mx-auto flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { CreateDocumentModal } from '../components/docs/CreateDocumentModal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { QueryError } from '../components/common/QueryError';
 import {
   getProjectDocs,
   getDoc,
@@ -49,7 +50,12 @@ export function ProjectDocs() {
   const [docToDelete, setDocToDelete] = useState<{ id: string; title: string } | null>(null);
 
   // 1. Fetch Project Documents
-  const { data: docs = [], isLoading: isDocsLoading } = useQuery({
+  const {
+    data: docs = [],
+    isLoading: isDocsLoading,
+    isError: isDocsError,
+    refetch: refetchDocs,
+  } = useQuery({
     queryKey: ['projectDocs', projectId],
     queryFn: () => getProjectDocs(projectId!),
     enabled: !!projectId,
@@ -59,15 +65,19 @@ export function ProjectDocs() {
   const activeDocId = selectedDocId || docs[0]?.id;
 
   // 2. Fetch Active Document with Linked Cards
-  const { data: activeDoc } = useQuery({
+  const {
+    data: activeDoc,
+    isLoading: isDocLoading,
+    isError: isDocError,
+    refetch: refetchDoc,
+  } = useQuery({
     queryKey: ['doc', activeDocId],
     queryFn: () => getDoc(activeDocId!),
     enabled: !!activeDocId,
   });
 
   const createMutation = useMutation({
-    mutationFn: (payload: { title: string; content?: string }) =>
-      createDoc(projectId!, payload),
+    mutationFn: (payload: { title: string; content?: string }) => createDoc(projectId!, payload),
     onSuccess: (newDoc) => {
       queryClient.invalidateQueries({ queryKey: ['projectDocs', projectId] });
       setSelectedDocId(newDoc.id);
@@ -81,8 +91,7 @@ export function ProjectDocs() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (payload: { title?: string; content?: string }) =>
-      updateDoc(activeDocId!, payload),
+    mutationFn: (payload: { title?: string; content?: string }) => updateDoc(activeDocId!, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projectDocs', projectId] });
       queryClient.invalidateQueries({ queryKey: ['doc', activeDocId] });
@@ -185,7 +194,10 @@ export function ProjectDocs() {
           </div>
         </div>
 
-        <Button onClick={handleStartCreate} className="gap-2 bg-teal-600 hover:bg-teal-700 text-white">
+        <Button
+          onClick={handleStartCreate}
+          className="gap-2 bg-teal-600 hover:bg-teal-700 text-white"
+        >
           <Plus className="w-4 h-4" /> New Document
         </Button>
       </div>
@@ -208,7 +220,18 @@ export function ProjectDocs() {
           {/* Doc List */}
           <div className="flex-1 overflow-y-auto space-y-1.5 pt-1">
             {isDocsLoading ? (
-              <div className="p-8 text-center text-xs text-muted-foreground">Loading docs...</div>
+              <div className="p-4 space-y-2" aria-label="Loading docs">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-14 rounded-xl bg-muted/60 animate-pulse" />
+                ))}
+              </div>
+            ) : isDocsError && docs.length === 0 ? (
+              <QueryError
+                compact
+                message="Couldn't load documents."
+                onRetry={() => refetchDocs()}
+                className="p-4 justify-center"
+              />
             ) : filteredDocs.length > 0 ? (
               filteredDocs.map((doc: any) => {
                 const isSelected = doc.id === activeDocId;
@@ -249,7 +272,16 @@ export function ProjectDocs() {
 
         {/* Document Editor / Viewer (8 Cols) */}
         <div className="md:col-span-8 p-6 rounded-2xl border bg-card/80 shadow-xs flex flex-col justify-between space-y-6">
-          {activeDoc ? (
+          {isDocLoading && !activeDoc ? (
+            <div className="space-y-4 flex-1" aria-label="Loading document">
+              <div className="h-7 w-1/2 rounded-lg bg-muted animate-pulse" />
+              <div className="h-40 rounded-xl bg-muted/60 animate-pulse" />
+            </div>
+          ) : isDocError && !activeDoc ? (
+            <div className="m-auto">
+              <QueryError message="Couldn't load this document." onRetry={() => refetchDoc()} />
+            </div>
+          ) : activeDoc ? (
             <div className="space-y-6 flex-1">
               {/* Document Header & Actions */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
@@ -263,7 +295,8 @@ export function ProjectDocs() {
                   <div>
                     <h2 className="text-xl font-bold tracking-tight">{activeDoc.title}</h2>
                     <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                      slug: {activeDoc.slug} • Last updated {new Date(activeDoc.updatedAt).toLocaleString()}
+                      slug: {activeDoc.slug} • Last updated{' '}
+                      {new Date(activeDoc.updatedAt).toLocaleString()}
                     </p>
                   </div>
                 )}

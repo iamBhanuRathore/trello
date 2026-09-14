@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@boardly/ui/dialog';
+import { QueryError } from '../../components/common/QueryError';
 
 const AVAILABLE_SCOPES = [
   { id: '*', label: 'Full Access (All Scopes)' },
@@ -44,7 +45,12 @@ export function DeveloperSettings() {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
 
-  const { data: keys = [], isLoading } = useQuery({
+  const {
+    data: keys = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['developerApiKeys'],
     queryFn: () => getApiKeys(),
   });
@@ -111,6 +117,17 @@ export function DeveloperSettings() {
     );
   }
 
+  if (isError && keys.length === 0) {
+    return (
+      <div className="max-w-5xl mx-auto py-8">
+        <QueryError
+          message="Couldn't load API keys. Check your connection and try again."
+          onRetry={() => refetch()}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-16">
       {/* Header */}
@@ -122,7 +139,8 @@ export function DeveloperSettings() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Public Developer API Keys</h1>
             <p className="text-sm text-muted-foreground">
-              Generate scoped API secret keys for automation scripts, CI/CD pipelines, and custom integrations.
+              Generate scoped API secret keys for automation scripts, CI/CD pipelines, and custom
+              integrations.
             </p>
           </div>
         </div>
@@ -155,7 +173,8 @@ export function DeveloperSettings() {
 
                   <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" /> Created {new Date(k.createdAt).toLocaleDateString()}
+                      <Clock className="w-3.5 h-3.5" /> Created{' '}
+                      {new Date(k.createdAt).toLocaleDateString()}
                     </span>
                     <span>•</span>
                     <span>
@@ -202,7 +221,9 @@ export function DeveloperSettings() {
           <div className="p-8 text-center text-xs text-muted-foreground border rounded-2xl bg-muted/10 space-y-2">
             <Shield className="w-6 h-6 mx-auto text-muted-foreground/40" />
             <p className="font-medium">No developer API keys active.</p>
-            <p className="text-[11px]">Generate a key to authenticate requests with Boardly REST APIs.</p>
+            <p className="text-[11px]">
+              Generate a key to authenticate requests with Boardly REST APIs.
+            </p>
           </div>
         )}
       </div>
@@ -213,7 +234,7 @@ export function DeveloperSettings() {
           <Terminal className="w-4 h-4 text-primary" /> Authenticating REST Requests
         </div>
         <pre className="p-4 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 overflow-x-auto">
-{`curl -X GET https://api.boardly.com/v1/cards?listId=LIST_ID \\
+          {`curl -X GET https://api.boardly.com/v1/cards?listId=LIST_ID \\
   -H "Authorization: Bearer bk_live_xxxxxxxxxxxxxxxxxxxxxxxx" \\
   -H "Content-Type: application/json"`}
         </pre>
@@ -245,7 +266,9 @@ export function DeveloperSettings() {
               <Label className="text-xs font-medium">Expiration Period</Label>
               <select
                 value={expiresInDays}
-                onChange={(e) => setExpiresInDays(e.target.value === '' ? '' : Number(e.target.value))}
+                onChange={(e) =>
+                  setExpiresInDays(e.target.value === '' ? '' : Number(e.target.value))
+                }
                 className="w-full h-9 rounded-lg border bg-background px-3 text-xs focus:ring-1 focus:ring-primary"
               >
                 <option value={30}>30 Days</option>
@@ -317,7 +340,10 @@ export function DeveloperSettings() {
           <div className="space-y-4 pt-2">
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>Store this key securely. Anyone with this token can execute requests on behalf of your team.</span>
+              <span>
+                Store this key securely. Anyone with this token can execute requests on behalf of
+                your team.
+              </span>
             </div>
 
             <div className="flex items-center gap-2">

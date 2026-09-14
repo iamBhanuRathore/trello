@@ -18,6 +18,7 @@ import {
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { api } from '../lib/api';
+import { QueryError } from '../components/common/QueryError';
 import { CardModal } from '../components/board/CardModal';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { format } from 'date-fns';
@@ -37,7 +38,7 @@ export function MyTasks() {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
 
   // Fetch My Tasks
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: [
       'my-tasks',
       activeTab,
@@ -441,6 +442,12 @@ export function MyTasks() {
               </div>
             ))}
           </div>
+        ) : isError && tasks.length === 0 ? (
+          <QueryError
+            message="Couldn't load your tasks. Check your connection and try again."
+            onRetry={() => refetch()}
+            className="py-20 border border-dashed border-border rounded-3xl bg-card/20 min-h-[360px] justify-center"
+          />
         ) : tasks.length === 0 ? (
           <div className="py-20 text-center border border-dashed border-border rounded-3xl bg-card/20 space-y-3 min-h-[360px] flex flex-col items-center justify-center">
             <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary mx-auto flex items-center justify-center">

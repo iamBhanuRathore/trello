@@ -15,6 +15,7 @@ import {
   ChevronsRight,
   X,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 
 export interface ColumnDef<T> {
@@ -48,6 +49,11 @@ export interface EnterpriseDataGridProps<T> {
   subtitle?: string;
   emptyMessage?: string;
   emptyIcon?: React.ReactNode;
+  // Query failure state — rendered instead of the empty state when the fetch
+  // failed and there is no data to show (stale data keeps rendering otherwise).
+  isError?: boolean;
+  errorMessage?: string;
+  onRetry?: () => void;
   // Server-side support
   serverSide?: boolean;
   totalCount?: number;
@@ -78,6 +84,9 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
   subtitle,
   emptyMessage = 'No matching records found.',
   emptyIcon,
+  isError = false,
+  errorMessage = "Couldn't load data. Check your connection and try again.",
+  onRetry,
   serverSide = false,
   totalCount: serverTotalCount,
   pageIndex: serverPageIndex,
@@ -88,7 +97,8 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
   onRowClick,
   headerActions,
 }: EnterpriseDataGridProps<T>) {
-  const enableGlobalSearch = searchable !== undefined ? searchable : (propEnableGlobalSearch ?? true);
+  const enableGlobalSearch =
+    searchable !== undefined ? searchable : (propEnableGlobalSearch ?? true);
   const enableExport = exportable !== undefined ? exportable : (propEnableExport ?? true);
   const exportFileName = exportFilename || propExportFileName || 'data_export';
   const effectiveDefaultPageSize = propPageSize || defaultPageSize;
@@ -108,10 +118,7 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
   // Close filter popover on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        filterPopoverRef.current &&
-        !filterPopoverRef.current.contains(event.target as Node)
-      ) {
+      if (filterPopoverRef.current && !filterPopoverRef.current.contains(event.target as Node)) {
         setActiveFilterColId(null);
         setFilterSearch('');
       }
@@ -234,7 +241,8 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
     }
 
     setSortState(nextSort);
-    if (onSortingChange) onSortingChange(nextSort ? { id: nextSort.columnId, desc: nextSort.desc } : null);
+    if (onSortingChange)
+      onSortingChange(nextSort ? { id: nextSort.columnId, desc: nextSort.desc } : null);
   };
 
   // ─── Processed Data (Filtered + Sorted) ─────────────────────────────────────
@@ -340,9 +348,25 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
       if (activePageIndex <= 4) {
         pages.push(1, 2, 3, 4, 5, '...', totalPages);
       } else if (activePageIndex >= totalPages - 3) {
-        pages.push(1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+        pages.push(
+          1,
+          '...',
+          totalPages - 4,
+          totalPages - 3,
+          totalPages - 2,
+          totalPages - 1,
+          totalPages
+        );
       } else {
-        pages.push(1, '...', activePageIndex - 1, activePageIndex, activePageIndex + 1, '...', totalPages);
+        pages.push(
+          1,
+          '...',
+          activePageIndex - 1,
+          activePageIndex,
+          activePageIndex + 1,
+          '...',
+          totalPages
+        );
       }
     }
     return pages;
@@ -354,22 +378,27 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
     const headers = exportColumns.map((c) => `"${c.header.replace(/"/g, '""')}"`);
 
     const rows = processedData.map((row) =>
-      exportColumns.map((col) => {
-        let val: string;
-        if (col.exportValue) {
-          val = col.exportValue(row);
-        } else {
-          val = getStringValue(row, col);
-        }
-        return `"${val.replace(/"/g, '""')}"`;
-      }).join(',')
+      exportColumns
+        .map((col) => {
+          let val: string;
+          if (col.exportValue) {
+            val = col.exportValue(row);
+          } else {
+            val = getStringValue(row, col);
+          }
+          return `"${val.replace(/"/g, '""')}"`;
+        })
+        .join(',')
     );
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${exportFileName}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute(
+      'download',
+      `${exportFileName}_${new Date().toISOString().split('T')[0]}.csv`
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -518,8 +547,8 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
                       col.align === 'center'
                         ? 'text-center'
                         : col.align === 'right'
-                        ? 'text-right'
-                        : 'text-left'
+                          ? 'text-right'
+                          : 'text-left'
                     }`}
                   >
                     <div
@@ -527,8 +556,8 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
                         col.align === 'center'
                           ? 'justify-center'
                           : col.align === 'right'
-                          ? 'justify-end'
-                          : 'justify-start'
+                            ? 'justify-end'
+                            : 'justify-start'
                       }`}
                     >
                       {/* Sortable Header Label */}
@@ -589,7 +618,8 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
                             >
                               <div className="flex items-center justify-between border-b border-border/80 pb-2">
                                 <span className="font-bold text-xs flex items-center gap-1.5">
-                                  <Filter className="w-3.5 h-3.5 text-primary" /> Filter {col.header}
+                                  <Filter className="w-3.5 h-3.5 text-primary" /> Filter{' '}
+                                  {col.header}
                                 </span>
                                 {isFiltered && (
                                   <button
@@ -623,8 +653,8 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
                                   <input
                                     type="checkbox"
                                     checked={
-                                      (columnFilters[col.id]?.length || 0) === distinctList.length &&
-                                      distinctList.length > 0
+                                      (columnFilters[col.id]?.length || 0) ===
+                                        distinctList.length && distinctList.length > 0
                                     }
                                     onChange={() =>
                                       handleSelectAllColumnValues(
@@ -707,6 +737,25 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
                   </div>
                 </td>
               </tr>
+            ) : isError && data.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="p-12 text-center text-muted-foreground">
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <AlertTriangle className="w-6 h-6 text-destructive/70 mb-1" />
+                    <p className="font-semibold text-foreground text-sm">{errorMessage}</p>
+                    {onRetry && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onRetry}
+                        className="text-xs h-7 mt-2"
+                      >
+                        Retry
+                      </Button>
+                    )}
+                  </div>
+                </td>
+              </tr>
             ) : paginatedData.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="p-12 text-center text-muted-foreground">
@@ -744,11 +793,11 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
                           col.align === 'center'
                             ? 'text-center'
                             : col.align === 'right'
-                            ? 'text-right'
-                            : 'text-left'
+                              ? 'text-right'
+                              : 'text-left'
                         }`}
                       >
-                        {col.cell ? col.cell({ row, value: val, index: idx }) : val ?? '—'}
+                        {col.cell ? col.cell({ row, value: val, index: idx }) : (val ?? '—')}
                       </td>
                     );
                   })}

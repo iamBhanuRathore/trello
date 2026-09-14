@@ -896,7 +896,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
 
     if (isCardLoading) {
       return (
-        <div className="flex items-center justify-center p-20 min-h-[400px]">
+        <div className="flex flex-1 w-full h-full min-h-[60vh] items-center justify-center p-20">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
             <p className="text-sm text-muted-foreground font-medium">
@@ -909,7 +909,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
 
     if (!card) {
       return (
-        <div className="flex flex-col items-center justify-center p-12 text-center">
+        <div className="flex flex-1 w-full h-full min-h-[60vh] flex-col items-center justify-center p-12 text-center">
           <AlertCircle className="w-12 h-12 text-destructive mb-3" />
           <h3 className="text-lg font-bold">Task not found</h3>
           <p className="text-sm text-muted-foreground mt-1">

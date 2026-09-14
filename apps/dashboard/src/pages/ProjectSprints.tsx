@@ -17,12 +17,18 @@ import { format } from 'date-fns';
 import { Calendar, Target, Flag, ArrowLeft, Play, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@boardly/ui/card';
 import { api } from '../lib/api';
+import { QueryError } from '../components/common/QueryError';
 
 export const ProjectSprints = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const queryClient = useQueryClient();
 
-  const { data: sprints, isLoading } = useQuery({
+  const {
+    data: sprints = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['sprints', projectId],
     queryFn: () => sprintsService.getSprints(projectId!),
     enabled: !!projectId,
@@ -34,7 +40,30 @@ export const ProjectSprints = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] }),
   });
 
-  if (isLoading) return <div className="p-8">Loading sprints...</div>;
+  if (isLoading)
+    return (
+      <div
+        className="w-full max-w-6xl mx-auto flex flex-col gap-4 py-8"
+        aria-label="Loading sprints"
+      >
+        <div className="h-9 w-56 rounded-lg bg-muted animate-pulse" />
+        <div className="grid gap-4 md:grid-cols-2">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-40 rounded-2xl border bg-card/40 animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+
+  if (isError && sprints.length === 0)
+    return (
+      <div className="w-full max-w-6xl mx-auto py-8">
+        <QueryError
+          message="Couldn't load sprints. Check your connection and try again."
+          onRetry={() => refetch()}
+        />
+      </div>
+    );
 
   const activeSprints = sprints?.filter((s: any) => s.status === 'active') || [];
   const plannedSprints = sprints?.filter((s: any) => s.status === 'planned') || [];
@@ -116,7 +145,11 @@ function SprintCard({
   readOnly?: boolean;
 }) {
   // Fetch cards for this sprint
-  const { data: sprintCards } = useQuery({
+  const {
+    data: sprintCards,
+    isLoading: isCardsLoading,
+    isError: isCardsError,
+  } = useQuery({
     queryKey: ['sprintCards', sprint.id],
     queryFn: () => sprintsService.getSprintCards(sprint.id),
   });
@@ -162,7 +195,16 @@ function SprintCard({
             <Flag className="h-3 w-3" /> Cards in Sprint ({sprintCards?.length || 0})
           </h4>
           <div className="space-y-1">
-            {sprintCards?.length === 0 ? (
+            {isCardsLoading && !sprintCards ? (
+              <div
+                className="h-6 bg-muted/50 rounded animate-pulse w-full"
+                aria-label="Loading cards"
+              />
+            ) : isCardsError && !sprintCards ? (
+              <p className="text-xs text-muted-foreground italic">
+                Couldn&apos;t load sprint cards.
+              </p>
+            ) : sprintCards?.length === 0 ? (
               <p className="text-sm text-muted-foreground italic">
                 No cards added to this sprint yet.
               </p>
@@ -184,11 +226,15 @@ function SprintCard({
 }
 
 function SprintCardItem({ cardId }: { cardId: string }) {
-  const { data: card } = useQuery({
+  const { data: card, isError } = useQuery({
     queryKey: ['card', cardId],
     queryFn: async () => (await api.get(`/cards/${cardId}`)).data,
   });
 
+  if (isError)
+    return (
+      <div className="text-xs text-muted-foreground italic p-1.5">Couldn&apos;t load card.</div>
+    );
   if (!card) return <div className="h-6 bg-muted/50 rounded animate-pulse w-full"></div>;
   return (
     <div className="text-sm truncate p-1.5 border rounded bg-card shadow-xs">{card.title}</div>

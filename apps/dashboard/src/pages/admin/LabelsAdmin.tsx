@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
+import { QueryError } from '../../components/common/QueryError';
 
 const PRESET_COLORS = [
   { color: '#ef4444', name: 'Red' },
@@ -126,7 +127,12 @@ export function LabelsAdmin() {
     return q ? boardsRaw.filter((b) => b.name.toLowerCase().includes(q)) : boardsRaw;
   }, [boardsRaw, boardSearch]);
 
-  const { data: boardLabels = [], isLoading: labelsLoading } = useQuery<BoardLabel[]>({
+  const {
+    data: boardLabels = [],
+    isLoading: labelsLoading,
+    isError: labelsError,
+    refetch: refetchLabels,
+  } = useQuery<BoardLabel[]>({
     queryKey: ['boardLabels', selectedBoardId],
     queryFn: async () => (await api.get('/boards/' + selectedBoardId + '/labels')).data,
     enabled: !!selectedBoardId,
@@ -394,8 +400,18 @@ export function LabelsAdmin() {
 
               <div className="divide-y divide-border/40">
                 {labelsLoading ? (
-                  <div className="p-8 text-center text-sm text-muted-foreground">
-                    Loading labels...
+                  <div className="p-4 space-y-2" aria-label="Loading labels">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="h-12 rounded-lg bg-muted/60 animate-pulse" />
+                    ))}
+                  </div>
+                ) : labelsError ? (
+                  <div className="p-4">
+                    <QueryError
+                      compact
+                      message="Couldn't load labels."
+                      onRetry={() => refetchLabels()}
+                    />
                   </div>
                 ) : filteredLabels.length === 0 ? (
                   <div className="p-8 text-center space-y-2">

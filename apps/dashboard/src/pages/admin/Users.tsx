@@ -7,9 +7,16 @@ import { api } from '../../lib/api';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@boardly/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@boardly/ui/dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@boardly/ui/avatar';
 import { EnterpriseDataGrid, type ColumnDef } from '@boardly/ui/enterprise-data-grid';
+import { QueryError } from '../../components/common/QueryError';
 import {
   UserPlus,
   MoreHorizontal,
@@ -115,7 +122,10 @@ export const Users: React.FC = () => {
   const [selectedWorkspaceIds, setSelectedWorkspaceIds] = useState<string[]>([]);
   const [bulkText, setBulkText] = useState('');
   const [bulkRole, setBulkRole] = useState('member');
-  const [invitedSuccessData, setInvitedSuccessData] = useState<{ inviteToken?: string; count?: number } | null>(null);
+  const [invitedSuccessData, setInvitedSuccessData] = useState<{
+    inviteToken?: string;
+    count?: number;
+  } | null>(null);
   const [copiedInviteLink, setCopiedInviteLink] = useState(false);
 
   // Dialog States
@@ -135,13 +145,23 @@ export const Users: React.FC = () => {
   const [drawerMemberId, setDrawerMemberId] = useState<string | null>(null);
 
   // Queries
-  const { data: members = [], isLoading: isLoadingMembers } = useQuery({
+  const {
+    data: members = [],
+    isLoading: isLoadingMembers,
+    isError: isMembersError,
+    refetch: refetchMembers,
+  } = useQuery({
     queryKey: ['orgMembers', orgId],
     queryFn: () => orgService.getMembers(orgId!),
     enabled: !!orgId,
   });
 
-  const { data: pendingInvitations = [], isLoading: isLoadingInvites } = useQuery({
+  const {
+    data: pendingInvitations = [],
+    isLoading: isLoadingInvites,
+    isError: isInvitesError,
+    refetch: refetchInvites,
+  } = useQuery({
     queryKey: ['orgInvitations', orgId],
     queryFn: () => orgService.getPendingInvitations(orgId!),
     enabled: !!orgId,
@@ -153,7 +173,12 @@ export const Users: React.FC = () => {
     enabled: !!orgId,
   });
 
-  const { data: activitySummary, isLoading: isLoadingSummary } = useQuery({
+  const {
+    data: activitySummary,
+    isLoading: isLoadingSummary,
+    isError: isSummaryError,
+    refetch: refetchSummary,
+  } = useQuery({
     queryKey: ['memberActivity', orgId, drawerMemberId],
     queryFn: () => orgService.getMemberActivitySummary(orgId!, drawerMemberId!),
     enabled: !!orgId && !!drawerMemberId,
@@ -177,8 +202,13 @@ export const Users: React.FC = () => {
       toast.success(`Invitation generated for ${inviteEmail.trim()}`);
     },
     onError: (err: any) => {
-      const isBillingError = err.response?.status === 402 || err.response?.data?.code === 'PLAN_UPGRADE_REQUIRED';
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to invite user';
+      const isBillingError =
+        err.response?.status === 402 || err.response?.data?.code === 'PLAN_UPGRADE_REQUIRED';
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'Failed to invite user';
       if (isBillingError) {
         toast.error(msg, {
           action: {
@@ -200,11 +230,18 @@ export const Users: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['orgMembers', orgId] });
       queryClient.invalidateQueries({ queryKey: ['orgInvitations', orgId] });
       setInvitedSuccessData({ count: data.successfulCount });
-      toast.success(`Successfully onboarded ${data.successfulCount} members (${data.failedCount} failed)`);
+      toast.success(
+        `Successfully onboarded ${data.successfulCount} members (${data.failedCount} failed)`
+      );
     },
     onError: (err: any) => {
-      const isBillingError = err.response?.status === 402 || err.response?.data?.code === 'PLAN_UPGRADE_REQUIRED';
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Bulk invite failed';
+      const isBillingError =
+        err.response?.status === 402 || err.response?.data?.code === 'PLAN_UPGRADE_REQUIRED';
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'Bulk invite failed';
       if (isBillingError) {
         toast.error(msg, {
           action: {
@@ -238,7 +275,8 @@ export const Users: React.FC = () => {
       orgService.deactivateMember(orgId!, memberId, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orgMembers', orgId] });
-      if (drawerMemberId) queryClient.invalidateQueries({ queryKey: ['memberActivity', orgId, drawerMemberId] });
+      if (drawerMemberId)
+        queryClient.invalidateQueries({ queryKey: ['memberActivity', orgId, drawerMemberId] });
       setIsDeactivateOpen(false);
       setMemberToDeactivate(null);
       setDeactivationReason('');
@@ -253,7 +291,8 @@ export const Users: React.FC = () => {
     mutationFn: (memberId: string) => orgService.reactivateMember(orgId!, memberId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orgMembers', orgId] });
-      if (drawerMemberId) queryClient.invalidateQueries({ queryKey: ['memberActivity', orgId, drawerMemberId] });
+      if (drawerMemberId)
+        queryClient.invalidateQueries({ queryKey: ['memberActivity', orgId, drawerMemberId] });
       toast.success('Member reactivated successfully');
     },
     onError: (err: any) => {
@@ -312,7 +351,10 @@ export const Users: React.FC = () => {
     e.preventDefault();
     if (!bulkText.trim()) return;
 
-    const lines = bulkText.split('\n').map((l) => l.trim()).filter(Boolean);
+    const lines = bulkText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
     const parsedInvites: Array<{ email: string; name?: string; role?: string }> = [];
 
     for (const line of lines) {
@@ -424,10 +466,10 @@ export const Users: React.FC = () => {
                 row.role === 'org_owner'
                   ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25'
                   : row.role === 'org_admin'
-                  ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/25'
-                  : row.role === 'viewer'
-                  ? 'bg-muted text-muted-foreground border-border'
-                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
+                    ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/25'
+                    : row.role === 'viewer'
+                      ? 'bg-muted text-muted-foreground border-border'
+                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25'
               }`}
             >
               <RoleIcon className="w-3 h-3" />
@@ -590,7 +632,9 @@ export const Users: React.FC = () => {
             </div>
             <div>
               <div className="font-semibold text-xs text-foreground">{row.email}</div>
-              <div className="text-[10px] text-muted-foreground">Sent {formatRelativeTime(row.createdAt)}</div>
+              <div className="text-[10px] text-muted-foreground">
+                Sent {formatRelativeTime(row.createdAt)}
+              </div>
             </div>
           </div>
         ),
@@ -676,7 +720,8 @@ export const Users: React.FC = () => {
             </span>
           </h1>
           <p className="text-muted-foreground text-xs sm:text-sm mt-0.5">
-            Seamlessly onboard employees, govern workspace roles, track user activity, and manage deactivation.
+            Seamlessly onboard employees, govern workspace roles, track user activity, and manage
+            deactivation.
           </p>
         </div>
 
@@ -787,7 +832,9 @@ export const Users: React.FC = () => {
                             }`}
                           >
                             <Icon className="w-4 h-4 mx-auto mb-1" />
-                            <div className="font-semibold text-xs text-foreground">{config.title}</div>
+                            <div className="font-semibold text-xs text-foreground">
+                              {config.title}
+                            </div>
                           </div>
                         );
                       })}
@@ -812,7 +859,9 @@ export const Users: React.FC = () => {
                                   if (e.target.checked) {
                                     setSelectedWorkspaceIds([...selectedWorkspaceIds, ws.id]);
                                   } else {
-                                    setSelectedWorkspaceIds(selectedWorkspaceIds.filter((id) => id !== ws.id));
+                                    setSelectedWorkspaceIds(
+                                      selectedWorkspaceIds.filter((id) => id !== ws.id)
+                                    );
                                   }
                                 }}
                                 className="rounded border-border text-primary focus:ring-primary"
@@ -830,8 +879,17 @@ export const Users: React.FC = () => {
                     <Button variant="outline" type="button" onClick={handleResetInvite} size="sm">
                       Cancel
                     </Button>
-                    <Button type="submit" size="sm" disabled={singleInviteMutation.isPending} className="gap-2">
-                      {singleInviteMutation.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={singleInviteMutation.isPending}
+                      className="gap-2"
+                    >
+                      {singleInviteMutation.isPending ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Send className="w-3.5 h-3.5" />
+                      )}
                       <span>Send Onboarding Invite</span>
                     </Button>
                   </div>
@@ -842,7 +900,9 @@ export const Users: React.FC = () => {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs font-semibold">Paste Emails or CSV List</Label>
-                      <span className="text-[11px] text-muted-foreground">Format: email, name, role</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Format: email, name, role
+                      </span>
                     </div>
                     <textarea
                       rows={6}
@@ -873,8 +933,17 @@ export const Users: React.FC = () => {
                     <Button variant="outline" type="button" onClick={handleResetInvite} size="sm">
                       Cancel
                     </Button>
-                    <Button type="submit" size="sm" disabled={bulkInviteMutation.isPending} className="gap-2">
-                      {bulkInviteMutation.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={bulkInviteMutation.isPending}
+                      className="gap-2"
+                    >
+                      {bulkInviteMutation.isPending ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                      )}
                       <span>Process Bulk Onboarding</span>
                     </Button>
                   </div>
@@ -895,7 +964,7 @@ export const Users: React.FC = () => {
                   <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto leading-relaxed">
                     {invitedSuccessData.count && invitedSuccessData.count > 1
                       ? `${invitedSuccessData.count} personalized invitation emails have been sent. Members will set up their accounts through a secure onboarding link.`
-                      : 'A personalized invitation email has been sent. They\'ll receive a secure link to set up their account and join your organization.'}
+                      : "A personalized invitation email has been sent. They'll receive a secure link to set up their account and join your organization."}
                   </p>
                 </div>
 
@@ -928,7 +997,11 @@ export const Users: React.FC = () => {
                           toast.success('Link copied to clipboard!');
                         }}
                       >
-                        {copiedInviteLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedInviteLink ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-500" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
                         <span>{copiedInviteLink ? 'Copied' : 'Copy'}</span>
                       </Button>
                     </div>
@@ -941,7 +1014,6 @@ export const Users: React.FC = () => {
                   </Button>
                 </div>
               </div>
-
             )}
           </DialogContent>
         </Dialog>
@@ -1063,6 +1135,8 @@ export const Users: React.FC = () => {
               <option value="all">All Roles</option>
               <option value="org_owner">Org Owner</option>
               <option value="org_admin">Org Admin</option>
+              <option value="workspace_admin">Workspace Admin</option>
+              <option value="billing_manager">Billing Manager</option>
               <option value="member">Member</option>
               <option value="viewer">Viewer</option>
             </select>
@@ -1076,6 +1150,9 @@ export const Users: React.FC = () => {
           data={filteredMembers}
           columns={memberColumns}
           isLoading={isLoadingMembers}
+          isError={isMembersError}
+          errorMessage="Couldn't load members. Check your connection and try again."
+          onRetry={() => refetchMembers()}
           searchable={false}
           exportable={true}
           exportFilename="boardly_members_export"
@@ -1086,6 +1163,9 @@ export const Users: React.FC = () => {
           data={pendingInvitations}
           columns={invitationColumns}
           isLoading={isLoadingInvites}
+          isError={isInvitesError}
+          errorMessage="Couldn't load invitations. Check your connection and try again."
+          onRetry={() => refetchInvites()}
           searchable={true}
           exportable={true}
           exportFilename="boardly_pending_invitations"
@@ -1102,7 +1182,9 @@ export const Users: React.FC = () => {
               <div className="p-5 border-b border-border flex items-center justify-between bg-muted/20">
                 <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4 text-primary" />
-                  <span className="font-bold text-sm text-foreground">Member Intelligence & Governance</span>
+                  <span className="font-bold text-sm text-foreground">
+                    Member Intelligence & Governance
+                  </span>
                 </div>
                 <button
                   onClick={() => setDrawerMemberId(null)}
@@ -1117,6 +1199,13 @@ export const Users: React.FC = () => {
                   <RefreshCw className="w-6 h-6 animate-spin text-primary" />
                   <span className="text-xs">Loading member summary...</span>
                 </div>
+              ) : isSummaryError && !activitySummary ? (
+                <div className="p-5">
+                  <QueryError
+                    message="Couldn't load this member's summary."
+                    onRetry={() => refetchSummary()}
+                  />
+                </div>
               ) : activitySummary ? (
                 <div className="p-5 space-y-6">
                   {/* Profile Header */}
@@ -1128,8 +1217,12 @@ export const Users: React.FC = () => {
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <h3 className="font-bold text-base text-foreground">{activitySummary.member.name}</h3>
-                      <p className="text-xs text-muted-foreground">{activitySummary.member.email}</p>
+                      <h3 className="font-bold text-base text-foreground">
+                        {activitySummary.member.name}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        {activitySummary.member.email}
+                      </p>
                       <div className="flex items-center gap-2 mt-1.5">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20 capitalize">
                           {activitySummary.member.role.replace('_', ' ')}
@@ -1148,15 +1241,16 @@ export const Users: React.FC = () => {
                   </div>
 
                   {/* Deactivation Reason if present */}
-                  {activitySummary.member.status === 'deactivated' && activitySummary.member.deactivationReason && (
-                    <div className="p-3 rounded-xl border border-destructive/20 bg-destructive/5 text-xs text-destructive flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-semibold">Deactivation Note:</span>{' '}
-                        <span>{activitySummary.member.deactivationReason}</span>
+                  {activitySummary.member.status === 'deactivated' &&
+                    activitySummary.member.deactivationReason && (
+                      <div className="p-3 rounded-xl border border-destructive/20 bg-destructive/5 text-xs text-destructive flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-semibold">Deactivation Note:</span>{' '}
+                          <span>{activitySummary.member.deactivationReason}</span>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
                   {/* Stats Grid */}
                   <div className="grid grid-cols-2 gap-3">
@@ -1188,7 +1282,9 @@ export const Users: React.FC = () => {
                       <span>Workspace Assignments ({activitySummary.workspaces.length})</span>
                     </h4>
                     {activitySummary.workspaces.length === 0 ? (
-                      <p className="text-xs text-muted-foreground italic">No workspace memberships found.</p>
+                      <p className="text-xs text-muted-foreground italic">
+                        No workspace memberships found.
+                      </p>
                     ) : (
                       <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {activitySummary.workspaces.map((ws) => (
@@ -1317,12 +1413,16 @@ export const Users: React.FC = () => {
                       : 'border-border bg-background hover:bg-muted/40 text-muted-foreground'
                   }`}
                 >
-                  <div className={`p-2 rounded-lg ${isSelected ? 'bg-primary/10 text-primary' : 'bg-muted'}`}>
+                  <div
+                    className={`p-2 rounded-lg ${isSelected ? 'bg-primary/10 text-primary' : 'bg-muted'}`}
+                  >
                     <Icon className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="font-bold text-xs text-foreground">{config.title}</div>
-                    <div className="text-[11px] text-muted-foreground leading-relaxed">{config.description}</div>
+                    <div className="text-[11px] text-muted-foreground leading-relaxed">
+                      {config.description}
+                    </div>
                   </div>
                 </div>
               );
@@ -1358,7 +1458,10 @@ export const Users: React.FC = () => {
               </DialogTitle>
             </div>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Deactivating <span className="font-semibold text-foreground">{memberToDeactivate?.name}</span> will immediately revoke their access and terminate all active sessions. Their historical data (tasks, time logs, comments) will be preserved intact.
+              Deactivating{' '}
+              <span className="font-semibold text-foreground">{memberToDeactivate?.name}</span> will
+              immediately revoke their access and terminate all active sessions. Their historical
+              data (tasks, time logs, comments) will be preserved intact.
             </p>
           </DialogHeader>
 
@@ -1382,7 +1485,10 @@ export const Users: React.FC = () => {
               disabled={deactivateMutation.isPending}
               onClick={() => {
                 if (!memberToDeactivate) return;
-                deactivateMutation.mutate({ memberId: memberToDeactivate.id, reason: deactivationReason });
+                deactivateMutation.mutate({
+                  memberId: memberToDeactivate.id,
+                  reason: deactivationReason,
+                });
               }}
             >
               Confirm Deactivation
@@ -1402,7 +1508,9 @@ export const Users: React.FC = () => {
               </DialogTitle>
             </div>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Are you sure you want to remove <span className="font-semibold text-foreground">{memberToDelete?.name}</span>? This will revoke their organization membership.
+              Are you sure you want to remove{' '}
+              <span className="font-semibold text-foreground">{memberToDelete?.name}</span>? This
+              will revoke their organization membership.
             </p>
           </DialogHeader>
 

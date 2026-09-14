@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { useAuthStore } from '../store/authStore';
 import { Dialog, DialogContent, DialogTrigger } from '@boardly/ui/dialog';
 import { Kbd } from './ui/Kbd';
+import { QueryError } from './common/QueryError';
 import {
   Search,
   SearchIcon,
@@ -58,7 +59,12 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
   const isAdmin = user?.isPlatformAdmin || user?.role === 'org_owner' || user?.role === 'org_admin';
 
   // 1. Fetch remote search results for cards/boards/projects
-  const { data: serverResults = [], isLoading } = useQuery({
+  const {
+    data: serverResults = [],
+    isLoading,
+    isError: isSearchError,
+    refetch: refetchSearch,
+  } = useQuery({
     queryKey: ['search', debouncedQuery],
     queryFn: () => searchService.search(debouncedQuery),
     enabled: debouncedQuery.trim().length > 1,
@@ -452,7 +458,15 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
             </div>
           ) : (
             !isLoading &&
-            query.length > 0 && (
+            query.length > 0 &&
+            (isSearchError && serverResults.length === 0 ? (
+              <QueryError
+                compact
+                message="Search failed."
+                onRetry={() => refetchSearch()}
+                className="py-10 justify-center"
+              />
+            ) : (
               <div className="py-10 text-center text-xs text-muted-foreground space-y-1">
                 <SearchIcon className="w-8 h-8 mx-auto text-muted-foreground/40 mb-2" />
                 <p className="font-semibold text-foreground">
@@ -462,7 +476,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
                   Try searching for task titles, board names, or projects.
                 </p>
               </div>
-            )
+            ))
           )}
 
           {/* Saved Searches Section */}

@@ -16,6 +16,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/api';
 import { Link, useNavigate } from 'react-router-dom';
+import { QueryError } from './common/QueryError';
 
 export function NotificationDropdown() {
   const [open, setOpen] = useState(false);
@@ -51,7 +52,12 @@ export function NotificationDropdown() {
     };
   }, [open]);
 
-  const { data: notifications = [], isLoading } = useQuery({
+  const {
+    data: notifications = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['notifications'],
     queryFn: async () => (await getNotifications()).data,
   });
@@ -250,6 +256,13 @@ export function NotificationDropdown() {
               <div className="p-8 text-center text-xs text-muted-foreground">
                 Loading notifications...
               </div>
+            ) : isError && notifications.length === 0 ? (
+              <QueryError
+                compact
+                message="Couldn't load notifications."
+                onRetry={() => refetch()}
+                className="p-4 justify-center"
+              />
             ) : filteredNotifications.length === 0 ? (
               <div className="p-8 text-center space-y-2">
                 <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center mx-auto text-muted-foreground">
