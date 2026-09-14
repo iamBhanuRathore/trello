@@ -58,6 +58,7 @@ export const ProjectPhases = () => {
         <QueryError
           message="Couldn't load phases. Check your connection and try again."
           onRetry={() => refetch()}
+          className="min-h-[50vh]"
         />
       </div>
     );

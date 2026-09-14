@@ -145,6 +145,7 @@ export function NotificationSettings() {
         <QueryError
           message="Couldn't load notification preferences. Your settings were left untouched."
           onRetry={() => loadPreferences()}
+          className="min-h-[50vh]"
         />
       </div>
     );

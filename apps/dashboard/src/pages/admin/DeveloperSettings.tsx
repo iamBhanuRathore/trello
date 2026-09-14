@@ -156,6 +156,7 @@ export function DeveloperSettings() {
         <QueryError
           message="Couldn't load API keys. Check your connection and try again."
           onRetry={() => refetch()}
+          className="min-h-[40vh]"
         />
       </div>
     );
@@ -184,7 +185,7 @@ export function DeveloperSettings() {
       </div>
 
       {/* Keys List */}
-      <div className="space-y-4">
+      <div className="space-y-4 min-h-[40vh] flex flex-col">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Active API Keys ({keys.length})
         </h2>
@@ -251,7 +252,7 @@ export function DeveloperSettings() {
             ))}
           </div>
         ) : (
-          <div className="p-8 text-center text-xs text-muted-foreground border rounded-2xl bg-muted/10 space-y-2">
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-xs text-muted-foreground border rounded-2xl bg-muted/10 space-y-2">
             <Shield className="w-6 h-6 mx-auto text-muted-foreground/40" />
             <p className="font-medium">No developer API keys active.</p>
             <p className="text-[11px]">

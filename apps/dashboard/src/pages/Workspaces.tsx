@@ -239,6 +239,7 @@ export function Workspaces() {
         <QueryError
           message="Couldn't load workspaces. Check your connection and try again."
           onRetry={() => refetchTree()}
+          className="min-h-[50vh]"
         />
       ) : (
         workspaces?.map((ws: any) => (

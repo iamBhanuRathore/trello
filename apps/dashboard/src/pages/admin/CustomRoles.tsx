@@ -182,6 +182,7 @@ export function CustomRoles() {
         <QueryError
           message="Couldn't load roles. Check your connection and try again."
           onRetry={() => refetchRoles()}
+          className="min-h-[40vh]"
         />
       </div>
     );
@@ -215,7 +216,7 @@ export function CustomRoles() {
 
       {/* Role Cards Grid */}
       {roles.length === 0 ? (
-        <div className="p-10 text-center rounded-2xl border border-dashed border-border bg-card/40 space-y-2">
+        <div className="min-h-[40vh] flex flex-col items-center justify-center p-10 text-center rounded-2xl border border-dashed border-border bg-card/40 space-y-2">
           <p className="text-sm font-semibold text-foreground">No custom roles yet</p>
           <p className="text-xs text-muted-foreground">
             Create a custom role to grant a tailored set of permissions.

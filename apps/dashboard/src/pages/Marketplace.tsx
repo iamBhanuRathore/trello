@@ -266,9 +266,10 @@ export function Marketplace() {
         <QueryError
           message="Couldn't load the Power-Ups catalog. Check your connection and try again."
           onRetry={() => refetch()}
+          className="min-h-[40vh]"
         />
       ) : (
-        <div className="p-12 text-center text-xs text-muted-foreground border rounded-2xl bg-muted/10 space-y-2">
+        <div className="min-h-[40vh] flex flex-col items-center justify-center p-12 text-center text-xs text-muted-foreground border rounded-2xl bg-muted/10 space-y-2">
           <Store className="w-8 h-8 mx-auto text-muted-foreground/40" />
           <p className="font-semibold text-foreground text-sm">No Power-Ups found</p>
           <p>Try searching for a different keyword or category.</p>

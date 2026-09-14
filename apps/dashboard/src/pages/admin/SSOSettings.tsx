@@ -144,6 +144,7 @@ export function SSOSettings() {
         <QueryError
           message="Couldn't load SSO settings. Your configuration was left untouched."
           onRetry={() => refetch()}
+          className="min-h-[40vh]"
         />
       </div>
     );

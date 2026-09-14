@@ -240,6 +240,7 @@ export function ProfileSettings() {
         <QueryError
           message="Couldn't load your profile. Check your connection and try again."
           onRetry={() => refetchProfile()}
+          className="min-h-[50vh]"
         />
       </div>
     );

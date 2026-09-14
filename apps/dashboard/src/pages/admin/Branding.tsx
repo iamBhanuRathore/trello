@@ -65,10 +65,21 @@ export const Branding = () => {
   // org name/logo/color with blank defaults.
   if (isError && !org) {
     return (
-      <QueryError
-        message="Couldn't load branding settings. Your configuration was left untouched."
-        onRetry={() => refetch()}
-      />
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Organization Branding
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Customize how your organization looks to members across workspaces.
+          </p>
+        </div>
+        <QueryError
+          message="Couldn't load branding settings. Your configuration was left untouched."
+          onRetry={() => refetch()}
+          className="min-h-[40vh]"
+        />
+      </div>
     );
   }
 
