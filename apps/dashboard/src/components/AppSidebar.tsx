@@ -313,8 +313,14 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
           <SidebarGroupContent className={isCollapsed ? 'w-auto' : 'w-full'}>
             {isWsLoading ? (
               !isCollapsed && (
-                <div className="px-3 py-2 text-xs text-muted-foreground italic">
-                  Loading teams...
+                <div className="px-2 py-1 space-y-2" aria-label="Loading workspaces">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="space-y-1.5">
+                      <div className="h-7 rounded-md bg-muted/60 animate-pulse" />
+                      <div className="ml-4 h-5 w-3/4 rounded-md bg-muted/40 animate-pulse" />
+                      <div className="ml-4 h-5 w-2/3 rounded-md bg-muted/40 animate-pulse" />
+                    </div>
+                  ))}
                 </div>
               )
             ) : isWsError && workspaces.length === 0 ? (

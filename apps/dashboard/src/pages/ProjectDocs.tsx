@@ -220,9 +220,12 @@ export function ProjectDocs() {
           {/* Doc List */}
           <div className="flex-1 overflow-y-auto space-y-1.5 pt-1">
             {isDocsLoading ? (
-              <div className="p-4 space-y-2" aria-label="Loading docs">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-14 rounded-xl bg-muted/60 animate-pulse" />
+              <div className="space-y-1.5" aria-label="Loading docs">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="h-[58px] rounded-xl border border-transparent bg-muted/60 animate-pulse"
+                  />
                 ))}
               </div>
             ) : isDocsError && docs.length === 0 ? (
@@ -273,9 +276,34 @@ export function ProjectDocs() {
         {/* Document Editor / Viewer (8 Cols) */}
         <div className="md:col-span-8 p-6 rounded-2xl border bg-card/80 shadow-xs flex flex-col justify-between space-y-6">
           {isDocLoading && !activeDoc ? (
-            <div className="space-y-4 flex-1" aria-label="Loading document">
-              <div className="h-7 w-1/2 rounded-lg bg-muted animate-pulse" />
-              <div className="h-40 rounded-xl bg-muted/60 animate-pulse" />
+            <div className="space-y-6 flex-1" aria-label="Loading document">
+              {/* Header row mirror */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+                <div className="space-y-2 flex-1 max-w-md">
+                  <div className="h-6 w-3/4 rounded-lg bg-muted animate-pulse" />
+                  <div className="h-3 w-1/2 rounded bg-muted/70 animate-pulse" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-28 rounded-md bg-muted/70 animate-pulse" />
+                  <div className="h-8 w-8 rounded-md bg-muted/70 animate-pulse" />
+                </div>
+              </div>
+              {/* Content lines mirror */}
+              <div className="space-y-2.5 p-2 min-h-[200px]">
+                <div className="h-4 w-1/3 rounded bg-muted animate-pulse" />
+                <div className="h-4 w-full rounded bg-muted/60 animate-pulse" />
+                <div className="h-4 w-11/12 rounded bg-muted/60 animate-pulse" />
+                <div className="h-4 w-full rounded bg-muted/60 animate-pulse" />
+                <div className="h-4 w-2/3 rounded bg-muted/60 animate-pulse" />
+              </div>
+              {/* Linked-tasks section mirror */}
+              <div className="border-t pt-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-48 rounded bg-muted/70 animate-pulse" />
+                  <div className="h-7 w-28 rounded-md bg-muted/70 animate-pulse" />
+                </div>
+                <div className="h-4 w-2/5 rounded bg-muted/50 animate-pulse" />
+              </div>
             </div>
           ) : isDocError && !activeDoc ? (
             <div className="m-auto">
