@@ -94,40 +94,56 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
       }}
     >
       <div
-        className="bg-card w-full max-w-md rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
+        className="bg-card w-full max-w-xl rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-primary" />
-            <h3 className="font-bold text-sm text-foreground">New Direct Message</h3>
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-muted/10">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-foreground">New Direct Message</h3>
+              <p className="text-xs text-muted-foreground">
+                Select a teammate to start a private 1-on-1 conversation
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Search */}
-        <div className="p-3 border-b border-border/70 flex items-center gap-2.5 bg-muted/20">
+        <div className="p-3.5 border-b border-border/70 flex items-center gap-2.5 bg-muted/20">
           <Search className="w-4 h-4 text-muted-foreground shrink-0" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Type teammate name or email..."
+            placeholder="Type teammate name or email to search..."
             autoFocus
-            className="w-full text-xs bg-transparent border-0 outline-none placeholder:text-muted-foreground focus:ring-0 px-0"
+            className="w-full text-xs bg-transparent border-0 outline-none placeholder:text-muted-foreground focus:ring-0 px-0 text-foreground"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="p-1 rounded text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Colleagues list */}
-        <div className="max-h-80 overflow-y-auto p-2 space-y-1 divide-y divide-border/40">
+        <div className="max-h-[420px] min-h-[240px] overflow-y-auto p-2.5 space-y-1 divide-y divide-border/40">
           {isMembersLoading && (
             <div className="p-8 flex items-center justify-center text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin" />

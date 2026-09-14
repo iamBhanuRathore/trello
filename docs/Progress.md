@@ -1713,3 +1713,14 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   2. Upgraded the "Add Teammate to Channel" modal in `ChatDetailsPane.tsx` from a native dropdown to a searchable teammate picker with real-time name/email filtering, avatar displays, and clear empty states.
 - Decisions made: Real-time search with inline selection mirrors modern Teams/Slack UX, eliminating friction in organizations with larger member directories.
 - Tests & Validation: Verified frontend bundle generation with `tsc -b && vite build` (clean, 0 errors).
+
+### 2026-09-15 — Redesign Channel & DM Creation Modals to Spacious Layout
+
+- What was done:
+  1. Converted `NewChannelModal.tsx` from a cramped single-column `max-w-lg` container into a spacious `max-w-4xl` 2-column desktop experience:
+     - Left Column (5 cols): Channel identity (name, character counter), topic/purpose textarea, public/private selector cards, and channel permissions/governance toggles.
+     - Right Column (7 cols): Member management with live presence badges, local timezone indicator, interactive search bar, "Select/Deselect all filtered" action, removable selected member chip tray, and a tall 340px teammate directory.
+     - Footer: Added summary count and primary action buttons.
+  2. Expanded `NewDirectMessageModal.tsx` to `max-w-xl` with comfortable padding and a 420px teammate list for smoother scanning.
+- Decisions made: 2-column modal layout utilizes widescreen desktop real estate effectively without vertical cramping or keyhole scrolling.
+- Tests & Validation: Verified with `tsc -b && vite build` (clean build, 0 errors).
