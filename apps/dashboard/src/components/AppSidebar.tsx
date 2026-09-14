@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -41,7 +41,9 @@ import {
   Plus,
   Folder,
   FolderOpen,
+  MessageSquare,
 } from 'lucide-react';
+import { chatService } from '../lib/chatService';
 import { UserProfileDropdown } from './UserProfileDropdown';
 
 interface AppSidebarProps {
@@ -72,6 +74,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
     staleTime: 30_000,
     gcTime: 5 * 60_000,
   });
+
+  // Fetch chat channels unread count for sidebar badge
+  const { data: chatChannels = [] } = useQuery({
+    queryKey: ['chat', 'channels'],
+    queryFn: () => chatService.listChannels(),
+    staleTime: 15_000,
+  });
+
+  const chatUnreadCount = useMemo(
+    () => chatChannels.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
+    [chatChannels]
+  );
 
   // Track expanded state for workspaces and projects
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Record<string, boolean>>({});
@@ -262,6 +276,41 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
                   >
                     <Clock className="w-4 h-4 text-amber-500 shrink-0" />
                     {!isCollapsed && <span>Timesheets</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Chat & Collaboration */}
+              <SidebarMenuItem className={isCollapsed ? 'flex justify-center' : ''}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location.pathname.startsWith('/chat')}
+                  tooltip="Chat & Collaboration"
+                  className={
+                    isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''
+                  }
+                >
+                  <Link
+                    to="/chat"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? 'Chat & Collaboration' : undefined}
+                  >
+                    <div className="relative shrink-0 flex items-center justify-center">
+                      <MessageSquare className="w-4 h-4 text-blue-500 shrink-0" />
+                      {chatUnreadCount > 0 && isCollapsed && (
+                        <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-destructive" />
+                      )}
+                    </div>
+                    {!isCollapsed && (
+                      <div className="flex items-center justify-between w-full">
+                        <span>Chat</span>
+                        {chatUnreadCount > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
+                            {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

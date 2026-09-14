@@ -21,6 +21,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@boardly/ui/dropdown-menu';
+import { GlobalChatDock } from '../components/chat/GlobalChatDock';
 
 export function DashboardLayout() {
   const location = useLocation();
@@ -28,6 +29,8 @@ export function DashboardLayout() {
 
   const [isTrashOpen, setIsTrashOpen] = useState(false);
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
+
+  const isChat = location.pathname.startsWith('/chat');
 
   // Dynamic Breadcrumb computation
   const getBreadcrumbs = () => {
@@ -57,6 +60,8 @@ export function DashboardLayout() {
       return [{ label: 'Workspaces', to: '/' }, { label: 'Kanban Board' }];
     if (path.startsWith('/cards/'))
       return [{ label: 'Workspaces', to: '/' }, { label: 'Task Card' }];
+    if (path.startsWith('/chat'))
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Chat & Collaboration' }];
 
     return [{ label: 'Dashboard', to: '/' }];
   };
@@ -168,10 +173,19 @@ export function DashboardLayout() {
         </header>
 
         {/* Main Viewport Content */}
-        <main className="flex flex-1 flex-col p-4 md:p-6 overflow-y-auto min-h-0">
+        <main
+          className={
+            isChat
+              ? 'flex flex-1 flex-col overflow-hidden min-h-0 p-0'
+              : 'flex flex-1 flex-col p-4 md:p-6 overflow-y-auto min-h-0'
+          }
+        >
           <Outlet />
         </main>
       </SidebarInset>
+
+      {/* Persistent Global Chat Dock */}
+      <GlobalChatDock />
 
       {/* Global Modals — mounted only when opened, each in its own chunk */}
       {isTrashOpen && (

@@ -1677,3 +1677,23 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - What was done: Added schema and migration `0016_enterprise_chat.sql` for `chat_channels`, `chat_channel_members`, `chat_messages`, `chat_attachments`, `chat_reactions`, `user_working_hours`, and `user_presence_overrides`. Implemented `modules/chat/service.ts` (1-on-1 DMs, group channels, 3-tier Owner/Admin/Member governance, shared channels discovery, message soft-delete/audit, reactions, thread replies) and `modules/presence/presenceService.ts` (timezone-aware working hours computation, online heartbeats, manual status overrides). Added dedicated WebSocket gateways `chat.gateway.ts` and `presence.gateway.ts` multiplexed in `modules/realtime/routes.ts`. Mounted REST endpoints under `/v1/chat` and `/v1/presence`. Added shared types and Zod schemas in `@boardly/shared-types`.
 - Decisions made: Kept real-time WebSocket logic in backend via modular socket gateways backed by Redis Pub/Sub rather than a separate microservice.
 - Tests added: `presence.test.ts` (timezone calculations, off-hours, weekend schedules, heartbeats) and `chat.test.ts` (validation rules). `tsc --noEmit` clean in `apps/backend` and `packages/shared-types`; `oxlint` clean (0 warnings, 0 errors).
+
+### 2026-09-15 — Teams-Parity Chat Workspace & Global Collaboration System (Phase 2 & 3: Frontend & Integration)
+
+- What was done:
+  1. **Typed API Clients & State Stores**: Implemented `apps/dashboard/src/lib/chatService.ts` (channels, messages, replies, reactions, shared mutual groups) and `presenceService.ts` (working hours schedules, status overrides). Built Zustand store `apps/dashboard/src/store/chatStore.ts` managing active channel, slide-over thread states, details panel, typing users cache, and docked floating messenger state.
+  2. **WebSocket Realtime Sync**: Implemented `apps/dashboard/src/hooks/useChatRealtime.ts` with heartbeat timers, auto-subscription to active channels, optimistic message caching, and real-time query invalidation for incoming messages, reactions, typing, and presence status changes.
+  3. **Microsoft Teams-Parity Components**:
+     - `ChatSidebar.tsx`: Multi-tab channel navigator (All, Unread, DMs, Groups, Task Discussions) with live unread counters, presence badges, pinned channels, and quick action modals (`NewDirectMessageModal`, `NewChannelModal`, `WorkingHoursModal`).
+     - `ChatFeed.tsx`: Center conversation stream with date dividers, typing indicator animations, off-hours timezone banner with silent send toggle, message search, markdown formatting shortcuts, task mention triggers (`TaskMentionPickerModal`), and optimistic sending.
+     - `ChatMessageCard.tsx`: Interactive message cards with markdown rendering, inline task preview pills (`TaskPreviewCard`), reaction tray, hover actions, thread replies trigger, and `CreateTaskFromMessageModal` integration.
+     - `ChatThreadPane.tsx`: Right slide-over drawer for real-time message thread replies with dedicated composer.
+     - `ChatDetailsPane.tsx`: Right drawer providing deep teammate inspection with live timezone/schedule offset, **Mutual Shared Groups inspection (`getSharedChannels`)** with one-click channel switching, and group channel management with 3-tier admin governance (Owner, Admin, Member role promotion/demotion/ownership transfer and removal).
+     - `WorkingHoursModal.tsx`: Weekly schedule editor and status override manager (`available`, `busy`, `away`, `leave`, `offline`).
+  4. **Universal Access & Bidirectional Task Integration**:
+     - `GlobalChatDock.tsx`: Persistent floating bottom-right dock messenger rendered across all board, document, and admin views, with unread badge counter, quick message composer, and maximize toggle to full workspace.
+     - `ChatPage.tsx`: Full-screen Teams workspace layout registered at `/chat` and `/chat/:channelId` in `App.tsx` and linked with unread badge count in `AppSidebar.tsx`.
+     - `TaskChatPane.tsx`: Integrated quick messenger launcher directly in task card modal header for instant task-to-chat collaboration.
+- Decisions made: Dual-mode UI pattern (full-screen `/chat` workspace + floating dock) for seamless collaboration without losing board context; strict toast etiquette (no noisy success toasts for routine actions).
+- Tests & Validation: Verified with `tsc -b --noEmit` (0 type errors), `oxlint` (clean), `vite build` (successful production bundle generation), and backend test suite (8 passing tests).
+

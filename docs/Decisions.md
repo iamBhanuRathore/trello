@@ -519,3 +519,23 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** Flat-tier subscription pricing (rejected — does not scale with organization size, loses expansion revenue), manual seat approval workflow (rejected — introduces high friction for buyer organizations).
 
 **Consequences:** Complete self-serve upgrade capability for organizations, mathematically sound proration tracking, zero seat-oversubscription race conditions, and clear upgrade triggers.
+
+---
+
+### 2026-09-15 — Enterprise Chat & Cross-Timezone Collaboration Architecture (Teams Parity)
+
+**Context:** The platform required an enterprise-grade messaging and collaboration experience on par with Microsoft Teams, Slack, and Linear. Requirements included 1-on-1 Direct Messages, public/private group channels, 3-tier admin governance (Owner, Admin, Member), mutual shared groups inspection between teammates, timezone and working hours presence tracking (`available`, `busy`, `away`, `leave`, `offline`), bidirectional task card discussions and mentions, and a unified experience accessible both as a full workspace (`/chat`) and as a floating messenger dock across all board views.
+
+**Decision:**
+1. **Modular Socket Gateways inside Backend**: Instead of introducing operational complexity, duplicated authentication, and network latency with a standalone socket microservice, real-time WebSockets were implemented directly in `apps/backend` via modular gateway handlers (`chat.gateway.ts`, `presence.gateway.ts`) multiplexed through Bun uWebSockets and Redis Pub/Sub (`initializeRedisPubSub`).
+2. **Deterministic Timezone & Working Hours Presence Engine**: Implemented `presenceService.ts` to compute localized user schedules using `Intl.DateTimeFormat`. User presence transitions automatically between `available` and `away` (off-hours) based on weekly work windows, with support for manual status overrides with expiration.
+3. **Off-Hours Composer Banner with Silent Delivery**: When messaging teammates outside their localized working hours, the UI displays an off-hours banner with a one-click silent send toggle, preventing intrusive after-hours push notifications.
+4. **Mutual Shared Groups Discovery**: Implemented a dedicated grouped SQL query (`getSharedChannels`) allowing users to inspect mutual group memberships directly from any teammate's profile in the details drawer.
+5. **Dual-Mode UI (Full Workspace + Global Floating Dock)**: Delivered a full-screen Teams-style workspace on `/chat` with collapsible rails, thread drawers, and channel details, paired with a persistent floating bottom-right dock (`<GlobalChatDock />`) across all boards and docs with live unread badge syncing.
+
+**Alternatives considered:**
+- Standalone Socket Microservice (rejected — would add significant deployment overhead, port multiplexing, and redundant JWT auth logic with zero performance gain under Bun's uWebSockets engine).
+- Polling-only REST chat (rejected — fails the enterprise real-time requirement for typing indicators, instant message delivery, and live presence).
+
+**Consequences:** Seamless, low-latency collaboration across timezones with zero extra infrastructure overhead, robust 3-tier group governance, and bidirectional task integration.
+

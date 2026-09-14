@@ -40,6 +40,7 @@ import { useAuthStore } from '../../store/authStore';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { CreateTaskFromMessageModal } from './CreateTaskFromMessageModal';
 import { MemberPicker } from './MemberPicker';
+import { useChatStore } from '../../store/chatStore';
 
 export interface ChatMessage {
   id: string;
@@ -195,6 +196,7 @@ export function TaskChatPane({
 }: TaskChatPaneProps) {
   const { user } = useAuthStore();
   const orgId = user?.organizationId;
+  const { openGlobalDock } = useChatStore();
 
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const lastMemberPickerClosedRef = useRef(0);
@@ -698,6 +700,17 @@ export function TaskChatPane({
           >
             <Video className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Meet</span>
+          </button>
+
+          {/* Floating Messenger Quick Launcher */}
+          <button
+            type="button"
+            className="flex items-center gap-1 h-7 px-2 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground text-xs font-semibold cursor-pointer transition-colors border border-border/60"
+            title="Open Chat Messenger"
+            onClick={() => openGlobalDock()}
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
+            <span className="hidden sm:inline">Chat</span>
           </button>
 
           {/* Add Member shortcut with directly anchored popover */}
