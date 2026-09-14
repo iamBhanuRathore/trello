@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Card } from '@boardly/ui/card';
 import { Button } from '@boardly/ui/button';
@@ -93,6 +93,19 @@ export function Workspaces() {
   const queryClient = useQueryClient();
   const [editingWs, setEditingWs] = useState<{ id: string; name: string } | null>(null);
   const [deletingWs, setDeletingWs] = useState<{ id: string; name: string } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Sidebar "+" deep-links here with ?createWorkspace=1 — consume on change
+  // (no remount when already on this route, so watch searchParams).
+  const [createOpen, setCreateOpen] = useState(false);
+  useEffect(() => {
+    if (searchParams.get('createWorkspace') === '1') {
+      setCreateOpen(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('createWorkspace');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const {
     data: workspaces,
@@ -150,6 +163,8 @@ export function Workspaces() {
         </div>
         <CreateWorkspaceDialog
           onSuccess={() => queryClient.invalidateQueries({ queryKey: ['workspaces'] })}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
         />
       </div>
 
@@ -331,7 +346,12 @@ export function Workspaces() {
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="ghost" size="sm" onClick={() => setEditingWs(null)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDialogOpen(false)}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" size="sm" disabled={updateWsMutation.isPending}>
@@ -879,8 +899,22 @@ function BoardsList({ projectId, initialBoards }: { projectId: string; initialBo
   );
 }
 
-function CreateWorkspaceDialog({ onSuccess }: { onSuccess: () => void }) {
-  const [open, setOpen] = useState(false);
+function CreateWorkspaceDialog({
+  onSuccess,
+  open,
+  onOpenChange,
+}: {
+  onSuccess: () => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = open !== undefined;
+  const dialogOpen = isControlled ? open : internalOpen;
+  const setDialogOpen = (v: boolean) => {
+    if (!isControlled) setInternalOpen(v);
+    onOpenChange?.(v);
+  };
   const [name, setName] = useState('');
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -888,12 +922,12 @@ function CreateWorkspaceDialog({ onSuccess }: { onSuccess: () => void }) {
     if (!name.trim()) return;
     await api.post('/workspaces', { name: name.trim() });
     setName('');
-    setOpen(false);
+    setDialogOpen(false);
     onSuccess();
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
       <DialogTrigger asChild>
         <Button size="sm" className="h-9 text-xs font-semibold gap-1.5 shadow-xs">
           <Plus className="h-4 w-4" /> Create Workspace

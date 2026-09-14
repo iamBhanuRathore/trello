@@ -300,9 +300,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
                 Workspaces &amp; Teams
               </SidebarGroupLabel>
               <Link
-                to="/"
+                to="/?createWorkspace=1"
                 onClick={handleNavClick}
-                title="Add / View Workspaces"
+                title="Create new workspace"
                 className="text-muted-foreground hover:text-foreground p-0.5 rounded-md hover:bg-sidebar-accent transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
