@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-14 — Board page aggregate + loading states (kills board N+1)
+
+**Context:** Board page (`/b/:id`) fired 1× board + 1× lists + N× `cards?listId` (each with 6 enrichment queries) via `useEffect`, with no `isLoading`/skeleton/error/empty states — blank UI while fetching.
+
+**Decision:** `GET /v1/boards/:id/full` returns `{board, lists:[{...list, cards:[enriched]}]}` in ~8 Neon queries, cached as one payload under existing `bv:{board}` (`boardfull` scope) so all current bumps invalidate it. `BoardView.tsx` uses single `['board','full',id]` query (`staleTime 30s`) with skeleton columns, error+retry, and empty-list states; mutations invalidate the full key.
+
+**Alternatives considered:** Per-list `listCards` cache only (kept — still serves other surfaces, but first board load still paid N× Neon misses).
+
+**Consequences:** Board loads skip Neon on hit (1 Upstash RTT); miss cost unchanged (~8 queries once per 60s).
+
 ### 2026-09-14 — Aggressive breadth caching + workspaces tree (free-tier latency)
 
 **Context:** Workspaces page fired 18 requests (2× `/me` ~1s, 5× `projects?ws` up to 1.42s, 8× `boards?project` up to 1.03s) against Neon free + Upstash free. Per-request Neon RTT dominated.

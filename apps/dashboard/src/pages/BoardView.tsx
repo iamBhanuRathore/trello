@@ -130,15 +130,22 @@ export function BoardView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  const { data: board } = useQuery({
-    queryKey: ['board', boardId],
-    queryFn: async () => (await api.get(`/boards/${boardId}`)).data,
+  // Single aggregate request: board + lists + enriched cards (~8 Neon queries
+  // on miss, 1 Redis RTT on hit). Replaces 1× board + 1× lists + N× cards fan-out.
+  const {
+    data: full,
+    isLoading: isBoardLoading,
+    isError: isBoardError,
+    refetch: refetchBoard,
+  } = useQuery({
+    queryKey: ['board', 'full', boardId],
+    queryFn: async () => (await api.get(`/boards/${boardId}/full`)).data,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
   });
 
-  const { data: listsData } = useQuery({
-    queryKey: ['lists', boardId],
-    queryFn: async () => (await api.get(`/lists?boardId=${boardId}`)).data,
-  });
+  const board = full?.board;
+  const listsData = full?.lists;
 
   const [lists, setLists] = useState<KanbanList[]>([]);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(
@@ -175,21 +182,10 @@ export function BoardView() {
     setSearchParams(nextParams);
   }, [emitCardFocus, searchParams, setSearchParams]);
 
-  // Fetch cards for each list
+  // Seed local drag-drop state from the aggregate payload (no per-list fetch).
   useEffect(() => {
     if (!listsData) return;
-
-    const fetchCards = async () => {
-      const enrichedLists = await Promise.all(
-        listsData.map(async (list: any) => {
-          const res = await api.get(`/cards?listId=${list.id}`);
-          return { ...list, cards: res.data || [] };
-        })
-      );
-      setLists(enrichedLists);
-    };
-
-    fetchCards();
+    setLists(listsData);
   }, [listsData]);
 
   const moveCardMutation = useMutation({
@@ -395,6 +391,7 @@ export function BoardView() {
   const updateBoardMutation = useMutation({
     mutationFn: async (name: string) => await api.patch(`/boards/${boardId}`, { name }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
       queryClient.invalidateQueries({ queryKey: ['board', boardId] });
       setIsEditingBoard(false);
     },
@@ -478,54 +475,97 @@ export function BoardView() {
       </div>
 
       <div className="flex-1 overflow-x-auto pb-4 pt-1">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={customCollisionDetection}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
-          <div className="flex h-full gap-4 items-start">
-            {lists.map((list) => (
-              <ListColumn
-                key={list.id}
-                list={list}
-                boardId={boardId!}
-                isDraggingActive={!!activeCard}
-                onAddCard={(c) => {
-                  const newLists = lists.map((l) =>
-                    l.id === list.id ? { ...l, cards: [...l.cards, c] } : l
-                  );
-                  setLists(newLists);
-                }}
-                onCardClick={handleCardClick}
-                onOpenFullEditor={(data) => {
-                  setCreateTaskConfig({
-                    isOpen: true,
-                    initialData: {
-                      listId: list.id,
-                      ...data,
-                    },
-                  });
-                }}
-              />
-            ))}
-
-            <AddListForm
-              boardId={boardId!}
-              onAdd={() => queryClient.invalidateQueries({ queryKey: ['lists', boardId] })}
-            />
-          </div>
-
-          <DragOverlay dropAnimation={dropAnimation}>
-            {activeCard ? (
-              <div className="w-72 pointer-events-none">
-                <KanbanCardView card={activeCard} isOverlay />
+        {isBoardLoading ? (
+          <div className="flex h-full gap-4 items-start" aria-label="Loading board">
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="w-72 shrink-0 rounded-xl border border-border/60 bg-card/40 p-3 space-y-3 animate-pulse"
+              >
+                <div className="h-4 w-24 rounded bg-muted" />
+                {[0, 1, 2].map((j) => (
+                  <div key={j} className="h-20 rounded-lg bg-muted/70" />
+                ))}
               </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+            ))}
+          </div>
+        ) : isBoardError ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Couldn&apos;t load this board. It may have been deleted or you lost access.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => refetchBoard()}>
+                Retry
+              </Button>
+            </div>
+          </div>
+        ) : lists.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center space-y-3">
+              <p className="text-sm text-muted-foreground">
+                No lists yet. Create your first list to start adding tasks.
+              </p>
+              <AddListForm
+                boardId={boardId!}
+                onAdd={() =>
+                  queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] })
+                }
+              />
+            </div>
+          </div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={customCollisionDetection}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <div className="flex h-full gap-4 items-start">
+              {lists.map((list) => (
+                <ListColumn
+                  key={list.id}
+                  list={list}
+                  boardId={boardId!}
+                  isDraggingActive={!!activeCard}
+                  onAddCard={(c) => {
+                    const newLists = lists.map((l) =>
+                      l.id === list.id ? { ...l, cards: [...l.cards, c] } : l
+                    );
+                    setLists(newLists);
+                  }}
+                  onCardClick={handleCardClick}
+                  onOpenFullEditor={(data) => {
+                    setCreateTaskConfig({
+                      isOpen: true,
+                      initialData: {
+                        listId: list.id,
+                        ...data,
+                      },
+                    });
+                  }}
+                />
+              ))}
+
+              <AddListForm
+                boardId={boardId!}
+                onAdd={() =>
+                  queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] })
+                }
+              />
+            </div>
+
+            <DragOverlay dropAnimation={dropAnimation}>
+              {activeCard ? (
+                <div className="w-72 pointer-events-none">
+                  <KanbanCardView card={activeCard} isOverlay />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
       </div>
       {selectedCardId && (
         <Suspense fallback={<RouteFallback label="Loading task…" />}>
@@ -577,6 +617,7 @@ export function BoardView() {
                 orgId={user?.organizationId}
                 onClose={() => setCreateTaskConfig({ isOpen: false })}
                 onTaskCreated={(card) => {
+                  queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
                   queryClient.invalidateQueries({ queryKey: ['lists', boardId] });
                   setCreateTaskConfig({ isOpen: false });
                   if (card?.id) handleCardClick(card.id);
@@ -734,6 +775,7 @@ function ListColumn({
   const deleteListMutation = useMutation({
     mutationFn: async () => await api.delete(`/lists/${list.id}`),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
       queryClient.invalidateQueries({ queryKey: ['lists', boardId] });
       setIsDeletingList(false);
     },
@@ -742,6 +784,7 @@ function ListColumn({
   const updateListMutation = useMutation({
     mutationFn: async (name: string) => await api.patch(`/lists/${list.id}`, { name }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
       queryClient.invalidateQueries({ queryKey: ['lists', boardId] });
       setIsEditingList(false);
     },

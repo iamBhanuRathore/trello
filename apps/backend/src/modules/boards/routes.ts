@@ -2,8 +2,21 @@ import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
-import { createBoard, listBoards, getBoard, updateBoard, deleteBoard, archiveBoard } from './service';
-import { getBoardLabels, createBoardLabel, updateBoardLabel, deleteBoardLabel } from '../cards/service';
+import {
+  createBoard,
+  listBoards,
+  getBoard,
+  getBoardFull,
+  updateBoard,
+  deleteBoard,
+  archiveBoard,
+} from './service';
+import {
+  getBoardLabels,
+  createBoardLabel,
+  updateBoardLabel,
+  deleteBoardLabel,
+} from '../cards/service';
 
 /** Board routes — /v1/boards/* */
 export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
@@ -48,6 +61,22 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
         name: t.String(),
         background: t.Optional(t.String()),
       }),
+    }
+  )
+
+  // GET /v1/boards/:id/full — aggregate board+lists+cards (kills board-page N+1).
+  // Must be registered before /:id so "full" isn't captured as a param.
+  .get(
+    '/:id/full',
+    async ({ params, user, set }) => {
+      try {
+        return await getBoardFull(db, params.id, user.organizationId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('board.read'),
     }
   )
 

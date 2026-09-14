@@ -19,6 +19,8 @@ import {
   boardMembers,
   automations,
   intakeForms,
+  users,
+  stages,
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import {
@@ -143,6 +145,189 @@ export async function deleteBoard(db: Database, id: string, organizationId: stri
   await bumpProjectCache(board.projectId);
   await bumpOrgCache(organizationId);
   return board;
+}
+
+export interface BoardFullList {
+  id: string;
+  boardId: string;
+  name: string;
+  position: number;
+  cards: any[];
+}
+
+export interface BoardFull {
+  board: typeof boards.$inferSelect;
+  lists: BoardFullList[];
+}
+
+/**
+ * Aggregate board + lists + enriched cards in ~8 Neon queries, cached as one
+ * payload under the board version. Replaces board-page N+1
+ * (1× board + 1× lists + N× cards?listId, each with 6 enrichment queries).
+ * Same `bv:{board}` version key as listLists/listCards — existing bumps
+ * invalidate this payload automatically.
+ */
+export async function getBoardFull(
+  db: Database,
+  boardId: string,
+  organizationId: string
+): Promise<BoardFull> {
+  const { data } = await cachedBoardRead(boardId, 'full', 'boardfull', () =>
+    loadBoardFull(db, boardId, organizationId)
+  );
+  return data;
+}
+
+async function loadBoardFull(
+  db: Database,
+  boardId: string,
+  organizationId: string
+): Promise<BoardFull> {
+  const [board] = await db
+    .select()
+    .from(boards)
+    .where(
+      and(
+        eq(boards.id, boardId),
+        eq(boards.organizationId, organizationId),
+        isNull(boards.deletedAt)
+      )
+    )
+    .limit(1);
+  if (!board) throw httpError(404, 'Board not found');
+
+  const listRows = await db
+    .select()
+    .from(lists)
+    .where(and(eq(lists.boardId, boardId), eq(lists.isArchived, false), isNull(lists.deletedAt)))
+    .orderBy(lists.position);
+
+  if (listRows.length === 0) return { board, lists: [] };
+  const listIds = listRows.map((l) => l.id);
+
+  const cardRows = await db
+    .select()
+    .from(cards)
+    .where(
+      and(inArray(cards.listId, listIds), eq(cards.isArchived, false), isNull(cards.deletedAt))
+    )
+    .orderBy(cards.position);
+
+  const cardIds = cardRows.map((c) => c.id);
+  if (cardIds.length === 0) {
+    return { board, lists: listRows.map((l) => ({ ...l, cards: [] })) };
+  }
+
+  const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
+  const [assigneeRows, labelRows, stageRows, checklistItemsRows, commentRows, attachmentRows] =
+    await Promise.all([
+      db
+        .select({
+          cardId: cardAssignees.cardId,
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+        })
+        .from(cardAssignees)
+        .innerJoin(users, eq(users.id, cardAssignees.userId))
+        .where(inArray(cardAssignees.cardId, cardIds)),
+      db
+        .select({
+          cardId: cardLabels.cardId,
+          id: labels.id,
+          name: labels.name,
+          color: labels.color,
+        })
+        .from(cardLabels)
+        .innerJoin(labels, eq(labels.id, cardLabels.labelId))
+        .where(inArray(cardLabels.cardId, cardIds)),
+      stageIds.length > 0
+        ? db
+            .select({
+              id: stages.id,
+              name: stages.name,
+              color: stages.color,
+              category: stages.category,
+            })
+            .from(stages)
+            .where(inArray(stages.id, stageIds))
+        : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
+      db
+        .select({
+          cardId: checklists.cardId,
+          itemId: checklistItems.id,
+          isDone: checklistItems.isDone,
+        })
+        .from(checklists)
+        .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
+        .where(inArray(checklists.cardId, cardIds)),
+      db
+        .select({ cardId: comments.cardId, id: comments.id })
+        .from(comments)
+        .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
+      db
+        .select({ cardId: attachments.cardId, id: attachments.id })
+        .from(attachments)
+        .where(inArray(attachments.cardId, cardIds)),
+    ]);
+
+  const assigneesByCard = new Map<string, any>();
+  assigneeRows.forEach((a) => {
+    assigneesByCard.set(a.cardId, {
+      id: a.id,
+      name: a.name,
+      email: a.email,
+      avatarUrl: a.avatarUrl,
+    });
+  });
+  const labelsByCard = new Map<string, any[]>();
+  labelRows.forEach((l) => {
+    if (!labelsByCard.has(l.cardId)) labelsByCard.set(l.cardId, []);
+    labelsByCard.get(l.cardId)!.push({ id: l.id, name: l.name, color: l.color });
+  });
+  const stagesById = new Map<string, any>();
+  stageRows.forEach((s) => stagesById.set(s.id, s));
+  const checklistStats = new Map<string, { total: number; done: number }>();
+  checklistItemsRows.forEach((row) => {
+    if (!checklistStats.has(row.cardId)) checklistStats.set(row.cardId, { total: 0, done: 0 });
+    if (row.itemId) {
+      const s = checklistStats.get(row.cardId)!;
+      s.total += 1;
+      if (row.isDone) s.done += 1;
+    }
+  });
+  const commentsCount = new Map<string, number>();
+  commentRows.forEach((c) => commentsCount.set(c.cardId, (commentsCount.get(c.cardId) || 0) + 1));
+  const attachmentsCount = new Map<string, number>();
+  attachmentRows.forEach((a) =>
+    attachmentsCount.set(a.cardId, (attachmentsCount.get(a.cardId) || 0) + 1)
+  );
+
+  const enrichedByList = new Map<string, any[]>();
+  for (const card of cardRows) {
+    const stats = checklistStats.get(card.id) || { total: 0, done: 0 };
+    const assignee = assigneesByCard.get(card.id) || null;
+    const enriched = {
+      ...card,
+      assignee,
+      assignees: assignee ? [assignee] : [],
+      labels: labelsByCard.get(card.id) || [],
+      stage: card.stageId ? stagesById.get(card.stageId) || null : null,
+      checklistTotal: stats.total,
+      checklistDone: stats.done,
+      commentsCount: commentsCount.get(card.id) || 0,
+      attachmentsCount: attachmentsCount.get(card.id) || 0,
+    };
+    const arr = enrichedByList.get(card.listId) ?? [];
+    arr.push(enriched);
+    enrichedByList.set(card.listId, arr);
+  }
+
+  return {
+    board,
+    lists: listRows.map((l) => ({ ...l, cards: enrichedByList.get(l.id) ?? [] })),
+  };
 }
 
 // Hard delete for permanent purge
