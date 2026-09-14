@@ -14,6 +14,15 @@ interface MemberPickerProps {
   title?: string;
   mode?: 'single' | 'multiple';
   placeholder?: string;
+  /**
+   * Staged mode: row clicks only toggle a local selection — no API calls.
+   * Footer shows Cancel + Submit; `onSubmit` receives the absolute staged
+   * selection (ids + member directory for optimistic rows). Omit for the
+   * legacy immediate per-click behavior.
+   */
+  onSubmit?: (selection: { ids: string[]; members: Map<string, OrgMember> }) => void;
+  submitLabel?: string;
+  isSubmitting?: boolean;
 }
 
 const PAGE_SIZE = 20;
@@ -97,12 +106,22 @@ export function MemberPicker({
   title = 'Assign Team Members',
   mode = 'multiple',
   placeholder = 'Search by name or email...',
+  onSubmit,
+  submitLabel = 'Save',
+  isSubmitting = false,
 }: MemberPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'selected' | 'admin' | 'member'>('all');
+
+  // Staged mode: selection lives locally until Submit. The picker mounts fresh
+  // on every open, so initializing once is correct; Escape/outside-click
+  // discards the staged set without any API call.
+  const isStaged = !!onSubmit;
+  const [stagedIds, setStagedIds] = useState<Set<string>>(() => new Set(assignedUserIds));
+  const effectiveIds = isStaged ? stagedIds : assignedUserIds;
 
   // Debounce search query for server-side lookup (250ms)
   useEffect(() => {
@@ -139,10 +158,10 @@ export function MemberPicker({
 
   // Pinned query: Assigned members and current user are always fetched and preserved
   const pinnedUserIds = useMemo(() => {
-    const ids = new Set<string>(assignedUserIds);
+    const ids = new Set<string>(effectiveIds);
     if (currentUserId) ids.add(currentUserId);
     return Array.from(ids);
-  }, [assignedUserIds, currentUserId]);
+  }, [effectiveIds, currentUserId]);
 
   const { data: pinnedMembers = [] } = useQuery({
     queryKey: ['pinnedOrgMembers', orgId, pinnedUserIds],
@@ -204,7 +223,7 @@ export function MemberPicker({
   // Split into Assigned and Unassigned
   const assignedMembers = useMemo(() => {
     const list: OrgMember[] = [];
-    assignedUserIds.forEach((uid) => {
+    effectiveIds.forEach((uid) => {
       const m = memberMap.get(uid);
       if (m) {
         if (
@@ -226,14 +245,14 @@ export function MemberPicker({
       }
     });
     return list;
-  }, [assignedUserIds, memberMap, roleFilter, searchQuery]);
+  }, [effectiveIds, memberMap, roleFilter, searchQuery]);
 
   const unassignedMembers = useMemo(() => {
     if (roleFilter === 'selected') return [];
-    return loadedMembers.filter((m) => !assignedUserIds.has(m.userId));
-  }, [loadedMembers, assignedUserIds, roleFilter]);
+    return loadedMembers.filter((m) => !effectiveIds.has(m.userId));
+  }, [loadedMembers, effectiveIds, roleFilter]);
 
-  const isCurrentUserAssigned = currentUserId ? assignedUserIds.has(currentUserId) : false;
+  const isCurrentUserAssigned = currentUserId ? effectiveIds.has(currentUserId) : false;
   const currentMember = memberMap.get(currentUserId || '');
 
   // Infinite scroll trigger when reaching bottom of container
@@ -251,7 +270,7 @@ export function MemberPicker({
 
   const handleToggle = (userId: string) => {
     if (mode === 'single') {
-      if (assignedUserIds.has(userId)) {
+      if (effectiveIds.has(userId)) {
         onRemove(userId);
       } else {
         onAssign(userId);
@@ -259,12 +278,38 @@ export function MemberPicker({
       onClose();
       return;
     }
-    if (assignedUserIds.has(userId)) {
+    if (isStaged) {
+      // Staged mode: toggle locally only — the batch API call happens on Submit.
+      setStagedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(userId)) {
+          next.delete(userId);
+        } else {
+          next.add(userId);
+        }
+        return next;
+      });
+      return;
+    }
+    if (effectiveIds.has(userId)) {
       onRemove(userId);
     } else {
       onAssign(userId);
     }
   };
+
+  // Staged changes vs the committed selection (for the Submit label/count).
+  const stagedChangeCount = (() => {
+    if (!isStaged) return 0;
+    let count = 0;
+    stagedIds.forEach((id) => {
+      if (!assignedUserIds.has(id)) count += 1;
+    });
+    assignedUserIds.forEach((id) => {
+      if (!stagedIds.has(id)) count += 1;
+    });
+    return count;
+  })();
 
   return (
     <div
@@ -338,7 +383,7 @@ export function MemberPicker({
           All {totalServerCount > 0 && `(${totalServerCount})`}
         </button>
 
-        {assignedUserIds.size > 0 && (
+        {effectiveIds.size > 0 && (
           <button
             type="button"
             onClick={() => setRoleFilter('selected')}
@@ -348,7 +393,7 @@ export function MemberPicker({
                 : 'bg-muted/60 text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
           >
-            Selected ({assignedUserIds.size})
+            Selected ({effectiveIds.size})
           </button>
         )}
 
@@ -387,7 +432,7 @@ export function MemberPicker({
             <button
               type="button"
               className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-medium text-primary bg-primary/10 hover:bg-primary/15 border border-primary/20 transition-all cursor-pointer group shadow-2xs"
-              onClick={() => onAssign(currentUserId)}
+              onClick={() => handleToggle(currentUserId)}
             >
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded-md bg-primary/20 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -517,7 +562,36 @@ export function MemberPicker({
         )}
       </div>
 
-      {/* ─── Footer: Search Indicator / Stats ─── */}
+      {/* ─── Footer: Submit (staged mode) + stats ─── */}
+      {isStaged && (
+        <div className="px-3 py-2 border-t border-border/50 bg-muted/15 flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 flex-1 text-xs rounded-lg cursor-pointer"
+            onClick={onClose}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 flex-1 text-xs font-semibold rounded-lg cursor-pointer"
+            disabled={stagedChangeCount === 0 || isSubmitting}
+            onClick={() => onSubmit?.({ ids: Array.from(stagedIds), members: memberMap })}
+          >
+            {isSubmitting ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…
+              </span>
+            ) : stagedChangeCount > 0 ? (
+              `${submitLabel} (${stagedChangeCount} change${stagedChangeCount === 1 ? '' : 's'})`
+            ) : (
+              submitLabel
+            )}
+          </Button>
+        </div>
+      )}
       <div className="px-3.5 py-2 border-t border-border/50 bg-muted/15 flex items-center justify-between text-[11px] text-muted-foreground">
         <span>
           {isFetching && !isFetchingNextPage ? (

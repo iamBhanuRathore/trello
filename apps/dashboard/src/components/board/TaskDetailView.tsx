@@ -89,6 +89,7 @@ import { ShareTaskModal } from './ShareTaskModal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Kbd } from '../ui/Kbd';
 import { toast } from 'sonner';
+import { useOptimisticMutation } from '../../lib/useOptimisticMutation';
 import { usePageMetadata } from '../../hooks/usePageMetadata';
 import {
   getTaskIdentifier,
@@ -427,6 +428,33 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
       },
     });
+
+    // Batched observer update from the picker's Submit: one optimistic
+    // application of the staged set, one batch of API calls, rollback on failure.
+    const updateWatchersMutation = useOptimisticMutation<
+      void,
+      {
+        add: string[];
+        remove: string[];
+        staged: Array<{ id: string; name?: string; email?: string; avatarUrl?: string | null }>;
+      }
+    >(
+      async ({ add, remove }) => {
+        await Promise.all([
+          ...add.map((userId) => api.post(`/cards/${cardId}/watch`, { userId })),
+          ...remove.map((userId) => api.post(`/cards/${cardId}/unwatch`, { userId })),
+        ]);
+      },
+      {
+        queryKeys: [['card', cardId]],
+        applyOptimistic: ({ staged }) => {
+          queryClient.setQueryData(['card', cardId], (old: any) =>
+            old ? { ...old, watchers: staged } : old
+          );
+        },
+        errorMessage: 'Failed to update observers. Please try again.',
+      }
+    );
 
     const toggleLabelMutation = useMutation({
       mutationFn: async ({ labelId, hasLabel }: { labelId: string; hasLabel: boolean }) => {
@@ -1888,6 +1916,33 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                       currentUserId={user?.id}
                       title="Add Observers"
                       mode="multiple"
+                      submitLabel="Save"
+                      isSubmitting={updateWatchersMutation.isPending}
+                      onSubmit={(selection) => {
+                        const prevIds = new Set<string>(
+                          card?.watchers?.map((w: any) => w.id) || []
+                        );
+                        const nextIds = new Set(selection.ids);
+                        const add = selection.ids.filter((id) => !prevIds.has(id));
+                        const remove = [...prevIds].filter((id) => !nextIds.has(id));
+                        setShowWatcherPicker(false);
+                        if (add.length === 0 && remove.length === 0) return;
+                        // Staged rows for the optimistic update: keep existing
+                        // watcher objects, resolve newly added ones from the
+                        // picker's member directory.
+                        const staged = selection.ids.map((id) => {
+                          const existing = card?.watchers?.find((w: any) => w.id === id);
+                          if (existing) return existing;
+                          const m = selection.members.get(id);
+                          return {
+                            id,
+                            name: m?.name ?? 'Team member',
+                            email: m?.email ?? '',
+                            avatarUrl: m?.avatarUrl ?? null,
+                          };
+                        });
+                        updateWatchersMutation.mutate({ add, remove, staged });
+                      }}
                     />
                   </div>
                 )}
