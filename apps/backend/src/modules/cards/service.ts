@@ -1750,6 +1750,9 @@ export async function getMyTasks(
 
   const targetIdsArray = Array.from(targetCardIds);
 
+  const limit = Math.min(Math.max(options?.limit ?? 50, 1), 100);
+  const offset = Math.max(options?.offset ?? 0, 0);
+
   if (targetIdsArray.length === 0) {
     return {
       tasks: [],
@@ -1762,6 +1765,9 @@ export async function getMyTasks(
         dueSoonCount: 0,
       },
       total: 0,
+      hasMore: false,
+      limit,
+      offset,
     };
   }
 
@@ -1828,7 +1834,24 @@ export async function getMyTasks(
     .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
     .leftJoin(stages, eq(stages.id, cards.stageId))
     .where(and(...conditions))
-    .orderBy(desc(cards.updatedAt));
+    .orderBy(desc(cards.updatedAt))
+    .limit(limit)
+    .offset(offset);
+
+  // Full-set counts (summary + pagination) — same joins/filters, no limit/offset.
+  const [counts] = await db
+    .select({
+      total: sql<number>`count(distinct ${cards.id})::int`,
+      overdue: sql<number>`count(distinct ${cards.id}) filter (where ${cards.dueDate} < now())::int`,
+      dueSoon: sql<number>`count(distinct ${cards.id}) filter (where ${cards.dueDate} >= now() and ${cards.dueDate} <= now() + interval '7 days')::int`,
+    })
+    .from(cards)
+    .innerJoin(lists, eq(lists.id, cards.listId))
+    .innerJoin(boards, eq(boards.id, lists.boardId))
+    .innerJoin(projects, eq(projects.id, boards.projectId))
+    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+    .leftJoin(stages, eq(stages.id, cards.stageId))
+    .where(and(...conditions));
 
   const cardIds = rawTasks.map((t) => t.id);
 
@@ -1911,25 +1934,12 @@ export async function getMyTasks(
   });
 
   // Calculate overdue & dueSoon
-  const now = new Date();
-  const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  let overdueCount = 0;
-  let dueSoonCount = 0;
 
   const tasks = rawTasks.map((t) => {
     const isAssignee = assignedCardIds.has(t.id);
     const isObserver = watchingCardIds.has(t.id);
     const isParticipant = participatingCardIds.has(t.id);
     const isCreator = createdCardIds.has(t.id);
-
-    if (t.dueDate) {
-      const d = new Date(t.dueDate);
-      if (d < now) {
-        overdueCount++;
-      } else if (d <= sevenDaysFromNow) {
-        dueSoonCount++;
-      }
-    }
 
     return {
       ...t,
@@ -1951,10 +1961,13 @@ export async function getMyTasks(
       totalObserving: watchingCardIds.size,
       totalParticipating: participatingCardIds.size,
       totalCreated: createdCardIds.size,
-      overdueCount,
-      dueSoonCount,
+      overdueCount: counts?.overdue ?? 0,
+      dueSoonCount: counts?.dueSoon ?? 0,
     },
-    total: tasks.length,
+    total: counts?.total ?? 0,
+    hasMore: offset + tasks.length < (counts?.total ?? 0),
+    limit,
+    offset,
   };
 }
 
