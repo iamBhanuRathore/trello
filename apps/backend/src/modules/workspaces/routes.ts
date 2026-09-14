@@ -2,11 +2,34 @@ import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
-import { createWorkspace, listWorkspaces, getWorkspace, updateWorkspace, deleteWorkspace } from './service';
+import {
+  createWorkspace,
+  listWorkspaces,
+  getWorkspace,
+  updateWorkspace,
+  deleteWorkspace,
+  getWorkspaceTree,
+} from './service';
 
 /** Workspace routes — /v1/workspaces/* */
 export const workspaceRoutes = new Elysia({ prefix: '/workspaces', tags: ['Workspaces'] })
   .use(authPlugin)
+
+  // GET /v1/workspaces/tree — aggregate workspaces→projects→boards (kills N+1).
+  // Must be registered before /:id so "tree" isn't captured as a param.
+  .get(
+    '/tree',
+    async ({ user, set }) => {
+      try {
+        return await getWorkspaceTree(db, user.organizationId, user.userId, user.isPlatformAdmin);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('workspace.read'),
+    }
+  )
 
   // GET /v1/workspaces
   .get(

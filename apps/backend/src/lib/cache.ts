@@ -13,9 +13,13 @@ import { logger } from './logger';
  * Key layout:
  *   bv:{boardId}              board cache version (bumped on any board mutation)
  *   cv:{cardId}               card cache version (bumped on any card mutation)
+ *   ov:{orgId}                org tree version (bumped on workspace/project/board mutation)
+ *   wv:{workspaceId}          workspace version (bumped on project mutation)
+ *   pv:{projectId}            project version (bumped on board mutation)
  *   cb:{cardId}               card -> boardId map (for cross-bumps, TTL 3600)
- *   r:v1:{scope}:{ver}:{rest} cached JSON payload, TTL 300
+ *   r:v1:{scope}:{ver}:{rest} cached JSON payload, TTL 300 (or shorter per-call)
  *   perm:{org}:{user}:{perm}  RBAC allow marker '1', TTL 60
+ *   u:{userId} / n:{user}:{org} / q:{org}:{hash} / misc TTL-only keys (see below)
  */
 
 const DATA_PREFIX = 'r:v1';
@@ -63,6 +67,18 @@ export function boardVersionKey(boardId: string): string {
 
 export function cardVersionKey(cardId: string): string {
   return `cv:${cardId}`;
+}
+
+export function orgVersionKey(orgId: string): string {
+  return `ov:${orgId}`;
+}
+
+export function workspaceVersionKey(workspaceId: string): string {
+  return `wv:${workspaceId}`;
+}
+
+export function projectVersionKey(projectId: string): string {
+  return `pv:${projectId}`;
 }
 
 function dataKey(scopePrefix: string, version: string, rest: string): string {
@@ -167,6 +183,172 @@ export async function bumpBoardCache(boardId: string): Promise<void> {
   } catch {
     // Best-effort; TTL bounds staleness.
   }
+}
+
+/** Bump org tree version (invalidates workspaces tree + org-scoped lists). */
+export async function bumpOrgCache(orgId: string): Promise<void> {
+  const redis = redisOrNull();
+  if (!redis) return;
+  try {
+    await redis.incr(orgVersionKey(orgId));
+  } catch {
+    // Best-effort; TTL bounds staleness.
+  }
+}
+
+/** Bump workspace version (invalidates project lists for the workspace). */
+export async function bumpWorkspaceCache(workspaceId: string): Promise<void> {
+  const redis = redisOrNull();
+  if (!redis) return;
+  try {
+    await redis.incr(workspaceVersionKey(workspaceId));
+  } catch {
+    // Best-effort; TTL bounds staleness.
+  }
+}
+
+/** Bump project version (invalidates board lists for the project). */
+export async function bumpProjectCache(projectId: string): Promise<void> {
+  const redis = redisOrNull();
+  if (!redis) return;
+  try {
+    await redis.incr(projectVersionKey(projectId));
+  } catch {
+    // Best-effort; TTL bounds staleness.
+  }
+}
+
+/**
+ * Generic versioned read-through cache.
+ * Reuses the 1-RTT Lua fetch (version + payload) — no SCAN, Upstash-friendly.
+ */
+export async function cachedVersionedRead<T>(
+  verKey: string,
+  rest: string,
+  scopePrefix: string,
+  loader: () => Promise<T>,
+  ttlSeconds: number = SAFETY_TTL_SECONDS
+): Promise<{ data: T; hit: boolean }> {
+  const redis = redisOrNull();
+  if (!redis) return { data: await loader(), hit: false };
+
+  try {
+    const raw = await runFetchLua(redis, verKey, `${DATA_PREFIX}:${scopePrefix}`, rest);
+    if (raw) return { data: JSON.parse(raw) as T, hit: true };
+  } catch (err: unknown) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'Cache read failed — falling through to DB'
+    );
+  }
+
+  const data = await loader();
+  try {
+    let ver = await redis.get(verKey);
+    if (!ver) {
+      ver = String(await redis.incr(verKey));
+      await redis.expire(verKey, SAFETY_TTL_SECONDS * 12);
+    }
+    await redis.set(dataKey(scopePrefix, ver, rest), JSON.stringify(data), 'EX', ttlSeconds);
+  } catch {
+    // Cache write failure must never break the read path.
+  }
+  return { data, hit: false };
+}
+
+/** Versioned read scoped to an org (workspaces tree, org lists). Short TTL keeps free-tier memory bounded. */
+export async function cachedOrgRead<T>(
+  orgId: string,
+  rest: string,
+  scopePrefix: string,
+  loader: () => Promise<T>,
+  ttlSeconds = 60
+): Promise<{ data: T; hit: boolean }> {
+  return cachedVersionedRead(
+    orgVersionKey(orgId),
+    `${orgId}:${rest}`,
+    scopePrefix,
+    loader,
+    ttlSeconds
+  );
+}
+
+/** Versioned read scoped to a workspace (project lists). */
+export async function cachedWorkspaceRead<T>(
+  workspaceId: string,
+  rest: string,
+  scopePrefix: string,
+  loader: () => Promise<T>,
+  ttlSeconds = 60
+): Promise<{ data: T; hit: boolean }> {
+  return cachedVersionedRead(
+    workspaceVersionKey(workspaceId),
+    `${workspaceId}:${rest}`,
+    scopePrefix,
+    loader,
+    ttlSeconds
+  );
+}
+
+/** Versioned read scoped to a project (board lists, project reports). */
+export async function cachedProjectRead<T>(
+  projectId: string,
+  rest: string,
+  scopePrefix: string,
+  loader: () => Promise<T>,
+  ttlSeconds = 120
+): Promise<{ data: T; hit: boolean }> {
+  return cachedVersionedRead(
+    projectVersionKey(projectId),
+    `${projectId}:${rest}`,
+    scopePrefix,
+    loader,
+    ttlSeconds
+  );
+}
+
+// ─── TTL-only cache (no version — for per-user / search / inbox-style reads) ──
+
+export async function cachedTTL<T>(
+  key: string,
+  ttlSeconds: number,
+  loader: () => Promise<T>
+): Promise<{ data: T; hit: boolean }> {
+  const redis = redisOrNull();
+  if (!redis) return { data: await loader(), hit: false };
+
+  try {
+    const raw = await redis.get(key);
+    if (raw) return { data: JSON.parse(raw) as T, hit: true };
+  } catch {
+    // fall through to DB
+  }
+
+  const data = await loader();
+  try {
+    await redis.set(key, JSON.stringify(data), 'EX', ttlSeconds);
+  } catch {
+    // Best-effort.
+  }
+  return { data, hit: false };
+}
+
+export async function invalidateTTL(key: string): Promise<void> {
+  const redis = redisOrNull();
+  if (!redis) return;
+  try {
+    await redis.del(key);
+  } catch {
+    // Best-effort.
+  }
+}
+
+export function userCacheKey(userId: string): string {
+  return `u:${userId}`;
+}
+
+export async function bumpUserCache(userId: string): Promise<void> {
+  await invalidateTTL(userCacheKey(userId));
 }
 
 /** Bump a card version (invalidates the single-card cache). */

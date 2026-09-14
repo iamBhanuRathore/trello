@@ -2,6 +2,13 @@ import { eq, and, isNull } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { projects } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
+import {
+  cachedWorkspaceRead,
+  cachedProjectRead,
+  bumpOrgCache,
+  bumpWorkspaceCache,
+  bumpProjectCache,
+} from '../../lib/cache';
 
 export interface CreateProjectInput {
   organizationId: string;
@@ -49,38 +56,50 @@ export async function createProject(db: Database, input: CreateProjectInput) {
     })
     .returning();
 
+  await bumpWorkspaceCache(input.workspaceId);
+  await bumpOrgCache(input.organizationId);
   return project;
 }
 
 export async function listProjects(db: Database, workspaceId: string, organizationId: string) {
-  return db
-    .select()
-    .from(projects)
-    .where(
-      and(
-        eq(projects.workspaceId, workspaceId),
-        eq(projects.organizationId, organizationId),
-        isNull(projects.deletedAt)
-      )
-    )
-    .orderBy(projects.createdAt);
+  const { data } = await cachedWorkspaceRead(
+    workspaceId,
+    `projects:${organizationId}`,
+    'projects',
+    () =>
+      db
+        .select()
+        .from(projects)
+        .where(
+          and(
+            eq(projects.workspaceId, workspaceId),
+            eq(projects.organizationId, organizationId),
+            isNull(projects.deletedAt)
+          )
+        )
+        .orderBy(projects.createdAt)
+  );
+  return data;
 }
 
 export async function getProject(db: Database, id: string, organizationId: string) {
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(
-      and(
-        eq(projects.id, id),
-        eq(projects.organizationId, organizationId),
-        isNull(projects.deletedAt)
+  const { data } = await cachedProjectRead(id, `project:${organizationId}`, 'project', async () => {
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, id),
+          eq(projects.organizationId, organizationId),
+          isNull(projects.deletedAt)
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
 
-  if (!project) throw httpError(404, 'Project not found');
-  return project;
+    if (!project) throw httpError(404, 'Project not found');
+    return project;
+  });
+  return data;
 }
 
 export async function updateProject(
@@ -106,6 +125,9 @@ export async function updateProject(
     .returning();
 
   if (!project) throw httpError(404, 'Project not found');
+  await bumpProjectCache(id);
+  await bumpWorkspaceCache(project.workspaceId);
+  await bumpOrgCache(organizationId);
   return project;
 }
 
@@ -144,5 +166,8 @@ export async function deleteProject(db: Database, id: string, organizationId: st
     .returning();
 
   if (!project) throw httpError(404, 'Project not found');
+  await bumpProjectCache(id);
+  await bumpWorkspaceCache(project.workspaceId);
+  await bumpOrgCache(organizationId);
   return project;
 }

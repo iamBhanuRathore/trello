@@ -7,28 +7,36 @@ import {
 } from '../../db/schema';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { eventBus } from '../../lib/event-bus';
+import { cachedTTL, invalidateTTL } from '../../lib/cache';
 
 // ─── Service Functions ───────────────────────────────────────────────────────
 
 export async function listNotifications(db: Database, userId: string, organizationId: string) {
-  return db
-    .select()
-    .from(notifications)
-    .where(and(eq(notifications.userId, userId), eq(notifications.organizationId, organizationId)))
-    .orderBy(desc(notifications.createdAt))
-    .limit(50);
+  // Inbox poll — short TTL only (writes fan out per comment/assign).
+  const { data } = await cachedTTL(`n:${userId}:${organizationId}`, 20, () =>
+    db
+      .select()
+      .from(notifications)
+      .where(
+        and(eq(notifications.userId, userId), eq(notifications.organizationId, organizationId))
+      )
+      .orderBy(desc(notifications.createdAt))
+      .limit(50)
+  );
+  return data;
 }
 
 export async function markAsRead(db: Database, notificationId: string, userId: string) {
-  return db
+  const res = await db
     .update(notifications)
     .set({ isRead: true, readAt: new Date() })
     .where(and(eq(notifications.id, notificationId), eq(notifications.userId, userId)))
     .returning();
+  return res;
 }
 
 export async function markAllAsRead(db: Database, userId: string, organizationId: string) {
-  return db
+  const res = await db
     .update(notifications)
     .set({ isRead: true, readAt: new Date() })
     .where(
@@ -39,18 +47,23 @@ export async function markAllAsRead(db: Database, userId: string, organizationId
       )
     )
     .returning();
+  await invalidateTTL(`n:${userId}:${organizationId}`);
+  return res;
 }
 
 export async function getPreferences(db: Database, userId: string, organizationId: string) {
-  return db
-    .select()
-    .from(notificationPreferences)
-    .where(
-      and(
-        eq(notificationPreferences.userId, userId),
-        eq(notificationPreferences.organizationId, organizationId)
+  const { data } = await cachedTTL(`npref:${userId}:${organizationId}`, 60, () =>
+    db
+      .select()
+      .from(notificationPreferences)
+      .where(
+        and(
+          eq(notificationPreferences.userId, userId),
+          eq(notificationPreferences.organizationId, organizationId)
+        )
       )
-    );
+  );
+  return data;
 }
 
 export async function updatePreferences(
@@ -97,6 +110,7 @@ export async function updatePreferences(
         .then(([updated]) => updated)
     )
   );
+  await invalidateTTL(`npref:${userId}:${organizationId}`);
   return results;
 }
 
@@ -243,6 +257,7 @@ export async function registerPushDevice(
       })
       .where(eq(pushDevices.id, existing.id))
       .returning();
+    await invalidateTTL(`push:${userId}`);
     return updated!;
   }
 
@@ -258,6 +273,7 @@ export async function registerPushDevice(
     })
     .returning();
 
+  await invalidateTTL(`push:${userId}`);
   return created!;
 }
 
@@ -267,14 +283,18 @@ export async function unregisterPushDevice(db: Database, userId: string, token: 
     .where(and(eq(pushDevices.token, token), eq(pushDevices.userId, userId)))
     .returning();
 
+  await invalidateTTL(`push:${userId}`);
   return { success: !!deleted };
 }
 
 export async function getUserPushDevices(db: Database, userId: string) {
-  return await db
-    .select()
-    .from(pushDevices)
-    .where(and(eq(pushDevices.userId, userId), eq(pushDevices.isActive, true)));
+  const { data } = await cachedTTL(`push:${userId}`, 60, () =>
+    db
+      .select()
+      .from(pushDevices)
+      .where(and(eq(pushDevices.userId, userId), eq(pushDevices.isActive, true)))
+  );
+  return data;
 }
 
 export async function dispatchPushNotification(

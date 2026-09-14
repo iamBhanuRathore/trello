@@ -94,17 +94,20 @@ export function Workspaces() {
   const [deletingWs, setDeletingWs] = useState<{ id: string; name: string } | null>(null);
 
   const { data: workspaces } = useQuery({
-    queryKey: ['workspaces'],
+    queryKey: ['workspaces', 'tree'],
     queryFn: async () => {
-      const res = await api.get('/workspaces');
+      const res = await api.get('/workspaces/tree');
       return res.data;
     },
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
   });
 
   const deleteWsMutation = useMutation({
     mutationFn: async (id: string) => await api.delete(`/workspaces/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setDeletingWs(null);
     },
   });
@@ -114,6 +117,7 @@ export function Workspaces() {
       await api.patch(`/workspaces/${id}`, { name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setEditingWs(null);
     },
   });
@@ -247,7 +251,7 @@ export function Workspaces() {
             </div>
           </div>
 
-          <ProjectsList workspaceId={ws.id} />
+          <ProjectsList workspaceId={ws.id} initialProjects={ws.projects ?? []} />
         </div>
       ))}
 
@@ -333,7 +337,13 @@ export function Workspaces() {
   );
 }
 
-function ProjectsList({ workspaceId }: { workspaceId: string }) {
+function ProjectsList({
+  workspaceId,
+  initialProjects,
+}: {
+  workspaceId: string;
+  initialProjects?: any[];
+}) {
   const queryClient = useQueryClient();
   const [importProjectId, setImportProjectId] = useState<string | null>(null);
   const [importProjectName, setImportProjectName] = useState<string>('');
@@ -343,15 +353,21 @@ function ProjectsList({ workspaceId }: { workspaceId: string }) {
   const { data: projects } = useQuery({
     queryKey: ['projects', workspaceId],
     queryFn: async () => {
+      // Tree already includes projects — skip the fan-out request when present.
+      if (initialProjects !== undefined) return initialProjects;
       const res = await api.get(`/projects?workspaceId=${workspaceId}`);
       return res.data;
     },
+    initialData: initialProjects,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
   });
 
   const deleteProjMutation = useMutation({
     mutationFn: async (id: string) => await api.delete(`/projects/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', workspaceId] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setDeletingProj(null);
     },
   });
@@ -361,6 +377,7 @@ function ProjectsList({ workspaceId }: { workspaceId: string }) {
       await api.patch(`/projects/${id}`, { name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', workspaceId] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setEditingProj(null);
     },
   });
@@ -448,7 +465,7 @@ function ProjectsList({ workspaceId }: { workspaceId: string }) {
             </div>
           </div>
 
-          <BoardsList projectId={proj.id} />
+          <BoardsList projectId={proj.id} initialBoards={proj.boards ?? []} />
         </div>
       ))}
 
@@ -552,7 +569,7 @@ function ProjectsList({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function BoardsList({ projectId }: { projectId: string }) {
+function BoardsList({ projectId, initialBoards }: { projectId: string; initialBoards?: any[] }) {
   const queryClient = useQueryClient();
   const [editingBoard, setEditingBoard] = useState<{
     id: string;
@@ -564,15 +581,21 @@ function BoardsList({ projectId }: { projectId: string }) {
   const { data: boards } = useQuery({
     queryKey: ['boards', projectId],
     queryFn: async () => {
+      // Tree already includes boards — skip the fan-out request when present.
+      if (initialBoards !== undefined) return initialBoards;
       const res = await api.get(`/boards?projectId=${projectId}`);
       return res.data;
     },
+    initialData: initialBoards,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
   });
 
   const deleteBoardMutation = useMutation({
     mutationFn: async (id: string) => await api.delete(`/boards/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setDeletingBoard(null);
     },
   });
@@ -589,6 +612,7 @@ function BoardsList({ projectId }: { projectId: string }) {
     }) => await api.patch(`/boards/${id}`, { name, background }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setEditingBoard(null);
     },
   });
@@ -874,6 +898,7 @@ function CreateBoardDialog({ projectId }: { projectId: string }) {
     setName('');
     setOpen(false);
     queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
+    queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
   };
 
   return (
@@ -957,6 +982,7 @@ function CreateProjectDialog({ workspaceId }: { workspaceId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', workspaceId] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setName('');
       setOpen(false);
     },

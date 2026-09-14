@@ -15,6 +15,7 @@ import {
   auditLog,
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
+import { cachedTTL, invalidateTTL, bumpOrgCache } from '../../lib/cache';
 import {
   renderInviteEmail,
   renderAccountDeactivatedEmail,
@@ -37,6 +38,11 @@ export type AllowedOrgRole = (typeof ALLOWED_ORG_ROLES)[number];
 
 // ─── getOrg ───────────────────────────────────────────────────────────────────
 export async function getOrg(db: Database, orgId: string) {
+  const { data } = await cachedTTL(`org:${orgId}`, 60, () => loadOrg(db, orgId));
+  return data;
+}
+
+async function loadOrg(db: Database, orgId: string) {
   const [org] = await db
     .select()
     .from(organizations)
@@ -69,6 +75,8 @@ export async function updateOrg(
     .returning();
 
   if (!org) throw httpError(404, 'Organization not found');
+  await invalidateTTL(`org:${orgId}`);
+  await bumpOrgCache(orgId);
   return org;
 }
 
@@ -115,6 +123,12 @@ function buildMemberConditions(orgId: string, options: ListMembersOptions = {}):
 
 // ─── listMembers ──────────────────────────────────────────────────────────────
 export async function listMembers(db: Database, orgId: string, options: ListMembersOptions = {}) {
+  const key = `m:${orgId}:${options.search ?? ''}:${options.role ?? ''}:${options.status ?? ''}:${options.limit ?? ''}:${options.offset ?? ''}`;
+  const { data } = await cachedTTL(key, 30, () => loadMembers(db, orgId, options));
+  return data;
+}
+
+async function loadMembers(db: Database, orgId: string, options: ListMembersOptions = {}) {
   const conditions = buildMemberConditions(orgId, options);
 
   let query = db

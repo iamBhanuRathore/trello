@@ -18,7 +18,7 @@ import {
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
-import { cachedBoardRead, bumpBoardCache } from '../../lib/cache';
+import { cachedBoardRead, bumpBoardCache, bumpCardCache } from '../../lib/cache';
 
 export interface CreateListInput {
   boardId: string;
@@ -105,6 +105,11 @@ export async function updateList(
 
   eventBus.broadcast(`board:${existingList.boardId}`, 'list.updated', updatedList);
   await bumpBoardCache(existingList.boardId);
+  // getCard caches listName under cv — rename must bump member cards.
+  if (input.name !== undefined && input.name !== undefined) {
+    const memberCards = await db.select({ id: cards.id }).from(cards).where(eq(cards.listId, id));
+    await Promise.all(memberCards.map((c) => bumpCardCache(c.id)));
+  }
   return updatedList;
 }
 
@@ -156,5 +161,9 @@ export async function deleteList(db: Database, id: string, organizationId: strin
 
   eventBus.broadcast(`board:${existingList.boardId}`, 'list.deleted', deletedList);
   await bumpBoardCache(existingList.boardId);
+  // Cascaded card deletes leave cv payloads stale — bump them (TTL bounds the rest).
+  if (cardIds.length > 0) {
+    await Promise.all(cardIds.map((cid) => bumpCardCache(cid)));
+  }
   return deletedList;
 }

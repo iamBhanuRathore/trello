@@ -1,6 +1,7 @@
 import { eq, or, ilike, and, desc } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { savedSearches, cards, boards, projects, workspaces, lists } from '../../db/schema/index';
+import { cachedTTL, invalidateTTL } from '../../lib/cache';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -13,6 +14,13 @@ export async function performSearch(db: Database, organizationId: string, query:
   // Empty / wildcard-only queries would full-scan — return early.
   const literal = trimmed.replace(/[\\%_]/g, (m) => `\\${m}`);
   if (!literal) return [];
+  // TTL-only: writers are any card/board/project edit — versioning would fan out.
+  const key = `q:${organizationId}:${literal.toLowerCase().slice(0, 80)}`;
+  const { data } = await cachedTTL(key, 30, () => runSearch(db, organizationId, literal));
+  return data;
+}
+
+async function runSearch(db: Database, organizationId: string, literal: string) {
   const searchTerm = `%${literal}%`;
 
   // Three searches are independent — fan out concurrently (was 3 sequential).
@@ -76,11 +84,14 @@ export async function performSearch(db: Database, organizationId: string, query:
 }
 
 export async function listSavedSearches(db: Database, userId: string) {
-  return db
-    .select()
-    .from(savedSearches)
-    .where(eq(savedSearches.userId, userId))
-    .orderBy(desc(savedSearches.createdAt));
+  const { data } = await cachedTTL(`saved:${userId}`, 60, () =>
+    db
+      .select()
+      .from(savedSearches)
+      .where(eq(savedSearches.userId, userId))
+      .orderBy(desc(savedSearches.createdAt))
+  );
+  return data;
 }
 
 export async function createSavedSearch(
@@ -101,6 +112,7 @@ export async function createSavedSearch(
       filters: input.filters || {},
     })
     .returning();
+  await invalidateTTL(`saved:${userId}`);
   return savedSearch;
 }
 
@@ -111,5 +123,6 @@ export async function deleteSavedSearch(db: Database, userId: string, id: string
     .returning();
 
   if (!deleted) throw httpError(404, 'Saved search not found');
+  await invalidateTTL(`saved:${userId}`);
   return deleted;
 }

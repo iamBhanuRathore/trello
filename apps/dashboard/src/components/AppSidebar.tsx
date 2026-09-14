@@ -57,13 +57,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
 
   const isAdmin = user?.isPlatformAdmin || user?.role === 'org_owner' || user?.role === 'org_admin';
 
-  // Fetch workspaces & projects tree
+  // Fetch workspaces & projects tree (single aggregate request — was N+1).
   const { data: workspaces = [], isLoading: isWsLoading } = useQuery({
-    queryKey: ['workspaces'],
+    queryKey: ['workspaces', 'tree'],
     queryFn: async () => {
-      const res = await api.get('/workspaces');
+      const res = await api.get('/workspaces/tree');
       return res.data;
     },
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
   });
 
   // Track expanded state for workspaces and projects

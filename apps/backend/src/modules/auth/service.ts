@@ -19,6 +19,7 @@ import {
 } from '../../db/schema/index';
 import { signAccessToken } from '../../middleware/auth';
 import { env } from '../../lib/env';
+import { cachedTTL, userCacheKey, bumpUserCache } from '../../lib/cache';
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 export function httpError(status: number, message: string): Error & { status: number } {
@@ -46,7 +47,12 @@ function parseExpiresIn(duration: string): Date {
   return new Date(now + Number(amount) * (multipliers[unit!] ?? 0));
 }
 
-export async function issueTokenPair(db: Database, userId: string, organizationId: string, isPlatformAdmin: boolean = false) {
+export async function issueTokenPair(
+  db: Database,
+  userId: string,
+  organizationId: string,
+  isPlatformAdmin: boolean = false
+) {
   const accessToken = await signAccessToken({ userId, organizationId, isPlatformAdmin });
 
   // Opaque refresh token — store its hash in DB
@@ -146,7 +152,12 @@ export async function signUp(db: Database, input: SignUpInput) {
     return { user: newUser!, organization: newOrg! };
   });
 
-  const tokens = await issueTokenPair(db, result.user.id, result.organization.id, result.user.isPlatformAdmin);
+  const tokens = await issueTokenPair(
+    db,
+    result.user.id,
+    result.organization.id,
+    result.user.isPlatformAdmin
+  );
 
   return {
     ...tokens,
@@ -202,12 +213,7 @@ export async function signIn(db: Database, input: SignInInput) {
       status: organizationMembers.status,
     })
     .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, user.id),
-        isNull(organizationMembers.deletedAt)
-      )
-    )
+    .where(and(eq(organizationMembers.userId, user.id), isNull(organizationMembers.deletedAt)))
     .limit(1);
 
   if (membership && membership.status === 'deactivated') {
@@ -284,11 +290,7 @@ export async function refreshTokens(db: Database, rawToken: string) {
     .where(eq(refreshTokensTable.id, stored.id));
 
   // Get user + org context
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, stored.userId))
-    .limit(1);
+  const [user] = await db.select().from(users).where(eq(users.id, stored.userId)).limit(1);
 
   if (!user) {
     throw httpError(401, 'User not found');
@@ -299,7 +301,10 @@ export async function refreshTokens(db: Database, rawToken: string) {
   }
 
   const [membership] = await db
-    .select({ organizationId: organizationMembers.organizationId, status: organizationMembers.status })
+    .select({
+      organizationId: organizationMembers.organizationId,
+      status: organizationMembers.status,
+    })
     .from(organizationMembers)
     .where(and(eq(organizationMembers.userId, user.id), isNull(organizationMembers.deletedAt)))
     .limit(1);
@@ -323,6 +328,12 @@ export async function signOut(db: Database, rawToken: string, _userId: string) {
 
 // ─── getMe ────────────────────────────────────────────────────────────────────
 export async function getMe(db: Database, userId: string) {
+  // Hot app-load read (fired 2× on boot via StrictMode): 1 Redis RTT on hit.
+  const { data } = await cachedTTL(userCacheKey(userId), 60, () => loadMe(db, userId));
+  return data;
+}
+
+async function loadMe(db: Database, userId: string) {
   const [user] = await db
     .select({
       id: users.id,
@@ -357,12 +368,7 @@ export async function getMe(db: Database, userId: string) {
       status: organizationMembers.status,
     })
     .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, userId),
-        isNull(organizationMembers.deletedAt)
-      )
-    )
+    .where(and(eq(organizationMembers.userId, userId), isNull(organizationMembers.deletedAt)))
     .limit(1);
 
   if (membership && membership.status === 'deactivated') {
@@ -406,6 +412,7 @@ export async function updateProfile(db: Database, userId: string, input: UpdateP
     await db.update(users).set(updateData).where(eq(users.id, userId));
   }
 
+  await bumpUserCache(userId);
   return await getMe(db, userId);
 }
 
@@ -439,7 +446,10 @@ export async function changePassword(db: Database, userId: string, input: Change
   }
 
   const newHash = await Bun.password.hash(input.newPassword, { algorithm: 'bcrypt', cost: 10 });
-  await db.update(users).set({ passwordHash: newHash, updatedAt: new Date() }).where(eq(users.id, userId));
+  await db
+    .update(users)
+    .set({ passwordHash: newHash, updatedAt: new Date() })
+    .where(eq(users.id, userId));
   return {
     success: true,
     message: hasExistingPassword ? 'Password updated successfully' : 'Password set successfully',
@@ -477,21 +487,24 @@ export async function getMyPermissions(db: Database, userId: string, organizatio
     .limit(1);
 
   const rawRole = (membership?.role as string) || 'member';
-  const roleTitle =
-    user.isPlatformAdmin
-      ? 'Platform Super Admin'
-      : rawRole === 'org_owner'
+  const roleTitle = user.isPlatformAdmin
+    ? 'Platform Super Admin'
+    : rawRole === 'org_owner'
       ? 'Organization Owner'
       : rawRole === 'org_admin'
-      ? 'Organization Admin'
-      : rawRole === 'viewer'
-      ? 'Viewer'
-      : 'Member';
+        ? 'Organization Admin'
+        : rawRole === 'viewer'
+          ? 'Viewer'
+          : 'Member';
 
   // 2. Ensure permissions are available and fetch
   const { ensurePermissionsSeeded } = await import('../roles/service');
   await ensurePermissionsSeeded(db);
-  const { permissions: permsTable, roles: rolesTable, rolePermissions: rpTable } = await import('../../db/schema/index');
+  const {
+    permissions: permsTable,
+    roles: rolesTable,
+    rolePermissions: rpTable,
+  } = await import('../../db/schema/index');
   const allPerms = await db.select().from(permsTable);
 
   // 3. If superadmin or org owner/admin, they have all permissions
@@ -504,10 +517,10 @@ export async function getMyPermissions(db: Database, userId: string, organizatio
       rawRole === 'viewer'
         ? 'Viewer'
         : rawRole === 'billing_manager'
-        ? 'Billing Manager'
-        : rawRole === 'workspace_admin'
-        ? 'Workspace Admin'
-        : 'Member';
+          ? 'Billing Manager'
+          : rawRole === 'workspace_admin'
+            ? 'Workspace Admin'
+            : 'Member';
     const roleRows = await db
       .select({ permKey: permsTable.key })
       .from(rpTable)
@@ -537,7 +550,11 @@ export async function getMyPermissions(db: Database, userId: string, organizatio
   // 4. Group permissions into categories
   const categories: Record<
     string,
-    { label: string; icon: string; items: Array<{ key: string; description: string; granted: boolean }> }
+    {
+      label: string;
+      icon: string;
+      items: Array<{ key: string; description: string; granted: boolean }>;
+    }
   > = {
     workspace_project: {
       label: 'Workspaces & Projects',
@@ -630,7 +647,10 @@ export async function getInvitationInfo(db: Database, token: string) {
 
   const now = new Date();
   if (invitation.expiresAt < now) {
-    throw httpError(410, 'This invitation link has expired. Please ask your administrator to resend the invite.');
+    throw httpError(
+      410,
+      'This invitation link has expired. Please ask your administrator to resend the invite.'
+    );
   }
 
   // Fetch organization info
@@ -679,7 +699,9 @@ export async function getInvitationInfo(db: Database, token: string) {
     user: {
       id: existingUser?.id ?? null,
       name: existingUser?.name ?? null,
-      hasPassword: Boolean(existingUser?.passwordHash && existingUser.passwordHash.trim().length > 0),
+      hasPassword: Boolean(
+        existingUser?.passwordHash && existingUser.passwordHash.trim().length > 0
+      ),
     },
   };
 }
@@ -709,7 +731,10 @@ export async function acceptInvitation(db: Database, input: AcceptInvitationInpu
 
   const now = new Date();
   if (invitation.expiresAt < now) {
-    throw httpError(410, 'This invitation link has expired. Please ask your administrator to resend the invite.');
+    throw httpError(
+      410,
+      'This invitation link has expired. Please ask your administrator to resend the invite.'
+    );
   }
 
   const [org] = await db
@@ -791,20 +816,16 @@ export async function acceptInvitation(db: Database, input: AcceptInvitationInpu
         })
         .where(eq(organizationMembers.id, existingMember.id));
     } else {
-      await tx
-        .insert(organizationMembers)
-        .values({
-          organizationId: invitation.organizationId,
-          userId: existingUser.id,
-          role: invitation.role,
-          status: 'active',
-        });
+      await tx.insert(organizationMembers).values({
+        organizationId: invitation.organizationId,
+        userId: existingUser.id,
+        role: invitation.role,
+        status: 'active',
+      });
     }
 
     // Delete the consumed invitation
-    await tx
-      .delete(invitations)
-      .where(eq(invitations.token, token.trim()));
+    await tx.delete(invitations).where(eq(invitations.token, token.trim()));
 
     // Audit log
     await tx
@@ -823,7 +844,12 @@ export async function acceptInvitation(db: Database, input: AcceptInvitationInpu
   });
 
   // Issue access + refresh token pair
-  const tokens = await issueTokenPair(db, user.id, invitation.organizationId, user.isPlatformAdmin ?? false);
+  const tokens = await issueTokenPair(
+    db,
+    user.id,
+    invitation.organizationId,
+    user.isPlatformAdmin ?? false
+  );
 
   return {
     ...tokens,
@@ -846,4 +872,3 @@ export async function acceptInvitation(db: Database, input: AcceptInvitationInpu
     },
   };
 }
-

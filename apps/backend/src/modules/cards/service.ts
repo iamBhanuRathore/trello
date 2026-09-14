@@ -27,6 +27,8 @@ import {
   cachedCardRead,
   bumpBoardCache,
   bumpCardAndBoard,
+  bumpCardCache,
+  bumpOrgCache,
   cachedBoardIdForCard,
   cachedCardIdForChecklist,
   rememberCardBoard,
@@ -266,6 +268,11 @@ export async function createCard(db: Database, organizationId: string, input: Cr
     organizationId: boardInfo!.organizationId,
   });
   await bumpBoardCache(boardInfo!.boardId);
+  await bumpOrgCache(boardInfo!.organizationId);
+  // Subtask creation must invalidate the parent card modal (subtasksTotal/Done cached under cv).
+  if (input.parentCardId) {
+    await bumpForCard(db, input.parentCardId);
+  }
   return card;
 }
 
@@ -616,11 +623,15 @@ export async function deleteCard(db: Database, id: string, organizationId: strin
 }
 
 export async function getBoardLabels(db: Database, boardId: string) {
-  return db.select().from(labels).where(eq(labels.boardId, boardId)).orderBy(labels.name);
+  const { data } = await cachedBoardRead(boardId, 'labels', 'labels', () =>
+    db.select().from(labels).where(eq(labels.boardId, boardId)).orderBy(labels.name)
+  );
+  return data;
 }
 
 export async function createBoardLabel(db: Database, boardId: string, name: string, color: string) {
   const [newLabel] = await db.insert(labels).values({ boardId, name, color }).returning();
+  await bumpBoardCache(boardId);
   return newLabel;
 }
 
@@ -640,13 +651,27 @@ export async function updateBoardLabel(
     .where(eq(labels.id, labelId))
     .returning();
   if (!updated) throw httpError(404, 'Label not found');
+  // Label rename/recolor is embedded in listCards (bv) and getCard (cv) — bump both.
+  await bumpBoardCache(updated.boardId);
+  const attached = await db
+    .select({ cardId: cardLabels.cardId })
+    .from(cardLabels)
+    .where(eq(cardLabels.labelId, labelId));
+  await Promise.all(attached.map((r) => bumpCardCache(r.cardId)));
   return updated;
 }
 
 export async function deleteBoardLabel(db: Database, labelId: string) {
+  const [existing] = await db.select().from(labels).where(eq(labels.id, labelId)).limit(1);
+  const attached = await db
+    .select({ cardId: cardLabels.cardId })
+    .from(cardLabels)
+    .where(eq(cardLabels.labelId, labelId));
   // Remove from cards first (cascade FK)
   await db.delete(cardLabels).where(eq(cardLabels.labelId, labelId));
   await db.delete(labels).where(eq(labels.id, labelId));
+  if (existing) await bumpBoardCache(existing.boardId);
+  await Promise.all(attached.map((r) => bumpCardCache(r.cardId)));
 }
 
 export async function updateCard(db: Database, id: string, organizationId: string, input: any) {

@@ -27,6 +27,13 @@ import {
   workspaceMembers,
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
+import {
+  bumpOrgCache,
+  bumpWorkspaceCache,
+  bumpProjectCache,
+  bumpBoardCache,
+  bumpCardCache,
+} from '../../lib/cache';
 
 export interface TrashedItem {
   id: string;
@@ -134,7 +141,13 @@ export async function listTrash(db: Database, organizationId: string): Promise<T
     .from(cards)
     .innerJoin(lists, eq(lists.id, cards.listId))
     .innerJoin(boards, eq(boards.id, lists.boardId))
-    .where(and(eq(boards.organizationId, organizationId), isNotNull(cards.deletedAt), isNull(boards.deletedAt)));
+    .where(
+      and(
+        eq(boards.organizationId, organizationId),
+        isNotNull(cards.deletedAt),
+        isNull(boards.deletedAt)
+      )
+    );
 
   trashedCards.forEach((c) => {
     if (c.deletedAt) {
@@ -173,6 +186,8 @@ export async function restoreItem(
       .where(and(eq(workspaces.id, itemId), eq(workspaces.organizationId, organizationId)))
       .returning();
     if (!restored) throw httpError(404, 'Workspace not found in trash');
+    await bumpOrgCache(organizationId);
+    await bumpWorkspaceCache(itemId);
     return restored;
   }
 
@@ -190,6 +205,9 @@ export async function restoreItem(
       .set({ deletedAt: null, updatedAt: new Date() })
       .where(eq(workspaces.id, restored.workspaceId));
 
+    await bumpOrgCache(organizationId);
+    await bumpWorkspaceCache(restored.workspaceId);
+    await bumpProjectCache(itemId);
     return restored;
   }
 
@@ -207,6 +225,9 @@ export async function restoreItem(
       .set({ deletedAt: null, updatedAt: new Date() })
       .where(eq(projects.id, restored.projectId));
 
+    await bumpOrgCache(organizationId);
+    await bumpProjectCache(restored.projectId);
+    await bumpBoardCache(itemId);
     return restored;
   }
 
@@ -217,6 +238,8 @@ export async function restoreItem(
       .where(and(eq(cards.id, itemId), eq(cards.organizationId, organizationId)))
       .returning();
     if (!restored) throw httpError(404, 'Card not found in trash');
+    await bumpCardCache(itemId);
+    await bumpOrgCache(organizationId);
     return restored;
   }
 
@@ -232,21 +255,29 @@ export async function hardDeleteItem(
 ) {
   if (itemType === 'card') {
     await deleteCardCascade(db, [itemId]);
+    await bumpCardCache(itemId);
+    await bumpOrgCache(organizationId);
     return { success: true, id: itemId };
   }
 
   if (itemType === 'board') {
     await deleteBoardCascade(db, itemId, organizationId);
+    await bumpBoardCache(itemId);
+    await bumpOrgCache(organizationId);
     return { success: true, id: itemId };
   }
 
   if (itemType === 'project') {
     await deleteProjectCascade(db, itemId, organizationId);
+    await bumpProjectCache(itemId);
+    await bumpOrgCache(organizationId);
     return { success: true, id: itemId };
   }
 
   if (itemType === 'workspace') {
     await deleteWorkspaceCascade(db, itemId, organizationId);
+    await bumpWorkspaceCache(itemId);
+    await bumpOrgCache(organizationId);
     return { success: true, id: itemId };
   }
 
@@ -294,7 +325,10 @@ async function deleteBoardCascade(db: Database, boardId: string, organizationId:
   const listIds = listRows.map((l) => l.id);
 
   if (listIds.length > 0) {
-    const cardRows = await db.select({ id: cards.id }).from(cards).where(inArray(cards.listId, listIds));
+    const cardRows = await db
+      .select({ id: cards.id })
+      .from(cards)
+      .where(inArray(cards.listId, listIds));
     const cardIds = cardRows.map((c) => c.id);
     if (cardIds.length > 0) {
       await deleteCardCascade(db, cardIds);

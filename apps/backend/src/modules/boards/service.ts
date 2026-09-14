@@ -21,6 +21,13 @@ import {
   intakeForms,
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
+import {
+  cachedBoardRead,
+  cachedProjectRead,
+  bumpBoardCache,
+  bumpProjectCache,
+  bumpOrgCache,
+} from '../../lib/cache';
 
 export interface CreateBoardInput {
   organizationId: string;
@@ -40,35 +47,48 @@ export async function createBoard(db: Database, input: CreateBoardInput) {
     })
     .returning();
 
+  await bumpProjectCache(input.projectId);
+  await bumpOrgCache(input.organizationId);
   return board;
 }
 
 export async function listBoards(db: Database, projectId: string, organizationId: string) {
-  return db
-    .select()
-    .from(boards)
-    .where(
-      and(
-        eq(boards.projectId, projectId),
-        eq(boards.organizationId, organizationId),
-        eq(boards.isArchived, false),
-        isNull(boards.deletedAt)
-      )
-    )
-    .orderBy(boards.createdAt);
+  const { data } = await cachedProjectRead(
+    projectId,
+    `boards:${organizationId}`,
+    'boards',
+    () =>
+      db
+        .select()
+        .from(boards)
+        .where(
+          and(
+            eq(boards.projectId, projectId),
+            eq(boards.organizationId, organizationId),
+            eq(boards.isArchived, false),
+            isNull(boards.deletedAt)
+          )
+        )
+        .orderBy(boards.createdAt),
+    60
+  );
+  return data;
 }
 
 export async function getBoard(db: Database, id: string, organizationId: string) {
-  const [board] = await db
-    .select()
-    .from(boards)
-    .where(
-      and(eq(boards.id, id), eq(boards.organizationId, organizationId), isNull(boards.deletedAt))
-    )
-    .limit(1);
+  const { data } = await cachedBoardRead(id, `board:${organizationId}`, 'board', async () => {
+    const [board] = await db
+      .select()
+      .from(boards)
+      .where(
+        and(eq(boards.id, id), eq(boards.organizationId, organizationId), isNull(boards.deletedAt))
+      )
+      .limit(1);
 
-  if (!board) throw httpError(404, 'Board not found');
-  return board;
+    if (!board) throw httpError(404, 'Board not found');
+    return board;
+  });
+  return data;
 }
 
 export async function updateBoard(
@@ -86,6 +106,9 @@ export async function updateBoard(
     .returning();
 
   if (!board) throw httpError(404, 'Board not found');
+  await bumpBoardCache(id);
+  await bumpProjectCache(board.projectId);
+  await bumpOrgCache(organizationId);
   return board;
 }
 
@@ -99,6 +122,9 @@ export async function archiveBoard(db: Database, id: string, organizationId: str
     .returning();
 
   if (!board) throw httpError(404, 'Board not found');
+  await bumpBoardCache(id);
+  await bumpProjectCache(board.projectId);
+  await bumpOrgCache(organizationId);
   return board;
 }
 
@@ -113,6 +139,9 @@ export async function deleteBoard(db: Database, id: string, organizationId: stri
     .returning();
 
   if (!board) throw httpError(404, 'Board not found');
+  await bumpBoardCache(id);
+  await bumpProjectCache(board.projectId);
+  await bumpOrgCache(organizationId);
   return board;
 }
 
@@ -187,5 +216,8 @@ export async function hardDeleteBoard(db: Database, id: string, organizationId: 
     .where(and(eq(boards.id, id), eq(boards.organizationId, organizationId)))
     .returning();
 
+  await bumpBoardCache(id);
+  if (board.projectId) await bumpProjectCache(board.projectId);
+  await bumpOrgCache(organizationId);
   return deletedBoard;
 }

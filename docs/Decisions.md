@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-14 — Aggressive breadth caching + workspaces tree (free-tier latency)
+
+**Context:** Workspaces page fired 18 requests (2× `/me` ~1s, 5× `projects?ws` up to 1.42s, 8× `boards?project` up to 1.03s) against Neon free + Upstash free. Per-request Neon RTT dominated.
+
+**Decision:** Cache breadth, not TTL length: `ov/wv/pv` versions (`cachedOrgRead/WorkspaceRead/ProjectRead`, 60-120s) for workspaces/projects/boards/getBoard/labels; TTL-only (`cachedTTL`) for `getMe` 60s, notifications 20s, prefs/push/saved 60s, search 30s, members 30s, org 60s. New `GET /v1/workspaces/tree` returns workspaces→projects→boards in 3 queries cached as one payload (60s); dashboard `Workspaces.tsx`/`AppSidebar.tsx` use it with `staleTime 30s`, eliminating N+1. Fixed stale gaps first: board/label/list-rename/list-delete/subtask-parent/trash bumps.
+
+**Alternatives considered:** Longer TTLs (rejected — stale-board risk); per-endpoint caching only without tree (kept as fallback, but 13 Upstash RTTs still cost vs 1).
+
+**Consequences:** Repeat loads skip Neon (1 Upstash RTT ~50-100ms); mutations pay version bumps; 20-60s stale windows on inbox/search/members (documented); free Upstash stays <256MB via short TTLs, no SCAN.
+
 ### 2026-09-13 — Upstash read cache (versioned, 1-RTT reads)
 
 **Context:** Neon free tier makes every DB round-trip ~100-300ms from IN; a card open fires ~10 requests × (permission join + N queries). Upstash Singapore chosen (closest to user + Neon SG).
