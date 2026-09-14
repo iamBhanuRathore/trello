@@ -478,11 +478,11 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
                                         onClick={handleNavClick}
                                         className={`flex items-center gap-2 px-2 py-1 rounded-md text-[11px] transition-colors ${
                                           isDocsActive
-                                            ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 font-medium'
+                                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium'
                                             : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent'
                                         }`}
                                       >
-                                        <BookOpen className="w-3 h-3 text-teal-500 shrink-0" />
+                                        <BookOpen className="w-3 h-3 text-amber-500 shrink-0" />
                                         <span>Docs &amp; Wiki</span>
                                       </Link>
 
