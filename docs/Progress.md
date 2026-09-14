@@ -1724,3 +1724,11 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   2. Expanded `NewDirectMessageModal.tsx` to `max-w-xl` with comfortable padding and a 420px teammate list for smoother scanning.
 - Decisions made: 2-column modal layout utilizes widescreen desktop real estate effectively without vertical cramping or keyhole scrolling.
 - Tests & Validation: Verified with `tsc -b && vite build` (clean build, 0 errors).
+
+### 2026-09-15 — Fix Date Object Serialization in Chat Unread & Message Queries
+
+- What was done:
+  1. Fixed `listUserChannels` in `apps/backend/src/modules/chat/service.ts` where `member.lastReadAt` (a JavaScript `Date` instance) was directly interpolated into `sql`${chatMessages.createdAt} > ${member.lastReadAt}``. In postgres.js with `prepare: false`, this triggered a `TypeError: The "string" argument must be of type string or an instance of Buffer or ArrayBuffer. Received an instance of Date`, returning a sanitized 500 database error whenever channels were refreshed after channel creation. Fixed by serializing with `.toISOString()::timestamp`.
+  2. Fixed pagination cursor date interpolation in `listMessages` to safely serialize `cursor` with `new Date(cursor).toISOString()::timestamp`.
+- Decisions made: Always cast interpolated ISO datetime strings with `::timestamp` when constructing raw SQL comparisons with postgres.js.
+- Tests & Validation: Verified `GET /v1/chat/channels` and `POST /v1/chat/channels/group` return HTTP 200 with accurate unread counts and channel details; `bun test` passes 8/8.

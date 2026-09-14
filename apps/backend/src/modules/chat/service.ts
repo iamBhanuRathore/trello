@@ -203,13 +203,16 @@ export async function listUserChannels(db: Database, organizationId: string, use
     const member = row.member;
 
     // Calculate unread count
+    const readCutoff = member.lastReadAt
+      ? new Date(member.lastReadAt).toISOString()
+      : '1970-01-01T00:00:00.000Z';
     const [unreadResult] = await db
       .select({ count: sql<number>`count(*)` })
       .from(chatMessages)
       .where(
         and(
           eq(chatMessages.channelId, channel.id),
-          sql`${chatMessages.createdAt} > ${member.lastReadAt}`,
+          sql`${chatMessages.createdAt} > ${readCutoff}::timestamp`,
           sql`${chatMessages.userId} != ${userId}`,
           isNull(chatMessages.deletedAt)
         )
@@ -827,7 +830,8 @@ export async function listMessages(
   ];
 
   if (cursor) {
-    conditions.push(sql`${chatMessages.createdAt} < ${new Date(cursor)}`);
+    const cursorIso = new Date(cursor).toISOString();
+    conditions.push(sql`${chatMessages.createdAt} < ${cursorIso}::timestamp`);
   }
 
   const rawMessages = await db
