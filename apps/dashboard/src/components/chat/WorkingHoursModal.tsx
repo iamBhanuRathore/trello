@@ -5,6 +5,7 @@ import { Clock, Globe, X, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { presenceService } from '../../lib/presenceService';
 import { PresenceBadge } from './PresenceBadge';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface WorkingHoursModalProps {
   isOpen: boolean;
@@ -28,6 +29,8 @@ const COMMON_TIMEZONES = [
 ];
 
 export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, onClose }) => {
+  useEscapeKey(onClose, isOpen);
+
   const queryClient = useQueryClient();
 
   const [tab, setTab] = useState<'status' | 'schedule'>('status');
@@ -307,55 +310,53 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
             <div className="space-y-2">
               <label className="text-xs font-semibold text-foreground">Weekly Working Days</label>
               <div className="rounded-xl border border-border divide-y divide-border/60">
-                {[
-                  'monday',
-                  'tuesday',
-                  'wednesday',
-                  'thursday',
-                  'friday',
-                  'saturday',
-                  'sunday',
-                ].map((day) => {
-                  const dayConfig = schedule[day] || { start: '09:00', end: '18:00', active: false };
-                  return (
-                    <div
-                      key={day}
-                      className="p-2.5 flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="flex items-center gap-2.5 w-28">
-                        <input
-                          type="checkbox"
-                          checked={!!dayConfig.active}
-                          onChange={(e) => updateDaySchedule(day, 'active', e.target.checked)}
-                          className="w-4 h-4 rounded border-border text-primary cursor-pointer"
-                        />
-                        <span className="font-semibold capitalize text-foreground">
-                          {day.slice(0, 3)}
-                        </span>
-                      </div>
-
-                      {dayConfig.active ? (
-                        <div className="flex items-center gap-2">
+                {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(
+                  (day) => {
+                    const dayConfig = schedule[day] || {
+                      start: '09:00',
+                      end: '18:00',
+                      active: false,
+                    };
+                    return (
+                      <div
+                        key={day}
+                        className="p-2.5 flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="flex items-center gap-2.5 w-28">
                           <input
-                            type="time"
-                            value={dayConfig.start}
-                            onChange={(e) => updateDaySchedule(day, 'start', e.target.value)}
-                            className="px-2 py-1 bg-muted/40 border border-border rounded-lg text-xs outline-none focus:border-primary"
+                            type="checkbox"
+                            checked={!!dayConfig.active}
+                            onChange={(e) => updateDaySchedule(day, 'active', e.target.checked)}
+                            className="w-4 h-4 rounded border-border text-primary cursor-pointer"
                           />
-                          <span className="text-muted-foreground">to</span>
-                          <input
-                            type="time"
-                            value={dayConfig.end}
-                            onChange={(e) => updateDaySchedule(day, 'end', e.target.value)}
-                            className="px-2 py-1 bg-muted/40 border border-border rounded-lg text-xs outline-none focus:border-primary"
-                          />
+                          <span className="font-semibold capitalize text-foreground">
+                            {day.slice(0, 3)}
+                          </span>
                         </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground italic">Day off</span>
-                      )}
-                    </div>
-                  );
-                })}
+
+                        {dayConfig.active ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="time"
+                              value={dayConfig.start}
+                              onChange={(e) => updateDaySchedule(day, 'start', e.target.value)}
+                              className="px-2 py-1 bg-muted/40 border border-border rounded-lg text-xs outline-none focus:border-primary"
+                            />
+                            <span className="text-muted-foreground">to</span>
+                            <input
+                              type="time"
+                              value={dayConfig.end}
+                              onChange={(e) => updateDaySchedule(day, 'end', e.target.value)}
+                              className="px-2 py-1 bg-muted/40 border border-border rounded-lg text-xs outline-none focus:border-primary"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">Day off</span>
+                        )}
+                      </div>
+                    );
+                  }
+                )}
               </div>
             </div>
           </div>

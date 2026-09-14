@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, X, CheckSquare, Loader2, ArrowRight } from 'lucide-react';
 import { searchService } from '../../lib/searchService';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface TaskMentionPickerModalProps {
   isOpen: boolean;
@@ -15,6 +16,8 @@ export const TaskMentionPickerModal: React.FC<TaskMentionPickerModalProps> = ({
   onClose,
   onSelectTask,
 }) => {
+  useEscapeKey(onClose, isOpen);
+
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: results, isLoading } = useQuery({
@@ -112,9 +115,7 @@ export const TaskMentionPickerModal: React.FC<TaskMentionPickerModalProps> = ({
                     </span>
                   </div>
                   {card.listName && (
-                    <span className="text-[11px] text-muted-foreground">
-                      in {card.listName}
-                    </span>
+                    <span className="text-[11px] text-muted-foreground">in {card.listName}</span>
                   )}
                 </div>
               </div>

@@ -10,6 +10,7 @@ import { presenceService } from '../../lib/presenceService';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface NewChannelModalProps {
   isOpen: boolean;
@@ -17,6 +18,8 @@ interface NewChannelModalProps {
 }
 
 export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClose }) => {
+  useEscapeKey(onClose, isOpen);
+
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuthStore();

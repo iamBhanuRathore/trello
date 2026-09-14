@@ -10,6 +10,7 @@ import { MarkdownRenderer } from '../MarkdownRenderer';
 import { PresenceBadge } from './PresenceBadge';
 import { TaskPreviewCard } from './TaskPreviewCard';
 import { TaskMentionPickerModal } from './TaskMentionPickerModal';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface ChatThreadPaneProps {
   parentMessage: ChatMessageItem;
@@ -25,6 +26,15 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
 
   const [replyText, setReplyText] = useState('');
   const [isTaskPickerOpen, setIsTaskPickerOpen] = useState(false);
+
+  useEscapeKey(() => {
+    if (isTaskPickerOpen) {
+      setIsTaskPickerOpen(false);
+    } else {
+      onClose();
+    }
+  }, true);
+
   const repliesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -51,7 +61,8 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
       }),
     onMutate: async (newBody) => {
       await queryClient.cancelQueries({ queryKey: ['chat', 'thread', parentMessage.id] });
-      const previousReplies = queryClient.getQueryData<ChatMessageItem[]>(['chat', 'thread', parentMessage.id]) || [];
+      const previousReplies =
+        queryClient.getQueryData<ChatMessageItem[]>(['chat', 'thread', parentMessage.id]) || [];
 
       const optimisticReply: ChatMessageItem = {
         id: `temp-${Date.now()}`,
@@ -74,10 +85,10 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
         replyCount: 0,
       };
 
-      queryClient.setQueryData<ChatMessageItem[]>(['chat', 'thread', parentMessage.id], [
-        ...previousReplies,
-        optimisticReply,
-      ]);
+      queryClient.setQueryData<ChatMessageItem[]>(
+        ['chat', 'thread', parentMessage.id],
+        [...previousReplies, optimisticReply]
+      );
 
       return { previousReplies };
     },
@@ -133,26 +144,19 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
     while ((match = taskMentionRegex.exec(body)) !== null) {
       if (match.index > lastIndex) {
         parts.push(
-          <MarkdownRenderer
-            key={lastIndex}
-            content={body.slice(lastIndex, match.index)}
-          />
+          <MarkdownRenderer key={lastIndex} content={body.slice(lastIndex, match.index)} />
         );
       }
 
       const cardId = match[1];
       const cardTitle = match[2];
-      parts.push(
-        <TaskPreviewCard key={match.index} cardId={cardId} title={cardTitle} />
-      );
+      parts.push(<TaskPreviewCard key={match.index} cardId={cardId} title={cardTitle} />);
 
       lastIndex = match.index + match[0].length;
     }
 
     if (lastIndex < body.length) {
-      parts.push(
-        <MarkdownRenderer key={lastIndex} content={body.slice(lastIndex)} />
-      );
+      parts.push(<MarkdownRenderer key={lastIndex} content={body.slice(lastIndex)} />);
     }
 
     return parts;
@@ -309,9 +313,7 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
                       <button
                         key={emoji}
                         type="button"
-                        onClick={() =>
-                          reactionMutation.mutate({ messageId: reply.id, emoji })
-                        }
+                        onClick={() => reactionMutation.mutate({ messageId: reply.id, emoji })}
                         className="p-1 hover:bg-muted rounded text-xs transition-transform hover:scale-125 cursor-pointer"
                       >
                         {emoji}
@@ -367,7 +369,8 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
           </div>
         </div>
         <p className="text-[10px] text-muted-foreground/70 px-1">
-          <span className="font-semibold">Enter</span> to send, <span className="font-semibold">Shift+Enter</span> for newline
+          <span className="font-semibold">Enter</span> to send,{' '}
+          <span className="font-semibold">Shift+Enter</span> for newline
         </p>
       </div>
 

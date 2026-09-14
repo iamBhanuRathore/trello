@@ -1732,3 +1732,19 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   2. Fixed pagination cursor date interpolation in `listMessages` to safely serialize `cursor` with `new Date(cursor).toISOString()::timestamp`.
 - Decisions made: Always cast interpolated ISO datetime strings with `::timestamp` when constructing raw SQL comparisons with postgres.js.
 - Tests & Validation: Verified `GET /v1/chat/channels` and `POST /v1/chat/channels/group` return HTTP 200 with accurate unread counts and channel details; `bun test` passes 8/8.
+
+### 2026-09-15 — Keyboard Shortcut: Universal Escape Key Dialog Dismissal
+
+- What was done:
+  1. Created reusable hook `useEscapeKey` in `apps/dashboard/src/hooks/useEscapeKey.ts` to attach clean, accessible Escape key listeners with automatic event cleanup and unmount guards.
+  2. Wired `useEscapeKey` into custom portal and overlay dialogs across the app:
+     - `NewChannelModal.tsx` ("Create a Channel")
+     - `NewDirectMessageModal.tsx` ("New Direct Message")
+     - `WorkingHoursModal.tsx` ("Working Hours & Presence Settings")
+     - `TaskMentionPickerModal.tsx` ("Mention a Task")
+     - `CreateTaskFromMessageModal.tsx` ("Convert Message to Task")
+     - `ShareTaskModal.tsx` ("Share Task")
+     - `ChatDetailsPane.tsx` (hierarchical Escape handling: closes Add Member sub-modal first, then member action menus, then details drawer)
+     - `ChatThreadPane.tsx` (hierarchical Escape handling: closes task mention picker first, then thread drawer)
+- Decisions made: Follows enterprise keyboard accessibility standard (Escape dismisses innermost active modal/popover without losing focus).
+- Tests & Validation: Verified frontend bundle compilation with `tsc -b && vite build` (clean, 0 errors).

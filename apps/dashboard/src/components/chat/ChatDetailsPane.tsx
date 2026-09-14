@@ -25,6 +25,7 @@ import { orgService } from '../../lib/orgService';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface ChatDetailsPaneProps {
   channel: ChatChannel;
@@ -42,6 +43,16 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
   const [candidateSearch, setCandidateSearch] = useState('');
   const [roleToAdd, setRoleToAdd] = useState<'admin' | 'member'>('member');
   const [openMemberMenuId, setOpenMemberMenuId] = useState<string | null>(null);
+
+  useEscapeKey(() => {
+    if (isAddMemberOpen) {
+      setIsAddMemberOpen(false);
+    } else if (openMemberMenuId) {
+      setOpenMemberMenuId(null);
+    } else {
+      onClose();
+    }
+  }, true);
 
   // Fetch full channel details (including members)
   const { data: channelDetails } = useQuery({

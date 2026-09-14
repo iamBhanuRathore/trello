@@ -21,6 +21,7 @@ import {
   getMarkdownLink,
   copyTextToClipboard,
 } from '../../utils/taskIdentifier';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface ShareTaskModalProps {
   card: any;
@@ -29,6 +30,8 @@ interface ShareTaskModalProps {
 }
 
 export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
+  useEscapeKey(onClose, open);
+
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   if (!open || !card) return null;
@@ -268,7 +271,9 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
               {/* Slack Link */}
               <button
                 type="button"
-                onClick={() => handleCopy(`<${shareUrl}|${taskIdentifier}: ${card.title}>`, 'slack')}
+                onClick={() =>
+                  handleCopy(`<${shareUrl}|${taskIdentifier}: ${card.title}>`, 'slack')
+                }
                 className="flex flex-col items-center justify-center p-3 rounded-xl border border-border bg-card hover:bg-muted/50 hover:border-primary/40 transition-all text-center gap-1.5 group cursor-pointer"
               >
                 <div className="w-7 h-7 rounded-lg bg-[#E01E5A]/10 text-[#E01E5A] flex items-center justify-center group-hover:scale-110 transition-transform font-bold text-xs">

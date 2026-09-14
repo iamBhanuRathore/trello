@@ -18,6 +18,7 @@ import { api } from '../../lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { orgService } from '../../lib/orgService';
 import { useAuthStore } from '../../store/authStore';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { ChatMessage } from './TaskChatPane';
 
 interface CreateTaskFromMessageModalProps {
@@ -39,6 +40,8 @@ export function CreateTaskFromMessageModal({
   defaultListId,
   onTaskCreated,
 }: CreateTaskFromMessageModalProps) {
+  useEscapeKey(onClose, isOpen);
+
   const { user } = useAuthStore();
   const orgId = user?.organizationId;
   const queryClient = useQueryClient();
