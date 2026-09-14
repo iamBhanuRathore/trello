@@ -25,10 +25,41 @@ export function PortfolioDashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading workspace portfolio overview...</p>
+      <div className="max-w-7xl mx-auto space-y-8 pb-16" aria-label="Loading portfolio">
+        {/* Header mirror */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
+          <div>
+            <div className="h-3 w-32 rounded bg-muted/60 animate-pulse mb-2" />
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-muted animate-pulse shrink-0" />
+              <div className="space-y-2">
+                <div className="h-7 w-80 max-w-full rounded-lg bg-muted animate-pulse" />
+                <div className="h-4 w-96 max-w-full rounded bg-muted/60 animate-pulse" />
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* KPI mirror */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="p-5 rounded-2xl border bg-card/40 space-y-2">
+              <div className="h-3 w-24 rounded bg-muted/70 animate-pulse" />
+              <div className="h-8 w-16 rounded-lg bg-muted animate-pulse" />
+            </div>
+          ))}
+        </div>
+        {/* Projects grid mirror */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="p-5 rounded-2xl border bg-card/40 space-y-3">
+              <div className="h-5 w-1/2 rounded-lg bg-muted animate-pulse" />
+              <div className="h-2 rounded-full bg-muted/60 animate-pulse" />
+              <div className="flex gap-4">
+                <div className="h-3 w-20 rounded bg-muted/60 animate-pulse" />
+                <div className="h-3 w-20 rounded bg-muted/60 animate-pulse" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -66,7 +97,8 @@ export function PortfolioDashboard() {
                 {portfolio?.workspace?.name || 'Workspace'} Portfolio Dashboard
               </h1>
               <p className="text-sm text-muted-foreground">
-                Executive multi-project health overview, milestone tracking, and cross-team delivery.
+                Executive multi-project health overview, milestone tracking, and cross-team
+                delivery.
               </p>
             </div>
           </div>
@@ -133,15 +165,15 @@ export function PortfolioDashboard() {
               proj.health === 'critical'
                 ? 'bg-rose-500/10 text-rose-600 border-rose-500/30'
                 : proj.health === 'at_risk'
-                ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
-                : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
+                  ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                  : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
 
             const healthLabel =
               proj.health === 'critical'
                 ? 'Critical Attention'
                 : proj.health === 'at_risk'
-                ? 'At Risk'
-                : 'On Track';
+                  ? 'At Risk'
+                  : 'On Track';
 
             return (
               <div
@@ -156,7 +188,9 @@ export function PortfolioDashboard() {
                         Status: {proj.status}
                       </span>
                     </div>
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${healthColor}`}>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${healthColor}`}
+                    >
                       {healthLabel}
                     </span>
                   </div>
@@ -166,7 +200,8 @@ export function PortfolioDashboard() {
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Progress</span>
                       <span className="font-semibold font-mono">
-                        {proj.metrics.completionRate}% ({proj.metrics.completedCards}/{proj.metrics.totalCards} tasks)
+                        {proj.metrics.completionRate}% ({proj.metrics.completedCards}/
+                        {proj.metrics.totalCards} tasks)
                       </span>
                     </div>
                     <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
@@ -181,7 +216,9 @@ export function PortfolioDashboard() {
                   <div className="grid grid-cols-3 gap-2 pt-4 text-center">
                     <div className="p-2 rounded-xl bg-muted/40 text-xs">
                       <span className="text-muted-foreground block text-[10px]">Points</span>
-                      <span className="font-bold text-foreground">{proj.metrics.totalStoryPoints}</span>
+                      <span className="font-bold text-foreground">
+                        {proj.metrics.totalStoryPoints}
+                      </span>
                     </div>
                     <div className="p-2 rounded-xl bg-muted/40 text-xs">
                       <span className="text-muted-foreground block text-[10px]">Overdue</span>

@@ -95,13 +95,29 @@ export function SSOSettings() {
 
   if (isLoading) {
     return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">
-            Loading SSO &amp; directory sync settings...
-          </p>
+      <div className="max-w-5xl mx-auto space-y-8 pb-16" aria-label="Loading SSO settings">
+        {/* Header mirror */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-muted animate-pulse shrink-0" />
+            <div className="space-y-2">
+              <div className="h-7 w-72 max-w-full rounded-lg bg-muted animate-pulse" />
+              <div className="h-4 w-96 max-w-full rounded bg-muted/60 animate-pulse" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-9 w-40 rounded-lg bg-muted/70 animate-pulse" />
+            <div className="h-9 w-36 rounded-lg bg-muted/70 animate-pulse" />
+          </div>
         </div>
+        {/* Sections mirror */}
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="p-6 rounded-2xl border bg-card/40 space-y-4">
+            <div className="h-5 w-48 rounded bg-muted animate-pulse" />
+            <div className="h-10 rounded-lg bg-muted/60 animate-pulse" />
+            <div className="h-10 rounded-lg bg-muted/60 animate-pulse" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -111,6 +127,20 @@ export function SSOSettings() {
   if (isError && !config) {
     return (
       <div className="max-w-5xl mx-auto py-8">
+        <div className="flex items-center gap-3 border-b pb-6 mb-8">
+          <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+            <KeyRound className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Enterprise SSO &amp; Directory Sync
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Configure SAML 2.0 / OIDC identity providers, automated SCIM provisioning, and
+              authentication policies.
+            </p>
+          </div>
+        </div>
         <QueryError
           message="Couldn't load SSO settings. Your configuration was left untouched."
           onRetry={() => refetch()}

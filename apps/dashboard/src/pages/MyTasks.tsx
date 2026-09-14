@@ -484,19 +484,37 @@ export function MyTasks() {
           aria-busy={isSwitching}
         >
           {isLoading && pages.length === 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div
-                  key={i}
-                  className="h-48 rounded-2xl border border-border bg-card/40 animate-pulse p-4 space-y-3"
-                >
-                  <div className="h-4 bg-muted rounded w-1/3" />
-                  <div className="h-6 bg-muted rounded w-3/4" />
-                  <div className="h-12 bg-muted rounded" />
-                  <div className="h-4 bg-muted rounded w-1/2 mt-auto" />
-                </div>
-              ))}
-            </div>
+            viewMode === 'list' ? (
+              <div
+                className="rounded-2xl border border-border bg-card/40 overflow-hidden"
+                aria-label="Loading tasks"
+              >
+                <div className="h-10 bg-muted/40 border-b border-border" />
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div
+                    key={i}
+                    className="h-12 border-b border-border/50 last:border-0 animate-pulse"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                aria-label="Loading tasks"
+              >
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div
+                    key={i}
+                    className="h-48 rounded-2xl border border-border bg-card/40 animate-pulse p-4 space-y-3"
+                  >
+                    <div className="h-4 bg-muted rounded w-1/3" />
+                    <div className="h-6 bg-muted rounded w-3/4" />
+                    <div className="h-12 bg-muted rounded" />
+                    <div className="h-4 bg-muted rounded w-1/2 mt-auto" />
+                  </div>
+                ))}
+              </div>
+            )
           ) : isError && tasks.length === 0 ? (
             <QueryError
               message="Couldn't load your tasks. Check your connection and try again."

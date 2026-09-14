@@ -40,22 +40,21 @@ export const ProjectPhases = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['phases', projectId] }),
   });
 
-  if (isLoading)
-    return (
-      <div
-        className="w-full max-w-6xl mx-auto flex flex-col gap-4 py-8"
-        aria-label="Loading phases"
-      >
-        <div className="h-9 w-56 rounded-lg bg-muted animate-pulse" />
-        {[0, 1].map((i) => (
-          <div key={i} className="h-44 rounded-2xl border bg-card/40 animate-pulse" />
-        ))}
-      </div>
-    );
-
   if (isError && phases.length === 0)
     return (
-      <div className="w-full max-w-6xl mx-auto py-8">
+      <div className="w-full max-w-6xl mx-auto flex flex-col gap-8 py-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <Link
+              to="/"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2"
+            >
+              <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+            </Link>
+            <h1 className="text-3xl font-bold tracking-tight">Phase Planner</h1>
+          </div>
+          <CreatePhaseDialog projectId={projectId!} nextPosition={1} />
+        </div>
         <QueryError
           message="Couldn't load phases. Check your connection and try again."
           onRetry={() => refetch()}
@@ -63,8 +62,10 @@ export const ProjectPhases = () => {
       </div>
     );
 
+  const showLoading = isLoading && phases.length === 0;
+
   return (
-    <div className="w-full max-w-6xl mx-auto flex flex-col gap-8 py-8">
+    <div className="w-full max-w-6xl mx-auto flex flex-col gap-8 py-8" aria-busy={showLoading}>
       <div className="flex items-center justify-between">
         <div>
           <Link
@@ -81,45 +82,67 @@ export const ProjectPhases = () => {
         />
       </div>
 
-      <div className="grid gap-6">
-        {phases?.length === 0 ? (
-          <div className="text-center py-12 bg-muted/20 border rounded-lg">
-            <GitBranch className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">No phases defined</h3>
-            <p className="text-muted-foreground mb-4">
-              Create phases to structure your project lifecycle.
-            </p>
-            <CreatePhaseDialog projectId={projectId!} nextPosition={1} />
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {phases?.map((phase: any, index: number) => (
-              <div key={phase.id} className="relative pl-8">
-                {/* Timeline connector */}
-                {index !== phases.length - 1 && (
-                  <div className="absolute left-3 top-8 bottom-[-24px] w-0.5 bg-border z-0"></div>
-                )}
-
-                {/* Timeline node */}
-                <div
-                  className={`absolute left-1.5 top-5 w-3.5 h-3.5 rounded-full z-10 border-2 ${
-                    phase.status === 'completed'
-                      ? 'bg-primary border-primary'
-                      : phase.status === 'active'
-                        ? 'bg-background border-primary'
-                        : 'bg-background border-muted-foreground'
-                  }`}
-                ></div>
-
-                <PhaseCard
-                  phase={phase}
-                  onUpdateStatus={(status) => updatePhaseMutation.mutate({ id: phase.id, status })}
-                />
+      {showLoading ? (
+        <div className="space-y-6" aria-label="Loading phases">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="relative pl-8">
+              <div className="absolute left-3 top-8 bottom-[-24px] w-0.5 bg-border z-0" />
+              <div className="absolute left-1.5 top-5 w-3.5 h-3.5 rounded-full z-10 border-2 bg-muted border-muted" />
+              <div className="rounded-2xl border bg-card/40 animate-pulse p-4 space-y-3">
+                <div className="h-6 w-1/3 rounded-lg bg-muted" />
+                <div className="h-4 w-1/4 rounded bg-muted/70" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1">
+                  {[0, 1, 2].map((j) => (
+                    <div key={j} className="h-8 rounded bg-muted/50" />
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-6">
+          {phases?.length === 0 ? (
+            <div className="text-center py-12 bg-muted/20 border rounded-lg">
+              <GitBranch className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium">No phases defined</h3>
+              <p className="text-muted-foreground mb-4">
+                Create phases to structure your project lifecycle.
+              </p>
+              <CreatePhaseDialog projectId={projectId!} nextPosition={1} />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {phases?.map((phase: any, index: number) => (
+                <div key={phase.id} className="relative pl-8">
+                  {/* Timeline connector */}
+                  {index !== phases.length - 1 && (
+                    <div className="absolute left-3 top-8 bottom-[-24px] w-0.5 bg-border z-0"></div>
+                  )}
+
+                  {/* Timeline node */}
+                  <div
+                    className={`absolute left-1.5 top-5 w-3.5 h-3.5 rounded-full z-10 border-2 ${
+                      phase.status === 'completed'
+                        ? 'bg-primary border-primary'
+                        : phase.status === 'active'
+                          ? 'bg-background border-primary'
+                          : 'bg-background border-muted-foreground'
+                    }`}
+                  ></div>
+
+                  <PhaseCard
+                    phase={phase}
+                    onUpdateStatus={(status) =>
+                      updatePhaseMutation.mutate({ id: phase.id, status })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

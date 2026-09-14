@@ -500,10 +500,14 @@ export function BoardView() {
                 key={i}
                 className="w-72 shrink-0 rounded-xl border border-border/60 bg-card/40 p-3 space-y-3 animate-pulse"
               >
-                <div className="h-4 w-24 rounded bg-muted" />
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-24 rounded bg-muted" />
+                  <div className="h-5 w-7 rounded-full bg-muted/70" />
+                </div>
                 {[0, 1, 2].map((j) => (
                   <div key={j} className="h-20 rounded-lg bg-muted/70" />
                 ))}
+                <div className="h-8 rounded-lg bg-muted/50" />
               </div>
             ))}
           </div>

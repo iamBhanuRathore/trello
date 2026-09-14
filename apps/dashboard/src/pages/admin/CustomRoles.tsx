@@ -129,10 +129,33 @@ export function CustomRoles() {
 
   if (isRolesLoading) {
     return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading role definitions...</p>
+      <div className="space-y-6" aria-label="Loading roles">
+        {/* Header mirror */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-muted animate-pulse shrink-0" />
+            <div className="space-y-2">
+              <div className="h-7 w-72 max-w-full rounded-lg bg-muted animate-pulse" />
+              <div className="h-4 w-96 max-w-full rounded bg-muted/60 animate-pulse" />
+            </div>
+          </div>
+          <div className="h-9 w-44 rounded-lg bg-muted/70 animate-pulse" />
+        </div>
+        {/* Role cards mirror */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="p-5 rounded-2xl border bg-card/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="h-5 w-40 rounded-lg bg-muted animate-pulse" />
+                <div className="h-6 w-16 rounded-full bg-muted/70 animate-pulse" />
+              </div>
+              <div className="h-3 w-full rounded bg-muted/60 animate-pulse" />
+              <div className="flex gap-2">
+                <div className="h-7 w-20 rounded-lg bg-muted/60 animate-pulse" />
+                <div className="h-7 w-20 rounded-lg bg-muted/60 animate-pulse" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -143,7 +166,17 @@ export function CustomRoles() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Custom Roles & Permissions</h1>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                <Shield className="w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Custom Roles & Permissions</h1>
+                <p className="text-sm text-muted-foreground">
+                  Define granular RBAC roles and permission overrides for your organization.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
         <QueryError

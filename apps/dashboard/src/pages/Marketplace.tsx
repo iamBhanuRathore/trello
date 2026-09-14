@@ -163,11 +163,29 @@ export function Marketplace() {
 
       {/* App Grid */}
       {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs text-muted-foreground">Loading power-ups catalog...</p>
-          </div>
+        <div
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 min-h-[420px]"
+          aria-label="Loading power-ups"
+        >
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              className="p-5 rounded-2xl border bg-card/40 shadow-xs space-y-4 animate-pulse"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-muted" />
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 w-2/3 rounded bg-muted" />
+                  <div className="h-3 w-1/3 rounded bg-muted/70" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="h-3 w-full rounded bg-muted/60" />
+                <div className="h-3 w-5/6 rounded bg-muted/60" />
+              </div>
+              <div className="h-8 rounded-lg bg-muted/70 mt-2" />
+            </div>
+          ))}
         </div>
       ) : apps.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

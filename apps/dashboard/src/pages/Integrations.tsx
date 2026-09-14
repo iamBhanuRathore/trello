@@ -105,16 +105,8 @@ export const Integrations: React.FC = () => {
     return integrations?.find((i) => i.provider === providerId);
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={isLoading && !integrations}>
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Integrations</h1>
         <p className="text-muted-foreground">
@@ -122,70 +114,91 @@ export const Integrations: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {PROVIDERS.map((provider) => {
-          const integration = getIntegrationData(provider.id);
-          const isConnected = integration?.isConnected;
-          const isConnecting = connectingId === provider.id;
+      {isLoading && !integrations ? (
+        <div
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          aria-label="Loading integrations"
+        >
+          {PROVIDERS.map((provider) => (
+            <div key={provider.id} className="rounded-2xl border bg-card/40 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="w-10 h-10 rounded-lg bg-muted animate-pulse" />
+                <div className="h-5 w-20 rounded-full bg-muted/70 animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 w-1/2 rounded bg-muted animate-pulse" />
+                <div className="h-3 w-full rounded bg-muted/60 animate-pulse" />
+              </div>
+              <div className="h-9 rounded-lg bg-muted/70 animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {PROVIDERS.map((provider) => {
+            const integration = getIntegrationData(provider.id);
+            const isConnected = integration?.isConnected;
+            const isConnecting = connectingId === provider.id;
 
-          return (
-            <Card key={provider.id} className="flex flex-col">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="p-2 bg-muted rounded-lg">
-                    <provider.icon className={`h-6 w-6 ${provider.color}`} />
+            return (
+              <Card key={provider.id} className="flex flex-col">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="p-2 bg-muted rounded-lg">
+                      <provider.icon className={`h-6 w-6 ${provider.color}`} />
+                    </div>
+                    {isConnected && (
+                      <span className="inline-flex items-center rounded-full bg-green-500/10 px-2 py-1 text-xs font-medium text-green-600 dark:text-green-400 ring-1 ring-inset ring-green-500/20">
+                        <Check className="mr-1 h-3 w-3" /> Connected
+                      </span>
+                    )}
                   </div>
-                  {isConnected && (
-                    <span className="inline-flex items-center rounded-full bg-green-500/10 px-2 py-1 text-xs font-medium text-green-600 dark:text-green-400 ring-1 ring-inset ring-green-500/20">
-                      <Check className="mr-1 h-3 w-3" /> Connected
-                    </span>
-                  )}
-                </div>
-                <CardTitle className="mt-4">{provider.name}</CardTitle>
-                <CardDescription className="h-10 mt-2">{provider.description}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1">
-                {/* Future settings for this integration can go here */}
-              </CardContent>
-              <CardFooter className="pt-4 border-t border-gray-100">
-                {isConnected ? (
-                  <Button
-                    variant="outline"
-                    className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => disconnectMutation.mutate(integration!.id)}
-                    disabled={disconnectMutation.isPending}
-                  >
-                    {disconnectMutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Unlink className="mr-2 h-4 w-4" />
-                    )}
-                    Disconnect
-                  </Button>
-                ) : (
-                  <Button
-                    className="w-full"
-                    onClick={() => connectMutation.mutate(provider.id)}
-                    disabled={isConnecting}
-                  >
-                    {isConnecting ? (
-                      <>
+                  <CardTitle className="mt-4">{provider.name}</CardTitle>
+                  <CardDescription className="h-10 mt-2">{provider.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="flex-1">
+                  {/* Future settings for this integration can go here */}
+                </CardContent>
+                <CardFooter className="pt-4 border-t border-gray-100">
+                  {isConnected ? (
+                    <Button
+                      variant="outline"
+                      className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => disconnectMutation.mutate(integration!.id)}
+                      disabled={disconnectMutation.isPending}
+                    >
+                      {disconnectMutation.isPending ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Connecting...
-                      </>
-                    ) : (
-                      <>
-                        <LinkIcon className="mr-2 h-4 w-4" />
-                        Connect
-                      </>
-                    )}
-                  </Button>
-                )}
-              </CardFooter>
-            </Card>
-          );
-        })}
-      </div>
+                      ) : (
+                        <Unlink className="mr-2 h-4 w-4" />
+                      )}
+                      Disconnect
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      onClick={() => connectMutation.mutate(provider.id)}
+                      disabled={isConnecting}
+                    >
+                      {isConnecting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <LinkIcon className="mr-2 h-4 w-4" />
+                          Connect
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </CardFooter>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

@@ -40,24 +40,21 @@ export const ProjectSprints = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', projectId] }),
   });
 
-  if (isLoading)
-    return (
-      <div
-        className="w-full max-w-6xl mx-auto flex flex-col gap-4 py-8"
-        aria-label="Loading sprints"
-      >
-        <div className="h-9 w-56 rounded-lg bg-muted animate-pulse" />
-        <div className="grid gap-4 md:grid-cols-2">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-40 rounded-2xl border bg-card/40 animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
-
   if (isError && sprints.length === 0)
     return (
       <div className="w-full max-w-6xl mx-auto py-8">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <Link
+              to="/"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2"
+            >
+              <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+            </Link>
+            <h1 className="text-3xl font-bold tracking-tight">Sprint Planner</h1>
+          </div>
+          <CreateSprintDialog projectId={projectId!} />
+        </div>
         <QueryError
           message="Couldn't load sprints. Check your connection and try again."
           onRetry={() => refetch()}
@@ -68,9 +65,10 @@ export const ProjectSprints = () => {
   const activeSprints = sprints?.filter((s: any) => s.status === 'active') || [];
   const plannedSprints = sprints?.filter((s: any) => s.status === 'planned') || [];
   const completedSprints = sprints?.filter((s: any) => s.status === 'completed') || [];
+  const showLoading = isLoading && sprints.length === 0;
 
   return (
-    <div className="w-full max-w-6xl mx-auto flex flex-col gap-8 py-8">
+    <div className="w-full max-w-6xl mx-auto flex flex-col gap-8 py-8" aria-busy={showLoading}>
       <div className="flex items-center justify-between">
         <div>
           <Link
@@ -84,52 +82,73 @@ export const ProjectSprints = () => {
         <CreateSprintDialog projectId={projectId!} />
       </div>
 
-      {activeSprints.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold flex items-center gap-2 text-primary">
-            <Play className="h-5 w-5" /> Active Sprints
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            {activeSprints.map((sprint: any) => (
-              <SprintCard
-                key={sprint.id}
-                sprint={sprint}
-                onUpdateStatus={(status) => updateSprintMutation.mutate({ id: sprint.id, status })}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-4">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <Calendar className="h-5 w-5" /> Planned Sprints
-        </h2>
-        {plannedSprints.length === 0 && (
-          <p className="text-muted-foreground">No planned sprints.</p>
-        )}
-        <div className="grid gap-4 md:grid-cols-2">
-          {plannedSprints.map((sprint: any) => (
-            <SprintCard
-              key={sprint.id}
-              sprint={sprint}
-              onUpdateStatus={(status) => updateSprintMutation.mutate({ id: sprint.id, status })}
-            />
+      {showLoading ? (
+        <div className="flex flex-col gap-8" aria-label="Loading sprints">
+          {['Active Sprints', 'Planned Sprints', 'Completed Sprints'].map((section) => (
+            <div key={section} className="space-y-4">
+              <div className="h-7 w-48 rounded-lg bg-muted animate-pulse" />
+              <div className="grid gap-4 md:grid-cols-2">
+                {[0, 1].map((i) => (
+                  <div key={i} className="h-44 rounded-2xl border bg-card/40 animate-pulse" />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
-      </div>
+      ) : (
+        <>
+          {activeSprints.length > 0 && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold flex items-center gap-2 text-primary">
+                <Play className="h-5 w-5" /> Active Sprints
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                {activeSprints.map((sprint: any) => (
+                  <SprintCard
+                    key={sprint.id}
+                    sprint={sprint}
+                    onUpdateStatus={(status) =>
+                      updateSprintMutation.mutate({ id: sprint.id, status })
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
-      {completedSprints.length > 0 && (
-        <div className="space-y-4 opacity-75">
-          <h2 className="text-xl font-bold flex items-center gap-2 text-muted-foreground">
-            <CheckCircle2 className="h-5 w-5" /> Completed Sprints
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            {completedSprints.map((sprint: any) => (
-              <SprintCard key={sprint.id} sprint={sprint} readOnly />
-            ))}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Calendar className="h-5 w-5" /> Planned Sprints
+            </h2>
+            {plannedSprints.length === 0 && (
+              <p className="text-muted-foreground">No planned sprints.</p>
+            )}
+            <div className="grid gap-4 md:grid-cols-2">
+              {plannedSprints.map((sprint: any) => (
+                <SprintCard
+                  key={sprint.id}
+                  sprint={sprint}
+                  onUpdateStatus={(status) =>
+                    updateSprintMutation.mutate({ id: sprint.id, status })
+                  }
+                />
+              ))}
+            </div>
           </div>
-        </div>
+
+          {completedSprints.length > 0 && (
+            <div className="space-y-4 opacity-75">
+              <h2 className="text-xl font-bold flex items-center gap-2 text-muted-foreground">
+                <CheckCircle2 className="h-5 w-5" /> Completed Sprints
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2">
+                {completedSprints.map((sprint: any) => (
+                  <SprintCard key={sprint.id} sprint={sprint} readOnly />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -196,10 +215,11 @@ function SprintCard({
           </h4>
           <div className="space-y-1">
             {isCardsLoading && !sprintCards ? (
-              <div
-                className="h-6 bg-muted/50 rounded animate-pulse w-full"
-                aria-label="Loading cards"
-              />
+              <div className="space-y-1" aria-label="Loading cards">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-6 bg-muted/50 rounded animate-pulse w-full" />
+                ))}
+              </div>
             ) : isCardsError && !sprintCards ? (
               <p className="text-xs text-muted-foreground italic">
                 Couldn&apos;t load sprint cards.

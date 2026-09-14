@@ -70,14 +70,14 @@ export function ProjectReports() {
   });
 
   // 5. Cumulative Flow Diagram
-  const { data: cfdData } = useQuery({
+  const { data: cfdData, isLoading: isCfdLoading } = useQuery({
     queryKey: ['projectCFD', projectId, cfdDays],
     queryFn: () => getProjectCFD(projectId!, cfdDays),
     enabled: activeTab === 'cfd' && !!projectId,
   });
 
   // 6. Lead & Cycle Time
-  const { data: cycleTimeData } = useQuery({
+  const { data: cycleTimeData, isLoading: isCycleTimeLoading } = useQuery({
     queryKey: ['projectCycleTime', projectId],
     queryFn: () => getProjectCycleTime(projectId!),
     enabled: activeTab === 'cycleTime' && !!projectId,
@@ -85,10 +85,38 @@ export function ProjectReports() {
 
   if (isSummaryLoading) {
     return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading project analytics...</p>
+      <div className="max-w-7xl mx-auto space-y-8 pb-16" aria-label="Loading project analytics">
+        {/* Header mirror */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
+          <div>
+            <div className="h-3 w-32 rounded bg-muted/60 animate-pulse mb-2" />
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-muted animate-pulse shrink-0" />
+              <div className="space-y-2">
+                <div className="h-7 w-80 max-w-full rounded-lg bg-muted animate-pulse" />
+                <div className="h-4 w-96 max-w-full rounded bg-muted/60 animate-pulse" />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-32 rounded-lg bg-muted/70 animate-pulse" />
+            <div className="h-8 w-32 rounded-lg bg-muted/70 animate-pulse" />
+          </div>
+        </div>
+        {/* KPI mirror */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="p-5 rounded-xl border bg-card/40 space-y-2">
+              <div className="h-3 w-24 rounded bg-muted/70 animate-pulse" />
+              <div className="h-8 w-16 rounded-lg bg-muted animate-pulse" />
+            </div>
+          ))}
+        </div>
+        {/* Tabs + chart mirror */}
+        <div className="h-10 w-96 max-w-full rounded-xl bg-muted/60 animate-pulse" />
+        <div className="p-6 rounded-2xl border bg-card/40 space-y-4">
+          <div className="h-5 w-56 rounded-lg bg-muted animate-pulse" />
+          <div className="h-[220px] rounded-xl bg-muted/50 animate-pulse" />
         </div>
       </div>
     );
@@ -96,19 +124,52 @@ export function ProjectReports() {
 
   if (isSummaryError) {
     return (
-      <div className="flex h-96 flex-col items-center justify-center p-8 text-center space-y-4">
-        <div className="p-3 bg-destructive/10 rounded-full text-destructive">
-          <AlertCircle className="w-8 h-8" />
+      <div className="max-w-7xl mx-auto space-y-8 pb-16">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Link
+                to="/"
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> Back to Dashboard
+              </Link>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                <BarChart3 className="w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Project Analytics & Reports</h1>
+                <p className="text-sm text-muted-foreground">
+                  Real-time visibility into sprint burndown, cumulative flow, and resolution
+                  velocity.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="space-y-1 max-w-sm">
-          <h3 className="font-semibold text-lg text-foreground">Failed to load project analytics</h3>
-          <p className="text-sm text-muted-foreground">
-            {(summaryError as Error)?.message || 'An error occurred while fetching report data.'}
-          </p>
+        <div className="flex flex-col items-center justify-center p-8 text-center space-y-4 rounded-2xl border border-border/60 bg-card/40">
+          <div className="p-3 bg-destructive/10 rounded-full text-destructive">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-1 max-w-sm">
+            <h3 className="font-semibold text-lg text-foreground">
+              Failed to load project analytics
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {(summaryError as Error)?.message || 'An error occurred while fetching report data.'}
+            </p>
+          </div>
+          <Button
+            onClick={() => refetchSummary()}
+            variant="outline"
+            size="sm"
+            className="cursor-pointer"
+          >
+            Try Again
+          </Button>
         </div>
-        <Button onClick={() => refetchSummary()} variant="outline" size="sm" className="cursor-pointer">
-          Try Again
-        </Button>
       </div>
     );
   }
@@ -232,7 +293,9 @@ export function ProjectReports() {
             <span className="text-3xl font-bold tracking-tight text-indigo-600 dark:text-indigo-400">
               {metrics.completedStoryPoints}
             </span>
-            <span className="text-xs text-muted-foreground">/ {metrics.totalStoryPoints} total pts</span>
+            <span className="text-xs text-muted-foreground">
+              / {metrics.totalStoryPoints} total pts
+            </span>
           </div>
           <div className="w-full bg-muted rounded-full h-1.5 mt-3 overflow-hidden">
             <div
@@ -275,7 +338,9 @@ export function ProjectReports() {
             <span className="text-xs text-muted-foreground">require immediate action</span>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3">
-            {metrics.overdueCards === 0 ? '✨ All deadlines on track' : '⚠️ Overdue items impacting sprint'}
+            {metrics.overdueCards === 0
+              ? '✨ All deadlines on track'
+              : '⚠️ Overdue items impacting sprint'}
           </p>
         </div>
 
@@ -298,7 +363,9 @@ export function ProjectReports() {
             </span>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3">
-            {summary?.activeSprint ? `Current: ${summary.activeSprint.name}` : 'No active sprint running'}
+            {summary?.activeSprint
+              ? `Current: ${summary.activeSprint.name}`
+              : 'No active sprint running'}
           </p>
         </div>
       </div>
@@ -419,11 +486,8 @@ export function ProjectReports() {
                   {(() => {
                     const polyPoints = burndownPoints.map((pt: any, idx: number) => {
                       const x =
-                        padding.left +
-                        (idx / Math.max(1, burndownPoints.length - 1)) * innerWidth;
-                      const y =
-                        padding.top +
-                        innerHeight * (1 - pt.actualRemaining / maxPoints);
+                        padding.left + (idx / Math.max(1, burndownPoints.length - 1)) * innerWidth;
+                      const y = padding.top + innerHeight * (1 - pt.actualRemaining / maxPoints);
                       return `${x},${y}`;
                     });
 
@@ -452,8 +516,7 @@ export function ProjectReports() {
                             padding.left +
                             (idx / Math.max(1, burndownPoints.length - 1)) * innerWidth;
                           const y =
-                            padding.top +
-                            innerHeight * (1 - pt.actualRemaining / maxPoints);
+                            padding.top + innerHeight * (1 - pt.actualRemaining / maxPoints);
                           return (
                             <circle
                               key={idx}
@@ -535,7 +598,9 @@ export function ProjectReports() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-muted-foreground italic">No completed sprints recorded yet.</p>
+                  <p className="text-xs text-muted-foreground italic">
+                    No completed sprints recorded yet.
+                  </p>
                 )}
               </div>
             </div>
@@ -571,9 +636,21 @@ export function ProjectReports() {
           </div>
 
           {/* CFD Stacked Area Rendering */}
-          {cfdTimeline.length > 0 ? (
+          {isCfdLoading ? (
+            <div className="space-y-4 pt-2" aria-label="Loading cumulative flow">
+              <div className="h-[220px] rounded-xl bg-muted/50 animate-pulse" />
+              <div className="flex items-center gap-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="h-3 w-20 rounded bg-muted/60 animate-pulse" />
+                ))}
+              </div>
+            </div>
+          ) : cfdTimeline.length > 0 ? (
             <div className="space-y-4 pt-2">
-              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto min-w-[500px]">
+              <svg
+                viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                className="w-full h-auto min-w-[500px]"
+              >
                 {/* Y Axis Grid */}
                 {[0, 0.5, 1].map((ratio) => {
                   const y = padding.top + innerHeight * (1 - ratio);
@@ -700,7 +777,14 @@ export function ProjectReports() {
           {/* Recent Completed Tasks List */}
           <div className="lg:col-span-8 p-6 rounded-2xl border bg-card/80 shadow-xs space-y-4">
             <h3 className="font-semibold text-base">Completed Task Performance History</h3>
-            {cycleTimeData?.dataPoints && cycleTimeData.dataPoints.length > 0 ? (
+            {isCycleTimeLoading ? (
+              <div className="space-y-2" aria-label="Loading cycle time">
+                <div className="h-9 rounded bg-muted/40" />
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="h-10 rounded bg-muted/50 animate-pulse" />
+                ))}
+              </div>
+            ) : cycleTimeData?.dataPoints && cycleTimeData.dataPoints.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-muted/40 border-b text-muted-foreground uppercase font-semibold text-[10px]">
@@ -715,8 +799,12 @@ export function ProjectReports() {
                     {cycleTimeData.dataPoints.map((item: any) => (
                       <tr key={item.id} className="hover:bg-muted/30">
                         <td className="py-2.5 px-3 font-medium text-foreground">{item.title}</td>
-                        <td className="py-2.5 px-3 font-mono text-muted-foreground">{item.leadTimeDays}d</td>
-                        <td className="py-2.5 px-3 font-mono text-emerald-600 font-semibold">{item.cycleTimeDays}d</td>
+                        <td className="py-2.5 px-3 font-mono text-muted-foreground">
+                          {item.leadTimeDays}d
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-emerald-600 font-semibold">
+                          {item.cycleTimeDays}d
+                        </td>
                         <td className="py-2.5 px-3 text-muted-foreground">{item.completedAt}</td>
                       </tr>
                     ))}
@@ -773,7 +861,9 @@ export function ProjectReports() {
             <span className="text-lg font-bold text-foreground">{stageCategories.done}</span>
           </div>
           <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs">
-            <span className="text-blue-600 dark:text-blue-400 font-semibold block">In Progress</span>
+            <span className="text-blue-600 dark:text-blue-400 font-semibold block">
+              In Progress
+            </span>
             <span className="text-lg font-bold text-foreground">{stageCategories.in_progress}</span>
           </div>
           <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs">
@@ -781,7 +871,9 @@ export function ProjectReports() {
             <span className="text-lg font-bold text-foreground">{stageCategories.blocked}</span>
           </div>
           <div className="p-3 rounded-xl bg-slate-500/10 border border-slate-500/20 text-xs">
-            <span className="text-slate-600 dark:text-slate-400 font-semibold block">Not Started</span>
+            <span className="text-slate-600 dark:text-slate-400 font-semibold block">
+              Not Started
+            </span>
             <span className="text-lg font-bold text-foreground">{stageCategories.not_started}</span>
           </div>
         </div>

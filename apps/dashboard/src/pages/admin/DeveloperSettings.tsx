@@ -108,10 +108,30 @@ export function DeveloperSettings() {
 
   if (isLoading) {
     return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading developer keys...</p>
+      <div className="max-w-5xl mx-auto space-y-8 pb-16" aria-label="Loading developer keys">
+        {/* Header mirror */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-muted animate-pulse shrink-0" />
+            <div className="space-y-2">
+              <div className="h-7 w-64 max-w-full rounded-lg bg-muted animate-pulse" />
+              <div className="h-4 w-96 max-w-full rounded bg-muted/60 animate-pulse" />
+            </div>
+          </div>
+          <div className="h-9 w-48 rounded-lg bg-muted/70 animate-pulse" />
+        </div>
+        {/* Keys list mirror */}
+        <div className="space-y-4">
+          <div className="h-4 w-40 rounded bg-muted/70 animate-pulse" />
+          {[0, 1].map((i) => (
+            <div key={i} className="p-5 rounded-2xl border bg-card/40 space-y-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-4 w-40 rounded bg-muted animate-pulse" />
+                <div className="h-5 w-32 rounded-md bg-muted/70 animate-pulse" />
+              </div>
+              <div className="h-3 w-2/3 rounded bg-muted/60 animate-pulse" />
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -120,6 +140,18 @@ export function DeveloperSettings() {
   if (isError && keys.length === 0) {
     return (
       <div className="max-w-5xl mx-auto py-8">
+        <div className="flex items-center gap-3 border-b pb-6 mb-8">
+          <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+            <Code className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Public Developer API Keys</h1>
+            <p className="text-sm text-muted-foreground">
+              Generate scoped API secret keys for automation scripts, CI/CD pipelines, and custom
+              integrations.
+            </p>
+          </div>
+        </div>
         <QueryError
           message="Couldn't load API keys. Check your connection and try again."
           onRetry={() => refetch()}

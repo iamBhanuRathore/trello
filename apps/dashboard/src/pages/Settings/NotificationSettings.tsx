@@ -114,8 +114,24 @@ export function NotificationSettings() {
         aria-label="Loading notification settings"
       >
         <div className="h-9 w-72 rounded-lg bg-muted animate-pulse" />
-        <div className="h-44 rounded-xl border bg-card/40 animate-pulse" />
-        <div className="h-64 rounded-xl border bg-card/40 animate-pulse" />
+        <div className="rounded-lg border bg-card/40 p-6 space-y-4">
+          <div className="h-6 w-64 rounded-lg bg-muted animate-pulse" />
+          <div className="h-4 w-full rounded bg-muted/60 animate-pulse" />
+          <div className="h-5 w-48 rounded bg-muted/70 animate-pulse" />
+        </div>
+        <div className="rounded-lg border bg-card/40 overflow-hidden">
+          <div className="p-6 border-b space-y-2">
+            <div className="h-6 w-56 rounded-lg bg-muted animate-pulse" />
+            <div className="h-4 w-80 max-w-full rounded bg-muted/60 animate-pulse" />
+          </div>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-[68px] border-b last:border-0 px-6 py-4" />
+          ))}
+        </div>
+        {/* Save row reserve */}
+        <div className="mt-8 flex justify-end">
+          <div className="h-11 w-40 rounded-lg bg-muted/70 animate-pulse" />
+        </div>
       </div>
     );
   }

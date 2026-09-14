@@ -35,6 +35,7 @@ import {
 } from '@boardly/ui/dropdown-menu';
 import { Tooltip } from '@boardly/ui';
 import { ImportModal } from '../components/board/ImportModal';
+import { QueryError } from '../components/common/QueryError';
 
 export const BOARD_GRADIENTS = [
   { id: 'blue', name: 'Oceanic Blue', value: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' },
@@ -93,7 +94,12 @@ export function Workspaces() {
   const [editingWs, setEditingWs] = useState<{ id: string; name: string } | null>(null);
   const [deletingWs, setDeletingWs] = useState<{ id: string; name: string } | null>(null);
 
-  const { data: workspaces } = useQuery({
+  const {
+    data: workspaces,
+    isLoading: isTreeLoading,
+    isError: isTreeError,
+    refetch: refetchTree,
+  } = useQuery({
     queryKey: ['workspaces', 'tree'],
     queryFn: async () => {
       const res = await api.get('/workspaces/tree');
@@ -154,7 +160,11 @@ export function Workspaces() {
             <Briefcase className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xl font-bold text-foreground">{workspaces?.length || 0}</div>
+            {isTreeLoading ? (
+              <div className="h-7 w-8 rounded bg-muted animate-pulse" aria-label="Loading count" />
+            ) : (
+              <div className="text-xl font-bold text-foreground">{workspaces?.length || 0}</div>
+            )}
             <div className="text-xs text-muted-foreground">Workspaces</div>
           </div>
         </div>
@@ -164,7 +174,11 @@ export function Workspaces() {
             <BookOpen className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xl font-bold text-foreground">{totalProjects}</div>
+            {isTreeLoading ? (
+              <div className="h-7 w-8 rounded bg-muted animate-pulse" aria-label="Loading count" />
+            ) : (
+              <div className="text-xl font-bold text-foreground">{totalProjects}</div>
+            )}
             <div className="text-xs text-muted-foreground">Active Projects</div>
           </div>
         </div>
@@ -174,7 +188,11 @@ export function Workspaces() {
             <BarChart3 className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xl font-bold text-foreground">{totalBoards}</div>
+            {isTreeLoading ? (
+              <div className="h-7 w-8 rounded bg-muted animate-pulse" aria-label="Loading count" />
+            ) : (
+              <div className="text-xl font-bold text-foreground">{totalBoards}</div>
+            )}
             <div className="text-xs text-muted-foreground">Kanban Boards</div>
           </div>
         </div>
@@ -195,65 +213,94 @@ export function Workspaces() {
         </Link>
       </div>
 
-      {workspaces?.map((ws: any) => (
-        <div
-          key={ws.id}
-          className="flex flex-col gap-4 p-5 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-sm shadow-xs"
-        >
-          {/* Workspace Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-border/60">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm shadow-2xs">
-                {ws.name.charAt(0).toUpperCase()}
+      {isTreeLoading && !workspaces ? (
+        <div className="flex flex-col gap-6" aria-label="Loading workspaces">
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              className="flex flex-col gap-4 p-5 rounded-2xl border border-border/80 bg-card/40 shadow-xs"
+            >
+              <div className="flex items-center gap-3 pb-3 border-b border-border/60">
+                <div className="w-9 h-9 rounded-xl bg-muted animate-pulse" />
+                <div className="space-y-1.5 flex-1">
+                  <div className="h-4 w-48 rounded bg-muted animate-pulse" />
+                  <div className="h-3 w-32 rounded bg-muted/70 animate-pulse" />
+                </div>
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  {ws.name}
-                </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[0, 1, 2].map((j) => (
+                  <div key={j} className="h-24 rounded-xl bg-muted/60 animate-pulse" />
+                ))}
               </div>
             </div>
-
-            <div className="flex items-center gap-2">
-              <Link to={`/workspaces/${ws.id}/portfolio`}>
-                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 font-medium">
-                  <Briefcase className="w-3.5 h-3.5 text-blue-500" /> Portfolio Health
-                </Button>
-              </Link>
-              <CreateProjectDialog workspaceId={ws.id} />
-
-              {/* Workspace Actions Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  >
-                    <MoreHorizontal className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2 text-xs"
-                    onClick={() => setEditingWs({ id: ws.id, name: ws.name })}
-                  >
-                    <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename Workspace
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
-                    onClick={() => setDeletingWs({ id: ws.id, name: ws.name })}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete Workspace
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-
-          <ProjectsList workspaceId={ws.id} initialProjects={ws.projects ?? []} />
+          ))}
         </div>
-      ))}
+      ) : isTreeError && !workspaces ? (
+        <QueryError
+          message="Couldn't load workspaces. Check your connection and try again."
+          onRetry={() => refetchTree()}
+        />
+      ) : (
+        workspaces?.map((ws: any) => (
+          <div
+            key={ws.id}
+            className="flex flex-col gap-4 p-5 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-sm shadow-xs"
+          >
+            {/* Workspace Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-border/60">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm shadow-2xs">
+                  {ws.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+                    {ws.name}
+                  </h2>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Link to={`/workspaces/${ws.id}/portfolio`}>
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 font-medium">
+                    <Briefcase className="w-3.5 h-3.5 text-blue-500" /> Portfolio Health
+                  </Button>
+                </Link>
+                <CreateProjectDialog workspaceId={ws.id} />
+
+                {/* Workspace Actions Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2 text-xs"
+                      onClick={() => setEditingWs({ id: ws.id, name: ws.name })}
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename Workspace
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                      onClick={() => setDeletingWs({ id: ws.id, name: ws.name })}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete Workspace
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+
+            <ProjectsList workspaceId={ws.id} initialProjects={ws.projects ?? []} />
+          </div>
+        ))
+      )}
 
       {/* Edit Workspace Dialog */}
       {editingWs && (

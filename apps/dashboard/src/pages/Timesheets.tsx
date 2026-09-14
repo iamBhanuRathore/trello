@@ -268,8 +268,8 @@ export function Timesheets() {
             />
           </div>
 
-          {timesheetData?.byUser && timesheetData.byUser.length > 0 && (
-            <div className="w-48">
+          <div className="w-48 shrink-0">
+            {timesheetData?.byUser && timesheetData.byUser.length > 0 ? (
               <SearchableSelect
                 options={[
                   { value: '', label: 'All Team Members' },
@@ -286,8 +286,13 @@ export function Timesheets() {
                 size="sm"
                 triggerClassName="h-8 text-xs bg-muted/40"
               />
-            </div>
-          )}
+            ) : (
+              <div
+                className="h-8 rounded-lg bg-muted/40 border border-transparent animate-pulse"
+                aria-hidden="true"
+              />
+            )}
+          </div>
 
           <Button
             variant="outline"

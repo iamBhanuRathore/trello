@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { billingService, type BillingOverviewData, type ProrationPreviewData } from '../../lib/billingService';
+import {
+  billingService,
+  type BillingOverviewData,
+  type ProrationPreviewData,
+} from '../../lib/billingService';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import {
@@ -31,7 +35,11 @@ export const Billing: React.FC = () => {
   const queryClient = useQueryClient();
 
   // Queries
-  const { data: billing, isLoading, error } = useQuery<BillingOverviewData>({
+  const {
+    data: billing,
+    isLoading,
+    error,
+  } = useQuery<BillingOverviewData>({
     queryKey: ['billingOverview'],
     queryFn: billingService.getOverview,
   });
@@ -109,8 +117,11 @@ export const Billing: React.FC = () => {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: (payload: { planTier: 'pro' | 'business'; interval: 'monthly' | 'annual'; seatCount: number }) =>
-      billingService.createCheckout(payload),
+    mutationFn: (payload: {
+      planTier: 'pro' | 'business';
+      interval: 'monthly' | 'annual';
+      seatCount: number;
+    }) => billingService.createCheckout(payload),
     onSuccess: (data) => {
       if (data?.url) {
         window.location.href = data.url;
@@ -125,7 +136,9 @@ export const Billing: React.FC = () => {
     mutationFn: (payload: { companyName: string; teamSize: number; requirements?: string }) =>
       billingService.requestEnterpriseQuote(payload),
     onSuccess: () => {
-      toast.success('Your quote request has been sent! Our enterprise team will contact you shortly.');
+      toast.success(
+        'Your quote request has been sent! Our enterprise team will contact you shortly.'
+      );
       setIsEnterpriseModalOpen(false);
       setEnterpriseCompany('');
       setEnterpriseRequirements('');
@@ -137,10 +150,32 @@ export const Billing: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex h-96 items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground font-medium">Loading organization billing details...</p>
+      <div className="space-y-8 max-w-6xl" aria-label="Loading billing">
+        {/* Header mirror */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-56 rounded-lg bg-muted animate-pulse" />
+              <div className="h-5 w-16 rounded-full bg-muted/70 animate-pulse" />
+            </div>
+            <div className="h-4 w-80 max-w-full rounded bg-muted/60 animate-pulse" />
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-32 rounded-lg bg-muted/70 animate-pulse" />
+          </div>
+        </div>
+        {/* Metrics mirror */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-28 rounded-2xl border bg-card/40 animate-pulse" />
+          ))}
+        </div>
+        {/* Invoices table mirror */}
+        <div className="rounded-2xl border bg-card/40 overflow-hidden">
+          <div className="h-11 border-b border-border/60 bg-muted/30" />
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-12 border-b border-border/40 last:border-0" />
+          ))}
         </div>
       </div>
     );
@@ -148,15 +183,32 @@ export const Billing: React.FC = () => {
 
   if (error || !billing) {
     return (
-      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-8 text-center">
-        <AlertCircle className="mx-auto h-10 w-10 text-destructive mb-3" />
-        <h3 className="text-lg font-semibold text-destructive">Failed to Load Billing Information</h3>
-        <p className="text-sm text-muted-foreground mt-1 mb-4">
-          There was an error communicating with the billing service.
-        </p>
-        <Button variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ['billingOverview'] })}>
-          Retry
-        </Button>
+      <div className="space-y-8 max-w-6xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              Billing & Seats Hub
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage your per-head seat quota, guest permissions, and invoices.
+            </p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-8 text-center">
+          <AlertCircle className="mx-auto h-10 w-10 text-destructive mb-3" />
+          <h3 className="text-lg font-semibold text-destructive">
+            Failed to Load Billing Information
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1 mb-4">
+            There was an error communicating with the billing service.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['billingOverview'] })}
+          >
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }
@@ -201,14 +253,16 @@ export const Billing: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Billing & Seats Hub</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              Billing & Seats Hub
+            </h1>
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
                 subscription.status === 'active'
                   ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
                   : subscription.status === 'past_due' || isPastDueDowngradePending
-                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                  : 'bg-muted text-muted-foreground'
+                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                    : 'bg-muted text-muted-foreground'
               }`}
             >
               {subscription.status ? subscription.status.replace(/_/g, ' ') : 'Active'}
@@ -228,7 +282,11 @@ export const Billing: React.FC = () => {
               disabled={portalMutation.isPending}
               onClick={() => portalMutation.mutate()}
             >
-              {portalMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+              {portalMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ExternalLink className="h-4 w-4" />
+              )}
               Stripe Customer Portal
             </Button>
           )}
@@ -263,9 +321,10 @@ export const Billing: React.FC = () => {
             <div className="space-y-1 text-sm">
               <p className="font-semibold">Action Required: Free Plan Member Limit Exceeded</p>
               <p className="text-xs opacity-90">
-                Your subscription was scheduled for downgrade to Free, but your organization currently has{' '}
-                <strong>{seats.activeBillable} active billable members</strong> (Free tier allows max 5). Please
-                deactivate or remove excess members in the Users panel, or reactivate your subscription.
+                Your subscription was scheduled for downgrade to Free, but your organization
+                currently has <strong>{seats.activeBillable} active billable members</strong> (Free
+                tier allows max 5). Please deactivate or remove excess members in the Users panel,
+                or reactivate your subscription.
               </p>
             </div>
           </div>
@@ -279,8 +338,12 @@ export const Billing: React.FC = () => {
             <Calendar className="h-5 w-5 text-blue-600 shrink-0" />
             <div className="text-sm">
               Your subscription is scheduled to cancel at the end of the current period on{' '}
-              <strong>{subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : 'period end'}</strong>.
-              You will retain all paid features until that date.
+              <strong>
+                {subscription.currentPeriodEnd
+                  ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
+                  : 'period end'}
+              </strong>
+              . You will retain all paid features until that date.
             </div>
           </div>
         </div>
@@ -292,7 +355,9 @@ export const Billing: React.FC = () => {
         <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Current Tier</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Current Tier
+              </span>
               <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
                 {plan.name}
               </span>
@@ -313,7 +378,9 @@ export const Billing: React.FC = () => {
           <div className="pt-4 border-t border-border/60 mt-4 flex items-center justify-between text-xs text-muted-foreground">
             <span>Period End:</span>
             <span className="font-semibold text-foreground">
-              {subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : 'N/A'}
+              {subscription.currentPeriodEnd
+                ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
+                : 'N/A'}
             </span>
           </div>
         </div>
@@ -322,7 +389,9 @@ export const Billing: React.FC = () => {
         <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Seat Utilization</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Seat Utilization
+              </span>
               {seats.vacant > 0 ? (
                 <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                   {seats.vacant} Vacant {seats.vacant === 1 ? 'Seat' : 'Seats'}
@@ -345,12 +414,16 @@ export const Billing: React.FC = () => {
             <div className="mt-3 h-2 w-full rounded-full bg-muted overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 transition-all"
-                style={{ width: `${Math.min(100, (seats.usedBillable / Math.max(1, seats.totalPaid)) * 100)}%` }}
+                style={{
+                  width: `${Math.min(100, (seats.usedBillable / Math.max(1, seats.totalPaid)) * 100)}%`,
+                }}
               />
             </div>
 
             <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>{seats.activeBillable} active · {seats.pendingBillable} pending</span>
+              <span>
+                {seats.activeBillable} active · {seats.pendingBillable} pending
+              </span>
               <span>{seats.vacant} vacant</span>
             </div>
           </div>
@@ -384,7 +457,9 @@ export const Billing: React.FC = () => {
         <div className="rounded-2xl border border-border/70 bg-card p-6 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Viewer Guests</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Viewer Guests
+              </span>
               <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
                 Cap: {guests.guestCap}
               </span>
@@ -403,7 +478,9 @@ export const Billing: React.FC = () => {
                 className={`h-full transition-all ${
                   guests.isOverLimit ? 'bg-destructive' : 'bg-emerald-500'
                 }`}
-                style={{ width: `${Math.min(100, (guests.usedGuests / Math.max(1, guests.guestCap)) * 100)}%` }}
+                style={{
+                  width: `${Math.min(100, (guests.usedGuests / Math.max(1, guests.guestCap)) * 100)}%`,
+                }}
               />
             </div>
 
@@ -429,9 +506,10 @@ export const Billing: React.FC = () => {
         <div className="space-y-1">
           <h4 className="font-semibold text-sm text-foreground">Slack-Style Fair Billing Policy</h4>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            When team members leave or are deactivated, your paid seat remains in your organization as a{' '}
-            <strong>Vacant Seat</strong>. You can invite replacement colleagues at any time for <strong>$0 proration</strong>.
-            If you do not intend to replace them, you can downsize your seat count before the end of the billing period.
+            When team members leave or are deactivated, your paid seat remains in your organization
+            as a <strong>Vacant Seat</strong>. You can invite replacement colleagues at any time for{' '}
+            <strong>$0 proration</strong>. If you do not intend to replace them, you can downsize
+            your seat count before the end of the billing period.
           </p>
         </div>
       </div>
@@ -496,7 +574,8 @@ export const Billing: React.FC = () => {
           </div>
         ) : (
           <div className="p-8 text-center text-xs text-muted-foreground">
-            No past invoices on record yet. Paid charges and receipts will appear here automatically.
+            No past invoices on record yet. Paid charges and receipts will appear here
+            automatically.
           </div>
         )}
       </div>
@@ -534,7 +613,8 @@ export const Billing: React.FC = () => {
               Add Seats (Instant Proration)
             </DialogTitle>
             <DialogDescription>
-              Increase your paid seat quota. Newly added seats are available immediately with prorated charges.
+              Increase your paid seat quota. Newly added seats are available immediately with
+              prorated charges.
             </DialogDescription>
           </DialogHeader>
 
@@ -546,7 +626,9 @@ export const Billing: React.FC = () => {
               </div>
               <div className="text-right">
                 <p className="text-xs font-medium text-muted-foreground">New Total</p>
-                <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{targetNewSeats} Seats</p>
+                <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
+                  {targetNewSeats} Seats
+                </p>
               </div>
             </div>
 
@@ -600,7 +682,14 @@ export const Billing: React.FC = () => {
               <div className="flex items-center justify-between text-muted-foreground">
                 <span>New Monthly Total:</span>
                 <span className="font-semibold text-foreground">
-                  ${(targetNewSeats * (subscription.billingInterval === 'annual' ? (pricing?.annualRatePerSeat ?? 8) : (pricing?.monthlyRatePerSeat ?? 10))).toFixed(2)}/mo
+                  $
+                  {(
+                    targetNewSeats *
+                    (subscription.billingInterval === 'annual'
+                      ? (pricing?.annualRatePerSeat ?? 8)
+                      : (pricing?.monthlyRatePerSeat ?? 10))
+                  ).toFixed(2)}
+                  /mo
                 </span>
               </div>
             </div>
@@ -615,7 +704,9 @@ export const Billing: React.FC = () => {
               disabled={increaseSeatsMutation.isPending}
               onClick={() => increaseSeatsMutation.mutate(targetNewSeats)}
             >
-              {increaseSeatsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {increaseSeatsMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
               Confirm & Expand to {targetNewSeats} Seats
             </Button>
           </DialogFooter>
@@ -640,19 +731,26 @@ export const Billing: React.FC = () => {
               <p className="font-semibold mb-1">Period-Boundary Downsizing Policy</p>
               <p className="opacity-90 leading-relaxed">
                 Per industry SaaS standards, seat decreases take effect at your next renewal date (
-                {subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : 'period end'}
-                ) with <strong>no premature credits removed</strong>. You cannot reduce below your currently assigned active members ({seats.usedBillable}).
+                {subscription.currentPeriodEnd
+                  ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
+                  : 'period end'}
+                ) with <strong>no premature credits removed</strong>. You cannot reduce below your
+                currently assigned active members ({seats.usedBillable}).
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-foreground">Desired New Seat Count</label>
+              <label className="text-xs font-semibold text-foreground">
+                Desired New Seat Count
+              </label>
               <Input
                 type="number"
                 min={seats.usedBillable}
                 max={subscription.seatCount - 1}
                 value={downsizeSeatsCount}
-                onChange={(e) => setDownsizeSeatsCount(parseInt(e.target.value, 10) || seats.usedBillable)}
+                onChange={(e) =>
+                  setDownsizeSeatsCount(parseInt(e.target.value, 10) || seats.usedBillable)
+                }
               />
               <p className="text-[11px] text-muted-foreground">
                 Minimum allowed: {seats.usedBillable} seats (to protect active team members).
@@ -666,10 +764,14 @@ export const Billing: React.FC = () => {
             </Button>
             <Button
               className="bg-amber-600 hover:bg-amber-700 text-white"
-              disabled={downsizeSeatsMutation.isPending || downsizeSeatsCount >= subscription.seatCount}
+              disabled={
+                downsizeSeatsMutation.isPending || downsizeSeatsCount >= subscription.seatCount
+              }
               onClick={() => downsizeSeatsMutation.mutate(downsizeSeatsCount)}
             >
-              {downsizeSeatsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {downsizeSeatsMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
               Schedule Decrease to {downsizeSeatsCount} Seats
             </Button>
           </DialogFooter>
@@ -685,7 +787,8 @@ export const Billing: React.FC = () => {
               Upgrade Your Organization Plan
             </DialogTitle>
             <DialogDescription>
-              Select your tier, billing interval, and seat count for instant activation via Stripe Checkout.
+              Select your tier, billing interval, and seat count for instant activation via Stripe
+              Checkout.
             </DialogDescription>
           </DialogHeader>
 
@@ -697,7 +800,9 @@ export const Billing: React.FC = () => {
                   type="button"
                   onClick={() => setUpgradeInterval('monthly')}
                   className={`rounded-md px-4 py-1.5 font-medium transition-all ${
-                    upgradeInterval === 'monthly' ? 'bg-background shadow-xs font-semibold' : 'text-muted-foreground'
+                    upgradeInterval === 'monthly'
+                      ? 'bg-background shadow-xs font-semibold'
+                      : 'text-muted-foreground'
                   }`}
                 >
                   Monthly
@@ -706,7 +811,9 @@ export const Billing: React.FC = () => {
                   type="button"
                   onClick={() => setUpgradeInterval('annual')}
                   className={`rounded-md px-4 py-1.5 font-medium transition-all ${
-                    upgradeInterval === 'annual' ? 'bg-background shadow-xs font-semibold' : 'text-muted-foreground'
+                    upgradeInterval === 'annual'
+                      ? 'bg-background shadow-xs font-semibold'
+                      : 'text-muted-foreground'
                   }`}
                 >
                   Annual (20% Off)
@@ -760,7 +867,15 @@ export const Billing: React.FC = () => {
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-foreground">Initial Seats</span>
                 <span className="font-bold text-primary">
-                  Total: ${(upgradeInterval === 'annual' ? (upgradeTier === 'business' ? 16 : 8) : (upgradeTier === 'business' ? 20 : 10)) * upgradeSeats}/mo
+                  Total: $
+                  {(upgradeInterval === 'annual'
+                    ? upgradeTier === 'business'
+                      ? 16
+                      : 8
+                    : upgradeTier === 'business'
+                      ? 20
+                      : 10) * upgradeSeats}
+                  /mo
                 </span>
               </div>
               <Input
@@ -788,7 +903,9 @@ export const Billing: React.FC = () => {
                 })
               }
             >
-              {checkoutMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {checkoutMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
               Proceed to Stripe Checkout
             </Button>
           </DialogFooter>
@@ -805,21 +922,24 @@ export const Billing: React.FC = () => {
             </DialogTitle>
             <DialogDescription>
               Your plan will downgrade to Free at the end of your billing cycle on{' '}
-              {subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : 'period end'}.
+              {subscription.currentPeriodEnd
+                ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
+                : 'period end'}
+              .
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 pt-2 text-xs text-muted-foreground">
-            <p>
-              Please note the following downgrade rules:
-            </p>
+            <p>Please note the following downgrade rules:</p>
             <ul className="list-disc pl-5 space-y-1.5">
               <li>You will keep full access to paid features until the current period expires.</li>
               <li>
-                The Free plan supports a maximum of <strong>5 billable team members</strong> and <strong>3 viewer guests</strong>.
+                The Free plan supports a maximum of <strong>5 billable team members</strong> and{' '}
+                <strong>3 viewer guests</strong>.
               </li>
               <li>
-                If you have more than 5 active members at the time of downgrade, your account will enter pending downgrade status until excess members are deactivated.
+                If you have more than 5 active members at the time of downgrade, your account will
+                enter pending downgrade status until excess members are deactivated.
               </li>
             </ul>
           </div>
@@ -886,7 +1006,9 @@ export const Billing: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Security or Invoicing Requirements</label>
+              <label className="text-xs font-semibold text-foreground">
+                Security or Invoicing Requirements
+              </label>
               <textarea
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[80px]"
                 placeholder="e.g. SAML SSO with Okta, custom SLA, NET-30 invoicing..."
@@ -904,7 +1026,9 @@ export const Billing: React.FC = () => {
                 disabled={enterpriseQuoteMutation.isPending}
                 className="bg-pink-600 hover:bg-pink-700 text-white"
               >
-                {enterpriseQuoteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {enterpriseQuoteMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
                 Submit Enterprise Request
               </Button>
             </DialogFooter>
