@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } fro
 import { createPortal } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../lib/api';
+import { api, getApiErrorMessage } from '../lib/api';
+import { toast } from 'sonner';
+import { useOptimisticMutation } from '../lib/useOptimisticMutation';
 import {
   DndContext,
   DragOverlay,
@@ -190,19 +192,27 @@ export function BoardView() {
     setLists(listsData);
   }, [listsData]);
 
-  const moveCardMutation = useMutation({
-    mutationFn: async ({
-      cardId,
-      listId,
-      position,
-    }: {
-      cardId: string;
-      listId: string;
-      position: number;
-    }) => {
+  const moveCardMutation = useOptimisticMutation<
+    void,
+    { cardId: string; listId: string; position: number }
+  >(
+    async ({ cardId, listId, position }) => {
       await api.patch(`/cards/${cardId}/move`, { listId, position });
     },
-  });
+    {
+      queryKeys: [['board', 'full', boardId]],
+      onErrorExtra: () => {
+        // Roll the optimistic board back to the last server state.
+        const cached = queryClient.getQueryData<{ lists: KanbanList[] }>([
+          'board',
+          'full',
+          boardId,
+        ]);
+        if (cached?.lists) setLists(cached.lists);
+      },
+      errorMessage: 'Failed to move task. Please try again.',
+    }
+  );
 
   // Custom collision detection for Kanban multi-container board
   const customCollisionDetection: CollisionDetection = useCallback((args) => {
@@ -388,6 +398,9 @@ export function BoardView() {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       navigate('/');
     },
+    onError: (err) => {
+      toast.error(getApiErrorMessage(err, 'Failed to delete board. Please try again.'));
+    },
   });
 
   const updateBoardMutation = useMutation({
@@ -396,6 +409,9 @@ export function BoardView() {
       queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
       queryClient.invalidateQueries({ queryKey: ['board', boardId] });
       setIsEditingBoard(false);
+    },
+    onError: (err) => {
+      toast.error(getApiErrorMessage(err, 'Failed to rename board. Please try again.'));
     },
   });
 
@@ -513,6 +529,13 @@ export function BoardView() {
                 onAdd={() =>
                   queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] })
                 }
+                onAddList={(temp) => setLists((prev) => [...prev, temp])}
+                onReplaceList={(tempId, serverList) =>
+                  setLists((prev) =>
+                    prev.map((l) => (l.id === tempId ? { ...serverList, cards: [] } : l))
+                  )
+                }
+                onRemoveList={(tempId) => setLists((prev) => prev.filter((l) => l.id !== tempId))}
               />
             </div>
           </div>
@@ -538,6 +561,27 @@ export function BoardView() {
                     );
                     setLists(newLists);
                   }}
+                  onReplaceCard={(tempId, serverCard) => {
+                    setLists((prev) =>
+                      prev.map((l) =>
+                        l.id === list.id
+                          ? {
+                              ...l,
+                              cards: l.cards.map((c) => (c.id === tempId ? serverCard : c)),
+                            }
+                          : l
+                      )
+                    );
+                  }}
+                  onRemoveCard={(tempId) => {
+                    setLists((prev) =>
+                      prev.map((l) =>
+                        l.id === list.id
+                          ? { ...l, cards: l.cards.filter((c) => c.id !== tempId) }
+                          : l
+                      )
+                    );
+                  }}
                   onCardClick={handleCardClick}
                   onOpenFullEditor={(data) => {
                     setCreateTaskConfig({
@@ -556,6 +600,13 @@ export function BoardView() {
                 onAdd={() =>
                   queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] })
                 }
+                onAddList={(temp) => setLists((prev) => [...prev, temp])}
+                onReplaceList={(tempId, serverList) =>
+                  setLists((prev) =>
+                    prev.map((l) => (l.id === tempId ? { ...serverList, cards: [] } : l))
+                  )
+                }
+                onRemoveList={(tempId) => setLists((prev) => prev.filter((l) => l.id !== tempId))}
               />
             </div>
 
@@ -728,6 +779,8 @@ function ListColumn({
   boardId,
   isDraggingActive,
   onAddCard,
+  onReplaceCard,
+  onRemoveCard,
   onCardClick,
   onOpenFullEditor,
 }: {
@@ -735,6 +788,8 @@ function ListColumn({
   boardId: string;
   isDraggingActive: boolean;
   onAddCard: (c: KanbanCard) => void;
+  onReplaceCard: (tempId: string, serverCard: KanbanCard) => void;
+  onRemoveCard: (tempId: string) => void;
   onCardClick: (id: string) => void;
   onOpenFullEditor: (data: {
     title?: string;
@@ -781,6 +836,9 @@ function ListColumn({
       queryClient.invalidateQueries({ queryKey: ['lists', boardId] });
       setIsDeletingList(false);
     },
+    onError: (err) => {
+      toast.error(getApiErrorMessage(err, 'Failed to delete list. Please try again.'));
+    },
   });
 
   const updateListMutation = useMutation({
@@ -790,10 +848,47 @@ function ListColumn({
       queryClient.invalidateQueries({ queryKey: ['lists', boardId] });
       setIsEditingList(false);
     },
+    onError: (err) => {
+      toast.error(getApiErrorMessage(err, 'Failed to rename list. Please try again.'));
+    },
   });
 
-  const handleAdd = async () => {
-    if (!title.trim()) return;
+  const pendingTempId = useRef<string | null>(null);
+  const addCardMutation = useOptimisticMutation<any, Record<string, any>>(
+    async (payload) => (await api.post('/cards', payload)).data,
+    {
+      queryKeys: [['board', 'full', boardId]],
+      applyOptimistic: (payload) => {
+        pendingTempId.current = `temp-${Date.now()}`;
+        onAddCard({
+          id: pendingTempId.current,
+          title: payload.title,
+          listId: list.id,
+          position: Number.MAX_SAFE_INTEGER,
+          labels: [],
+          assignees: [],
+          commentsCount: 0,
+          attachmentsCount: 0,
+          checklistTotal: 0,
+          checklistDone: 0,
+        } as KanbanCard);
+      },
+      onSuccessExtra: (serverCard) => {
+        if (pendingTempId.current) onReplaceCard(pendingTempId.current, serverCard);
+        pendingTempId.current = null;
+      },
+      onErrorExtra: (payload) => {
+        // Roll back the temp card and restore the typed title so nothing is lost.
+        if (pendingTempId.current) onRemoveCard(pendingTempId.current);
+        pendingTempId.current = null;
+        if (payload?.title) setTitle(payload.title);
+      },
+      errorMessage: 'Failed to create task. Please try again.',
+    }
+  );
+
+  const handleAdd = () => {
+    if (!title.trim() || addCardMutation.isPending) return;
     const payload: any = {
       listId: list.id,
       title: title.trim(),
@@ -802,8 +897,7 @@ function ListColumn({
       dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
       storyPoints: storyPoints ? Number(storyPoints) : undefined,
     };
-    const res = await api.post('/cards', payload);
-    onAddCard(res.data);
+    addCardMutation.mutate(payload);
     setTitle('');
     setDescription('');
     setDueDate('');
@@ -1086,9 +1180,9 @@ function ListColumn({
                   size="sm"
                   className="h-7 text-xs font-semibold px-3 shadow-xs bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
                   onClick={handleAdd}
-                  disabled={!title.trim()}
+                  disabled={!title.trim() || addCardMutation.isPending}
                 >
-                  Add Card
+                  {addCardMutation.isPending ? 'Adding…' : 'Add Card'}
                 </Button>
                 <Button
                   size="sm"
@@ -1653,16 +1747,58 @@ function KanbanCardView({
   );
 }
 
-function AddListForm({ boardId, onAdd }: { boardId: string; onAdd: () => void }) {
+function AddListForm({
+  boardId,
+  onAdd,
+  onAddList,
+  onReplaceList,
+  onRemoveList,
+}: {
+  boardId: string;
+  onAdd: () => void;
+  onAddList: (temp: KanbanList) => void;
+  onReplaceList: (tempId: string, serverList: KanbanList) => void;
+  onRemoveList: (tempId: string) => void;
+}) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
+  const pendingTempId = useRef<string | null>(null);
 
-  const handleAdd = async () => {
-    if (!name) return;
-    await api.post('/lists', { boardId, name });
+  const addListMutation = useOptimisticMutation<any, { name: string }>(
+    async (payload) => (await api.post('/lists', { boardId, name: payload.name })).data,
+    {
+      queryKeys: [['board', 'full', boardId]],
+      applyOptimistic: (payload) => {
+        pendingTempId.current = `temp-${Date.now()}`;
+        onAddList({
+          id: pendingTempId.current,
+          name: payload.name,
+          position: Number.MAX_SAFE_INTEGER,
+          cards: [],
+        });
+      },
+      onSuccessExtra: (serverList) => {
+        if (pendingTempId.current)
+          onReplaceList(pendingTempId.current, { ...serverList, cards: [] });
+        pendingTempId.current = null;
+        // Refresh after the temp row is swapped so a stale refetch can't wipe it.
+        onAdd();
+      },
+      onErrorExtra: (payload) => {
+        if (pendingTempId.current) onRemoveList(pendingTempId.current);
+        pendingTempId.current = null;
+        if (payload?.name) setName(payload.name);
+      },
+      errorMessage: 'Failed to create list. Please try again.',
+    }
+  );
+
+  const handleAdd = () => {
+    const trimmed = name.trim();
+    if (!trimmed || addListMutation.isPending) return;
+    addListMutation.mutate({ name: trimmed });
     setName('');
     setAdding(false);
-    onAdd();
   };
 
   return (
@@ -1678,8 +1814,12 @@ function AddListForm({ boardId, onAdd }: { boardId: string; onAdd: () => void })
             className="mb-2"
           />
           <div className="flex gap-2">
-            <Button size="sm" onClick={handleAdd}>
-              Add List
+            <Button
+              size="sm"
+              onClick={handleAdd}
+              disabled={!name.trim() || addListMutation.isPending}
+            >
+              {addListMutation.isPending ? 'Adding…' : 'Add List'}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>
               Cancel
