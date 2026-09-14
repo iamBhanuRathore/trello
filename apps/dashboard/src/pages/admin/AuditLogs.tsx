@@ -122,7 +122,7 @@ export function AuditLogs() {
         accessorFn: (row) => row.ipAddress || 'Internal',
         sortable: true,
         filterable: true,
-        width: '130px',
+        width: '190px',
         cell: ({ value }) => (
           <div className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
             <Globe className="w-3 h-3 text-muted-foreground" />
