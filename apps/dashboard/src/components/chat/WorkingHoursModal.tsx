@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Clock, Globe, X, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -134,9 +135,9 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -392,6 +393,7 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

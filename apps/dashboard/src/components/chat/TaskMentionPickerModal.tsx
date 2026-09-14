@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, X, CheckSquare, Loader2, ArrowRight } from 'lucide-react';
 import { searchService } from '../../lib/searchService';
@@ -29,9 +30,9 @@ export const TaskMentionPickerModal: React.FC<TaskMentionPickerModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -122,6 +123,7 @@ export const TaskMentionPickerModal: React.FC<TaskMentionPickerModalProps> = ({
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

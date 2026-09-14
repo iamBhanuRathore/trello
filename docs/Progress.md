@@ -1694,6 +1694,6 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
      - `GlobalChatDock.tsx`: Persistent floating bottom-right dock messenger rendered across all board, document, and admin views, with unread badge counter, quick message composer, and maximize toggle to full workspace.
      - `ChatPage.tsx`: Full-screen Teams workspace layout registered at `/chat` and `/chat/:channelId` in `App.tsx` and linked with unread badge count in `AppSidebar.tsx`.
      - `TaskChatPane.tsx`: Integrated quick messenger launcher directly in task card modal header for instant task-to-chat collaboration.
-- Decisions made: Dual-mode UI pattern (full-screen `/chat` workspace + floating dock) for seamless collaboration without losing board context; strict toast etiquette (no noisy success toasts for routine actions).
+- Decisions made: Dual-mode UI pattern (full-screen `/chat` workspace + floating dock) for seamless collaboration without losing board context; strict toast etiquette (no noisy success toasts for routine actions); mounted all chat modals via `createPortal(..., document.body)` to guarantee full viewport centering and prevent containment by parent stacking contexts.
 - Tests & Validation: Verified with `tsc -b --noEmit` (0 type errors), `oxlint` (clean), `vite build` (successful production bundle generation), and backend test suite (8 passing tests).
 

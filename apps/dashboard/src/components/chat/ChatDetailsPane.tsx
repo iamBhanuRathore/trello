@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   X,
@@ -568,8 +569,9 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
       </div>
 
       {/* Add Member Modal */}
-      {isAddMemberOpen && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      {isAddMemberOpen &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-card border border-border shadow-2xl rounded-2xl w-full max-w-md p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -659,7 +661,8 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

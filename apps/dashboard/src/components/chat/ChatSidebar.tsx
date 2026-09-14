@@ -204,7 +204,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
   };
 
   return (
-    <div className="w-72 h-full border-r border-border bg-sidebar/90 backdrop-blur-md flex flex-col shrink-0 select-none">
+    <div className="w-72 h-full border-r border-border bg-sidebar flex flex-col shrink-0 select-none">
       {/* ── Top Header & Actions ── */}
       <div className="p-3.5 border-b border-border space-y-2.5">
         <div className="flex items-center justify-between">
