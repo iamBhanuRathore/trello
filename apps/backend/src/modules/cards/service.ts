@@ -19,6 +19,7 @@ import {
   workspaces,
   notifications,
   organizationMembers,
+  timeLogs,
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
@@ -81,6 +82,14 @@ async function bumpForCard(db: Database, cardId: string, knownBoardId?: string |
   let boardId = knownBoardId ?? (await cachedBoardIdForCard(cardId));
   if (!boardId) boardId = (await getBoardIdForCard(db, cardId)) ?? null;
   await bumpCardAndBoard(cardId, boardId);
+  // Subtasks are embedded in the parent's cached getCard payload — a subtask
+  // mutation must also bump the parent. Single indexed PK lookup.
+  const [row] = await db
+    .select({ parentCardId: cards.parentCardId })
+    .from(cards)
+    .where(eq(cards.id, cardId))
+    .limit(1);
+  if (row?.parentCardId) await bumpCardCache(row.parentCardId);
 }
 
 /** Bump versions after a checklist-level mutation (resolves card via map, then DB). */
@@ -511,83 +520,223 @@ export async function getCard(db: Database, id: string, organizationId: string) 
     if (!card) throw httpError(404, 'Card not found');
 
     // Independent sub-fetches — fan out concurrently (was 6 sequential round-trips).
-    const [assignees, participants, watchers, cardLabelsList, stageRows, parentRows] =
-      await Promise.all([
-        // Assignees (single primary assignee model)
-        db
-          .select({
-            id: users.id,
-            name: users.name,
-            email: users.email,
-            avatarUrl: users.avatarUrl,
-          })
-          .from(cardAssignees)
-          .innerJoin(users, eq(users.id, cardAssignees.userId))
-          .where(eq(cardAssignees.cardId, id)),
-        // Participants (multiple collaborators)
-        db
-          .select({
-            id: users.id,
-            name: users.name,
-            email: users.email,
-            avatarUrl: users.avatarUrl,
-            addedAt: cardParticipants.addedAt,
-            createdAt: cardParticipants.addedAt,
-          })
-          .from(cardParticipants)
-          .innerJoin(users, eq(users.id, cardParticipants.userId))
-          .where(eq(cardParticipants.cardId, id)),
-        // Watchers (multiple observers)
-        db
-          .select({
-            id: users.id,
-            name: users.name,
-            email: users.email,
-            avatarUrl: users.avatarUrl,
-            subscribedAt: cardWatchers.subscribedAt,
-            createdAt: cardWatchers.subscribedAt,
-          })
-          .from(cardWatchers)
-          .innerJoin(users, eq(users.id, cardWatchers.userId))
-          .where(eq(cardWatchers.cardId, id)),
-        // Labels
-        db
-          .select({
-            id: labels.id,
-            name: labels.name,
-            color: labels.color,
-          })
-          .from(cardLabels)
-          .innerJoin(labels, eq(labels.id, cardLabels.labelId))
-          .where(eq(cardLabels.cardId, id)),
-        // Stage (skip query when no stageId)
-        card.stageId
-          ? db
-              .select({
-                id: stages.id,
-                name: stages.name,
-                color: stages.color,
-                category: stages.category,
-              })
-              .from(stages)
-              .where(eq(stages.id, card.stageId))
-              .limit(1)
-          : Promise.resolve([]),
-        // Parent card (skip query when no parentCardId)
-        card.parentCardId
-          ? db
-              .select({
-                id: cards.id,
-                title: cards.title,
-              })
+    // Comments / checklists / attachments / subtasks / time-logs ride along so
+    // opening a task is 1 request (Redis hit) instead of 6 sequential ones.
+    const [
+      assignees,
+      participants,
+      watchers,
+      cardLabelsList,
+      stageRows,
+      parentRows,
+      commentRows,
+      checklistRows,
+      checklistItemRows,
+      attachmentRows,
+      subtaskRows,
+      subtaskAssigneeRows,
+      timeLogRows,
+    ] = await Promise.all([
+      // Assignees (single primary assignee model)
+      db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+        })
+        .from(cardAssignees)
+        .innerJoin(users, eq(users.id, cardAssignees.userId))
+        .where(eq(cardAssignees.cardId, id)),
+      // Participants (multiple collaborators)
+      db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+          addedAt: cardParticipants.addedAt,
+          createdAt: cardParticipants.addedAt,
+        })
+        .from(cardParticipants)
+        .innerJoin(users, eq(users.id, cardParticipants.userId))
+        .where(eq(cardParticipants.cardId, id)),
+      // Watchers (multiple observers)
+      db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+          subscribedAt: cardWatchers.subscribedAt,
+          createdAt: cardWatchers.subscribedAt,
+        })
+        .from(cardWatchers)
+        .innerJoin(users, eq(users.id, cardWatchers.userId))
+        .where(eq(cardWatchers.cardId, id)),
+      // Labels
+      db
+        .select({
+          id: labels.id,
+          name: labels.name,
+          color: labels.color,
+        })
+        .from(cardLabels)
+        .innerJoin(labels, eq(labels.id, cardLabels.labelId))
+        .where(eq(cardLabels.cardId, id)),
+      // Stage (skip query when no stageId)
+      card.stageId
+        ? db
+            .select({
+              id: stages.id,
+              name: stages.name,
+              color: stages.color,
+              category: stages.category,
+            })
+            .from(stages)
+            .where(eq(stages.id, card.stageId))
+            .limit(1)
+        : Promise.resolve([]),
+      // Parent card (skip query when no parentCardId)
+      card.parentCardId
+        ? db
+            .select({
+              id: cards.id,
+              title: cards.title,
+            })
+            .from(cards)
+            .where(eq(cards.id, card.parentCardId))
+            .limit(1)
+        : Promise.resolve([]),
+      // Comments (same shape as listComments)
+      db
+        .select({
+          id: comments.id,
+          cardId: comments.cardId,
+          userId: comments.userId,
+          body: comments.body,
+          isEdited: comments.isEdited,
+          createdAt: comments.createdAt,
+          updatedAt: comments.updatedAt,
+          authorName: users.name,
+          authorAvatarUrl: users.avatarUrl,
+          authorEmail: users.email,
+        })
+        .from(comments)
+        .leftJoin(users, eq(users.id, comments.userId))
+        .where(and(eq(comments.cardId, id), isNull(comments.deletedAt)))
+        .orderBy(desc(comments.createdAt)),
+      // Checklists + items (same shape as getCardChecklists)
+      db
+        .select()
+        .from(checklists)
+        .where(and(eq(checklists.cardId, id), isNull(checklists.deletedAt)))
+        .orderBy(checklists.position),
+      db
+        .select()
+        .from(checklistItems)
+        .innerJoin(checklists, eq(checklists.id, checklistItems.checklistId))
+        .where(
+          and(
+            eq(checklists.cardId, id),
+            isNull(checklists.deletedAt),
+            isNull(checklistItems.deletedAt)
+          )
+        )
+        .orderBy(checklistItems.position),
+      // Attachments (same shape as listAttachments)
+      db
+        .select()
+        .from(attachments)
+        .where(and(eq(attachments.cardId, id), isNull(attachments.deletedAt)))
+        .orderBy(desc(attachments.createdAt)),
+      // Subtasks (same shape as listSubtasks, minus its getCard org-check —
+      // the outer query already verified org access)
+      db
+        .select({ card: cards, listName: lists.name })
+        .from(cards)
+        .innerJoin(lists, eq(lists.id, cards.listId))
+        .where(
+          and(eq(cards.parentCardId, id), eq(cards.isArchived, false), isNull(cards.deletedAt))
+        )
+        .orderBy(cards.position),
+      db
+        .select({
+          cardId: cardAssignees.cardId,
+          userId: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+        })
+        .from(cardAssignees)
+        .innerJoin(users, eq(users.id, cardAssignees.userId))
+        .where(
+          inArray(
+            cardAssignees.cardId,
+            db
+              .select({ id: cards.id })
               .from(cards)
-              .where(eq(cards.id, card.parentCardId))
-              .limit(1)
-          : Promise.resolve([]),
-      ]);
+              .where(and(eq(cards.parentCardId, id), isNull(cards.deletedAt)))
+          )
+        ),
+      // Time logs (same shape as getCardTimeLogs)
+      db
+        .select({
+          id: timeLogs.id,
+          cardId: timeLogs.cardId,
+          userId: timeLogs.userId,
+          minutes: timeLogs.minutes,
+          description: timeLogs.description,
+          loggedDate: timeLogs.loggedDate,
+          isBillable: timeLogs.isBillable,
+          createdAt: timeLogs.createdAt,
+          user: {
+            id: users.id,
+            name: users.name,
+            avatarUrl: users.avatarUrl,
+            email: users.email,
+          },
+        })
+        .from(timeLogs)
+        .innerJoin(users, eq(timeLogs.userId, users.id))
+        .where(and(eq(timeLogs.cardId, id), isNull(timeLogs.deletedAt)))
+        .orderBy(desc(timeLogs.loggedDate), desc(timeLogs.createdAt)),
+    ]);
 
     const stage = stageRows[0] || null;
     const parentCard = parentRows[0] || null;
+
+    const checklistsWithItems = checklistRows.map((cl) => ({
+      ...cl,
+      items: checklistItemRows
+        .filter((item) => item.checklist_items.checklistId === cl.id)
+        .map((i) => i.checklist_items),
+    }));
+
+    const subtaskAssigneesByCard = new Map<string, any>();
+    subtaskAssigneeRows.forEach((a) => {
+      subtaskAssigneesByCard.set(a.cardId, {
+        id: a.userId,
+        name: a.name,
+        email: a.email,
+        avatarUrl: a.avatarUrl,
+      });
+    });
+    const subtasks = subtaskRows.map((s) => ({
+      ...s.card,
+      listName: s.listName,
+      assignee: subtaskAssigneesByCard.get(s.card.id) || null,
+      assignees: subtaskAssigneesByCard.has(s.card.id)
+        ? [subtaskAssigneesByCard.get(s.card.id)]
+        : [],
+    }));
+
+    let totalMinutes = 0;
+    let billableMinutes = 0;
+    for (const log of timeLogRows) {
+      totalMinutes += log.minutes;
+      if (log.isBillable) billableMinutes += log.minutes;
+    }
 
     return {
       ...card,
@@ -598,6 +747,17 @@ export async function getCard(db: Database, id: string, organizationId: string) 
       labels: cardLabelsList,
       stage,
       parentCard,
+      comments: commentRows,
+      checklists: checklistsWithItems,
+      attachments: attachmentRows,
+      subtasks,
+      timeTracking: {
+        cardId: id,
+        totalMinutes,
+        billableMinutes,
+        nonBillableMinutes: totalMinutes - billableMinutes,
+        timeLogs: timeLogRows,
+      },
     };
   });
   if (!hit && (data as { boardId?: string })?.boardId) {
@@ -687,6 +847,8 @@ export async function updateCard(db: Database, id: string, organizationId: strin
     eventBus.broadcast(`board:${boardId}`, 'card.updated', card);
   }
   await bumpCardAndBoard(id, boardId ?? null);
+  // Subtasks are embedded in the parent's cached payload — bump it too.
+  if (card.parentCardId) await bumpCardCache(card.parentCardId);
   return card;
 }
 
@@ -747,6 +909,8 @@ export async function archiveCard(
     });
   }
   await bumpCardAndBoard(id, boardId ?? null);
+  // Subtasks are embedded in the parent's cached payload — bump it too.
+  if (card.parentCardId) await bumpCardCache(card.parentCardId);
   return card;
 }
 

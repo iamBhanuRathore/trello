@@ -1,14 +1,8 @@
 import { eq, and, isNull, gte, lte, desc } from 'drizzle-orm';
 import type { Database } from '../../db/index';
-import {
-  timeLogs,
-  cards,
-  users,
-  lists,
-  boards,
-  projects,
-} from '../../db/schema/index';
+import { timeLogs, cards, users, lists, boards, projects } from '../../db/schema/index';
 import { eventBus } from '../../lib/event-bus';
+import { bumpCardCache } from '../../lib/cache';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -78,17 +72,16 @@ export async function logTime(
     organizationId,
   });
 
+  // Time logs are embedded in the cached getCard payload — bump it.
+  await bumpCardCache(input.cardId);
+
   return {
     ...timeLog!,
     user: user || { id: userId, name: 'User', avatarUrl: null },
   };
 }
 
-export async function getCardTimeLogs(
-  db: Database,
-  organizationId: string,
-  cardId: string
-) {
+export async function getCardTimeLogs(db: Database, organizationId: string, cardId: string) {
   const [card] = await db
     .select({
       id: cards.id,
@@ -170,10 +163,10 @@ export async function deleteTimeLog(
     throw httpError(403, 'Forbidden — you can only delete your own time logs');
   }
 
-  const [deleted] = await db
-    .delete(timeLogs)
-    .where(eq(timeLogs.id, timeLogId))
-    .returning();
+  const [deleted] = await db.delete(timeLogs).where(eq(timeLogs.id, timeLogId)).returning();
+
+  // Time logs are embedded in the cached getCard payload — bump it.
+  if (deleted) await bumpCardCache(deleted.cardId);
 
   return deleted;
 }
@@ -188,10 +181,7 @@ export async function getTimesheet(
     endDate?: string;
   }
 ) {
-  const conditions = [
-    eq(cards.organizationId, organizationId),
-    isNull(timeLogs.deletedAt),
-  ];
+  const conditions = [eq(cards.organizationId, organizationId), isNull(timeLogs.deletedAt)];
 
   if (filter?.userId) {
     conditions.push(eq(timeLogs.userId, filter.userId));
@@ -249,7 +239,13 @@ export async function getTimesheet(
   let billableMinutes = 0;
   const userSummary: Record<
     string,
-    { userId: string; name: string; avatarUrl: string | null; totalMinutes: number; billableMinutes: number }
+    {
+      userId: string;
+      name: string;
+      avatarUrl: string | null;
+      totalMinutes: number;
+      billableMinutes: number;
+    }
   > = {};
 
   const projectSummary: Record<
