@@ -346,12 +346,7 @@ export function Workspaces() {
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setDialogOpen(false)}
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={() => setEditingWs(null)}>
                   Cancel
                 </Button>
                 <Button type="submit" size="sm" disabled={updateWsMutation.isPending}>
@@ -950,7 +945,7 @@ function CreateWorkspaceDialog({
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" size="sm">
