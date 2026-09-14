@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, memo } from 'react';
 import { Button } from './button';
 import { Input } from './input';
 import {
@@ -66,6 +66,94 @@ export interface EnterpriseDataGridProps<T> {
   headerActions?: React.ReactNode;
 }
 
+// ─── Module-scope pure helpers (stable identity: never bust memos) ──────────
+
+// Cap rendered distinct-value checkboxes per filter popover. The full list is
+// still used for select-all/counts; only the rendered DOM is capped.
+const MAX_DISTINCT_RENDER = 500;
+
+function getRawValue<T>(row: T, col: ColumnDef<T>): any {
+  if (col.accessorFn) return col.accessorFn(row);
+  if (col.accessorKey) return row[col.accessorKey];
+  return (row as Record<string, any>)[col.id];
+}
+
+function getStringValue<T>(row: T, col: ColumnDef<T>): string {
+  const val = getRawValue(row, col);
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'object') {
+    if (val instanceof Date) return val.toISOString();
+    if (val.name) return String(val.name);
+    if (val.title) return String(val.title);
+    return JSON.stringify(val);
+  }
+  return String(val);
+}
+
+// Precomputed sort key — computed once per row (Schwartzian transform) instead
+// of re-parsing dates / lowercasing strings on every comparison.
+type SortKey = { kind: 0; v: number } | { kind: 1; v: number } | { kind: 2; v: string };
+
+function getSortKey(val: any): SortKey | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'number') return { kind: 0, v: val };
+  if (typeof val === 'string' && val.includes('-')) {
+    const t = new Date(val).getTime();
+    if (!isNaN(t)) return { kind: 1, v: t };
+  }
+  if (val instanceof Date) {
+    const t = val.getTime();
+    if (!isNaN(t)) return { kind: 1, v: t };
+  }
+  return { kind: 2, v: String(val).toLowerCase() };
+}
+
+function compareSortKeys(a: SortKey, b: SortKey, desc: boolean): number {
+  if (a.kind !== b.kind) return a.kind - b.kind;
+  if (a.v === b.v) return 0;
+  const cmp = a.v < b.v ? -1 : 1;
+  return desc ? -cmp : cmp;
+}
+
+// Memoized row — re-renders only when its own row/columns change, so toolbar
+// typing (search, filter popover) doesn't re-render every visible row.
+const GridRow = memo(function GridRow({
+  row,
+  columns,
+  index,
+  onRowClick,
+}: {
+  row: Record<string, any>;
+  columns: ColumnDef<any>[];
+  index: number;
+  onRowClick?: (row: any) => void;
+}) {
+  return (
+    <tr
+      onClick={() => onRowClick && onRowClick(row)}
+      className={`hover:bg-muted/30 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
+    >
+      {columns.map((col) => {
+        const val = getRawValue(row, col);
+        return (
+          <td
+            key={col.id}
+            className={`py-3 px-4 ${
+              col.align === 'center'
+                ? 'text-center'
+                : col.align === 'right'
+                  ? 'text-right'
+                  : 'text-left'
+            }`}
+          >
+            {col.cell ? col.cell({ row, value: val, index }) : (val ?? '—')}
+          </td>
+        );
+      })}
+    </tr>
+  );
+});
+
 export function EnterpriseDataGrid<T extends Record<string, any>>({
   columns,
   data,
@@ -105,6 +193,13 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
 
   // ─── Local State ─────────────────────────────────────────────────────────────
   const [globalSearch, setGlobalSearch] = useState('');
+  // Debounced query drives the expensive filter — typing stays instant while
+  // the O(rows × cols) scan runs at most once per pause.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(globalSearch), 200);
+    return () => clearTimeout(t);
+  }, [globalSearch]);
   const [sortState, setSortState] = useState<{ columnId: string; desc: boolean } | null>(null);
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
   const [currentPage, setCurrentPage] = useState(1);
@@ -127,51 +222,38 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Helper to extract raw value for a row & column
-  const getRawValue = (row: T, col: ColumnDef<T>): any => {
-    if (col.accessorFn) return col.accessorFn(row);
-    if (col.accessorKey) return row[col.accessorKey];
-    return row[col.id];
-  };
+  // O(1) column lookup — avoids columns.find() per row per filter/sort pass.
+  const columnById = useMemo(() => new Map(columns.map((c) => [c.id, c])), [columns]);
 
-  // Helper to format value as a string for filtering & search
-  const getStringValue = (row: T, col: ColumnDef<T>): string => {
-    const val = getRawValue(row, col);
-    if (val === null || val === undefined) return '';
-    if (typeof val === 'object') {
-      if (val instanceof Date) return val.toISOString();
-      if (val.name) return String(val.name);
-      if (val.title) return String(val.title);
-      return JSON.stringify(val);
+  // Selected filter values as Sets — O(1) membership per row instead of
+  // Array.includes() inside the row loop.
+  const columnFilterSets = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const [colId, vals] of Object.entries(columnFilters)) {
+      if (vals && vals.length > 0) map.set(colId, new Set(vals));
     }
-    return String(val);
-  };
-
-  // ─── Excel Unique Distinct Values Generator per Column ───────────────────────
-  const columnDistinctValues = useMemo(() => {
-    const map: Record<string, Array<{ value: string; count: number }>> = {};
-
-    columns.forEach((col) => {
-      if (!col.filterable) return;
-      const countMap = new Map<string, number>();
-
-      data.forEach((row) => {
-        const strVal = getStringValue(row, col) || '(Blank)';
-        countMap.set(strVal, (countMap.get(strVal) || 0) + 1);
-      });
-
-      const list = Array.from(countMap.entries()).map(([value, count]) => ({
-        value,
-        count,
-      }));
-
-      // Sort alphabetically
-      list.sort((a, b) => a.value.localeCompare(b.value));
-      map[col.id] = list;
-    });
-
     return map;
-  }, [columns, data]);
+  }, [columnFilters]);
+
+  // ─── Lazy distinct values: only for the open filter popover ────────────────
+  // Previously this scanned ALL filterable columns × ALL rows on every data
+  // change. Now it runs only for the column the user actually opened.
+  const activeDistinctValues = useMemo(() => {
+    if (!activeFilterColId) return [] as Array<{ value: string; count: number }>;
+    const col = columnById.get(activeFilterColId);
+    if (!col) return [] as Array<{ value: string; count: number }>;
+    const countMap = new Map<string, number>();
+    for (let i = 0; i < data.length; i++) {
+      const strVal = getStringValue(data[i], col) || '(Blank)';
+      countMap.set(strVal, (countMap.get(strVal) || 0) + 1);
+    }
+    const list = Array.from(countMap.entries()).map(([value, count]) => ({
+      value,
+      count,
+    }));
+    list.sort((a, b) => a.value.localeCompare(b.value));
+    return list;
+  }, [activeFilterColId, data, columnById]);
 
   // ─── Filter & Search Handling ───────────────────────────────────────────────
   const activeFilterCount = useMemo(() => {
@@ -249,65 +331,54 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
   const processedData = useMemo(() => {
     if (serverSide) return data;
 
-    let result = [...data];
+    let result = data;
 
-    // 1. Global Search
-    if (globalSearch.trim()) {
-      const q = globalSearch.toLowerCase().trim();
-      result = result.filter((row) =>
-        columns.some((col) => {
-          const str = getStringValue(row, col).toLowerCase();
-          return str.includes(q);
-        })
-      );
+    // 1. Global Search — single pre-lowercased haystack per row, one pass.
+    const q = debouncedSearch.toLowerCase().trim();
+    if (q) {
+      result = result.filter((row) => {
+        for (let i = 0; i < columns.length; i++) {
+          if (getStringValue(row, columns[i]).toLowerCase().includes(q)) return true;
+        }
+        return false;
+      });
     }
 
     // 2. Column-Specific Excel Filters
-    Object.entries(columnFilters).forEach(([colId, selectedValues]) => {
-      if (!selectedValues || selectedValues.length === 0) return;
-      const col = columns.find((c) => c.id === colId);
-      if (!col) return;
-
+    if (columnFilterSets.size > 0) {
       result = result.filter((row) => {
-        const val = getStringValue(row, col) || '(Blank)';
-        return selectedValues.includes(val);
+        for (const [colId, selected] of columnFilterSets) {
+          const col = columnById.get(colId);
+          if (!col) continue;
+          const val = getStringValue(row, col) || '(Blank)';
+          if (!selected.has(val)) return false;
+        }
+        return true;
       });
-    });
+    }
 
-    // 3. Sorting
+    // 3. Sorting — Schwartzian transform: key computed once per row, so date
+    // parsing / lowercasing happens O(n), not O(n log n).
     if (sortState) {
-      const col = columns.find((c) => c.id === sortState.columnId);
+      const col = columnById.get(sortState.columnId);
       if (col) {
-        result.sort((a, b) => {
-          const valA = getRawValue(a, col);
-          const valB = getRawValue(b, col);
-
-          if (valA === valB) return 0;
-          if (valA === null || valA === undefined) return 1;
-          if (valB === null || valB === undefined) return -1;
-
-          // Number comparison
-          if (typeof valA === 'number' && typeof valB === 'number') {
-            return sortState.desc ? valB - valA : valA - valB;
-          }
-
-          // Date comparison
-          const dateA = new Date(valA).getTime();
-          const dateB = new Date(valB).getTime();
-          if (!isNaN(dateA) && !isNaN(dateB) && typeof valA === 'string' && valA.includes('-')) {
-            return sortState.desc ? dateB - dateA : dateA - dateB;
-          }
-
-          // String comparison
-          const strA = String(valA).toLowerCase();
-          const strB = String(valB).toLowerCase();
-          return sortState.desc ? strB.localeCompare(strA) : strA.localeCompare(strB);
+        const desc = sortState.desc;
+        const decorated: Array<{ row: T; key: SortKey | null }> = new Array(result.length);
+        for (let i = 0; i < result.length; i++) {
+          decorated[i] = { row: result[i], key: getSortKey(getRawValue(result[i], col)) };
+        }
+        decorated.sort((a, b) => {
+          if (a.key === null && b.key === null) return 0;
+          if (a.key === null) return 1;
+          if (b.key === null) return -1;
+          return compareSortKeys(a.key, b.key, desc);
         });
+        result = decorated.map((d) => d.row);
       }
     }
 
     return result;
-  }, [data, columns, globalSearch, columnFilters, sortState, serverSide]);
+  }, [data, columns, columnById, debouncedSearch, columnFilterSets, sortState, serverSide]);
 
   // ─── Pagination Calculations ────────────────────────────────────────────────
   const activePageIndex = serverSide ? (serverPageIndex ?? 1) : currentPage;
@@ -372,29 +443,27 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
     return pages;
   }, [totalPages, activePageIndex]);
 
-  // ─── CSV Export ─────────────────────────────────────────────────────────────
+  // ─── CSV Export (Blob-based: no encodeURI size limits on large dumps) ───────
   const exportToCSV = () => {
     const exportColumns = columns.filter((c) => c.id !== 'actions' && c.id !== 'action');
-    const headers = exportColumns.map((c) => `"${c.header.replace(/"/g, '""')}"`);
+    const escape = (s: string) => `"${s.replace(/"/g, '""')}"`;
+    const chunks: string[] = [exportColumns.map((c) => escape(c.header)).join(',')];
 
-    const rows = processedData.map((row) =>
-      exportColumns
-        .map((col) => {
-          let val: string;
-          if (col.exportValue) {
-            val = col.exportValue(row);
-          } else {
-            val = getStringValue(row, col);
-          }
-          return `"${val.replace(/"/g, '""')}"`;
-        })
-        .join(',')
-    );
+    for (let i = 0; i < processedData.length; i++) {
+      const row = processedData[i];
+      let line = '';
+      for (let j = 0; j < exportColumns.length; j++) {
+        const col = exportColumns[j];
+        const val = col.exportValue ? col.exportValue(row) : getStringValue(row, col);
+        line += (j > 0 ? ',' : '') + escape(val);
+      }
+      chunks.push(line);
+    }
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob(['\uFEFF' + chunks.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute(
       'download',
       `${exportFileName}_${new Date().toISOString().split('T')[0]}.csv`
@@ -402,6 +471,7 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -537,7 +607,7 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
               {columns.map((col) => {
                 const isFiltered = (columnFilters[col.id]?.length || 0) > 0;
                 const isSorted = sortState?.columnId === col.id;
-                const distinctList = columnDistinctValues[col.id] || [];
+                const distinctList = activeFilterColId === col.id ? activeDistinctValues : [];
 
                 return (
                   <th
@@ -671,12 +741,20 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
                                 </span>
                               </div>
 
+                              {distinctList.length > MAX_DISTINCT_RENDER && (
+                                <p className="px-1 text-[10px] text-muted-foreground">
+                                  Showing first {MAX_DISTINCT_RENDER} of {distinctList.length} —
+                                  type to refine.
+                                </p>
+                              )}
+
                               {/* Unique values checkbox list */}
                               <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
                                 {distinctList
                                   .filter((item) =>
                                     item.value.toLowerCase().includes(filterSearch.toLowerCase())
                                   )
+                                  .slice(0, MAX_DISTINCT_RENDER)
                                   .map((item) => {
                                     const checked =
                                       columnFilters[col.id]?.includes(item.value) ?? false;
@@ -777,31 +855,13 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
               </tr>
             ) : (
               paginatedData.map((row, idx) => (
-                <tr
+                <GridRow
                   key={(row as any).id || idx}
-                  onClick={() => onRowClick && onRowClick(row)}
-                  className={`hover:bg-muted/30 transition-colors ${
-                    onRowClick ? 'cursor-pointer' : ''
-                  }`}
-                >
-                  {columns.map((col) => {
-                    const val = getRawValue(row, col);
-                    return (
-                      <td
-                        key={col.id}
-                        className={`py-3 px-4 ${
-                          col.align === 'center'
-                            ? 'text-center'
-                            : col.align === 'right'
-                              ? 'text-right'
-                              : 'text-left'
-                        }`}
-                      >
-                        {col.cell ? col.cell({ row, value: val, index: idx }) : (val ?? '—')}
-                      </td>
-                    );
-                  })}
-                </tr>
+                  row={row}
+                  columns={columns}
+                  index={idx}
+                  onRowClick={onRowClick}
+                />
               ))
             )}
           </tbody>
