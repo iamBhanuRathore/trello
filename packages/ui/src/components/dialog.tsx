@@ -54,6 +54,20 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
   );
 }
 
+const dialogEscapeStack: Array<() => void> = [];
+let isDialogEscapeListenerAttached = false;
+
+function handleDialogGlobalEscape(e: KeyboardEvent) {
+  if (e.key === 'Escape' || e.key === 'Esc') {
+    if (dialogEscapeStack.length > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      const topClose = dialogEscapeStack[dialogEscapeStack.length - 1];
+      topClose?.();
+    }
+  }
+}
+
 function DialogContent({
   className,
   children,
@@ -62,6 +76,28 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
 }) {
+  const internalCloseRef = React.useRef<HTMLButtonElement>(null);
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined' && !isDialogEscapeListenerAttached) {
+      window.addEventListener('keydown', handleDialogGlobalEscape, true);
+      isDialogEscapeListenerAttached = true;
+    }
+
+    const triggerClose = () => {
+      internalCloseRef.current?.click();
+    };
+
+    dialogEscapeStack.push(triggerClose);
+
+    return () => {
+      const idx = dialogEscapeStack.lastIndexOf(triggerClose);
+      if (idx !== -1) {
+        dialogEscapeStack.splice(idx, 1);
+      }
+    };
+  }, []);
+
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -74,6 +110,12 @@ function DialogContent({
         {...props}
       >
         {children}
+        <DialogPrimitive.Close
+          ref={internalCloseRef}
+          className="sr-only hidden pointer-events-none"
+          tabIndex={-1}
+          aria-hidden
+        />
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"

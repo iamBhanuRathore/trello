@@ -110,7 +110,8 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
       chatService.sendMessage(channel.id, payload),
     onMutate: async (newMsg) => {
       await queryClient.cancelQueries({ queryKey: ['chat', 'messages', channel.id] });
-      const prevMessages = queryClient.getQueryData<ChatMessageItem[]>(['chat', 'messages', channel.id]) || [];
+      const prevMessages =
+        queryClient.getQueryData<ChatMessageItem[]>(['chat', 'messages', channel.id]) || [];
 
       const optimisticMsg: ChatMessageItem = {
         id: `temp-${Date.now()}`,
@@ -132,10 +133,10 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
         replyCount: 0,
       };
 
-      queryClient.setQueryData<ChatMessageItem[]>(['chat', 'messages', channel.id], [
-        ...prevMessages,
-        optimisticMsg,
-      ]);
+      queryClient.setQueryData<ChatMessageItem[]>(
+        ['chat', 'messages', channel.id],
+        [...prevMessages, optimisticMsg]
+      );
 
       return { prevMessages };
     },
@@ -192,10 +193,23 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     scrollToBottom();
   };
 
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if ((e.key === 'Enter' && !e.shiftKey) || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
       handleSendMessage();
+    } else if (e.key === 'ArrowUp' && !messageText.trim()) {
+      // Find latest message authored by current user that is not deleted
+      const userLastMessage = [...messages]
+        .reverse()
+        .find((m) => m.userId === user?.id && !m.deletedAt);
+      if (userLastMessage) {
+        e.preventDefault();
+        setEditingMessageId(userLastMessage.id);
+      }
+    } else if (e.key === 'Escape') {
+      textareaRef.current?.blur();
     }
   };
 
@@ -206,7 +220,8 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     const end = textareaRef.current.selectionEnd;
     const current = messageText;
     const selected = current.slice(start, end);
-    const updated = current.slice(0, start) + prefix + (selected || 'text') + suffix + current.slice(end);
+    const updated =
+      current.slice(0, start) + prefix + (selected || 'text') + suffix + current.slice(end);
     setMessageText(updated);
     setDraft(channel.id, updated);
     setTimeout(() => {
@@ -434,10 +449,19 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                   <ChatMessageCard
                     key={msg.id}
                     message={msg}
-                    canModerate={canModerate || channel.role === 'owner' || channel.role === 'admin'}
-                    onEdit={(id, body) => editMutation.mutate({ messageId: id, body })}
+                    isEditingExternal={editingMessageId === msg.id}
+                    onCancelEdit={() => setEditingMessageId(null)}
+                    canModerate={
+                      canModerate || channel.role === 'owner' || channel.role === 'admin'
+                    }
+                    onEdit={(id, body) => {
+                      editMutation.mutate({ messageId: id, body });
+                      setEditingMessageId(null);
+                    }}
                     onDelete={(id) => deleteMutation.mutate(id)}
-                    onToggleReaction={(id, emoji) => reactionMutation.mutate({ messageId: id, emoji })}
+                    onToggleReaction={(id, emoji) =>
+                      reactionMutation.mutate({ messageId: id, emoji })
+                    }
                     onOpenThread={(parent) => setActiveThreadMessage(parent)}
                   />
                 ))}
@@ -473,16 +497,18 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
       )}
 
       {/* Off-Hours Banner for DMs */}
-      {channel.type === 'direct' && recipientPresence && !recipientPresence.isWithinWorkingHours && (
-        <div className="px-4 pt-2">
-          <TimezoneComposerBanner
-            otherUserPresence={recipientPresence}
-            otherUserName={channel.name}
-            isSilentSend={isSilentSend}
-            onToggleSilentSend={() => setIsSilentSend(!isSilentSend)}
-          />
-        </div>
-      )}
+      {channel.type === 'direct' &&
+        recipientPresence &&
+        !recipientPresence.isWithinWorkingHours && (
+          <div className="px-4 pt-2">
+            <TimezoneComposerBanner
+              otherUserPresence={recipientPresence}
+              otherUserName={channel.name}
+              isSilentSend={isSilentSend}
+              onToggleSilentSend={() => setIsSilentSend(!isSilentSend)}
+            />
+          </div>
+        )}
 
       {/* Composer Section */}
       <div className="p-4 border-t border-border bg-card/40 backdrop-blur-sm shrink-0">
@@ -532,20 +558,21 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
               </div>
 
               {/* Announcement mode pill for group channel admins */}
-              {(channel.role === 'owner' || channel.role === 'admin') && channel.type !== 'direct' && (
-                <button
-                  type="button"
-                  onClick={() => setIsAnnouncement(!isAnnouncement)}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold transition-colors cursor-pointer border ${
-                    isAnnouncement
-                      ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
-                      : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Megaphone className="w-3 h-3" />
-                  <span>Announcement</span>
-                </button>
-              )}
+              {(channel.role === 'owner' || channel.role === 'admin') &&
+                channel.type !== 'direct' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAnnouncement(!isAnnouncement)}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold transition-colors cursor-pointer border ${
+                      isAnnouncement
+                        ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
+                        : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Megaphone className="w-3 h-3" />
+                    <span>Announcement</span>
+                  </button>
+                )}
             </div>
 
             {/* Input Textarea */}
@@ -561,8 +588,27 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
 
             {/* Bottom Actions Bar */}
             <div className="flex items-center justify-between px-3 py-2 border-t border-border/40">
-              <p className="text-[10px] text-muted-foreground/70 hidden sm:block">
-                Use <span className="font-semibold">Enter</span> to send, <span className="font-semibold">Shift+Enter</span> for newline
+              <p className="text-[11px] text-muted-foreground/70 hidden sm:flex items-center gap-1.5">
+                <span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
+                    Enter
+                  </kbd>{' '}
+                  to send
+                </span>
+                <span>•</span>
+                <span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
+                    Shift+Enter
+                  </kbd>{' '}
+                  newline
+                </span>
+                <span>•</span>
+                <span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
+                    ↑
+                  </kbd>{' '}
+                  edit last
+                </span>
               </p>
 
               <button

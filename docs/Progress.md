@@ -1748,3 +1748,29 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
      - `ChatThreadPane.tsx` (hierarchical Escape handling: closes task mention picker first, then thread drawer)
 - Decisions made: Follows enterprise keyboard accessibility standard (Escape dismisses innermost active modal/popover without losing focus).
 - Tests & Validation: Verified frontend bundle compilation with `tsc -b && vite build` (clean, 0 errors).
+
+### 2026-09-15 — Enterprise Keyboard Shortcuts Suite & LIFO Escape Stack
+
+- What was done:
+  1. **Universal LIFO Escape Stack**:
+     - Upgraded `packages/ui/src/components/dialog.tsx` with a capture-phase global LIFO stack and internal close trigger so that all Base UI dialogs (`AppearanceModal`, `TrashBinModal`, `CreateTaskModal`, `AutomationsModal`, `CreateDocumentModal`, `FormBuilderModal`, `ImportModal`, `ConfirmDialog`, `CustomRoles`, etc.) dismiss reliably regardless of focus.
+     - Upgraded `apps/dashboard/src/hooks/useEscapeKey.ts` to coordinate with a capture-phase LIFO stack, ensuring stacked overlays and sub-modals dismiss from top to bottom.
+     - Wired Escape listeners to slide-over member governance drawer in `Users.tsx` and the floating `GlobalChatDock`.
+  2. **Keyboard Shortcuts Cheatsheet Modal (`KeyboardShortcutsModal.tsx`)**:
+     - Created searchable cheatsheet modal displaying platform hotkeys across Navigation, Chat & Teams, Messaging, and Tasks & Boards.
+     - Added quick filter input and interactive keyboard hints with platform-aware key badges (`⌘`, `⌥`, `⇧` on macOS, `Ctrl`, `Alt`, `Shift` on Windows/Linux).
+     - Accessible everywhere via `?` (Shift+/) or `⌘/` / `Ctrl+/`, plus footer button in `AppSidebar` and top action in `ChatSidebar`.
+  3. **Global Shortcuts Hook & Navigation (`useGlobalShortcuts.ts`)**:
+     - Supported two-key chords (`G` then `C` for Chat, `G` then `B` for Boards, `G` then `T` for My Tasks, `G` then `W` for Workspaces).
+     - Supported `C` / `⌘N` for New Direct Message, `⌘⇧C` for Create Channel, `⌘⇧H` for Working Hours.
+     - Supported `Alt+↑` and `Alt+↓` (or `⌥↑` / `⌥↓`) in chat to quickly cycle through channels and DMs.
+     - Supported `⌘I` / `⌘.` to toggle Channel Details pane, `⌘T` to toggle Thread pane.
+     - Supported `/` to instantly focus the chat message composer.
+  4. **Messaging & Compose Power Interactions**:
+     - `Enter` or `⌘Enter` sends message; `Shift+Enter` inserts newline.
+     - Pressing `↑` (Up Arrow) in an empty composer instantly triggers inline editing of the user's last sent message.
+     - In message edit mode: `Enter` saves, `Escape` cancels and returns focus to composer.
+  5. **Quick Switcher Channel Search (`SearchPalette.tsx`)**:
+     - Integrated real-time channel and DM search in `Cmd+K` command palette, allowing users to jump directly to any teammate or channel by typing their name.
+- Decisions made: Modeled shortcut behavior and LIFO stack after Slack, Linear, and Microsoft Teams to deliver benchmark enterprise keyboard ergonomics.
+- Tests & Validation: Verified frontend bundle compilation with `tsc -b && vite build` (0 errors, ~285ms); backend tests pass 8/8.

@@ -12,6 +12,7 @@ import { ChatDetailsPane } from '../components/chat/ChatDetailsPane';
 import { NewDirectMessageModal } from '../components/chat/NewDirectMessageModal';
 import { NewChannelModal } from '../components/chat/NewChannelModal';
 import { WorkingHoursModal } from '../components/chat/WorkingHoursModal';
+import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts';
 
 export const ChatPage: React.FC = () => {
   const { channelId: routeChannelId } = useParams<{ channelId?: string }>();
@@ -38,6 +39,14 @@ export const ChatPage: React.FC = () => {
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
     refetchInterval: 10000,
+  });
+
+  // Enable chat-specific keyboard shortcuts (Alt+Up/Down, Cmd+I, Cmd+Shift+C, C, etc.)
+  useGlobalShortcuts({
+    channels,
+    onOpenNewDm: () => setIsNewDmOpen(true),
+    onOpenNewChannel: () => setIsNewChannelOpen(true),
+    onOpenWorkingHours: () => setIsWorkingHoursOpen(true),
   });
 
   // Sync route param with store
@@ -129,25 +138,13 @@ export const ChatPage: React.FC = () => {
       )}
 
       {!activeThreadMessage && isDetailsPaneOpen && activeChannel && (
-        <ChatDetailsPane
-          channel={activeChannel}
-          onClose={() => setDetailsPaneOpen(false)}
-        />
+        <ChatDetailsPane channel={activeChannel} onClose={() => setDetailsPaneOpen(false)} />
       )}
 
       {/* Global Modals for Empty State Actions */}
-      <NewDirectMessageModal
-        isOpen={isNewDmOpen}
-        onClose={() => setIsNewDmOpen(false)}
-      />
-      <NewChannelModal
-        isOpen={isNewChannelOpen}
-        onClose={() => setIsNewChannelOpen(false)}
-      />
-      <WorkingHoursModal
-        isOpen={isWorkingHoursOpen}
-        onClose={() => setIsWorkingHoursOpen(false)}
-      />
+      <NewDirectMessageModal isOpen={isNewDmOpen} onClose={() => setIsNewDmOpen(false)} />
+      <NewChannelModal isOpen={isNewChannelOpen} onClose={() => setIsNewChannelOpen(false)} />
+      <WorkingHoursModal isOpen={isWorkingHoursOpen} onClose={() => setIsWorkingHoursOpen(false)} />
     </div>
   );
 };

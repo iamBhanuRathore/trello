@@ -10,6 +10,7 @@ import {
   Clock,
   CheckSquare,
   Megaphone,
+  Keyboard,
 } from 'lucide-react';
 import { chatService, type ChatChannel } from '../../lib/chatService';
 import { presenceService } from '../../lib/presenceService';
@@ -18,6 +19,7 @@ import { PresenceBadge } from './PresenceBadge';
 import { NewChannelModal } from './NewChannelModal';
 import { NewDirectMessageModal } from './NewDirectMessageModal';
 import { WorkingHoursModal } from './WorkingHoursModal';
+import { KeyboardShortcutsModal } from '../KeyboardShortcutsModal';
 
 interface ChatSidebarProps {
   onSelectChannel?: (channelId: string) => void;
@@ -32,6 +34,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
   const [isNewChannelOpen, setIsNewChannelOpen] = useState(false);
   const [isNewDmOpen, setIsNewDmOpen] = useState(false);
   const [isWorkingHoursOpen, setIsWorkingHoursOpen] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
   // Fetch channels list
   const { data: channels = [], isLoading } = useQuery({
@@ -94,15 +97,27 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
   }, [channels, filterTab, search]);
 
   // Split into Pinned and Sections
-  const pinnedChannels = useMemo(() => filteredChannels.filter((c) => c.isPinned), [filteredChannels]);
-  const unpinnedChannels = useMemo(() => filteredChannels.filter((c) => !c.isPinned), [filteredChannels]);
+  const pinnedChannels = useMemo(
+    () => filteredChannels.filter((c) => c.isPinned),
+    [filteredChannels]
+  );
+  const unpinnedChannels = useMemo(
+    () => filteredChannels.filter((c) => !c.isPinned),
+    [filteredChannels]
+  );
 
-  const dms = useMemo(() => unpinnedChannels.filter((c) => c.type === 'direct'), [unpinnedChannels]);
+  const dms = useMemo(
+    () => unpinnedChannels.filter((c) => c.type === 'direct'),
+    [unpinnedChannels]
+  );
   const groups = useMemo(
     () => unpinnedChannels.filter((c) => c.type === 'group_public' || c.type === 'group_private'),
     [unpinnedChannels]
   );
-  const taskThreads = useMemo(() => unpinnedChannels.filter((c) => c.type === 'task_thread'), [unpinnedChannels]);
+  const taskThreads = useMemo(
+    () => unpinnedChannels.filter((c) => c.type === 'task_thread'),
+    [unpinnedChannels]
+  );
 
   const handleChannelClick = (channelId: string) => {
     setActiveChannelId(channelId);
@@ -222,7 +237,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
             <button
               type="button"
               onClick={() => setIsNewDmOpen(true)}
-              title="New Direct Message"
+              title="New Direct Message (C or ⌘N)"
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               <MessageSquarePlus className="w-4 h-4" />
@@ -232,7 +247,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
             <button
               type="button"
               onClick={() => setIsNewChannelOpen(true)}
-              title="Create Channel"
+              title="Create Channel (⌘⇧C)"
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -242,13 +257,23 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
             <button
               type="button"
               onClick={() => setIsWorkingHoursOpen(true)}
-              title="Set Availability & Working Hours"
+              title="Set Availability & Working Hours (⌘⇧H)"
               className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer relative"
             >
               <Clock className="w-4 h-4" />
               <span className="absolute bottom-1 right-1">
                 <PresenceBadge status={myPresence?.status || 'available'} size="sm" />
               </span>
+            </button>
+
+            {/* Keyboard Shortcuts Trigger */}
+            <button
+              type="button"
+              onClick={() => setIsShortcutsOpen(true)}
+              title="Keyboard Shortcuts (⌘/ or ?)"
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+            >
+              <Keyboard className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -360,6 +385,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
       <NewChannelModal isOpen={isNewChannelOpen} onClose={() => setIsNewChannelOpen(false)} />
       <NewDirectMessageModal isOpen={isNewDmOpen} onClose={() => setIsNewDmOpen(false)} />
       <WorkingHoursModal isOpen={isWorkingHoursOpen} onClose={() => setIsWorkingHoursOpen(false)} />
+      <KeyboardShortcutsModal open={isShortcutsOpen} onOpenChange={setIsShortcutsOpen} />
     </div>
   );
 };

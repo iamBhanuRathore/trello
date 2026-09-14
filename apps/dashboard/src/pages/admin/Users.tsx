@@ -8,6 +8,7 @@ import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import {
   Dialog,
   DialogContent,
@@ -144,6 +145,7 @@ export const Users: React.FC = () => {
 
   // Activity Drawer State
   const [drawerMemberId, setDrawerMemberId] = useState<string | null>(null);
+  useEscapeKey(() => setDrawerMemberId(null), !!drawerMemberId);
 
   // Queries
   const {

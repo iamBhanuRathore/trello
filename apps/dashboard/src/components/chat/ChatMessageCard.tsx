@@ -1,11 +1,6 @@
 import React, { useState } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
-import {
-  MessageSquare,
-  Pencil,
-  Trash2,
-  CheckSquare,
-} from 'lucide-react';
+import { MessageSquare, Pencil, Trash2, CheckSquare } from 'lucide-react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { TaskPreviewCard } from './TaskPreviewCard';
 import { CreateTaskFromMessageModal } from '../board/CreateTaskFromMessageModal';
@@ -17,6 +12,8 @@ import { useChatStore } from '../../store/chatStore';
 interface ChatMessageCardProps {
   message: ChatMessageItem;
   canModerate?: boolean;
+  isEditingExternal?: boolean;
+  onCancelEdit?: () => void;
   onEdit?: (messageId: string, newBody: string) => void;
   onDelete?: (messageId: string) => void;
   onToggleReaction?: (messageId: string, emoji: string) => void;
@@ -28,6 +25,8 @@ const COMMON_EMOJIS = ['👍', '❤️', '🔥', '🚀', '👀', '🎉'];
 export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   message,
   canModerate = false,
+  isEditingExternal = false,
+  onCancelEdit,
   onEdit,
   onDelete,
   onToggleReaction,
@@ -39,9 +38,16 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   const isAuthor = message.userId === user?.id;
   const canDelete = isAuthor || canModerate;
 
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditingInternal, setIsEditingInternal] = useState(false);
+  const isEditing = isEditingInternal || isEditingExternal;
   const [editBody, setEditBody] = useState(message.body);
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (isEditingExternal) {
+      setEditBody(message.body);
+    }
+  }, [isEditingExternal, message.body]);
 
   const authorPresence = presenceMap[message.userId];
 
@@ -55,26 +61,19 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
     while ((match = taskMentionRegex.exec(message.body)) !== null) {
       if (match.index > lastIndex) {
         parts.push(
-          <MarkdownRenderer
-            key={lastIndex}
-            content={message.body.slice(lastIndex, match.index)}
-          />
+          <MarkdownRenderer key={lastIndex} content={message.body.slice(lastIndex, match.index)} />
         );
       }
 
       const cardId = match[1];
       const cardTitle = match[2];
-      parts.push(
-        <TaskPreviewCard key={match.index} cardId={cardId} title={cardTitle} />
-      );
+      parts.push(<TaskPreviewCard key={match.index} cardId={cardId} title={cardTitle} />);
 
       lastIndex = match.index + match[0].length;
     }
 
     if (lastIndex < message.body.length) {
-      parts.push(
-        <MarkdownRenderer key={lastIndex} content={message.body.slice(lastIndex)} />
-      );
+      parts.push(<MarkdownRenderer key={lastIndex} content={message.body.slice(lastIndex)} />);
     }
 
     return parts;
@@ -82,11 +81,19 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
 
   const handleSaveEdit = () => {
     if (!editBody.trim() || editBody.trim() === message.body) {
-      setIsEditing(false);
+      setIsEditingInternal(false);
+      onCancelEdit?.();
       return;
     }
     if (onEdit) onEdit(message.id, editBody.trim());
-    setIsEditing(false);
+    setIsEditingInternal(false);
+    onCancelEdit?.();
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingInternal(false);
+    setEditBody(message.body);
+    onCancelEdit?.();
   };
 
   const formattedTime = () => {
@@ -123,9 +130,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
           <span className="font-bold text-xs text-foreground truncate">
             {message.author?.name || 'Teammate'}
           </span>
-          <span className="text-[10px] text-muted-foreground font-mono">
-            {formattedTime()}
-          </span>
+          <span className="text-[10px] text-muted-foreground font-mono">{formattedTime()}</span>
           {authorPresence?.localTime && (
             <span className="text-[10px] text-muted-foreground/60 font-mono hidden sm:inline">
               ({authorPresence.localTime})
@@ -147,28 +152,45 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
             <textarea
               value={editBody}
               onChange={(e) => setEditBody(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSaveEdit();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  handleCancelEdit();
+                }
+              }}
               rows={2}
-              className="w-full p-2 text-xs rounded-xl bg-background border border-primary outline-none resize-none"
+              className="w-full p-2.5 text-xs rounded-xl bg-background border border-primary focus:ring-2 focus:ring-primary/20 outline-none resize-none shadow-inner"
               autoFocus
             />
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSaveEdit}
-                className="px-3 py-1 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditing(false);
-                  setEditBody(message.body);
-                }}
-                className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  className="px-3 py-1 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                >
+                  Save Changes
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                <span>
+                  escape to <strong className="text-foreground font-medium">cancel</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  enter to <strong className="text-foreground font-medium">save</strong>
+                </span>
+              </span>
             </div>
           </div>
         ) : (
@@ -272,7 +294,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
         {isAuthor && (
           <button
             type="button"
-            onClick={() => setIsEditing(true)}
+            onClick={() => setIsEditingInternal(true)}
             title="Edit message"
             className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
           >

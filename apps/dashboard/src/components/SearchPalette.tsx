@@ -23,7 +23,11 @@ import {
   Shield,
   CornerDownLeft,
   Plus,
+  MessageSquare,
+  Hash,
+  User,
 } from 'lucide-react';
+import { chatService } from '../lib/chatService';
 
 function useDebounceValue<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -50,7 +54,16 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const debouncedQuery = useDebounceValue(query, 200);
+  const debouncedQuery = useDebounceValue(query, 250);
+
+  // Fetch chat channels for quick switcher search
+  const { data: channels = [] } = useQuery({
+    queryKey: ['chat', 'channels'],
+    queryFn: () => chatService.listChannels(),
+    enabled: open,
+    staleTime: 30000,
+  });
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
@@ -133,6 +146,15 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
         icon: LayoutDashboard,
         iconColor: 'text-sky-500',
         onSelect: () => navigate('/'),
+      },
+      {
+        id: 'nav-chat',
+        title: 'Chat & Teams',
+        subtitle: 'Direct messages, channels, and team collaboration',
+        type: 'navigation',
+        icon: MessageSquare,
+        iconColor: 'text-indigo-500',
+        onSelect: () => navigate('/chat'),
       },
       {
         id: 'nav-mytasks',
@@ -283,8 +305,26 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
       (item) => item.title.toLowerCase().includes(q) || item.subtitle?.toLowerCase().includes(q)
     );
 
+    // Format chat channels matches
+    const matchedChat: SearchItem[] = channels
+      .filter((c) => {
+        const name = c.type === 'direct' ? c.otherUser?.name || '' : c.name;
+        const sub = c.type === 'direct' ? c.otherUser?.email || '' : c.topic || '';
+        return name.toLowerCase().includes(q) || sub.toLowerCase().includes(q);
+      })
+      .map((c) => ({
+        id: `chat-${c.id}`,
+        title: c.type === 'direct' ? c.otherUser?.name || 'Direct Message' : `# ${c.name}`,
+        subtitle:
+          c.type === 'direct' ? c.otherUser?.email || 'Direct conversation' : c.topic || 'Channel',
+        type: 'card' as const,
+        icon: c.type === 'direct' ? User : Hash,
+        iconColor: c.type === 'direct' ? 'text-indigo-400' : 'text-sky-400',
+        onSelect: () => navigate(`/chat/${c.id}`),
+      }));
+
     // Combine local matches + server results
-    const combined = [...formattedServerResults, ...matchedNav, ...matchedBoards];
+    const combined = [...matchedChat, ...formattedServerResults, ...matchedNav, ...matchedBoards];
 
     // Deduplicate by ID
     const seen = new Set<string>();
@@ -293,10 +333,13 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
       seen.add(item.id);
       return true;
     });
-  }, [query, quickNavItems, boardItems, quickActions, formattedServerResults]);
+  }, [query, quickNavItems, boardItems, quickActions, formattedServerResults, channels, navigate]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex((prev) => (prev < activeItems.length - 1 ? prev + 1 : 0));
     } else if (e.key === 'ArrowUp') {

@@ -42,6 +42,7 @@ import {
   Folder,
   FolderOpen,
   MessageSquare,
+  Keyboard,
 } from 'lucide-react';
 import { chatService } from '../lib/chatService';
 import { UserProfileDropdown } from './UserProfileDropdown';
@@ -49,9 +50,14 @@ import { UserProfileDropdown } from './UserProfileDropdown';
 interface AppSidebarProps {
   onOpenTrash?: () => void;
   onOpenAppearance?: () => void;
+  onOpenShortcuts?: () => void;
 }
 
-export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppearance }) => {
+export const AppSidebar: React.FC<AppSidebarProps> = ({
+  onOpenTrash,
+  onOpenAppearance,
+  onOpenShortcuts,
+}) => {
   const location = useLocation();
   const { user } = useAuthStore();
   const { isMobile, setOpenMobile, state } = useSidebar();
@@ -691,13 +697,21 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
             >
               <Palette className="w-3.5 h-3.5" />
             </button>
+            <button
+              type="button"
+              onClick={onOpenShortcuts}
+              title="Keyboard Shortcuts (⌘/ or ?)"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors cursor-pointer"
+            >
+              <Keyboard className="w-3.5 h-3.5" />
+            </button>
           </div>
         ) : (
           <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
             <button
               type="button"
               onClick={onOpenTrash}
-              title="Recycle Bin &amp; Trash"
+              title="Recycle Bin & Trash"
               className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors cursor-pointer text-xs"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -707,11 +721,21 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ onOpenTrash, onOpenAppea
             <button
               type="button"
               onClick={onOpenAppearance}
-              title="Theme &amp; Appearance"
+              title="Theme & Appearance"
               className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors cursor-pointer text-xs"
             >
               <Palette className="w-3.5 h-3.5" />
               <span>Theme</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenShortcuts}
+              title="Keyboard Shortcuts (⌘/ or ?)"
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors cursor-pointer text-xs"
+            >
+              <Keyboard className="w-3.5 h-3.5" />
+              <span>Keys</span>
             </button>
           </div>
         )}

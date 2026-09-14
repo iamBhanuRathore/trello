@@ -20,6 +20,7 @@ import { useAuthStore } from '../../store/authStore';
 import { PresenceBadge } from './PresenceBadge';
 import { NewDirectMessageModal } from './NewDirectMessageModal';
 import { NewChannelModal } from './NewChannelModal';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 export const GlobalChatDock: React.FC = () => {
   const location = useLocation();
@@ -45,6 +46,14 @@ export const GlobalChatDock: React.FC = () => {
   // If already on the full /chat workspace, do not display the floating dock
   const isChatRoute = location.pathname.startsWith('/chat');
 
+  // Close / minimize dock on Escape key if open and active
+  useEscapeKey(
+    () => {
+      toggleMinimizeDock();
+    },
+    isGlobalDockOpen && !isDockMinimized && !isChatRoute
+  );
+
   // Fetch channels list
   const { data: channels = [] } = useQuery({
     queryKey: ['chat', 'channels'],
@@ -67,7 +76,8 @@ export const GlobalChatDock: React.FC = () => {
   // Fetch messages for docked channel
   const { data: messages = [], isLoading: isMessagesLoading } = useQuery({
     queryKey: ['chat', 'messages', dockedChannelId],
-    queryFn: () => (dockedChannelId ? chatService.listMessages(dockedChannelId, undefined, 25) : []),
+    queryFn: () =>
+      dockedChannelId ? chatService.listMessages(dockedChannelId, undefined, 25) : [],
     enabled: !!dockedChannelId && isGlobalDockOpen && !isDockMinimized,
     refetchInterval: 5000,
   });
@@ -384,10 +394,7 @@ export const GlobalChatDock: React.FC = () => {
                                 </div>
                               )}
                               <span className="absolute -bottom-0.5 -right-0.5">
-                                <PresenceBadge
-                                  status={dmPresence?.status || 'offline'}
-                                  size="sm"
-                                />
+                                <PresenceBadge status={dmPresence?.status || 'offline'} size="sm" />
                               </span>
                             </>
                           ) : (
@@ -426,16 +433,10 @@ export const GlobalChatDock: React.FC = () => {
       </div>
 
       {/* New DM Modal */}
-      <NewDirectMessageModal
-        isOpen={isNewDmOpen}
-        onClose={() => setIsNewDmOpen(false)}
-      />
+      <NewDirectMessageModal isOpen={isNewDmOpen} onClose={() => setIsNewDmOpen(false)} />
 
       {/* New Channel Modal */}
-      <NewChannelModal
-        isOpen={isNewChannelOpen}
-        onClose={() => setIsNewChannelOpen(false)}
-      />
+      <NewChannelModal isOpen={isNewChannelOpen} onClose={() => setIsNewChannelOpen(false)} />
     </div>
   );
 };

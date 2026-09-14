@@ -24,6 +24,21 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-15 — Universal LIFO Escape Stack & Cross-Platform Keyboard Shortcuts
+
+**Context:** Users required full keyboard accessibility matching Slack, Linear, and Microsoft Teams: pressing Escape should predictably dismiss active modals and drawers without closing underlying surfaces, and common productivity keybindings (command palette, shortcuts cheatsheet, channel navigation, and Up-arrow editing) were needed for daily operations.
+
+**Decision:**
+
+1. Implemented a capture-phase Last-In-First-Out (LIFO) stack in `packages/ui/src/components/dialog.tsx` and `apps/dashboard/src/hooks/useEscapeKey.ts`. When Escape is pressed, only the topmost active modal/drawer pops, preventing multi-modal cascade closures.
+2. Built a searchable `KeyboardShortcutsModal.tsx` accessible via `?` (Shift+/) or `⌘/` / `Ctrl+/`.
+3. Created `useGlobalShortcuts.ts` to manage non-input chords (`G` then `C` for Chat, `G` then `B` for Boards, `G` then `T` for Tasks), channel cycling (`Alt+↑`/`Alt+↓`), and quick creation hotkeys.
+4. Implemented Up-arrow message editing in `ChatFeed.tsx` and `ChatMessageCard.tsx` when the composer is empty.
+
+**Alternatives considered:** Native bubbling listeners (rejected — form inputs and nested dialogs often stopped bubbling or closed simultaneously); third-party hotkey libraries (rejected — lightweight custom hooks avoid bundle bloat and integrate natively with React 19).
+
+**Consequences:** Rock-solid modal dismissal order across stacked dialogs and drawers; zero mouse dependency for common day-to-day collaboration tasks.
+
 ### 2026-09-14 — Board page aggregate + loading states (kills board N+1)
 
 **Context:** Board page (`/b/:id`) fired 1× board + 1× lists + N× `cards?listId` (each with 6 enrichment queries) via `useEffect`, with no `isLoading`/skeleton/error/empty states — blank UI while fetching.
@@ -527,6 +542,7 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Context:** The platform required an enterprise-grade messaging and collaboration experience on par with Microsoft Teams, Slack, and Linear. Requirements included 1-on-1 Direct Messages, public/private group channels, 3-tier admin governance (Owner, Admin, Member), mutual shared groups inspection between teammates, timezone and working hours presence tracking (`available`, `busy`, `away`, `leave`, `offline`), bidirectional task card discussions and mentions, and a unified experience accessible both as a full workspace (`/chat`) and as a floating messenger dock across all board views.
 
 **Decision:**
+
 1. **Modular Socket Gateways inside Backend**: Instead of introducing operational complexity, duplicated authentication, and network latency with a standalone socket microservice, real-time WebSockets were implemented directly in `apps/backend` via modular gateway handlers (`chat.gateway.ts`, `presence.gateway.ts`) multiplexed through Bun uWebSockets and Redis Pub/Sub (`initializeRedisPubSub`).
 2. **Deterministic Timezone & Working Hours Presence Engine**: Implemented `presenceService.ts` to compute localized user schedules using `Intl.DateTimeFormat`. User presence transitions automatically between `available` and `away` (off-hours) based on weekly work windows, with support for manual status overrides with expiration.
 3. **Off-Hours Composer Banner with Silent Delivery**: When messaging teammates outside their localized working hours, the UI displays an off-hours banner with a one-click silent send toggle, preventing intrusive after-hours push notifications.
@@ -534,8 +550,8 @@ Short log of significant technical decisions: what was decided, why, and what al
 5. **Dual-Mode UI (Full Workspace + Global Floating Dock)**: Delivered a full-screen Teams-style workspace on `/chat` with collapsible rails, thread drawers, and channel details, paired with a persistent floating bottom-right dock (`<GlobalChatDock />`) across all boards and docs with live unread badge syncing.
 
 **Alternatives considered:**
+
 - Standalone Socket Microservice (rejected — would add significant deployment overhead, port multiplexing, and redundant JWT auth logic with zero performance gain under Bun's uWebSockets engine).
 - Polling-only REST chat (rejected — fails the enterprise real-time requirement for typing indicators, instant message delivery, and live presence).
 
 **Consequences:** Seamless, low-latency collaboration across timezones with zero extra infrastructure overhead, robust 3-tier group governance, and bidirectional task integration.
-

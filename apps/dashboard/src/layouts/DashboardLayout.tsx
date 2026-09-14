@@ -22,6 +22,8 @@ import {
   DropdownMenuItem,
 } from '@boardly/ui/dropdown-menu';
 import { GlobalChatDock } from '../components/chat/GlobalChatDock';
+import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal';
+import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts';
 
 export function DashboardLayout() {
   const location = useLocation();
@@ -29,6 +31,12 @@ export function DashboardLayout() {
 
   const [isTrashOpen, setIsTrashOpen] = useState(false);
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
+  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+
+  // Global hotkeys listener
+  useGlobalShortcuts({
+    onOpenShortcuts: () => setIsShortcutsOpen((prev) => !prev),
+  });
 
   const isChat = location.pathname.startsWith('/chat');
 
@@ -74,6 +82,7 @@ export function DashboardLayout() {
       <AppSidebar
         onOpenTrash={() => setIsTrashOpen(true)}
         onOpenAppearance={() => setIsAppearanceOpen(true)}
+        onOpenShortcuts={() => setIsShortcutsOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -198,6 +207,7 @@ export function DashboardLayout() {
           <AppearanceModal open={isAppearanceOpen} onOpenChange={setIsAppearanceOpen} />
         </Suspense>
       )}
+      <KeyboardShortcutsModal open={isShortcutsOpen} onOpenChange={setIsShortcutsOpen} />
     </SidebarProvider>
   );
 }
