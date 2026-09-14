@@ -1665,3 +1665,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - Decisions made: version-bump (not TTL) correctness; denials uncached (see `Decisions.md` 2026-09-13).
 - Tests added: none (smoke scripts, removed after); `tsc` clean, targeted tests unchanged (pre-existing stale-test-DB failures only).
 - What's next: user sets `REDIS_URL`+`REDIS_DISABLED=false` in `.env.development`, restarts `dev.sh`; batch card-modal endpoint.
+
+### 2026-09-15 — Fix @boardly/ui Subpath Resolution in Vite & TS
+
+- What was done: Added missing `@boardly/ui/select`, `@boardly/ui/date-picker`, and `@boardly/ui/tooltip` subpath aliases in `apps/dashboard/vite.config.ts`, `apps/super-admin/vite.config.ts`, and corresponding `tsconfig.app.json` paths; added `./date-picker` to `packages/ui/package.json` exports. Resolves runtime Vite bundling error when loading `CreateTaskFromMessageModal.tsx` and other consumers of `@boardly/ui/select`.
+- Decisions made: Explicit subpath aliases aligned across all apps.
+- Tests added: Verified `tsc -b --noEmit` and `vite build` clean in both `apps/dashboard` and `apps/super-admin`.

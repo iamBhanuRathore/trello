@@ -8,6 +8,7 @@
     "./button": "./src/components/button.tsx",
     "./card": "./src/components/card.tsx",
     "./confirm-dialog": "./src/components/confirm-dialog.tsx",
+    "./date-picker": "./src/components/date-picker.tsx",
     "./dialog": "./src/components/dialog.tsx",
     "./dropdown-menu": "./src/components/dropdown-menu.tsx",
     "./enterprise-data-grid": "./src/components/enterprise-data-grid.tsx",
