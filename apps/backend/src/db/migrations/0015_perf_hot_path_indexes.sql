@@ -1,47 +1,47 @@
-CREATE INDEX "attachments_card_idx" ON "attachments" USING btree ("card_id");--> statement-breakpoint
-CREATE INDEX "automations_board_idx" ON "automations" USING btree ("board_id");--> statement-breakpoint
-CREATE INDEX "board_members_user_idx" ON "board_members" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "boards_project_idx" ON "boards" USING btree ("project_id");--> statement-breakpoint
-CREATE INDEX "boards_org_idx" ON "boards" USING btree ("organization_id");--> statement-breakpoint
-CREATE INDEX "card_assignees_user_idx" ON "card_assignees" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "card_assignees_assigned_by_idx" ON "card_assignees" USING btree ("assigned_by");--> statement-breakpoint
-CREATE INDEX "card_events_card_idx" ON "card_events" USING btree ("card_id");--> statement-breakpoint
-CREATE INDEX "card_events_org_idx" ON "card_events" USING btree ("organization_id");--> statement-breakpoint
-CREATE INDEX "card_labels_label_idx" ON "card_labels" USING btree ("label_id");--> statement-breakpoint
-CREATE INDEX "card_participants_user_idx" ON "card_participants" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "card_phase_phase_idx" ON "card_phase" USING btree ("phase_id");--> statement-breakpoint
-CREATE INDEX "card_sprints_sprint_idx" ON "card_sprints" USING btree ("sprint_id");--> statement-breakpoint
-CREATE INDEX "card_watchers_user_idx" ON "card_watchers" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "cards_list_idx" ON "cards" USING btree ("list_id");--> statement-breakpoint
-CREATE INDEX "cards_org_idx" ON "cards" USING btree ("organization_id");--> statement-breakpoint
-CREATE INDEX "cards_parent_idx" ON "cards" USING btree ("parent_card_id");--> statement-breakpoint
-CREATE INDEX "cards_stage_idx" ON "cards" USING btree ("stage_id");--> statement-breakpoint
-CREATE INDEX "checklist_items_checklist_idx" ON "checklist_items" USING btree ("checklist_id");--> statement-breakpoint
-CREATE INDEX "checklists_card_idx" ON "checklists" USING btree ("card_id");--> statement-breakpoint
-CREATE INDEX "comments_card_idx" ON "comments" USING btree ("card_id");--> statement-breakpoint
-CREATE INDEX "comments_user_idx" ON "comments" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "document_cards_card_idx" ON "document_cards" USING btree ("card_id");--> statement-breakpoint
-CREATE INDEX "documents_project_idx" ON "documents" USING btree ("project_id");--> statement-breakpoint
-CREATE INDEX "form_submissions_form_idx" ON "form_submissions" USING btree ("form_id");--> statement-breakpoint
-CREATE INDEX "form_submissions_card_idx" ON "form_submissions" USING btree ("card_id");--> statement-breakpoint
-CREATE INDEX "intake_forms_board_idx" ON "intake_forms" USING btree ("board_id");--> statement-breakpoint
-CREATE INDEX "intake_forms_org_idx" ON "intake_forms" USING btree ("organization_id");--> statement-breakpoint
-CREATE INDEX "labels_board_idx" ON "labels" USING btree ("board_id");--> statement-breakpoint
-CREATE INDEX "lists_board_idx" ON "lists" USING btree ("board_id");--> statement-breakpoint
-CREATE INDEX "notifications_user_org_created_idx" ON "notifications" USING btree ("user_id","organization_id","created_at");--> statement-breakpoint
-CREATE INDEX "org_members_user_idx" ON "organization_members" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "phases_project_idx" ON "phases" USING btree ("project_id");--> statement-breakpoint
-CREATE INDEX "project_members_user_idx" ON "project_members" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "projects_workspace_idx" ON "projects" USING btree ("workspace_id");--> statement-breakpoint
-CREATE INDEX "projects_org_idx" ON "projects" USING btree ("organization_id");--> statement-breakpoint
-CREATE INDEX "push_devices_user_idx" ON "push_devices" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "role_permissions_permission_idx" ON "role_permissions" USING btree ("permission_id");--> statement-breakpoint
-CREATE INDEX "saved_searches_user_idx" ON "saved_searches" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "sprints_project_idx" ON "sprints" USING btree ("project_id");--> statement-breakpoint
-CREATE INDEX "stage_templates_org_idx" ON "stage_templates" USING btree ("organization_id");--> statement-breakpoint
-CREATE INDEX "stage_templates_project_idx" ON "stage_templates" USING btree ("project_id");--> statement-breakpoint
-CREATE INDEX "stages_template_idx" ON "stages" USING btree ("template_id");--> statement-breakpoint
-CREATE INDEX "time_logs_card_idx" ON "time_logs" USING btree ("card_id");--> statement-breakpoint
-CREATE INDEX "time_logs_user_idx" ON "time_logs" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "workspace_members_user_idx" ON "workspace_members" USING btree ("user_id");--> statement-breakpoint
-CREATE INDEX "workspaces_org_idx" ON "workspaces" USING btree ("organization_id");
+CREATE INDEX IF NOT EXISTS "attachments_card_idx" ON "attachments" USING btree ("card_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "automations_board_idx" ON "automations" USING btree ("board_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "board_members_user_idx" ON "board_members" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "boards_project_idx" ON "boards" USING btree ("project_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "boards_org_idx" ON "boards" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "card_assignees_user_idx" ON "card_assignees" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "card_assignees_assigned_by_idx" ON "card_assignees" USING btree ("assigned_by");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "card_events_card_idx" ON "card_events" USING btree ("card_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "card_events_org_idx" ON "card_events" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "card_labels_label_idx" ON "card_labels" USING btree ("label_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "card_participants_user_idx" ON "card_participants" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "card_phase_phase_idx" ON "card_phase" USING btree ("phase_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "card_sprints_sprint_idx" ON "card_sprints" USING btree ("sprint_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "card_watchers_user_idx" ON "card_watchers" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "cards_list_idx" ON "cards" USING btree ("list_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "cards_org_idx" ON "cards" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "cards_parent_idx" ON "cards" USING btree ("parent_card_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "cards_stage_idx" ON "cards" USING btree ("stage_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "checklist_items_checklist_idx" ON "checklist_items" USING btree ("checklist_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "checklists_card_idx" ON "checklists" USING btree ("card_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "comments_card_idx" ON "comments" USING btree ("card_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "comments_user_idx" ON "comments" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "document_cards_card_idx" ON "document_cards" USING btree ("card_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "documents_project_idx" ON "documents" USING btree ("project_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "form_submissions_form_idx" ON "form_submissions" USING btree ("form_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "form_submissions_card_idx" ON "form_submissions" USING btree ("card_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "intake_forms_board_idx" ON "intake_forms" USING btree ("board_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "intake_forms_org_idx" ON "intake_forms" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "labels_board_idx" ON "labels" USING btree ("board_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "lists_board_idx" ON "lists" USING btree ("board_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "notifications_user_org_created_idx" ON "notifications" USING btree ("user_id","organization_id","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "org_members_user_idx" ON "organization_members" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "phases_project_idx" ON "phases" USING btree ("project_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "project_members_user_idx" ON "project_members" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "projects_workspace_idx" ON "projects" USING btree ("workspace_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "projects_org_idx" ON "projects" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "push_devices_user_idx" ON "push_devices" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "role_permissions_permission_idx" ON "role_permissions" USING btree ("permission_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "saved_searches_user_idx" ON "saved_searches" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "sprints_project_idx" ON "sprints" USING btree ("project_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "stage_templates_org_idx" ON "stage_templates" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "stage_templates_project_idx" ON "stage_templates" USING btree ("project_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "stages_template_idx" ON "stages" USING btree ("template_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "time_logs_card_idx" ON "time_logs" USING btree ("card_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "time_logs_user_idx" ON "time_logs" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "workspace_members_user_idx" ON "workspace_members" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "workspaces_org_idx" ON "workspaces" USING btree ("organization_id");
