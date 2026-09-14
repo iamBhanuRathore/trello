@@ -169,7 +169,9 @@ export function BoardView() {
     (cardId: string) => {
       setSelectedCardId(cardId);
       emitCardFocus(cardId);
-      setSearchParams({ card: cardId });
+      // Replace: dialog state is ephemeral — pushing would make browser-Back
+      // reopen the dialog (e.g. Back from /cards/:id lands on ?card=).
+      setSearchParams({ card: cardId }, { replace: true });
     },
     [emitCardFocus, setSearchParams]
   );
@@ -179,7 +181,7 @@ export function BoardView() {
     emitCardFocus(null);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('card');
-    setSearchParams(nextParams);
+    setSearchParams(nextParams, { replace: true });
   }, [emitCardFocus, searchParams, setSearchParams]);
 
   // Seed local drag-drop state from the aggregate payload (no per-list fetch).
