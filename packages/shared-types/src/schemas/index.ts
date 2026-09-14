@@ -251,6 +251,80 @@ export const CreateTimeLogSchema = z.object({
   isBillable: z.boolean().optional().default(false),
 });
 
+// ─── Chat & Presence ─────────────────────────────────────────────────────────
+export const CreateDirectMessageSchema = z.object({
+  targetUserId: UuidSchema,
+});
+
+export const CreateGroupChannelSchema = z.object({
+  name: z.string().min(1).max(255).trim(),
+  topic: z.string().max(1000).optional(),
+  isPrivate: z.boolean().default(false),
+  memberUserIds: z.array(UuidSchema).optional().default([]),
+  isAnnouncementOnly: z.boolean().optional().default(false),
+  allowMemberInvites: z.boolean().optional().default(true),
+});
+
+export const UpdateChannelSchema = z.object({
+  name: z.string().min(1).max(255).trim().optional(),
+  topic: z.string().max(1000).optional(),
+  isAnnouncementOnly: z.boolean().optional(),
+  allowMemberInvites: z.boolean().optional(),
+  isArchived: z.boolean().optional(),
+});
+
+export const AddChannelMemberSchema = z.object({
+  userId: UuidSchema,
+  role: z.enum(['admin', 'member']).optional().default('member'),
+});
+
+export const UpdateChannelMemberRoleSchema = z.object({
+  role: z.enum(['owner', 'admin', 'member']),
+});
+
+export const SendChatMessageSchema = z.object({
+  body: z.string().min(1).max(10000).trim(),
+  parentMessageId: UuidSchema.optional(),
+  isAnnouncement: z.boolean().optional().default(false),
+  attachmentIds: z.array(UuidSchema).optional(),
+  scheduledFor: z.string().datetime().optional(),
+});
+
+export const EditChatMessageSchema = z.object({
+  body: z.string().min(1).max(10000).trim(),
+});
+
+export const ToggleReactionSchema = z.object({
+  emoji: z.string().min(1).max(32),
+});
+
+export const DayScheduleSchema = z.object({
+  start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM format'),
+  end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'HH:MM format'),
+  active: z.boolean(),
+});
+
+export const WorkingScheduleSchema = z.object({
+  monday: DayScheduleSchema,
+  tuesday: DayScheduleSchema,
+  wednesday: DayScheduleSchema,
+  thursday: DayScheduleSchema,
+  friday: DayScheduleSchema,
+  saturday: DayScheduleSchema,
+  sunday: DayScheduleSchema,
+});
+
+export const UpdateWorkingHoursSchema = z.object({
+  timezone: z.string().min(1).max(100),
+  schedule: WorkingScheduleSchema,
+});
+
+export const SetPresenceOverrideSchema = z.object({
+  status: z.enum(['available', 'busy', 'away', 'leave', 'offline']),
+  customStatusText: z.string().max(255).optional().nullable(),
+  expiresInMinutes: z.number().int().min(1).max(43200).optional().nullable(), // max 30 days
+});
+
 // Export inferred types
 export type SignUpInput = z.infer<typeof SignUpSchema>;
 export type SignInInput = z.infer<typeof SignInSchema>;
@@ -274,3 +348,13 @@ export type CreateChecklistInput = z.infer<typeof CreateChecklistSchema>;
 export type UpdateChecklistInput = z.infer<typeof UpdateChecklistSchema>;
 export type CreateChecklistItemInput = z.infer<typeof CreateChecklistItemSchema>;
 export type UpdateChecklistItemInput = z.infer<typeof UpdateChecklistItemSchema>;
+export type CreateDirectMessageInput = z.infer<typeof CreateDirectMessageSchema>;
+export type CreateGroupChannelInput = z.infer<typeof CreateGroupChannelSchema>;
+export type UpdateChannelInput = z.infer<typeof UpdateChannelSchema>;
+export type AddChannelMemberInput = z.infer<typeof AddChannelMemberSchema>;
+export type UpdateChannelMemberRoleInput = z.infer<typeof UpdateChannelMemberRoleSchema>;
+export type SendChatMessageInput = z.infer<typeof SendChatMessageSchema>;
+export type EditChatMessageInput = z.infer<typeof EditChatMessageSchema>;
+export type ToggleReactionInput = z.infer<typeof ToggleReactionSchema>;
+export type UpdateWorkingHoursInput = z.infer<typeof UpdateWorkingHoursSchema>;
+export type SetPresenceOverrideInput = z.infer<typeof SetPresenceOverrideSchema>;

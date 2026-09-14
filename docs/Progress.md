@@ -1671,3 +1671,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - What was done: Added missing `@boardly/ui/select`, `@boardly/ui/date-picker`, and `@boardly/ui/tooltip` subpath aliases in `apps/dashboard/vite.config.ts`, `apps/super-admin/vite.config.ts`, and corresponding `tsconfig.app.json` paths; added `./date-picker` to `packages/ui/package.json` exports. Resolves runtime Vite bundling error when loading `CreateTaskFromMessageModal.tsx` and other consumers of `@boardly/ui/select`.
 - Decisions made: Explicit subpath aliases aligned across all apps.
 - Tests added: Verified `tsc -b --noEmit` and `vite build` clean in both `apps/dashboard` and `apps/super-admin`.
+
+### 2026-09-15 — Enterprise Chat & Real-Time Engine (Phase 1: Backend & Schema)
+
+- What was done: Added schema and migration `0016_enterprise_chat.sql` for `chat_channels`, `chat_channel_members`, `chat_messages`, `chat_attachments`, `chat_reactions`, `user_working_hours`, and `user_presence_overrides`. Implemented `modules/chat/service.ts` (1-on-1 DMs, group channels, 3-tier Owner/Admin/Member governance, shared channels discovery, message soft-delete/audit, reactions, thread replies) and `modules/presence/presenceService.ts` (timezone-aware working hours computation, online heartbeats, manual status overrides). Added dedicated WebSocket gateways `chat.gateway.ts` and `presence.gateway.ts` multiplexed in `modules/realtime/routes.ts`. Mounted REST endpoints under `/v1/chat` and `/v1/presence`. Added shared types and Zod schemas in `@boardly/shared-types`.
+- Decisions made: Kept real-time WebSocket logic in backend via modular socket gateways backed by Redis Pub/Sub rather than a separate microservice.
+- Tests added: `presence.test.ts` (timezone calculations, off-hours, weekend schedules, heartbeats) and `chat.test.ts` (validation rules). `tsc --noEmit` clean in `apps/backend` and `packages/shared-types`; `oxlint` clean (0 warnings, 0 errors).

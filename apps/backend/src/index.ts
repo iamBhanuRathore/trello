@@ -37,6 +37,8 @@ import { ssoRoutes } from './modules/sso/routes';
 import { developerRoutes } from './modules/developer/routes';
 import { trashRoutes } from './modules/trash/routes';
 import { billingRoutes } from './modules/billing/routes';
+import { chatRoutes } from './modules/chat/routes';
+import { presenceRoutes } from './modules/presence/routes';
 
 import { formatErrorResponse, formatValidationError } from './lib/errors';
 import { sql } from 'drizzle-orm';
@@ -232,6 +234,8 @@ export const app = new Elysia()
       .use(developerRoutes)
       .use(trashRoutes)
       .use(billingRoutes)
+      .use(chatRoutes)
+      .use(presenceRoutes)
   )
   .listen(env.PORT);
 

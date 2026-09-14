@@ -90,6 +90,20 @@ export const integrationProviderEnum = pgEnum('integration_provider', [
   'github',
   'google_drive',
 ]);
+export const chatChannelTypeEnum = pgEnum('chat_channel_type', [
+  'direct',
+  'group_private',
+  'group_public',
+  'task_thread',
+]);
+export const chatMemberRoleEnum = pgEnum('chat_member_role', ['owner', 'admin', 'member']);
+export const userPresenceStatusEnum = pgEnum('user_presence_status', [
+  'available',
+  'busy',
+  'away',
+  'leave',
+  'offline',
+]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const timestamps = {
@@ -1076,3 +1090,145 @@ export const pushDevices = pgTable(
   },
   (t) => [index('push_devices_user_idx').on(t.userId)]
 );
+
+// ─── Enterprise Chat: Channels ────────────────────────────────────────────────
+export const chatChannels = pgTable(
+  'chat_channels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    type: chatChannelTypeEnum('type').notNull().default('direct'),
+    name: varchar('name', { length: 255 }),
+    topic: text('topic'),
+    avatarUrl: varchar('avatar_url', { length: 2048 }),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    isArchived: boolean('is_archived').notNull().default(false),
+    isAnnouncementOnly: boolean('is_announcement_only').notNull().default(false),
+    allowMemberInvites: boolean('allow_member_invites').notNull().default(true),
+    cardId: uuid('card_id').references(() => cards.id),
+    lastMessageAt: timestamp('last_message_at').notNull().defaultNow(),
+    lastMessagePreview: text('last_message_preview'),
+    ...timestamps,
+  },
+  (t) => [
+    index('chat_channels_org_idx').on(t.organizationId),
+    index('chat_channels_card_idx').on(t.cardId),
+    index('chat_channels_last_msg_idx').on(t.lastMessageAt),
+  ]
+);
+
+// ─── Enterprise Chat: Channel Members ─────────────────────────────────────────
+export const chatChannelMembers = pgTable(
+  'chat_channel_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => chatChannels.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    role: chatMemberRoleEnum('role').notNull().default('member'),
+    lastReadAt: timestamp('last_read_at').notNull().defaultNow(),
+    isMuted: boolean('is_muted').notNull().default(false),
+    isPinned: boolean('is_pinned').notNull().default(false),
+    joinedAt: timestamp('joined_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('chat_members_channel_user_idx').on(t.channelId, t.userId),
+    index('chat_members_user_idx').on(t.userId),
+    index('chat_members_channel_idx').on(t.channelId),
+  ]
+);
+
+// ─── Enterprise Chat: Messages ────────────────────────────────────────────────
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => chatChannels.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    body: text('body').notNull(),
+    parentMessageId: uuid('parent_message_id'),
+    isEdited: boolean('is_edited').notNull().default(false),
+    isAnnouncement: boolean('is_announcement').notNull().default(false),
+    deletedBy: uuid('deleted_by').references(() => users.id),
+    ...timestamps,
+  },
+  (t) => [
+    index('chat_messages_channel_idx').on(t.channelId),
+    index('chat_messages_parent_idx').on(t.parentMessageId),
+    index('chat_messages_created_idx').on(t.createdAt),
+  ]
+);
+
+// ─── Enterprise Chat: Attachments ─────────────────────────────────────────────
+export const chatAttachments = pgTable(
+  'chat_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => chatMessages.id),
+    fileName: varchar('file_name', { length: 500 }).notNull(),
+    fileUrl: varchar('file_url', { length: 2048 }).notNull(),
+    fileSize: integer('file_size').notNull().default(0),
+    fileType: varchar('file_type', { length: 100 }).notNull().default('application/octet-stream'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('chat_attachments_msg_idx').on(t.messageId)]
+);
+
+// ─── Enterprise Chat: Reactions ───────────────────────────────────────────────
+export const chatReactions = pgTable(
+  'chat_reactions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => chatMessages.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    emoji: varchar('emoji', { length: 64 }).notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('chat_reactions_msg_user_emoji_idx').on(t.messageId, t.userId, t.emoji),
+    index('chat_reactions_msg_idx').on(t.messageId),
+  ]
+);
+
+// ─── User Working Hours ───────────────────────────────────────────────────────
+export const userWorkingHours = pgTable('user_working_hours', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id),
+  timezone: varchar('timezone', { length: 100 }).notNull().default('UTC'),
+  schedule: jsonb('schedule').notNull().default('{}'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// ─── User Presence Overrides ──────────────────────────────────────────────────
+export const userPresenceOverrides = pgTable('user_presence_overrides', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => users.id),
+  status: userPresenceStatusEnum('status').notNull().default('available'),
+  customStatusText: varchar('custom_status_text', { length: 255 }),
+  expiresAt: timestamp('expires_at'),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});

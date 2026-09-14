@@ -3,6 +3,10 @@ import { verifyAccessToken } from '../../middleware/auth';
 import { eventBus } from '../../lib/event-bus';
 import { presenceStore, initializeRedisPubSub, onRedisBroadcast } from '../../redis';
 import type { PresenceUser } from '../../redis';
+import { db } from '../../db/index';
+import { handleChatSocketAction } from '../chat/chat.gateway';
+import { handlePresenceSocketAction, handlePresenceDisconnect } from '../presence/presence.gateway';
+import { recordUserHeartbeat } from '../presence/presenceService';
 
 export type { PresenceUser };
 
@@ -20,6 +24,13 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
       const payload = await verifyAccessToken(token);
       (ws.data as any).userId = payload.userId;
       (ws.data as any).subscribedBoards = new Set<string>();
+
+      // Subscribe user to personal inbox & organization presence feed
+      ws.subscribe(`user:inbox:${payload.userId}`);
+      ws.subscribe('org:presence');
+
+      // Record online presence
+      await recordUserHeartbeat(payload.userId);
     } catch {
       ws.send({ type: 'error', message: 'Invalid token' });
       ws.close();
@@ -32,7 +43,19 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
     const userId = (ws.data as any).userId;
     const subscribedBoards = (ws.data as any).subscribedBoards as Set<string>;
 
-    // 1. Subscribe to Board & Register Presence
+    // 1. Route Chat Gateway actions (chat:join, chat:leave, chat:typing, chat:read)
+    if (typeof message.action === 'string' && message.action.startsWith('chat:')) {
+      await handleChatSocketAction(ws, message, db);
+      return;
+    }
+
+    // 2. Route Presence Gateway actions (presence:heartbeat, presence:status_override)
+    if (typeof message.action === 'string' && message.action.startsWith('presence:')) {
+      await handlePresenceSocketAction(ws, message, db);
+      return;
+    }
+
+    // 3. Board Real-time: Subscribe & Register Presence
     if (message.action === 'subscribe' && message.boardId) {
       const boardId = message.boardId;
       const topic = `board:${boardId}`;
@@ -59,7 +82,7 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
       });
     }
 
-    // 2. Active Card Focus / Viewing
+    // 4. Board Real-time: Active Card Focus / Viewing
     else if (message.action === 'card_focus' && message.boardId) {
       const boardId = message.boardId;
       const topic = `board:${boardId}`;
@@ -77,7 +100,7 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
       }
     }
 
-    // 3. Typing Indicators
+    // 5. Board Real-time: Card Comment Typing Indicators
     else if (message.action === 'typing' && message.boardId) {
       const boardId = message.boardId;
       const topic = `board:${boardId}`;
@@ -97,10 +120,11 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
       }
     }
 
-    // 4. Heartbeat Keep-Alive
+    // 6. Board Real-time: Heartbeat Keep-Alive
     else if (message.action === 'heartbeat' && message.boardId) {
       const boardId = message.boardId;
       await presenceStore.refreshUser(boardId, userId);
+      await recordUserHeartbeat(userId);
       ws.send({ type: 'heartbeat:ack', boardId, timestamp: Date.now() });
     }
   },
@@ -108,14 +132,18 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
     const userId = (ws.data as any)?.userId;
     const subscribedBoards = (ws.data as any)?.subscribedBoards as Set<string>;
 
-    if (userId && subscribedBoards) {
-      for (const boardId of subscribedBoards) {
-        await presenceStore.removeUser(boardId, userId);
-        const activeUsers = await presenceStore.getUsers(boardId);
-        await eventBus.broadcast(`board:${boardId}`, 'presence:update', {
-          boardId,
-          users: activeUsers,
-        });
+    if (userId) {
+      await handlePresenceDisconnect(userId);
+
+      if (subscribedBoards) {
+        for (const boardId of subscribedBoards) {
+          await presenceStore.removeUser(boardId, userId);
+          const activeUsers = await presenceStore.getUsers(boardId);
+          await eventBus.broadcast(`board:${boardId}`, 'presence:update', {
+            boardId,
+            users: activeUsers,
+          });
+        }
       }
     }
   },

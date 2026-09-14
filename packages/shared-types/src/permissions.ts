@@ -125,6 +125,13 @@ export const CARD_PERMISSIONS = {
   UPDATE_CUSTOM_FIELD: 'card.custom_field.update',
 } as const;
 
+// ─── Chat ────────────────────────────────────────────────────────────────────
+export const CHAT_PERMISSIONS = {
+  CREATE_GROUP: 'chat.group.create',
+  MANAGE_CHANNELS: 'chat.channel.manage',
+  MODERATE_MESSAGES: 'chat.message.moderate',
+} as const;
+
 // ─── Combined type for use in requirePermission() / usePermission() ──────────
 export type PermissionKey =
   | (typeof PLATFORM_PERMISSIONS)[keyof typeof PLATFORM_PERMISSIONS]
@@ -132,7 +139,8 @@ export type PermissionKey =
   | (typeof WORKSPACE_PERMISSIONS)[keyof typeof WORKSPACE_PERMISSIONS]
   | (typeof PROJECT_PERMISSIONS)[keyof typeof PROJECT_PERMISSIONS]
   | (typeof BOARD_PERMISSIONS)[keyof typeof BOARD_PERMISSIONS]
-  | (typeof CARD_PERMISSIONS)[keyof typeof CARD_PERMISSIONS];
+  | (typeof CARD_PERMISSIONS)[keyof typeof CARD_PERMISSIONS]
+  | (typeof CHAT_PERMISSIONS)[keyof typeof CHAT_PERMISSIONS];
 
 // All keys as a flat array — useful for seed data
 export const ALL_PERMISSION_KEYS: PermissionKey[] = [
@@ -142,4 +150,5 @@ export const ALL_PERMISSION_KEYS: PermissionKey[] = [
   ...Object.values(PROJECT_PERMISSIONS),
   ...Object.values(BOARD_PERMISSIONS),
   ...Object.values(CARD_PERMISSIONS),
+  ...Object.values(CHAT_PERMISSIONS),
 ];

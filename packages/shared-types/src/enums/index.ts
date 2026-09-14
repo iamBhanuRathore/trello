@@ -127,3 +127,27 @@ export const NotificationFrequency = {
 } as const;
 export type NotificationFrequency =
   (typeof NotificationFrequency)[keyof typeof NotificationFrequency];
+
+export const ChatChannelType = {
+  Direct: 'direct',
+  GroupPrivate: 'group_private',
+  GroupPublic: 'group_public',
+  TaskThread: 'task_thread',
+} as const;
+export type ChatChannelType = (typeof ChatChannelType)[keyof typeof ChatChannelType];
+
+export const ChatMemberRole = {
+  Owner: 'owner',
+  Admin: 'admin',
+  Member: 'member',
+} as const;
+export type ChatMemberRole = (typeof ChatMemberRole)[keyof typeof ChatMemberRole];
+
+export const UserPresenceStatus = {
+  Available: 'available',
+  Busy: 'busy',
+  Away: 'away',
+  Leave: 'leave',
+  Offline: 'offline',
+} as const;
+export type UserPresenceStatus = (typeof UserPresenceStatus)[keyof typeof UserPresenceStatus];
