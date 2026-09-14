@@ -95,6 +95,9 @@ const LabelsAdmin = lazy(() =>
 const WebhookSettings = lazy(() =>
   import('./pages/Settings/WebhookSettings').then((m) => ({ default: m.WebhookSettings }))
 );
+const SettingsLayout = lazy(() =>
+  import('./components/settings/SettingsShell').then((m) => ({ default: m.SettingsLayout }))
+);
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -146,9 +149,11 @@ export function App() {
               <Route path="timesheets" element={<Timesheets />} />
               <Route path="my-tasks" element={<MyTasks />} />
               <Route path="tasks" element={<MyTasks />} />
-              <Route path="profile" element={<ProfileSettings />} />
-              <Route path="settings/profile" element={<ProfileSettings />} />
-              <Route path="settings/notifications" element={<NotificationSettings />} />
+              <Route element={<SettingsLayout />}>
+                <Route path="profile" element={<ProfileSettings />} />
+                <Route path="settings/profile" element={<ProfileSettings />} />
+                <Route path="settings/notifications" element={<NotificationSettings />} />
+              </Route>
             </Route>
 
             <Route
