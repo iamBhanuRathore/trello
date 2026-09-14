@@ -1697,3 +1697,11 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - Decisions made: Dual-mode UI pattern (full-screen `/chat` workspace + floating dock) for seamless collaboration without losing board context; strict toast etiquette (no noisy success toasts for routine actions); mounted all chat modals via `createPortal(..., document.body)` to guarantee full viewport centering and prevent containment by parent stacking contexts.
 - Tests & Validation: Verified with `tsc -b --noEmit` (0 type errors), `oxlint` (clean), `vite build` (successful production bundle generation), and backend test suite (8 passing tests).
 
+### 2026-09-15 — Fix Chat DB Migration Execution & Direct Message Navigation
+
+- What was done:
+  1. Ran and verified `0016_enterprise_chat.sql` migration directly on active dev Postgres database (`trello`), creating all required tables (`chat_channels`, `chat_channel_members`, `chat_messages`, `chat_attachments`, `chat_reactions`, `user_working_hours`).
+  2. Fixed `0015_perf_hot_path_indexes.sql` to use `CREATE INDEX IF NOT EXISTS` for idempotent runs across all environments.
+  3. Enhanced `NewDirectMessageModal.tsx` and `NewChannelModal.tsx` to intelligently route or focus the dock upon conversation creation: if active on `/chat`, navigate seamlessly to `/chat/:channelId`; if collaborating on another page (e.g. `/profile`, boards, docs), open and focus the newly created conversation in the floating `GlobalChatDock`.
+- Decisions made: Immediate floating dock activation when creating DMs/channels from pages outside `/chat` prevents disruptive page navigation while keeping user flow continuous.
+- Tests & Validation: Verified end-to-end DM channel creation and message dispatch on database with live query scripts; verified `bun test` passes 8/8; frontend `tsc -b && vite build` 0 errors.

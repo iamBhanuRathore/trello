@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Hash, Lock, Users, X, Loader2, Megaphone, UserPlus, Check } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,8 +15,10 @@ interface NewChannelModalProps {
 }
 
 export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClose }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuthStore();
-  const { setActiveChannelId } = useChatStore();
+  const { setActiveChannelId, openGlobalDock } = useChatStore();
   const queryClient = useQueryClient();
 
   const [name, setName] = useState('');
@@ -44,7 +47,12 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
       }),
     onSuccess: (channel) => {
       queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
-      setActiveChannelId(channel.id);
+      if (location.pathname.startsWith('/chat')) {
+        setActiveChannelId(channel.id);
+        navigate(`/chat/${channel.id}`);
+      } else {
+        openGlobalDock(channel.id);
+      }
       onClose();
       // Reset form
       setName('');
@@ -147,7 +155,9 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
                 <Hash className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <div className="font-semibold text-xs text-foreground">Public</div>
-                  <div className="text-[11px] text-muted-foreground">Anyone in company can join</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Anyone in company can join
+                  </div>
                 </div>
               </button>
 
@@ -163,7 +173,9 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
                 <Lock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <div className="font-semibold text-xs text-foreground">Private</div>
-                  <div className="text-[11px] text-muted-foreground">Only invited members can view</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Only invited members can view
+                  </div>
                 </div>
               </button>
             </div>
@@ -241,7 +253,9 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
                         )}
                         <div className="min-w-0">
                           <div className="font-semibold text-foreground truncate">{m.name}</div>
-                          <div className="text-[10px] text-muted-foreground truncate">{m.email}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {m.email}
+                          </div>
                         </div>
                       </div>
                       <div

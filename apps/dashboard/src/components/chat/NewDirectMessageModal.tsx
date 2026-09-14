@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, X, MessageSquare, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -19,8 +20,10 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuthStore();
-  const { setActiveChannelId } = useChatStore();
+  const { setActiveChannelId, openGlobalDock } = useChatStore();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
 
@@ -59,8 +62,7 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
     const q = search.toLowerCase().trim();
     if (!q) return otherMembers;
     return otherMembers.filter(
-      (m: any) =>
-        m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
+      (m: any) => m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
     );
   }, [otherMembers, search]);
 
@@ -68,7 +70,12 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
     mutationFn: (targetUserId: string) => chatService.createDirectMessage(targetUserId),
     onSuccess: (channel) => {
       queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
-      setActiveChannelId(channel.id);
+      if (location.pathname.startsWith('/chat')) {
+        setActiveChannelId(channel.id);
+        navigate(`/chat/${channel.id}`);
+      } else {
+        openGlobalDock(channel.id);
+      }
       onClose();
       setSearch('');
     },
@@ -146,11 +153,7 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="relative shrink-0">
                     {m.avatarUrl ? (
-                      <img
-                        src={m.avatarUrl}
-                        alt=""
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
+                      <img src={m.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center">
                         {m.name.charAt(0).toUpperCase()}
