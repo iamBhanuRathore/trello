@@ -6,7 +6,6 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from '@boardly/ui/sideb
 import { AppSidebar } from '../components/AppSidebar';
 import { NotificationDropdown } from '../components/NotificationDropdown';
 import { SearchPalette } from '../components/SearchPalette';
-import { ThemeToggle } from '../components/ThemeToggle';
 import { UserProfileDropdown } from '../components/UserProfileDropdown';
 // Rarely-opened global modals are code-split so they never bloat the shell.
 const TrashBinModal = lazy(() =>
@@ -111,13 +110,11 @@ export function DashboardLayout() {
             </nav>
           </div>
 
-          {/* Right: Search, Notifications, Theme, Fast Create, Avatar */}
+          {/* Right: Search, Notifications, Fast Create, Avatar */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <SearchPalette triggerContext="navbar" />
 
             <NotificationDropdown />
-
-            <ThemeToggle />
 
             {/* Fast Create Action Button */}
             <DropdownMenu>

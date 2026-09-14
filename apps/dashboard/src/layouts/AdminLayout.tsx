@@ -20,7 +20,6 @@ import {
   useSidebar,
 } from '@boardly/ui/sidebar';
 import { NotificationDropdown } from '../components/NotificationDropdown';
-import { ThemeToggle } from '../components/ThemeToggle';
 import { SearchPalette } from '../components/SearchPalette';
 import { UserProfileDropdown } from '../components/UserProfileDropdown';
 // Rarely-opened modal is code-split so it never bloats the admin shell.
@@ -304,7 +303,7 @@ export const AdminLayout: React.FC = () => {
           </Link>
         </div>
 
-        {/* Right: Back to App, Search, Notifications, Theme, User Profile */}
+        {/* Right: Back to App, Search, Notifications, User Profile */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <Link
             to="/"
@@ -317,8 +316,6 @@ export const AdminLayout: React.FC = () => {
           <SearchPalette triggerContext="navbar" />
 
           <NotificationDropdown />
-
-          <ThemeToggle />
 
           {/* Profile Avatar Quick Menu */}
           <div className="hidden sm:flex items-center border-l pl-3 ml-1">
