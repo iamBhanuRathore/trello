@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { Dialog, DialogContent, DialogTitle } from '@boardly/ui/dialog';
 import { QueryError } from '../components/common/QueryError';
 import {
@@ -410,17 +411,18 @@ export function ProfileSettings() {
 
                 <div>
                   <Label className="text-xs font-semibold mb-1.5 block">Timezone</Label>
-                  <select
-                    value={timezone}
-                    onChange={(e) => setTimezone(e.target.value)}
-                    className="w-full h-9 rounded-lg border border-input bg-background px-3 text-xs font-medium text-foreground outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    {TIMEZONES.map((tz) => (
-                      <option key={tz.value} value={tz.value}>
-                        {tz.label}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={timezone} onValueChange={setTimezone}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select timezone" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMEZONES.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>
+                          {tz.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>

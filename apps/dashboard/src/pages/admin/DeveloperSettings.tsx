@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@boardly/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { QueryError } from '../../components/common/QueryError';
 
 const AVAILABLE_SCOPES = [
@@ -296,19 +297,21 @@ export function DeveloperSettings() {
 
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Expiration Period</Label>
-              <select
-                value={expiresInDays}
-                onChange={(e) =>
-                  setExpiresInDays(e.target.value === '' ? '' : Number(e.target.value))
-                }
-                className="w-full h-9 rounded-lg border bg-background px-3 text-xs focus:ring-1 focus:ring-primary"
+              <Select
+                value={String(expiresInDays)}
+                onValueChange={(v) => setExpiresInDays(v === '' ? '' : Number(v))}
               >
-                <option value={30}>30 Days</option>
-                <option value={60}>60 Days</option>
-                <option value={90}>90 Days (Recommended)</option>
-                <option value={365}>1 Year</option>
-                <option value="">Never Expires</option>
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 Days</SelectItem>
+                  <SelectItem value="60">60 Days</SelectItem>
+                  <SelectItem value="90">90 Days (Recommended)</SelectItem>
+                  <SelectItem value="365">1 Year</SelectItem>
+                  <SelectItem value="">Never Expires</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

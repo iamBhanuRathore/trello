@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { stagesService } from '../../lib/stagesService';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { Plus, Trash2, GripVertical } from 'lucide-react';
 import { QueryError } from '../../components/common/QueryError';
 
@@ -218,17 +219,21 @@ export const StageTemplates = () => {
                         className="flex-1 ml-2 bg-background"
                       />
 
-                      <select
+                      <Select
                         value={stage.category}
-                        onChange={(e) => handleUpdateStage(stage.id, 'category', e.target.value)}
-                        className="border border-input rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground"
+                        onValueChange={(v) => handleUpdateStage(stage.id, 'category', v)}
                       >
-                        {CATEGORIES.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat.replace('_', ' ').toUpperCase()}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger size="sm" className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CATEGORIES.map((cat) => (
+                            <SelectItem key={cat} value={cat}>
+                              {cat.replace('_', ' ').toUpperCase()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
 
                       <Button
                         variant="ghost"

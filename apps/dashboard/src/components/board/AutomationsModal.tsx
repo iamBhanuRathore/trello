@@ -10,6 +10,7 @@ import {
 } from '@boardly/ui/dialog';
 import { Plus, Trash, Zap } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 
 interface AutomationsModalProps {
   boardId: string;
@@ -115,30 +116,31 @@ export function AutomationsModal({ boardId, isOpen, onClose, lists }: Automation
               <div className="flex items-center gap-2 text-xs">
                 <span className="font-bold text-primary">WHEN</span>
                 <span className="text-muted-foreground">a card is moved to</span>
-                <select
-                  className="h-8 rounded-lg border border-input px-2.5 bg-background text-xs text-foreground font-medium outline-none focus:ring-1 focus:ring-primary flex-1"
-                  value={triggerListId}
-                  onChange={(e) => setTriggerListId(e.target.value)}
-                >
-                  <option value="">Select List...</option>
-                  {lists.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
+                <Select value={triggerListId} onValueChange={setTriggerListId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Select List..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lists.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex items-center gap-2 text-xs">
                 <span className="font-bold text-primary">THEN</span>
-                <select
-                  className="h-8 rounded-lg border border-input px-2.5 bg-background text-xs text-foreground font-medium outline-none focus:ring-1 focus:ring-primary"
-                  value={actionType}
-                  onChange={(e) => setActionType(e.target.value)}
-                >
-                  <option value="add_label">Add Label</option>
-                  <option value="assign_user">Assign User</option>
-                </select>
+                <Select value={actionType} onValueChange={setActionType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="add_label">Add Label</SelectItem>
+                    <SelectItem value="assign_user">Assign User</SelectItem>
+                  </SelectContent>
+                </Select>
 
                 {actionType === 'add_label' ? (
                   <input
@@ -149,18 +151,18 @@ export function AutomationsModal({ boardId, isOpen, onClose, lists }: Automation
                     onChange={(e) => setActionValue(e.target.value)}
                   />
                 ) : (
-                  <select
-                    className="h-8 rounded-lg border border-input px-2.5 bg-background text-xs text-foreground font-medium outline-none focus:ring-1 focus:ring-primary flex-1"
-                    value={actionValue}
-                    onChange={(e) => setActionValue(e.target.value)}
-                  >
-                    <option value="">Select User...</option>
-                    {users.map((u: any) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.email})
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={actionValue} onValueChange={setActionValue}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Select User..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((u: any) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name} ({u.email})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
 
@@ -187,7 +189,9 @@ export function AutomationsModal({ boardId, isOpen, onClose, lists }: Automation
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Configured Rules</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Configured Rules
+              </h3>
               <span className="text-[11px] text-muted-foreground">{automations.length} active</span>
             </div>
 
@@ -196,7 +200,8 @@ export function AutomationsModal({ boardId, isOpen, onClose, lists }: Automation
                 <Zap className="w-8 h-8 text-muted-foreground/30 mx-auto" />
                 <p className="text-xs font-medium">No automations configured yet.</p>
                 <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
-                  Automations trigger actions like auto-assigning team members or adding labels when cards change lists.
+                  Automations trigger actions like auto-assigning team members or adding labels when
+                  cards change lists.
                 </p>
               </div>
             )}
@@ -212,7 +217,9 @@ export function AutomationsModal({ boardId, isOpen, onClose, lists }: Automation
                   </div>
                   <div>
                     <span className="text-xs font-semibold text-foreground block">{auto.name}</span>
-                    <span className="text-[10px] text-muted-foreground">Auto-triggered on card move</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      Auto-triggered on card move
+                    </span>
                   </div>
                 </div>
                 <Button

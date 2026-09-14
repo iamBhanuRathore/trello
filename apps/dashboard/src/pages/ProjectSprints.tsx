@@ -16,6 +16,7 @@ import { DatePicker } from '@boardly/ui';
 import { format } from 'date-fns';
 import { Calendar, Target, Flag, ArrowLeft, Play, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@boardly/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { api } from '../lib/api';
 import { QueryError } from '../components/common/QueryError';
 
@@ -306,16 +307,20 @@ function CreateSprintDialog({ projectId }: { projectId: string }) {
           </div>
           <div className="grid gap-2">
             <Label>Sprint Type</Label>
-            <select
-              className="border rounded-md px-3 py-2 text-sm"
+            <Select
               value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+              onValueChange={(v) => setFormData({ ...formData, type: v })}
             >
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Biweekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="custom">Custom</option>
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="biweekly">Biweekly</SelectItem>
+                <SelectItem value="monthly">Monthly</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">

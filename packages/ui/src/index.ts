@@ -9,6 +9,7 @@ export * from './components/enterprise-data-grid';
 export * from './components/input';
 export * from './components/label';
 export * from './components/searchable-select';
+export * from './components/select';
 export * from './components/sidebar';
 export * from './components/switch';
 export * from './components/tooltip';

@@ -24,6 +24,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 
 export function ProjectReports() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -422,17 +423,18 @@ export function ProjectReports() {
               {/* Sprint Selector */}
               {sprints && sprints.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <select
-                    className="h-8 rounded-lg border bg-background px-2.5 text-xs font-medium focus:ring-1 focus:ring-primary"
-                    value={currentSprintId}
-                    onChange={(e) => setSelectedSprintId(e.target.value)}
-                  >
-                    {sprints.map((s: any) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.status})
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={currentSprintId} onValueChange={setSelectedSprintId}>
+                    <SelectTrigger className="w-52">
+                      <SelectValue placeholder="Select sprint" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sprints.map((s: any) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name} ({s.status})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>
@@ -623,15 +625,16 @@ export function ProjectReports() {
 
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Window:</span>
-              <select
-                className="h-8 rounded-lg border bg-background px-2.5 text-xs font-medium focus:ring-1 focus:ring-primary"
-                value={cfdDays}
-                onChange={(e) => setCfdDays(Number(e.target.value))}
-              >
-                <option value={7}>Last 7 Days</option>
-                <option value={14}>Last 14 Days</option>
-                <option value={30}>Last 30 Days</option>
-              </select>
+              <Select value={String(cfdDays)} onValueChange={(v) => setCfdDays(Number(v))}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">Last 7 Days</SelectItem>
+                  <SelectItem value="14">Last 14 Days</SelectItem>
+                  <SelectItem value="30">Last 30 Days</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

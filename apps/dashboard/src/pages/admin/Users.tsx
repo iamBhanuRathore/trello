@@ -7,6 +7,7 @@ import { api } from '../../lib/api';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -918,15 +919,16 @@ export const Users: React.FC = () => {
                       <span className="font-semibold text-foreground">Default Fallback Role:</span>
                       <span className="text-muted-foreground ml-1">Applies if role is omitted</span>
                     </div>
-                    <select
-                      value={bulkRole}
-                      onChange={(e) => setBulkRole(e.target.value)}
-                      className="text-xs p-1.5 rounded-lg border bg-background text-foreground"
-                    >
-                      <option value="member">Member</option>
-                      <option value="org_admin">Org Admin</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
+                    <Select value={bulkRole} onValueChange={setBulkRole}>
+                      <SelectTrigger className="w-32">
+                        <SelectValue placeholder="Role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">Member</SelectItem>
+                        <SelectItem value="org_admin">Org Admin</SelectItem>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="flex justify-end gap-2 pt-3 border-t border-border">
@@ -1115,31 +1117,33 @@ export const Users: React.FC = () => {
             </div>
 
             {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-xs py-1 px-2.5 rounded-lg border bg-background text-foreground focus:outline-none"
-            >
-              <option value="all">All Statuses</option>
-              <option value="active">Active Only</option>
-              <option value="deactivated">Deactivated Only</option>
-              <option value="invited">Invited Only</option>
-            </select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="All Statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="active">Active Only</SelectItem>
+                <SelectItem value="deactivated">Deactivated Only</SelectItem>
+                <SelectItem value="invited">Invited Only</SelectItem>
+              </SelectContent>
+            </Select>
 
             {/* Role Filter */}
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="text-xs py-1 px-2.5 rounded-lg border bg-background text-foreground focus:outline-none"
-            >
-              <option value="all">All Roles</option>
-              <option value="org_owner">Org Owner</option>
-              <option value="org_admin">Org Admin</option>
-              <option value="workspace_admin">Workspace Admin</option>
-              <option value="billing_manager">Billing Manager</option>
-              <option value="member">Member</option>
-              <option value="viewer">Viewer</option>
-            </select>
+            <Select value={roleFilter} onValueChange={setRoleFilter}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="All Roles" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Roles</SelectItem>
+                <SelectItem value="org_owner">Org Owner</SelectItem>
+                <SelectItem value="org_admin">Org Admin</SelectItem>
+                <SelectItem value="workspace_admin">Workspace Admin</SelectItem>
+                <SelectItem value="billing_manager">Billing Manager</SelectItem>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="viewer">Viewer</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         )}
       </div>

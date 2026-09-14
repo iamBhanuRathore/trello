@@ -15,6 +15,7 @@ import {
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { orgService } from '../../lib/orgService';
 import { useAuthStore } from '../../store/authStore';
 import type { ChatMessage } from './TaskChatPane';
@@ -221,21 +222,22 @@ export function CreateTaskFromMessageModal({
               <span>Assignee:</span>
             </div>
             <div className="flex-1 min-w-0 flex items-center gap-2">
-              <select
-                value={assigneeId}
-                onChange={(e) => setAssigneeId(e.target.value)}
-                className="w-full bg-muted/30 hover:bg-muted/60 border border-border/70 rounded-lg px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary transition-colors cursor-pointer"
-              >
-                <option value="">Unassigned</option>
-                {members.map((m: any) => {
-                  const uid = m.userId || m.id;
-                  return (
-                    <option key={uid} value={uid}>
-                      {m.name || m.email} {m.userId === user?.id ? '(You)' : ''}
-                    </option>
-                  );
-                })}
-              </select>
+              <Select value={assigneeId} onValueChange={setAssigneeId}>
+                <SelectTrigger className="w-full border-border/70 bg-muted/30 hover:bg-muted/60">
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Unassigned</SelectItem>
+                  {members.map((m: any) => {
+                    const uid = m.userId || m.id;
+                    return (
+                      <SelectItem key={uid} value={uid}>
+                        {m.name || m.email} {m.userId === user?.id ? '(You)' : ''}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -262,17 +264,18 @@ export function CreateTaskFromMessageModal({
               <span>List:</span>
             </div>
             <div className="flex-1 min-w-0">
-              <select
-                value={targetListId}
-                onChange={(e) => setTargetListId(e.target.value)}
-                className="w-full bg-muted/30 hover:bg-muted/60 border border-border/70 rounded-lg px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary transition-colors cursor-pointer"
-              >
-                {lists.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={targetListId} onValueChange={setTargetListId}>
+                <SelectTrigger className="w-full border-border/70 bg-muted/30 hover:bg-muted/60">
+                  <SelectValue placeholder="Select list" />
+                </SelectTrigger>
+                <SelectContent>
+                  {lists.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

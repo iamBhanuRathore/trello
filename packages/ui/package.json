@@ -15,6 +15,7 @@
     "./label": "./src/components/label.tsx",
     "./avatar": "./src/components/avatar.tsx",
     "./searchable-select": "./src/components/searchable-select.tsx",
+    "./select": "./src/components/select.tsx",
     "./sidebar": "./src/components/sidebar.tsx",
     "./switch": "./src/components/switch.tsx",
     "./tooltip": "./src/components/tooltip.tsx"

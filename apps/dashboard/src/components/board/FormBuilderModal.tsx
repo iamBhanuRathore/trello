@@ -1,23 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  getBoardForms,
-  createIntakeForm,
-  deleteIntakeForm,
-} from '../../lib/api';
-import {
-  FileText,
-  Plus,
-  Trash2,
-  Copy,
-  ExternalLink,
-  Clock,
-  Check,
-  Globe,
-} from 'lucide-react';
+import { getBoardForms, createIntakeForm, deleteIntakeForm } from '../../lib/api';
+import { FileText, Plus, Trash2, Copy, ExternalLink, Clock, Check, Globe } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -103,9 +91,12 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
                 <FileText className="w-5 h-5" />
               </div>
               <div>
-                <DialogTitle className="text-lg font-bold">Board Intake Forms &amp; SLAs</DialogTitle>
+                <DialogTitle className="text-lg font-bold">
+                  Board Intake Forms &amp; SLAs
+                </DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
-                  Publish intake portals that create cards automatically with SLA resolution targets.
+                  Publish intake portals that create cards automatically with SLA resolution
+                  targets.
                 </DialogDescription>
               </div>
             </div>
@@ -173,18 +164,18 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">Target List / Column</Label>
-                  <select
-                    value={targetListId}
-                    onChange={(e) => setTargetListId(e.target.value)}
-                    required
-                    className="w-full h-9 rounded-lg border bg-background px-3 text-xs focus:ring-1 focus:ring-primary"
-                  >
-                    {lists.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={targetListId} onValueChange={setTargetListId} required>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select list" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lists.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1.5">
@@ -193,7 +184,9 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
                     type="number"
                     placeholder="24"
                     value={slaHours}
-                    onChange={(e) => setSlaHours(e.target.value === '' ? '' : Number(e.target.value))}
+                    onChange={(e) =>
+                      setSlaHours(e.target.value === '' ? '' : Number(e.target.value))
+                    }
                     className="text-xs h-9"
                   />
                 </div>
@@ -241,7 +234,8 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Target list: <span className="font-medium text-foreground">{form.listName}</span> •{' '}
+                      Target list:{' '}
+                      <span className="font-medium text-foreground">{form.listName}</span> •{' '}
                       {form.submissionCount} submissions received
                     </p>
                   </div>
@@ -291,7 +285,8 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
               <Globe className="w-6 h-6 mx-auto text-muted-foreground/40" />
               <p className="font-medium">No intake forms created for this board.</p>
               <p className="text-[11px]">
-                Create a form to accept external requests, customer tickets, or bug reports with automated SLA due dates.
+                Create a form to accept external requests, customer tickets, or bug reports with
+                automated SLA due dates.
               </p>
             </div>
           )}

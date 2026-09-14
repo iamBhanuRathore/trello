@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, memo } from 'react';
 import { Button } from './button';
 import { Input } from './input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select';
 import {
   Search,
   ArrowUpDown,
@@ -886,17 +887,21 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
 
           <div className="flex items-center gap-1.5 border-l border-border pl-3">
             <span className="text-[11px] hidden sm:inline">Rows per page:</span>
-            <select
-              value={activePageSize}
-              onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-              className="h-7 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground outline-none"
+            <Select
+              value={String(activePageSize)}
+              onValueChange={(v) => handlePageSizeChange(Number(v))}
             >
-              {pageSizeOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger size="sm" className="w-[70px] font-medium">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((opt) => (
+                  <SelectItem key={opt} value={String(opt)}>
+                    {opt}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

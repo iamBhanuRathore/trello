@@ -2,17 +2,11 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { getPublicForm, submitPublicForm } from '../lib/api';
-import {
-  Send,
-  Clock,
-  LayoutDashboard,
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-} from 'lucide-react';
+import { Send, Clock, LayoutDashboard, CheckCircle2, AlertCircle, HelpCircle } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 
 export function PublicFormView() {
   const { slug } = useParams<{ slug: string }>();
@@ -22,15 +16,22 @@ export function PublicFormView() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submissionResult, setSubmissionResult] = useState<any>(null);
 
-  const { data: form, isLoading, error } = useQuery({
+  const {
+    data: form,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['publicForm', slug],
     queryFn: () => getPublicForm(slug!),
     enabled: !!slug,
   });
 
   const submitMutation = useMutation({
-    mutationFn: (payload: { submittedByName?: string; submittedByEmail?: string; data: Record<string, any> }) =>
-      submitPublicForm(slug!, payload),
+    mutationFn: (payload: {
+      submittedByName?: string;
+      submittedByEmail?: string;
+      data: Record<string, any>;
+    }) => submitPublicForm(slug!, payload),
     onSuccess: (res) => {
       setSubmissionResult(res);
     },
@@ -131,9 +132,7 @@ export function PublicFormView() {
               {/* Form Title & SLA Banner */}
               <div className="space-y-3 border-b border-slate-800 pb-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-100">
-                    {form.title}
-                  </h1>
+                  <h1 className="text-2xl font-bold tracking-tight text-slate-100">{form.title}</h1>
                   {form.slaHours && (
                     <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -174,49 +173,53 @@ export function PublicFormView() {
 
               {/* Dynamic Field Inputs */}
               <div className="space-y-4">
-                {form.fields && form.fields.map((field: any) => (
-                  <div key={field.id} className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs font-medium text-slate-300">
-                        {field.label} {field.required && <span className="text-rose-400">*</span>}
-                      </Label>
-                    </div>
+                {form.fields &&
+                  form.fields.map((field: any) => (
+                    <div key={field.id} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium text-slate-300">
+                          {field.label} {field.required && <span className="text-rose-400">*</span>}
+                        </Label>
+                      </div>
 
-                    {field.type === 'textarea' ? (
-                      <textarea
-                        rows={4}
-                        placeholder={field.placeholder || 'Provide details...'}
-                        value={formData[field.id] || ''}
-                        onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                        required={field.required}
-                        className="w-full p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-100 placeholder:text-slate-600 focus:border-primary outline-none transition-colors"
-                      />
-                    ) : field.type === 'select' ? (
-                      <select
-                        value={formData[field.id] || ''}
-                        onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                        required={field.required}
-                        className="w-full h-10 rounded-xl bg-slate-950/60 border border-slate-800 text-xs px-3 text-slate-100 focus:border-primary outline-none"
-                      >
-                        <option value="">Select an option...</option>
-                        {field.options?.map((opt: string) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <Input
-                        type={field.type || 'text'}
-                        placeholder={field.placeholder || ''}
-                        value={formData[field.id] || ''}
-                        onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                        required={field.required}
-                        className="bg-slate-950/60 border-slate-800 text-xs h-10 text-slate-100 placeholder:text-slate-600 focus:border-primary"
-                      />
-                    )}
-                  </div>
-                ))}
+                      {field.type === 'textarea' ? (
+                        <textarea
+                          rows={4}
+                          placeholder={field.placeholder || 'Provide details...'}
+                          value={formData[field.id] || ''}
+                          onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                          required={field.required}
+                          className="w-full p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-100 placeholder:text-slate-600 focus:border-primary outline-none transition-colors"
+                        />
+                      ) : field.type === 'select' ? (
+                        <Select
+                          value={formData[field.id] || ''}
+                          onValueChange={(v) => handleFieldChange(field.id, v)}
+                          required={field.required}
+                        >
+                          <SelectTrigger className="w-full h-10 rounded-xl border-slate-800 bg-slate-950/60 text-slate-100">
+                            <SelectValue placeholder="Select an option..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {field.options?.map((opt: string) => (
+                              <SelectItem key={opt} value={opt}>
+                                {opt}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          type={field.type || 'text'}
+                          placeholder={field.placeholder || ''}
+                          value={formData[field.id] || ''}
+                          onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                          required={field.required}
+                          className="bg-slate-950/60 border-slate-800 text-xs h-10 text-slate-100 placeholder:text-slate-600 focus:border-primary"
+                        />
+                      )}
+                    </div>
+                  ))}
               </div>
 
               {/* Submit Action */}

@@ -3,6 +3,7 @@ import { useAuthStore } from '../../store/authStore';
 import { getNotificationPreferences, updateNotificationPreferences } from '../../lib/api';
 import { Button } from '@boardly/ui/button';
 import { Switch } from '@boardly/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { toast } from 'sonner';
 import { QueryError } from '../../components/common/QueryError';
 
@@ -225,28 +226,28 @@ export function NotificationSettings() {
                   <td className="px-6 py-4 font-medium">{event.label}</td>
                   {CHANNELS.map((channel) => (
                     <td key={channel.id} className="px-6 py-4">
-                      {channel.id === 'in_app' ? (
-                        <select
-                          className="flex h-9 w-[130px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          value={getPrefFrequency(event.id, channel.id)}
-                          onChange={(e) => setPrefFrequency(event.id, channel.id, e.target.value)}
-                        >
-                          <option value="instant">Instant</option>
-                          <option value="off">Off</option>
-                        </select>
-                      ) : (
-                        <select
-                          className="flex h-9 w-[130px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          value={getPrefFrequency(event.id, channel.id)}
-                          onChange={(e) => setPrefFrequency(event.id, channel.id, e.target.value)}
-                        >
-                          {FREQUENCIES.map((f) => (
-                            <option key={f.id} value={f.id}>
-                              {f.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
+                      <Select
+                        value={getPrefFrequency(event.id, channel.id)}
+                        onValueChange={(v) => setPrefFrequency(event.id, channel.id, v)}
+                      >
+                        <SelectTrigger className="w-[130px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {channel.id === 'in_app' ? (
+                            <>
+                              <SelectItem value="instant">Instant</SelectItem>
+                              <SelectItem value="off">Off</SelectItem>
+                            </>
+                          ) : (
+                            FREQUENCIES.map((f) => (
+                              <SelectItem key={f.id} value={f.id}>
+                                {f.label}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
                     </td>
                   ))}
                 </tr>
