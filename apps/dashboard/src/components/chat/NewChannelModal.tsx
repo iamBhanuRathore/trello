@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Hash, Lock, Users, X, Loader2, Megaphone, UserPlus, Check } from 'lucide-react';
+import { Hash, Lock, Users, X, Loader2, Megaphone, UserPlus, Check, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { orgService } from '../../lib/orgService';
 import { chatService } from '../../lib/chatService';
@@ -27,6 +27,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
   const [isAnnouncementOnly, setIsAnnouncementOnly] = useState(false);
   const [allowMemberInvites, setAllowMemberInvites] = useState(true);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
 
   // Fetch org members for selection
   const { data: members = [] } = useQuery({
@@ -34,6 +35,16 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
     queryFn: () => (user?.organizationId ? orgService.getMembers(user.organizationId) : []),
     enabled: isOpen && !!user?.organizationId,
   });
+
+  const filteredMembers = useMemo(() => {
+    const q = memberSearch.toLowerCase().trim();
+    const otherMembers = members.filter((m: any) => m.userId !== user?.id && m.status === 'active');
+    if (!q) return otherMembers;
+    return otherMembers.filter(
+      (m: any) =>
+        m.name?.toLowerCase().includes(q) || (m.email && m.email.toLowerCase().includes(q))
+    );
+  }, [members, user?.id, memberSearch]);
 
   const createChannelMutation = useMutation({
     mutationFn: () =>
@@ -58,6 +69,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
       setName('');
       setTopic('');
       setSelectedUserIds([]);
+      setMemberSearch('');
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to create channel');
@@ -221,14 +233,75 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
           </div>
 
           {/* Member Picker */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-foreground">
-              Add Members ({selectedUserIds.length} selected)
-            </label>
-            <div className="max-h-40 overflow-y-auto rounded-xl border border-border divide-y divide-border/60">
-              {members
-                .filter((m: any) => m.userId !== user?.id)
-                .map((m: any) => {
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-foreground">
+                Add Members ({selectedUserIds.length} selected)
+              </label>
+              {filteredMembers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allFilteredSelected = filteredMembers.every((m: any) =>
+                      selectedUserIds.includes(m.userId)
+                    );
+                    if (allFilteredSelected) {
+                      const filteredIds = new Set(filteredMembers.map((m: any) => m.userId));
+                      setSelectedUserIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+                    } else {
+                      const newIds = new Set([
+                        ...selectedUserIds,
+                        ...filteredMembers.map((m: any) => m.userId),
+                      ]);
+                      setSelectedUserIds(Array.from(newIds));
+                    }
+                  }}
+                  className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                >
+                  {filteredMembers.every((m: any) => selectedUserIds.includes(m.userId))
+                    ? 'Deselect all'
+                    : 'Select all'}
+                </button>
+              )}
+            </div>
+
+            {/* Teammate Search Input */}
+            <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-3 pointer-events-none" />
+              <input
+                type="text"
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+                placeholder="Search teammates by name or email..."
+                className="w-full pl-8 pr-8 py-2 text-xs rounded-xl bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-muted-foreground"
+              />
+              {memberSearch && (
+                <button
+                  type="button"
+                  onClick={() => setMemberSearch('')}
+                  className="absolute right-2.5 p-0.5 rounded text-muted-foreground hover:text-foreground cursor-pointer"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Teammates List */}
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-border divide-y divide-border/60 bg-muted/10">
+              {filteredMembers.length === 0 ? (
+                <div className="p-6 text-center text-xs text-muted-foreground">
+                  {memberSearch ? (
+                    <>
+                      No teammates found matching{' '}
+                      <span className="font-semibold text-foreground">"{memberSearch}"</span>
+                    </>
+                  ) : (
+                    'No active teammates found'
+                  )}
+                </div>
+              ) : (
+                filteredMembers.map((m: any) => {
                   const isSelected = selectedUserIds.includes(m.userId);
                   return (
                     <button
@@ -269,7 +342,8 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
                       </div>
                     </button>
                   );
-                })}
+                })
+              )}
             </div>
           </div>
         </div>

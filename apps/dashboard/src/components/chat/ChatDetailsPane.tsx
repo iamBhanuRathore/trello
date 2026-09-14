@@ -39,6 +39,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
   const [memberSearch, setMemberSearch] = useState('');
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [selectedUserToAdd, setSelectedUserToAdd] = useState<string | null>(null);
+  const [candidateSearch, setCandidateSearch] = useState('');
   const [roleToAdd, setRoleToAdd] = useState<'admin' | 'member'>('member');
   const [openMemberMenuId, setOpenMemberMenuId] = useState<string | null>(null);
 
@@ -66,7 +67,8 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
   const otherUserId = channel.otherUser?.id;
   const { data: sharedChannelsData, isLoading: isSharedLoading } = useQuery({
     queryKey: ['chat', 'shared-channels', otherUserId],
-    queryFn: () => (otherUserId ? chatService.getSharedChannels(otherUserId) : { count: 0, channels: [] }),
+    queryFn: () =>
+      otherUserId ? chatService.getSharedChannels(otherUserId) : { count: 0, channels: [] },
     enabled: channel.type === 'direct' && !!otherUserId,
   });
 
@@ -83,6 +85,14 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
     () => orgMembers.filter((om: any) => !existingUserIds.has(om.userId) && om.status === 'active'),
     [orgMembers, existingUserIds]
   );
+  const filteredCandidates = useMemo(() => {
+    const q = candidateSearch.toLowerCase().trim();
+    if (!q) return eligibleCandidates;
+    return eligibleCandidates.filter(
+      (c: any) =>
+        c.name?.toLowerCase().includes(q) || (c.email && c.email.toLowerCase().includes(q))
+    );
+  }, [eligibleCandidates, candidateSearch]);
 
   // Add member mutation
   const addMemberMutation = useMutation({
@@ -91,6 +101,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
     onSuccess: () => {
       setIsAddMemberOpen(false);
       setSelectedUserToAdd(null);
+      setCandidateSearch('');
       queryClient.invalidateQueries({ queryKey: ['chat', 'channel-details', channel.id] });
       queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
     },
@@ -101,8 +112,13 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
 
   // Update member role mutation
   const updateRoleMutation = useMutation({
-    mutationFn: ({ targetUserId, role }: { targetUserId: string; role: 'owner' | 'admin' | 'member' }) =>
-      chatService.updateMemberRole(channel.id, targetUserId, role),
+    mutationFn: ({
+      targetUserId,
+      role,
+    }: {
+      targetUserId: string;
+      role: 'owner' | 'admin' | 'member';
+    }) => chatService.updateMemberRole(channel.id, targetUserId, role),
     onSuccess: () => {
       setOpenMemberMenuId(null);
       queryClient.invalidateQueries({ queryKey: ['chat', 'channel-details', channel.id] });
@@ -154,9 +170,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
     const q = memberSearch.toLowerCase().trim();
     if (!q) return members;
     return members.filter(
-      (m) =>
-        m.name?.toLowerCase().includes(q) ||
-        m.email?.toLowerCase().includes(q)
+      (m) => m.name?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q)
     );
   }, [members, memberSearch]);
 
@@ -379,9 +393,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Users className="w-4 h-4 text-primary" />
-                  <h5 className="text-xs font-bold text-foreground">
-                    Members ({members.length})
-                  </h5>
+                  <h5 className="text-xs font-bold text-foreground">Members ({members.length})</h5>
                 </div>
                 {(isAdmin || channel.allowMemberInvites) && (
                   <button
@@ -439,7 +451,10 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-foreground truncate">
-                            {member.name} {isSelf && <span className="text-muted-foreground font-normal">(You)</span>}
+                            {member.name}{' '}
+                            {isSelf && (
+                              <span className="text-muted-foreground font-normal">(You)</span>
+                            )}
                           </p>
                           <div className="flex items-center gap-1.5">
                             {isTargetOwner && (
@@ -467,7 +482,9 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
                           <button
                             type="button"
                             onClick={() =>
-                              setOpenMemberMenuId(openMemberMenuId === member.userId ? null : member.userId)
+                              setOpenMemberMenuId(
+                                openMemberMenuId === member.userId ? null : member.userId
+                              )
                             }
                             className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors cursor-pointer"
                           >
@@ -512,7 +529,11 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      if (confirm(`Transfer full ownership of "${channel.name}" to ${member.name}?`)) {
+                                      if (
+                                        confirm(
+                                          `Transfer full ownership of "${channel.name}" to ${member.name}?`
+                                        )
+                                      ) {
                                         updateRoleMutation.mutate({
                                           targetUserId: member.userId,
                                           role: 'owner',
@@ -572,98 +593,163 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
       {isAddMemberOpen &&
         createPortal(
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-card border border-border shadow-2xl rounded-2xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <UserPlus className="w-4 h-4 text-primary" />
-                Add Teammates to Channel
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsAddMemberOpen(false)}
-                className="p-1 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-foreground">Select Member</label>
-                <select
-                  value={selectedUserToAdd || ''}
-                  onChange={(e) => setSelectedUserToAdd(e.target.value)}
-                  className="w-full mt-1 px-3 py-2 rounded-xl bg-background border border-border text-xs text-foreground focus:outline-none focus:border-primary"
+            <div className="bg-card border border-border shadow-2xl rounded-2xl w-full max-w-md p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-primary" />
+                  Add Teammates to Channel
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsAddMemberOpen(false)}
+                  className="p-1 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
                 >
-                  <option value="">Choose a workspace member...</option>
-                  {eligibleCandidates.map((c: any) => (
-                    <option key={c.userId} value={c.userId}>
-                      {c.name} ({c.email})
-                    </option>
-                  ))}
-                </select>
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              {isOwner && (
-                <div>
-                  <label className="text-xs font-semibold text-foreground">Channel Role</label>
-                  <div className="grid grid-cols-2 gap-2 mt-1">
-                    <button
-                      type="button"
-                      onClick={() => setRoleToAdd('member')}
-                      className={`p-2 rounded-xl text-xs font-medium border text-center transition-colors cursor-pointer ${
-                        roleToAdd === 'member'
-                          ? 'bg-primary/10 border-primary text-primary font-bold'
-                          : 'bg-background border-border text-muted-foreground'
-                      }`}
-                    >
-                      Member
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRoleToAdd('admin')}
-                      className={`p-2 rounded-xl text-xs font-medium border text-center transition-colors cursor-pointer ${
-                        roleToAdd === 'admin'
-                          ? 'bg-indigo-500/10 border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold'
-                          : 'bg-background border-border text-muted-foreground'
-                      }`}
-                    >
-                      Admin
-                    </button>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Select Teammate</label>
+
+                  {/* Teammate Search Input */}
+                  <div className="relative flex items-center">
+                    <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-3 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={candidateSearch}
+                      onChange={(e) => setCandidateSearch(e.target.value)}
+                      placeholder="Search teammates by name or email..."
+                      className="w-full pl-8 pr-8 py-2 text-xs rounded-xl bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-muted-foreground"
+                    />
+                    {candidateSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setCandidateSearch('')}
+                        className="absolute right-2.5 p-0.5 rounded text-muted-foreground hover:text-foreground cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Candidates List */}
+                  <div className="max-h-44 overflow-y-auto rounded-xl border border-border divide-y divide-border/60 bg-muted/10">
+                    {filteredCandidates.length === 0 ? (
+                      <div className="p-5 text-center text-xs text-muted-foreground">
+                        {candidateSearch
+                          ? `No teammates found matching "${candidateSearch}"`
+                          : 'All active workspace members are already in this channel'}
+                      </div>
+                    ) : (
+                      filteredCandidates.map((c: any) => {
+                        const isSelected = selectedUserToAdd === c.userId;
+                        return (
+                          <button
+                            key={c.userId}
+                            type="button"
+                            onClick={() => setSelectedUserToAdd(c.userId)}
+                            className={`w-full flex items-center justify-between p-2.5 text-xs text-left hover:bg-muted/60 transition-colors cursor-pointer ${
+                              isSelected ? 'bg-primary/10' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {c.avatarUrl ? (
+                                <img
+                                  src={c.avatarUrl}
+                                  alt=""
+                                  className="w-6 h-6 rounded-full object-cover shrink-0"
+                                />
+                              ) : (
+                                <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">
+                                  {c.name.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="font-semibold text-foreground truncate">
+                                  {c.name}
+                                </div>
+                                <div className="text-[10px] text-muted-foreground truncate">
+                                  {c.email}
+                                </div>
+                              </div>
+                            </div>
+                            <div
+                              className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                                isSelected
+                                  ? 'bg-primary border-primary text-primary-foreground'
+                                  : 'border-border'
+                              }`}
+                            >
+                              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
-              <button
-                type="button"
-                onClick={() => setIsAddMemberOpen(false)}
-                className="px-3 py-1.5 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedUserToAdd) {
-                    addMemberMutation.mutate({
-                      userId: selectedUserToAdd,
-                      role: roleToAdd,
-                    });
-                  }
-                }}
-                disabled={!selectedUserToAdd || addMemberMutation.isPending}
-                className="px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 shadow-sm"
-              >
-                {addMemberMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Add Member</span>
-              </button>
+                {isOwner && (
+                  <div>
+                    <label className="text-xs font-semibold text-foreground">Channel Role</label>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setRoleToAdd('member')}
+                        className={`p-2 rounded-xl text-xs font-medium border text-center transition-colors cursor-pointer ${
+                          roleToAdd === 'member'
+                            ? 'bg-primary/10 border-primary text-primary font-bold'
+                            : 'bg-background border-border text-muted-foreground'
+                        }`}
+                      >
+                        Member
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRoleToAdd('admin')}
+                        className={`p-2 rounded-xl text-xs font-medium border text-center transition-colors cursor-pointer ${
+                          roleToAdd === 'admin'
+                            ? 'bg-indigo-500/10 border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold'
+                            : 'bg-background border-border text-muted-foreground'
+                        }`}
+                      >
+                        Admin
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setIsAddMemberOpen(false)}
+                  className="px-3 py-1.5 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedUserToAdd) {
+                      addMemberMutation.mutate({
+                        userId: selectedUserToAdd,
+                        role: roleToAdd,
+                      });
+                    }
+                  }}
+                  disabled={!selectedUserToAdd || addMemberMutation.isPending}
+                  className="px-4 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  {addMemberMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Add Member</span>
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

@@ -1705,3 +1705,11 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   3. Enhanced `NewDirectMessageModal.tsx` and `NewChannelModal.tsx` to intelligently route or focus the dock upon conversation creation: if active on `/chat`, navigate seamlessly to `/chat/:channelId`; if collaborating on another page (e.g. `/profile`, boards, docs), open and focus the newly created conversation in the floating `GlobalChatDock`.
 - Decisions made: Immediate floating dock activation when creating DMs/channels from pages outside `/chat` prevents disruptive page navigation while keeping user flow continuous.
 - Tests & Validation: Verified end-to-end DM channel creation and message dispatch on database with live query scripts; verified `bun test` passes 8/8; frontend `tsc -b && vite build` 0 errors.
+
+### 2026-09-15 — Add Teammate Search Bar to Channel Member Pickers
+
+- What was done:
+  1. Added interactive real-time search bar with name/email filtering and clear button to the member selection tray in `NewChannelModal.tsx` ("Create a Channel" modal). Added "Select all" / "Deselect all" toggle for quick multi-user provisioning, and clear empty state for unmatched queries.
+  2. Upgraded the "Add Teammate to Channel" modal in `ChatDetailsPane.tsx` from a native dropdown to a searchable teammate picker with real-time name/email filtering, avatar displays, and clear empty states.
+- Decisions made: Real-time search with inline selection mirrors modern Teams/Slack UX, eliminating friction in organizations with larger member directories.
+- Tests & Validation: Verified frontend bundle generation with `tsc -b && vite build` (clean, 0 errors).
