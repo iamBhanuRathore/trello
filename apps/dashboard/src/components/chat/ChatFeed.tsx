@@ -337,7 +337,14 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                 </>
               ) : (
                 <>
-                  <span>{channel.memberCount} members</span>
+                  <button
+                    type="button"
+                    onClick={toggleDetailsPane}
+                    className="hover:text-foreground hover:underline transition-colors cursor-pointer"
+                    title="View channel members and details"
+                  >
+                    {channel.memberCount} members
+                  </button>
                   {channel.topic && (
                     <>
                       <span>•</span>

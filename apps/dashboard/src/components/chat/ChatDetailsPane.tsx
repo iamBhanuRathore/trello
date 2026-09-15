@@ -10,7 +10,6 @@ import {
   Shield,
   Crown,
   UserPlus,
-  LogOut,
   MoreVertical,
   Search,
   Megaphone,
@@ -20,6 +19,7 @@ import {
   UserMinus,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@boardly/ui/confirm-dialog';
 import { chatService, type ChatChannel, type ChatChannelMember } from '../../lib/chatService';
 import { orgService } from '../../lib/orgService';
 import { useAuthStore } from '../../store/authStore';
@@ -43,9 +43,12 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
   const [candidateSearch, setCandidateSearch] = useState('');
   const [roleToAdd, setRoleToAdd] = useState<'admin' | 'member'>('member');
   const [openMemberMenuId, setOpenMemberMenuId] = useState<string | null>(null);
+  const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
 
   useEscapeKey(() => {
-    if (isAddMemberOpen) {
+    if (isLeaveConfirmOpen) {
+      setIsLeaveConfirmOpen(false);
+    } else if (isAddMemberOpen) {
       setIsAddMemberOpen(false);
     } else if (openMemberMenuId) {
       setOpenMemberMenuId(null);
@@ -169,11 +172,20 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
   const handleLeaveChannel = () => {
     if (!user) return;
     if (isOwner && members.length > 1) {
-      toast.error('You are the channel owner. Please transfer ownership before leaving.');
+      toast.error('You are the channel creator. Please transfer ownership before leaving.');
       return;
     }
-    if (confirm('Are you sure you want to leave this channel?')) {
-      removeMemberMutation.mutate(user.id);
+    setIsLeaveConfirmOpen(true);
+  };
+
+  const confirmLeaveChannel = async () => {
+    if (!user) return;
+    try {
+      await removeMemberMutation.mutateAsync(user.id);
+      setIsLeaveConfirmOpen(false);
+      onClose();
+    } catch {
+      // handled by mutation
     }
   };
 
@@ -188,8 +200,14 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
   const otherPresence = otherUserId ? presenceMap[otherUserId] : null;
 
   return (
-    <div className="w-80 md:w-88 border-l border-border bg-card flex flex-col h-full shrink-0 shadow-lg select-none z-20">
-      {/* Header */}
+    <>
+      {/* Ambient backdrop on laptop / tablet viewports */}
+      <div
+        className="fixed inset-0 bg-black/40 backdrop-blur-2xs z-30 2xl:hidden animate-in fade-in duration-150"
+        onClick={onClose}
+      />
+      <div className="fixed inset-y-0 right-0 z-40 w-80 sm:w-96 2xl:static 2xl:z-20 2xl:w-88 border-l border-border bg-card flex flex-col h-full shrink-0 shadow-2xl 2xl:shadow-none select-none animate-in slide-in-from-right duration-200">
+        {/* Header */}
       <div className="h-14 px-4 border-b border-border flex items-center justify-between shrink-0 bg-background/50">
         <h3 className="text-sm font-bold text-foreground">
           {channel.type === 'direct' ? 'Contact Details' : 'Channel Details'}
@@ -584,21 +602,42 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
               </div>
             </div>
 
-            {/* Channel Danger Zone / Leave button */}
-            <div className="pt-4 border-t border-border">
-              <button
-                type="button"
-                onClick={handleLeaveChannel}
-                disabled={removeMemberMutation.isPending}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-destructive hover:bg-destructive/10 border border-destructive/20 transition-colors cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Leave Channel</span>
-              </button>
-            </div>
+            {/* Subtle Channel Membership Footer */}
+            {channel.type !== 'direct' && (
+              <div className="pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                <span>Membership</span>
+                {isOwner ? (
+                  <span className="text-[11px] font-medium text-amber-500 flex items-center gap-1">
+                    <Crown className="w-3 h-3" />
+                    Channel Creator
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleLeaveChannel}
+                    disabled={removeMemberMutation.isPending}
+                    className="text-[11px] text-muted-foreground hover:text-destructive transition-colors flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-destructive/10"
+                  >
+                    <UserMinus className="w-3.5 h-3.5" />
+                    <span>Leave channel...</span>
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
+
+      {/* Confirm Leave Channel Modal */}
+      <ConfirmDialog
+        open={isLeaveConfirmOpen}
+        onOpenChange={setIsLeaveConfirmOpen}
+        title={`Leave #${channel.name}?`}
+        description="You will stop receiving notifications and messages from this channel. To rejoin, an active channel member must invite you back."
+        confirmLabel="Leave Channel"
+        variant="destructive"
+        onConfirm={confirmLeaveChannel}
+      />
 
       {/* Add Member Modal */}
       {isAddMemberOpen &&
@@ -762,5 +801,6 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
           document.body
         )}
     </div>
-  );
+  </>
+);
 };

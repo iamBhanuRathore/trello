@@ -172,8 +172,14 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
   const parentPresence = presenceMap[parentMessage.userId];
 
   return (
-    <div className="w-80 md:w-96 border-l border-border bg-card flex flex-col h-full shrink-0 shadow-lg select-none z-20">
-      {/* Header */}
+    <>
+      {/* Ambient backdrop on laptop / tablet viewports */}
+      <div
+        className="fixed inset-0 bg-black/40 backdrop-blur-2xs z-30 2xl:hidden animate-in fade-in duration-150"
+        onClick={onClose}
+      />
+      <div className="fixed inset-y-0 right-0 z-40 w-80 sm:w-96 2xl:static 2xl:z-20 2xl:w-96 border-l border-border bg-card flex flex-col h-full shrink-0 shadow-2xl 2xl:shadow-none select-none animate-in slide-in-from-right duration-200">
+        {/* Header */}
       <div className="h-14 px-4 border-b border-border flex items-center justify-between shrink-0 bg-background/50">
         <div className="flex items-center gap-2">
           <CornerDownRight className="w-4 h-4 text-blue-500" />
@@ -381,5 +387,6 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
         onSelectTask={handleInsertTask}
       />
     </div>
+    </>
   );
 };

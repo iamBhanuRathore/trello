@@ -1774,3 +1774,22 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
      - Integrated real-time channel and DM search in `Cmd+K` command palette, allowing users to jump directly to any teammate or channel by typing their name.
 - Decisions made: Modeled shortcut behavior and LIFO stack after Slack, Linear, and Microsoft Teams to deliver benchmark enterprise keyboard ergonomics.
 - Tests & Validation: Verified frontend bundle compilation with `tsc -b && vite build` (0 errors, ~285ms); backend tests pass 8/8.
+
+### 2026-09-15 — Chat Workspace Laptop Responsiveness, Closed-by-Default Details, and Safe Channel Membership UX
+
+- What was done:
+  1. **Closed-by-Default Channel Details**:
+     - Updated `chatStore.ts` to set `isDetailsPaneOpen: false` by default, eliminating viewport crowding on channel entry.
+     - Automatically resets `isDetailsPaneOpen` to `false` upon switching channels so the main chat feed remains spacious and unobstructed.
+     - Added click trigger on the channel header member count (`{channel.memberCount} members`) to quickly toggle the details panel on demand.
+  2. **Safe Channel Membership Actions (No Mistaken Account Logout)**:
+     - Removed the prominent red-bordered `Leave Channel` button with the `LogOut` icon from the top/middle of the member list in `ChatDetailsPane.tsx` (which previously led users to fear accidental account logout).
+     - Replaced with a subtle, low-key "Membership" footer using a dedicated `UserMinus` icon.
+     - Protected channel owners from accidentally leaving without transferring ownership.
+     - Integrated `@boardly/ui/confirm-dialog` (`ConfirmDialog`) so leaving a channel requires explicit confirmation with clear guidance on rejoin requirements.
+  3. **Laptop & Tablet Ergonomics (`< 2xl` Breakpoint)**:
+     - On laptop screens (< 1536px / `< 2xl`), `ChatDetailsPane` and `ChatThreadPane` now render as sleek slide-over overlay drawers with an ambient backdrop (`bg-black/40 backdrop-blur-2xs`) rather than statically squashing the chat feed into an unreadable column.
+     - On ultra-wide monitors (`2xl:static`), panels dock side-by-side into the workspace.
+- Decisions made: Aligns with Slack, Discord, and Linear viewport paradigms where contextual details panels are closed by default and act as overlay drawers on compact laptop displays.
+- Tests & Validation: Verified clean TypeScript build via `tsc -b && vite build` in `apps/dashboard`; verified backend chat test suite (`bun test apps/backend/src/modules/chat/chat.test.ts` — 3/3 passed).
+

@@ -30,7 +30,7 @@ interface ChatStoreState {
 export const useChatStore = create<ChatStoreState>((set) => ({
   activeChannelId: null,
   activeThreadMessage: null,
-  isDetailsPaneOpen: true,
+  isDetailsPaneOpen: false,
   typingUsers: {},
   presenceMap: {},
   isGlobalDockOpen: false,
@@ -42,6 +42,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
     set({
       activeChannelId: id,
       activeThreadMessage: null, // close thread on channel switch
+      isDetailsPaneOpen: false, // keep details closed by default
     }),
 
   setActiveThreadMessage: (message) => set({ activeThreadMessage: message }),

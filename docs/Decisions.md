@@ -555,3 +555,29 @@ Short log of significant technical decisions: what was decided, why, and what al
 - Polling-only REST chat (rejected — fails the enterprise real-time requirement for typing indicators, instant message delivery, and live presence).
 
 **Consequences:** Seamless, low-latency collaboration across timezones with zero extra infrastructure overhead, robust 3-tier group governance, and bidirectional task integration.
+
+---
+
+### 2026-09-15 — Chat Details Drawer Ergonomics, Laptop Responsiveness, and Safe Membership Actions (Slack/Discord Parity)
+
+**Context:** User reported three critical UX defects on `/chat`:
+1. Channel details and the member list were permanently open by default on every channel, consuming ~350px of horizontal width and forcing the central chat message stream into a cramped column on 13"/14" laptop viewports.
+2. An exposed, full-width red button labeled `[-> Leave Channel]` with a `LogOut` icon was positioned directly below the member list, causing users to mistake it for logging out of their Boardly user account and risking accidental channel departure.
+3. On laptop displays (`< 2xl`), having side panels statically docked inside the flex flow shrunk message cards, previews, and composers below acceptable usability widths.
+
+**Decision:**
+1. **Closed-by-Default Architecture**: Initialized `isDetailsPaneOpen: false` in `chatStore.ts` and ensure channel transitions reset `isDetailsPaneOpen` to `false`. Added an intuitive click action to the header's member count (`{channel.memberCount} members`) alongside the `PanelRight` toggle button.
+2. **Safe Membership Footer & Confirmation**:
+   - Eliminated the prominent red button and replaced the misleading `LogOut` icon with `UserMinus`.
+   - Moved the leave action into a subtle bottom `Membership` section.
+   - Guarded channel owners from leaving channels they created without transferring ownership.
+   - Enforced an explicit `ConfirmDialog` modal explaining rejoin prerequisites prior to removing membership.
+3. **Adaptive Laptop Slide-Over Drawer (`< 2xl`)**:
+   - Configured `ChatDetailsPane` and `ChatThreadPane` to render as floating slide-over overlay panels with an ambient backdrop (`bg-black/40 backdrop-blur-2xs z-30`) on laptop/tablet viewports (`< 2xl`), while preserving the dual-column static layout on large monitors (`2xl:static`).
+
+**Alternatives considered:**
+- Removing member lists entirely (rejected — users still need to inspect teammate roles and presence when coordinating).
+- Keeping static 3-column layout on laptops with narrower column widths (rejected — reduces composer usability and clips code blocks/task cards).
+
+**Consequences:** Full-width, distortion-free messaging experience on laptops matching Slack and Discord; completely eliminates accidental channel departures and logout confusion.
+
