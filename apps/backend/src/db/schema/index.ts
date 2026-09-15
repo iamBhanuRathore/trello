@@ -1158,6 +1158,7 @@ export const chatMessages = pgTable(
       .references(() => users.id),
     body: text('body').notNull(),
     parentMessageId: uuid('parent_message_id'),
+    replyToMessageId: uuid('reply_to_message_id'),
     isEdited: boolean('is_edited').notNull().default(false),
     isAnnouncement: boolean('is_announcement').notNull().default(false),
     deletedBy: uuid('deleted_by').references(() => users.id),
@@ -1166,6 +1167,7 @@ export const chatMessages = pgTable(
   (t) => [
     index('chat_messages_channel_idx').on(t.channelId),
     index('chat_messages_parent_idx').on(t.parentMessageId),
+    index('chat_messages_reply_to_idx').on(t.replyToMessageId),
     index('chat_messages_created_idx').on(t.createdAt),
   ]
 );

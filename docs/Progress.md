@@ -1793,3 +1793,29 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - Decisions made: Aligns with Slack, Discord, and Linear viewport paradigms where contextual details panels are closed by default and act as overlay drawers on compact laptop displays.
 - Tests & Validation: Verified clean TypeScript build via `tsc -b && vite build` in `apps/dashboard`; verified backend chat test suite (`bun test apps/backend/src/modules/chat/chat.test.ts` — 3/3 passed).
 
+### 2026-09-15 — Chat Quote Replies, Delivery Status Ticks (WhatsApp/Telegram Parity), and Offline Multi-Message Outbox
+
+- What was done:
+  1. **Inline Quote Reply System**:
+     - Added `reply_to_message_id` foreign key column and index to `chat_messages` via migration `0017_chat_reply_to.sql`.
+     - Updated backend `sendMessage`, `listMessages`, and `listThreadReplies` to accept `replyToMessageId` and return enriched `replyTo: { id, body, authorName }`.
+     - Added "Reply" button (`CornerUpLeft`) in the message card hover action bar.
+     - Added inline `replyingToMessage` banner directly above the composer with cancel button (`✕`) and `Escape` hotkey dismissal.
+     - Rendered left-bordered quote preview card inside message cards with click-to-scroll jump and ambient pulse highlight animation.
+  2. **WhatsApp / Telegram / Slack Delivery Status Ticks**:
+     - Added message status indicators for all author-sent messages:
+       - **Sending / Queued**: `<Clock className="animate-pulse" />` with tooltip "Sending..." or "Queued (offline)".
+       - **Sent (1 tick)**: `<Check />` with tooltip "Sent to server".
+       - **Delivered (2 grey ticks)**: `<CheckCheck />` with tooltip "Delivered to recipient".
+       - **Read (2 blue ticks)**: `<CheckCheck className="text-blue-500" />` with tooltip "Read".
+     - Wired real-time `chat:read_receipt` WebSocket listener in `useChatRealtime.ts` to transition unread messages to blue double ticks in real-time.
+  3. **Unblocked Send Button & Offline Outbox Queue**:
+     - Removed blocking `sendMutation.isPending` lock on the Send button. Button is now strictly disabled only when the input is blank (`!messageText.trim()`).
+     - Added optimistic local message generation with client-side IDs (`temp-${Date.now()}-${rand}`) for instant chat stream updates.
+     - Built persistent `outbox` queue in `chatStore.ts` synchronized with `localStorage` (`boardly_chat_outbox`), allowing users to draft and send multiple messages while offline.
+     - Automated FIFO queue flushing upon reconnection (`window.addEventListener('online')` and WebSocket reconnect).
+     - Added ambient offline indicator banner above composer when `!navigator.onLine`.
+- Decisions made: Modeled delivery receipts and offline outbox queuing after WhatsApp, Telegram, and Slack desktop standards to guarantee zero data loss and unblocked compose ergonomics.
+- Tests & Validation: Verified TypeScript clean build via `tsc -b && vite build` in `apps/dashboard`; verified backend tests (`bun test apps/backend/src/modules/chat/chat.test.ts` — 3/3 passed).
+
+

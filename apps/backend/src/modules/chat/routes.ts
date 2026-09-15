@@ -240,6 +240,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
       body: t.Object({
         body: t.String(),
         parentMessageId: t.Optional(t.String()),
+        replyToMessageId: t.Optional(t.String()),
         isAnnouncement: t.Optional(t.Boolean()),
         attachmentIds: t.Optional(t.Array(t.String())),
       }),

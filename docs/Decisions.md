@@ -581,3 +581,36 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 **Consequences:** Full-width, distortion-free messaging experience on laptops matching Slack and Discord; completely eliminates accidental channel departures and logout confusion.
 
+---
+
+### 2026-09-15 — Chat Quote Replies, Delivery Status Ticks, and Offline Outbox Queue (WhatsApp/Telegram/Slack Parity)
+
+**Context:** The platform chat needed market-standard messaging feedback and offline resilience matching WhatsApp, Telegram, and Slack:
+1. Users expected to quote-reply directly to existing messages in the central chat stream with visual context previews.
+2. Users needed explicit delivery status tracking: Sending/Queued (Clock), Sent to server (One tick), Delivered to recipient client (Double grey tick), and Read/seen (Blue double tick).
+3. The composer Send button was disabled during in-flight mutations and offline mode, preventing users from typing and sending rapid multiple messages or working while disconnected.
+
+**Decision:**
+1. **Schema & Backend Reply Architecture**:
+   - Added `reply_to_message_id` nullable FK column and index to `chat_messages` (migration `0017_chat_reply_to.sql`).
+   - Extended `sendMessage`, `listMessages`, and `listThreadReplies` to resolve and return `replyTo: { id, body, authorName }`.
+2. **Delivery Status Progression Engine**:
+   - Status transitions deterministically from:
+     - `sending` / `queued`: Local client generation (`temp-${Date.now()}`) or offline state $\rightarrow$ renders animated Clock icon.
+     - `sent`: Successfully saved on PostgreSQL $\rightarrow$ single grey checkmark.
+     - `delivered`: Direct message recipient is online (presence active/idle) or has active socket connection $\rightarrow$ double grey checkmark.
+     - `read`: Recipient has `lastReadAt >= message.createdAt` $\rightarrow$ double blue checkmark (color: `#3b82f6`).
+   - Real-time updates push via `chat:read_receipt` broadcast and update the client-side `readReceipts` map.
+3. **Non-Blocking Compose & Offline Outbox Architecture**:
+   - The Send button is never disabled when messages are sending or when offline; it is strictly disabled only when the input field is empty.
+   - Built a client-side outbox queue in `chatStore.ts` backed by `localStorage` (`boardly_chat_outbox`).
+   - Typing and sending immediately generates an optimistic message, appends to the UI, clears the text area, and enqueues to the outbox.
+   - The outbox automatically drains sequentially (FIFO) via `window.addEventListener('online')` and WebSocket reconnection.
+
+**Alternatives considered:**
+- Blocking multi-message sending until server confirmation (rejected — breaks fluid conversational flow and causes perceived lag).
+- Thread replies only without inline quote replies (rejected — quote replies are essential for quick conversational context in main channels).
+
+**Consequences:** Zero-friction, resilient messaging experience on par with WhatsApp and Slack, with persistent offline support and clear delivery transparency.
+
+

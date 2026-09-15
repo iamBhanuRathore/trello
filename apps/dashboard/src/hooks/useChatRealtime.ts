@@ -62,6 +62,9 @@ export function useChatRealtime(passedChannelId?: string | null) {
         ws.send(JSON.stringify({ action: 'chat:join', channelId: activeChannelId }));
         prevChannelIdRef.current = activeChannelId;
       }
+
+      // Flush offline outbox queue on socket reconnection
+      useChatStore.getState().processOutbox();
     };
 
     ws.onmessage = (event) => {
@@ -142,6 +145,13 @@ export function useChatRealtime(passedChannelId?: string | null) {
         // 8. New Channel Created / Added to Channel
         else if (type === 'chat:channel_created') {
           queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+        }
+
+        // 9. Read Receipt Received (for double blue tick updates)
+        else if (type === 'chat:read_receipt') {
+          const { channelId, userId: readerId, readAt } = payload;
+          useChatStore.getState().setReadReceipt(channelId, readerId, readAt);
+          queryClient.invalidateQueries({ queryKey: ['chat', 'channel-details', channelId] });
         }
       } catch {}
     };

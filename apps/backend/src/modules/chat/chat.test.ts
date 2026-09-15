@@ -19,10 +19,11 @@ describe('Chat Service Validation & Rules', () => {
     ).rejects.toThrow('Group channel name is required');
   });
 
-  it('rejects sending empty message bodies', async () => {
+  it('rejects sending empty message bodies even with replyToMessageId', async () => {
     expect(
       sendMessage(dummyDb, 'channel-1', 'user-1', {
         body: '    ',
+        replyToMessageId: 'msg-123',
       })
     ).rejects.toThrow('Message body cannot be empty');
   });

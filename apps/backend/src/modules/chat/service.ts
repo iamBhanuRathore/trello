@@ -606,6 +606,7 @@ export async function sendMessage(
   input: {
     body: string;
     parentMessageId?: string;
+    replyToMessageId?: string;
     isAnnouncement?: boolean;
     attachmentIds?: string[];
   }
@@ -642,6 +643,7 @@ export async function sendMessage(
       userId,
       body: input.body.trim(),
       parentMessageId: input.parentMessageId || null,
+      replyToMessageId: input.replyToMessageId || null,
       isAnnouncement: !!input.isAnnouncement,
     })
     .returning();
@@ -686,9 +688,28 @@ export async function sendMessage(
     .where(eq(users.id, userId))
     .limit(1);
 
+  // Fetch quoted reply message if replyToMessageId is present
+  let replyTo: { id: string; body: string; authorName: string } | null = null;
+  if (input.replyToMessageId) {
+    const [repliedMsg] = await db
+      .select({
+        id: chatMessages.id,
+        body: chatMessages.body,
+        authorName: users.name,
+      })
+      .from(chatMessages)
+      .innerJoin(users, eq(chatMessages.userId, users.id))
+      .where(eq(chatMessages.id, input.replyToMessageId))
+      .limit(1);
+    if (repliedMsg) {
+      replyTo = repliedMsg;
+    }
+  }
+
   const fullMessage = {
     ...message,
     author,
+    replyTo,
     attachments: [],
     reactions: [],
     replyCount: 0,
@@ -891,9 +912,28 @@ export async function listMessages(
         .from(chatMessages)
         .where(and(eq(chatMessages.parentMessageId, message.id), isNull(chatMessages.deletedAt)));
 
+      // Quoted reply lookup
+      let replyTo: { id: string; body: string; authorName: string } | null = null;
+      if (message.replyToMessageId) {
+        const [repliedMsg] = await db
+          .select({
+            id: chatMessages.id,
+            body: chatMessages.body,
+            authorName: users.name,
+          })
+          .from(chatMessages)
+          .innerJoin(users, eq(chatMessages.userId, users.id))
+          .where(eq(chatMessages.id, message.replyToMessageId))
+          .limit(1);
+        if (repliedMsg) {
+          replyTo = repliedMsg;
+        }
+      }
+
       return {
         ...message,
         author,
+        replyTo,
         attachments: attachmentsList,
         reactions: reactionsGrouped,
         replyCount: Number(replyResult?.count || 0),
@@ -992,10 +1032,32 @@ export async function listThreadReplies(db: Database, parentMessageId: string, u
     .where(and(eq(chatMessages.parentMessageId, parentMessageId), isNull(chatMessages.deletedAt)))
     .orderBy(asc(chatMessages.createdAt));
 
-  return replies.map((r) => ({
-    ...r.message,
-    author: r.author,
-  }));
+  return Promise.all(
+    replies.map(async ({ message, author }) => {
+      let replyTo: { id: string; body: string; authorName: string } | null = null;
+      if (message.replyToMessageId) {
+        const [repliedMsg] = await db
+          .select({
+            id: chatMessages.id,
+            body: chatMessages.body,
+            authorName: users.name,
+          })
+          .from(chatMessages)
+          .innerJoin(users, eq(chatMessages.userId, users.id))
+          .where(eq(chatMessages.id, message.replyToMessageId))
+          .limit(1);
+        if (repliedMsg) {
+          replyTo = repliedMsg;
+        }
+      }
+
+      return {
+        ...message,
+        author,
+        replyTo,
+      };
+    })
+  );
 }
 
 export async function markChannelRead(db: Database, channelId: string, userId: string) {

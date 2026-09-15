@@ -61,6 +61,13 @@ export interface ChatMessageItem {
   userId: string;
   body: string;
   parentMessageId?: string | null;
+  replyToMessageId?: string | null;
+  replyTo?: {
+    id: string;
+    body: string;
+    authorName: string;
+  } | null;
+  status?: 'sending' | 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
   isEdited: boolean;
   isAnnouncement: boolean;
   createdAt: string;
@@ -162,6 +169,7 @@ export const chatService = {
     payload: {
       body: string;
       parentMessageId?: string;
+      replyToMessageId?: string;
       isAnnouncement?: boolean;
       attachmentIds?: string[];
     }

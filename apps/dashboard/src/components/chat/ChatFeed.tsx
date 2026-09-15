@@ -15,6 +15,9 @@ import {
   ArrowDown,
   Loader2,
   Users,
+  CornerUpLeft,
+  X,
+  WifiOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -37,12 +40,36 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     setActiveThreadMessage,
     toggleDetailsPane,
     isDetailsPaneOpen,
+    replyingToMessage,
+    setReplyingToMessage,
     typingUsers,
     presenceMap,
     drafts,
     setDraft,
+    outbox,
+    enqueueOutbox,
+    removeFromOutbox,
+    processOutbox,
   } = useChatStore();
   const queryClient = useQueryClient();
+
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === 'undefined' ? true : navigator.onLine
+  );
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      processOutbox();
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [processOutbox]);
 
   const [messageText, setMessageText] = useState(drafts[channel.id] || '');
   const [isAnnouncement, setIsAnnouncement] = useState(false);
@@ -75,6 +102,48 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     refetchInterval: 6000,
   });
 
+  // Fetch channel details (for members, roles, and read receipts)
+  const { data: channelDetails } = useQuery({
+    queryKey: ['chat', 'channel-details', channel.id],
+    queryFn: () => chatService.getChannelDetails(channel.id),
+    staleTime: 30000,
+  });
+  const channelMembers = channelDetails?.members || [];
+
+  // Merge in pending outbox messages for this channel
+  const mergedMessages = useMemo(() => {
+    const existingIds = new Set(messages.map((m) => m.id));
+    const channelOutbox = outbox
+      .filter((o) => o.channelId === channel.id && !existingIds.has(o.tempId))
+      .map(
+        (o): ChatMessageItem => ({
+          id: o.tempId,
+          channelId: o.channelId,
+          userId: o.userId,
+          body: o.body,
+          parentMessageId: o.parentMessageId,
+          replyToMessageId: o.replyToMessageId,
+          replyTo: o.replyTo,
+          status: o.status,
+          isEdited: false,
+          isAnnouncement: !!o.isAnnouncement,
+          createdAt: o.createdAt,
+          updatedAt: o.createdAt,
+          author: {
+            id: o.userId,
+            name: o.author.name,
+            email: o.author.email,
+            avatarUrl: o.author.avatarUrl,
+          },
+          attachments: [],
+          reactions: [],
+          replyCount: 0,
+        })
+      );
+
+    return [...messages, ...channelOutbox];
+  }, [messages, outbox, channel.id]);
+
   // Mark channel read when entering or messages update
   useEffect(() => {
     if (channel.unreadCount > 0) {
@@ -104,54 +173,6 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     setShowScrollBottom(false);
   };
 
-  // Send message mutation
-  const sendMutation = useMutation({
-    mutationFn: (payload: { body: string; isAnnouncement?: boolean }) =>
-      chatService.sendMessage(channel.id, payload),
-    onMutate: async (newMsg) => {
-      await queryClient.cancelQueries({ queryKey: ['chat', 'messages', channel.id] });
-      const prevMessages =
-        queryClient.getQueryData<ChatMessageItem[]>(['chat', 'messages', channel.id]) || [];
-
-      const optimisticMsg: ChatMessageItem = {
-        id: `temp-${Date.now()}`,
-        channelId: channel.id,
-        userId: user?.id || '',
-        body: newMsg.body,
-        isEdited: false,
-        isAnnouncement: !!newMsg.isAnnouncement,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        author: {
-          id: user?.id || '',
-          name: user?.name || 'You',
-          email: user?.email || '',
-          avatarUrl: user?.avatarUrl,
-        },
-        attachments: [],
-        reactions: [],
-        replyCount: 0,
-      };
-
-      queryClient.setQueryData<ChatMessageItem[]>(
-        ['chat', 'messages', channel.id],
-        [...prevMessages, optimisticMsg]
-      );
-
-      return { prevMessages };
-    },
-    onError: (err: any, _variables, context) => {
-      if (context?.prevMessages) {
-        queryClient.setQueryData(['chat', 'messages', channel.id], context.prevMessages);
-      }
-      toast.error(err.response?.data?.message || err.message || 'Failed to send message');
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['chat', 'messages', channel.id] });
-      queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
-    },
-  });
-
   // Edit message mutation
   const editMutation = useMutation({
     mutationFn: ({ messageId, body }: { messageId: string; body: string }) =>
@@ -178,19 +199,112 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     },
   });
 
+  const scrollToMessage = (targetId: string) => {
+    const el = document.getElementById(`msg-${targetId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('bg-primary/20', 'ring-1', 'ring-primary/40');
+      setTimeout(() => {
+        el.classList.remove('bg-primary/20', 'ring-1', 'ring-primary/40');
+      }, 2000);
+    }
+  };
+
   const handleSendMessage = () => {
     const trimmed = messageText.trim();
-    if (!trimmed || sendMutation.isPending) return;
+    if (!trimmed) return;
 
-    sendMutation.mutate({
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const currentReply = replyingToMessage;
+    const replyTo = currentReply
+      ? {
+          id: currentReply.id,
+          body: currentReply.body,
+          authorName: currentReply.author?.name || 'Teammate',
+        }
+      : null;
+
+    const optimisticMsg: ChatMessageItem = {
+      id: tempId,
+      channelId: channel.id,
+      userId: user?.id || '',
       body: trimmed,
+      replyToMessageId: replyTo?.id,
+      replyTo,
+      status: isOnline ? 'sending' : 'queued',
+      isEdited: false,
       isAnnouncement,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      author: {
+        id: user?.id || '',
+        name: user?.name || 'You',
+        email: user?.email || '',
+        avatarUrl: user?.avatarUrl,
+      },
+      attachments: [],
+      reactions: [],
+      replyCount: 0,
+    };
+
+    // Immediately add to TanStack query cache for instantaneous UI feedback
+    queryClient.setQueryData<ChatMessageItem[]>(
+      ['chat', 'messages', channel.id],
+      (old) => [...(old || []), optimisticMsg]
+    );
+
+    // Enqueue in Outbox
+    enqueueOutbox({
+      tempId,
+      channelId: channel.id,
+      userId: user?.id || '',
+      body: trimmed,
+      parentMessageId: null,
+      replyToMessageId: replyTo?.id,
+      replyTo,
+      isAnnouncement,
+      createdAt: optimisticMsg.createdAt,
+      author: optimisticMsg.author,
+      status: isOnline ? 'sending' : 'queued',
+      retryCount: 0,
     });
 
+    // Instantly reset composer and keep keyboard focus
     setMessageText('');
     setDraft(channel.id, '');
+    setReplyingToMessage(null);
     setIsAnnouncement(false);
     scrollToBottom();
+    textareaRef.current?.focus();
+
+    // If online, dispatch immediately in background without blocking
+    if (isOnline) {
+      chatService
+        .sendMessage(channel.id, {
+          body: trimmed,
+          replyToMessageId: replyTo?.id,
+          isAnnouncement,
+        })
+        .then((serverMsg) => {
+          removeFromOutbox(tempId);
+          queryClient.setQueryData<ChatMessageItem[]>(
+            ['chat', 'messages', channel.id],
+            (old) =>
+              old
+                ? old.map((m) => (m.id === tempId ? { ...serverMsg, status: 'sent' } : m))
+                : [serverMsg]
+          );
+          queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+        })
+        .catch((err) => {
+          if (!navigator.onLine || err.message?.includes('Network Error') || !err.response) {
+            useChatStore.getState().updateOutboxStatus(tempId, 'queued');
+          } else {
+            useChatStore.getState().updateOutboxStatus(tempId, 'failed');
+            toast.error(err.response?.data?.message || err.message || 'Failed to send message');
+          }
+        });
+    }
   };
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -201,7 +315,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
       handleSendMessage();
     } else if (e.key === 'ArrowUp' && !messageText.trim()) {
       // Find latest message authored by current user that is not deleted
-      const userLastMessage = [...messages]
+      const userLastMessage = [...mergedMessages]
         .reverse()
         .find((m) => m.userId === user?.id && !m.deletedAt);
       if (userLastMessage) {
@@ -209,7 +323,11 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
         setEditingMessageId(userLastMessage.id);
       }
     } else if (e.key === 'Escape') {
-      textareaRef.current?.blur();
+      if (replyingToMessage) {
+        setReplyingToMessage(null);
+      } else {
+        textareaRef.current?.blur();
+      }
     }
   };
 
@@ -252,8 +370,8 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   // Group messages with date dividers
   const groupedMessages = useMemo(() => {
     const filtered = searchQuery.trim()
-      ? messages.filter((m) => m.body.toLowerCase().includes(searchQuery.toLowerCase()))
-      : messages;
+      ? mergedMessages.filter((m) => m.body.toLowerCase().includes(searchQuery.toLowerCase()))
+      : mergedMessages;
 
     const groups: { dateLabel: string; items: ChatMessageItem[] }[] = [];
     let currentDateLabel = '';
@@ -457,6 +575,9 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                     key={msg.id}
                     message={msg}
                     isEditingExternal={editingMessageId === msg.id}
+                    channelType={channel.type}
+                    otherUserId={channel.otherUser?.id}
+                    channelMembers={channelMembers}
                     onCancelEdit={() => setEditingMessageId(null)}
                     canModerate={
                       canModerate || channel.role === 'owner' || channel.role === 'admin'
@@ -470,6 +591,11 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                       reactionMutation.mutate({ messageId: id, emoji })
                     }
                     onOpenThread={(parent) => setActiveThreadMessage(parent)}
+                    onReply={(targetMsg) => {
+                      setReplyingToMessage(targetMsg);
+                      textareaRef.current?.focus();
+                    }}
+                    onJumpToMessage={scrollToMessage}
                   />
                 ))}
               </div>
@@ -582,6 +708,40 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                 )}
             </div>
 
+            {/* Replying to Message Preview Banner */}
+            {replyingToMessage && (
+              <div className="flex items-center justify-between px-3 py-1.5 bg-primary/10 border-b border-primary/20 text-xs animate-in fade-in duration-150">
+                <div className="flex items-center gap-2 min-w-0">
+                  <CornerUpLeft className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span className="text-[11px] text-muted-foreground truncate">
+                    Replying to{' '}
+                    <strong className="text-foreground font-semibold">
+                      {replyingToMessage.author?.name || 'Teammate'}
+                    </strong>
+                    : &ldquo;{replyingToMessage.body}&rdquo;
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplyingToMessage(null)}
+                  title="Cancel reply (Esc)"
+                  className="text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer shrink-0 ml-2"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Offline Notification Banner */}
+            {!isOnline && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border-b border-amber-500/20 text-[11px] text-amber-600 dark:text-amber-400">
+                <WifiOff className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  You are offline. Messages will be queued and sent automatically when connection returns.
+                </span>
+              </div>
+            )}
+
             {/* Input Textarea */}
             <textarea
               ref={textareaRef}
@@ -621,14 +781,10 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
               <button
                 type="button"
                 onClick={handleSendMessage}
-                disabled={!messageText.trim() || sendMutation.isPending}
+                disabled={!messageText.trim()}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-sm ml-auto"
               >
-                {sendMutation.isPending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Send className="w-3.5 h-3.5" />
-                )}
+                <Send className="w-3.5 h-3.5" />
                 <span>Send</span>
               </button>
             </div>

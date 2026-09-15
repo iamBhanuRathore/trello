@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
-import { MessageSquare, Pencil, Trash2, CheckSquare } from 'lucide-react';
+import {
+  MessageSquare,
+  Pencil,
+  Trash2,
+  CheckSquare,
+  CornerUpLeft,
+  Check,
+  CheckCheck,
+  Clock,
+  AlertCircle,
+} from 'lucide-react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { TaskPreviewCard } from './TaskPreviewCard';
 import { CreateTaskFromMessageModal } from '../board/CreateTaskFromMessageModal';
@@ -13,11 +23,16 @@ interface ChatMessageCardProps {
   message: ChatMessageItem;
   canModerate?: boolean;
   isEditingExternal?: boolean;
+  channelType?: 'direct' | 'group_private' | 'group_public' | 'task_thread';
+  otherUserId?: string | null;
+  channelMembers?: { userId: string; lastReadAt?: string }[];
   onCancelEdit?: () => void;
   onEdit?: (messageId: string, newBody: string) => void;
   onDelete?: (messageId: string) => void;
   onToggleReaction?: (messageId: string, emoji: string) => void;
   onOpenThread?: (message: ChatMessageItem) => void;
+  onReply?: (message: ChatMessageItem) => void;
+  onJumpToMessage?: (messageId: string) => void;
 }
 
 const COMMON_EMOJIS = ['👍', '❤️', '🔥', '🚀', '👀', '🎉'];
@@ -26,14 +41,19 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   message,
   canModerate = false,
   isEditingExternal = false,
+  channelType = 'group_public',
+  otherUserId = null,
+  channelMembers = [],
   onCancelEdit,
   onEdit,
   onDelete,
   onToggleReaction,
   onOpenThread,
+  onReply,
+  onJumpToMessage,
 }) => {
   const { user } = useAuthStore();
-  const { presenceMap } = useChatStore();
+  const { presenceMap, readReceipts } = useChatStore();
 
   const isAuthor = message.userId === user?.id;
   const canDelete = isAuthor || canModerate;
@@ -103,8 +123,86 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
     return format(date, 'MMM d, h:mm a');
   };
 
+  // Delivery status calculation for author's messages (WhatsApp/Telegram/Slack benchmark)
+  const deliveryStatus = React.useMemo(() => {
+    if (!isAuthor) return null;
+
+    // 1. Sending or temporary optimistic outbox message
+    if (message.status === 'sending' || message.id.startsWith('temp-')) {
+      const isOnline = typeof navigator === 'undefined' || navigator.onLine;
+      return {
+        type: 'sending' as const,
+        label: isOnline ? 'Sending...' : 'Queued (offline)',
+      };
+    }
+
+    if (message.status === 'failed') {
+      return {
+        type: 'failed' as const,
+        label: 'Failed to send — click to retry',
+      };
+    }
+
+    const messageTime = new Date(message.createdAt).getTime();
+
+    // 2. Direct message
+    if (channelType === 'direct' && otherUserId) {
+      const liveReadReceipt = readReceipts[message.channelId]?.[otherUserId];
+      const memberRecord = channelMembers?.find((m) => m.userId === otherUserId);
+      const lastReadTimeStr = liveReadReceipt || memberRecord?.lastReadAt;
+
+      if (lastReadTimeStr && new Date(lastReadTimeStr).getTime() >= messageTime) {
+        return { type: 'read' as const, label: 'Read' };
+      }
+
+      const isRecipientOnline =
+        presenceMap[otherUserId]?.status && presenceMap[otherUserId]?.status !== 'offline';
+      if (isRecipientOnline) {
+        return { type: 'delivered' as const, label: 'Delivered' };
+      }
+
+      return { type: 'sent' as const, label: 'Sent' };
+    }
+
+    // 3. Group channel
+    const otherMembers = (channelMembers || []).filter((m) => m.userId !== user?.id);
+    const hasAnyRead = otherMembers.some((m) => {
+      const liveReadReceipt = readReceipts[message.channelId]?.[m.userId];
+      const readTime = liveReadReceipt || m.lastReadAt;
+      return readTime && new Date(readTime).getTime() >= messageTime;
+    });
+
+    if (hasAnyRead) {
+      return { type: 'read' as const, label: 'Read' };
+    }
+
+    const hasAnyOnline = otherMembers.some(
+      (m) => presenceMap[m.userId]?.status && presenceMap[m.userId]?.status !== 'offline'
+    );
+    if (hasAnyOnline) {
+      return { type: 'delivered' as const, label: 'Delivered' };
+    }
+
+    return { type: 'sent' as const, label: 'Sent' };
+  }, [
+    isAuthor,
+    message.status,
+    message.id,
+    message.createdAt,
+    message.channelId,
+    channelType,
+    otherUserId,
+    readReceipts,
+    channelMembers,
+    presenceMap,
+    user?.id,
+  ]);
+
   return (
-    <div className="group relative flex items-start gap-3 p-2.5 -mx-2 rounded-xl hover:bg-muted/30 transition-colors">
+    <div
+      id={`msg-${message.id}`}
+      className="group relative flex items-start gap-3 p-2.5 -mx-2 rounded-xl hover:bg-muted/30 transition-all duration-300"
+    >
       {/* Author Avatar with Presence Indicator */}
       <div className="relative shrink-0 mt-0.5">
         {message.author?.avatarUrl ? (
@@ -142,6 +240,31 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
           {message.isAnnouncement && (
             <span className="px-1.5 py-0.2 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[9px] border border-amber-500/20">
               ANNOUNCEMENT
+            </span>
+          )}
+
+          {/* Delivery Status Indicator for current user's sent messages */}
+          {isAuthor && deliveryStatus && (
+            <span
+              className="inline-flex items-center ml-0.5 select-none"
+              title={deliveryStatus.label}
+              aria-label={deliveryStatus.label}
+            >
+              {deliveryStatus.type === 'sending' && (
+                <Clock className="w-3 h-3 text-muted-foreground/70 animate-pulse" />
+              )}
+              {deliveryStatus.type === 'sent' && (
+                <Check className="w-3.5 h-3.5 text-muted-foreground/70" />
+              )}
+              {deliveryStatus.type === 'delivered' && (
+                <CheckCheck className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+              {deliveryStatus.type === 'read' && (
+                <CheckCheck className="w-3.5 h-3.5 text-blue-500" />
+              )}
+              {deliveryStatus.type === 'failed' && (
+                <AlertCircle className="w-3.5 h-3.5 text-destructive" />
+              )}
             </span>
           )}
         </div>
@@ -194,9 +317,30 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
             </div>
           </div>
         ) : (
-          <div className="text-xs text-foreground/90 leading-relaxed break-words">
-            {renderMessageContent()}
-          </div>
+          <>
+            {/* Quoted Message Preview */}
+            {message.replyTo && (
+              <button
+                type="button"
+                onClick={() => onJumpToMessage?.(message.replyTo!.id)}
+                className="w-full text-left flex items-start gap-2 px-2.5 py-1.5 mb-1.5 rounded-lg bg-muted/40 border-l-2 border-primary text-xs hover:bg-muted/70 transition-colors cursor-pointer group/quote"
+                title="Jump to quoted message"
+              >
+                <CornerUpLeft className="w-3 h-3 text-primary shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <span className="font-bold text-[11px] text-primary block truncate">
+                    {message.replyTo.authorName}
+                  </span>
+                  <p className="text-[11px] text-muted-foreground line-clamp-1 truncate font-normal">
+                    {message.replyTo.body}
+                  </p>
+                </div>
+              </button>
+            )}
+            <div className="text-xs text-foreground/90 leading-relaxed break-words">
+              {renderMessageContent()}
+            </div>
+          </>
         )}
 
         {/* Attachments */}
@@ -269,6 +413,16 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
         </div>
 
         <div className="w-px h-3.5 bg-border mx-0.5" />
+
+        {/* Reply (Quote message) */}
+        <button
+          type="button"
+          onClick={() => onReply && onReply(message)}
+          title="Reply"
+          className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
+        >
+          <CornerUpLeft className="w-3.5 h-3.5" />
+        </button>
 
         {/* Reply in thread */}
         <button
