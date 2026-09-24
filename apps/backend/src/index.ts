@@ -39,7 +39,7 @@ import { trashRoutes } from './modules/trash/routes';
 import { billingRoutes } from './modules/billing/routes';
 import { chatRoutes } from './modules/chat/routes';
 import { presenceRoutes } from './modules/presence/routes';
-import { calendarRoutes } from './modules/calendar/routes';
+import { calendarRoutes, calendarCallbackRoutes } from './modules/calendar/routes';
 
 import { formatErrorResponse, formatValidationError } from './lib/errors';
 import { sql } from 'drizzle-orm';
@@ -238,6 +238,7 @@ export const app = new Elysia()
       .use(chatRoutes)
       .use(presenceRoutes)
       .use(calendarRoutes)
+      .use(calendarCallbackRoutes)
   )
   .listen(env.PORT);
 

@@ -35,31 +35,6 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
     }
   })
 
-  // GET /v1/calendar/google/callback - OAuth redirect (public; state is HMAC-bound)
-  .get(
-    '/google/callback',
-    async ({ query, set }) => {
-      try {
-        await handleGoogleCallback(db, query.code || '', query.state || '');
-        set.status = 302;
-        set.headers['location'] = `${env.DASHBOARD_URL}/calendar?connected=1`;
-        return 'Connected — redirecting to Boardly…';
-      } catch (err: any) {
-        const message = encodeURIComponent(err?.message || 'Calendar connect failed');
-        set.status = 302;
-        set.headers['location'] = `${env.DASHBOARD_URL}/calendar?error=${message}`;
-        return 'Connection failed — redirecting to Boardly…';
-      }
-    },
-    {
-      query: t.Object({
-        code: t.Optional(t.String()),
-        state: t.Optional(t.String()),
-        error: t.Optional(t.String()),
-      }),
-    }
-  )
-
   // DELETE /v1/calendar/google - Disconnect + remove pushed-event links
   .delete('/google', async ({ user, set }) => {
     try {
@@ -127,3 +102,43 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
       }),
     }
   );
+
+/**
+ * Public OAuth redirect target. Browser redirects carry no Bearer token,
+ * so this MUST stay outside authPlugin — the HMAC-bound `state` param
+ * already identifies the initiating user. Google errors (e.g.
+ * access_denied, redirect_uri_mismatch) arrive without a `code` and are
+ * forwarded to the dashboard as ?error= for display.
+ */
+export const calendarCallbackRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar'] }).get(
+  '/google/callback',
+  async ({ query, set }) => {
+    if (query.error) {
+      const message = encodeURIComponent(
+        query.error_description || query.error || 'Google authorization failed'
+      );
+      set.status = 302;
+      set.headers['location'] = `${env.DASHBOARD_URL.split(',')[0]}/calendar?error=${message}`;
+      return 'Authorization failed — redirecting to Boardly…';
+    }
+    try {
+      await handleGoogleCallback(db, query.code || '', query.state || '');
+      set.status = 302;
+      set.headers['location'] = `${env.DASHBOARD_URL.split(',')[0]}/calendar?connected=1`;
+      return 'Connected — redirecting to Boardly…';
+    } catch (err: any) {
+      const message = encodeURIComponent(err?.message || 'Calendar connect failed');
+      set.status = 302;
+      set.headers['location'] = `${env.DASHBOARD_URL.split(',')[0]}/calendar?error=${message}`;
+      return 'Connection failed — redirecting to Boardly…';
+    }
+  },
+  {
+    query: t.Object({
+      code: t.Optional(t.String()),
+      state: t.Optional(t.String()),
+      error: t.Optional(t.String()),
+      error_description: t.Optional(t.String()),
+    }),
+  }
+);

@@ -1895,3 +1895,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 
 - **Fix (`Login.tsx`):** replaced the amber 3-button dev grid with quiet account rows (avatar initial, name, email, role chip, arrow) under a "Local quick sign in" divider — matches page aesthetics, no tooltip overflow. Still `import.meta.env.DEV`-gated.
 - Tests & Validation: dashboard `tsc` clean.
+
+### 2026-09-25 — Public OAuth Callback + Global-Auth Bypass Fix
+
+- **Bug:** Google connect landed on `{"error":"Unauthorized — missing Bearer token"}`. Two causes: (1) the callback route lived inside `authPlugin`, but browser redirects carry no Bearer token; (2) deeper — `authPlugin`'s derive is `{ as: 'global' }`, so it 401s _every_ route in the app, including pre-existing public ones (`/v1/invite/preview`, public forms). Invite links were silently broken too.
+- **Fix:** callback moved to a public `calendarCallbackRoutes` instance (HMAC state still binds identity; Google `error=` params forwarded as dashboard `?error=` toasts); `PUBLIC_PATH_PREFIXES` bypass in the global derive (`/v1/invite/`, `/v1/calendar/google/callback`); fixed `DASHBOARD_URL` comma-list interpolation in redirects. Bypass returns a cast so `user` stays non-optional for authed handlers (0 new `tsc` errors).
+- **Note:** the user's original callback URL had `state=` but no `code=` — Google itself errored before consent. Now surfaces properly; retry Connect.
+- Tests & Validation: backend `tsc` clean; callback 302s correctly, invite preview returns JSON (not 401).

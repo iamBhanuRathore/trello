@@ -95,10 +95,22 @@ export async function verifyAccessToken(token: string): Promise<AuthContext> {
 /**
  * Elysia plugin that parses the Bearer token, attaches the authenticated
  * user context, and resolves the tenant's planTier.
+ *
+ * NOTE: the derive is registered `{ as: 'global' }`, so it runs for every
+ * route in the app — including instances that never `.use(authPlugin)`.
+ * Genuinely public paths (browser OAuth redirects, share links) must be
+ * listed in PUBLIC_PATH_PREFIXES to bypass the Bearer check.
  */
+const PUBLIC_PATH_PREFIXES = ['/v1/invite/', '/v1/calendar/google/callback'];
+
 export const authPlugin = new Elysia({ name: 'auth' })
   .use(bearer())
-  .derive({ as: 'global' }, async ({ bearer, set }) => {
+  .derive({ as: 'global' }, async ({ bearer, set, path }) => {
+    if (PUBLIC_PATH_PREFIXES.some((p) => path === p || path.startsWith(p))) {
+      // Public path: no user. Cast keeps `user` non-optional for the 99%
+      // authed case; handlers on these paths must not touch `user`.
+      return { user: undefined as unknown as AuthContext, planTier: PlanTier.Free };
+    }
     if (!bearer) {
       set.status = 401;
       throw Object.assign(new Error('Unauthorized — missing Bearer token'), { status: 401 });
