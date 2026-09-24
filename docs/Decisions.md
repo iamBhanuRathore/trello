@@ -24,6 +24,21 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-24 — Channel→Project Activity Feed & Chat File Uploads (Slack Parity)
+
+**Context:** Roadmap 4.2 had one open bullet (channel-to-project linking with automated activity feed), and chat attachments were half-wired: `sendMessage` accepted `attachmentIds` but nothing created `chat_attachments` rows and the composer had no attach button. Two latent gaps surfaced along the way: migration `0017_chat_reply_to.sql` shipped without a journal entry (fresh DBs via `db:migrate` silently skip it), and bare `bun run db:migrate` migrates whatever `DATABASE_URL` resolves to rather than the documented dev DB.
+
+**Decision:**
+
+1. **Linking:** `chat_channels.project_id` FK (`ON DELETE SET NULL`, migration `0018`), link/unlink endpoints restricted to channel Owner/Admin with same-org project verification; DMs rejected with 400 (checked before the admin gate so the guard is reachable — DM members are never admins). `getChannelDetails` embeds `{id, name, key}`.
+2. **Activity feed as system messages:** `chat_messages.is_system` flag rendered as centered pills (hover actions hidden). `postSystemMessage` bypasses announcement-only mode so automation feedback always lands; `notifyProjectChannels` fans card created/moved/archived events to linked channels. Cards-service hooks are fire-and-forget (`.catch(() => {})`) — feed must never break mutations.
+3. **Uploads:** `chat_attachments.message_id` nullable + `channel_id`/`uploaded_by` (backfilled from messages); `POST /channels/:id/attachments` returns presigned URL + staged row, composer uploads then sends ids. `sendMessage` link scoped to same channel (previously any attachment id could be hijacked cross-channel). `generatePresignedUploadUrl` gained an optional key-scope param (`chat/<channelId>` vs default `cards/<cardId>`); local-dev fallback endpoints are key-agnostic.
+4. **Migrations:** retro-journaled 0017 (idempotent, safe) and journaled 0018, so `db:migrate` covers fresh environments.
+
+**Alternatives considered:** Separate activity table (rejected — feed already renders the message stream; new table = new API + migration for identical UX); blocking/transactional feed writes (rejected — chat outage must not break card mutations).
+
+**Consequences:** 4.2 fully complete. Rule: every new `chat_*` migration must carry a journal entry; verify target DB after `db:migrate` when `DATABASE_URL` is implicit.
+
 ### 2026-09-15 — Universal LIFO Escape Stack & Cross-Platform Keyboard Shortcuts
 
 **Context:** Users required full keyboard accessibility matching Slack, Linear, and Microsoft Teams: pressing Escape should predictably dismiss active modals and drawers without closing underlying surfaces, and common productivity keybindings (command palette, shortcuts cheatsheet, channel navigation, and Up-arrow editing) were needed for daily operations.
@@ -561,11 +576,13 @@ Short log of significant technical decisions: what was decided, why, and what al
 ### 2026-09-15 — Chat Details Drawer Ergonomics, Laptop Responsiveness, and Safe Membership Actions (Slack/Discord Parity)
 
 **Context:** User reported three critical UX defects on `/chat`:
+
 1. Channel details and the member list were permanently open by default on every channel, consuming ~350px of horizontal width and forcing the central chat message stream into a cramped column on 13"/14" laptop viewports.
 2. An exposed, full-width red button labeled `[-> Leave Channel]` with a `LogOut` icon was positioned directly below the member list, causing users to mistake it for logging out of their Boardly user account and risking accidental channel departure.
 3. On laptop displays (`< 2xl`), having side panels statically docked inside the flex flow shrunk message cards, previews, and composers below acceptable usability widths.
 
 **Decision:**
+
 1. **Closed-by-Default Architecture**: Initialized `isDetailsPaneOpen: false` in `chatStore.ts` and ensure channel transitions reset `isDetailsPaneOpen` to `false`. Added an intuitive click action to the header's member count (`{channel.memberCount} members`) alongside the `PanelRight` toggle button.
 2. **Safe Membership Footer & Confirmation**:
    - Eliminated the prominent red button and replaced the misleading `LogOut` icon with `UserMinus`.
@@ -576,6 +593,7 @@ Short log of significant technical decisions: what was decided, why, and what al
    - Configured `ChatDetailsPane` and `ChatThreadPane` to render as floating slide-over overlay panels with an ambient backdrop (`bg-black/40 backdrop-blur-2xs z-30`) on laptop/tablet viewports (`< 2xl`), while preserving the dual-column static layout on large monitors (`2xl:static`).
 
 **Alternatives considered:**
+
 - Removing member lists entirely (rejected — users still need to inspect teammate roles and presence when coordinating).
 - Keeping static 3-column layout on laptops with narrower column widths (rejected — reduces composer usability and clips code blocks/task cards).
 
@@ -586,11 +604,13 @@ Short log of significant technical decisions: what was decided, why, and what al
 ### 2026-09-15 — Chat Quote Replies, Delivery Status Ticks, and Offline Outbox Queue (WhatsApp/Telegram/Slack Parity)
 
 **Context:** The platform chat needed market-standard messaging feedback and offline resilience matching WhatsApp, Telegram, and Slack:
+
 1. Users expected to quote-reply directly to existing messages in the central chat stream with visual context previews.
 2. Users needed explicit delivery status tracking: Sending/Queued (Clock), Sent to server (One tick), Delivered to recipient client (Double grey tick), and Read/seen (Blue double tick).
 3. The composer Send button was disabled during in-flight mutations and offline mode, preventing users from typing and sending rapid multiple messages or working while disconnected.
 
 **Decision:**
+
 1. **Schema & Backend Reply Architecture**:
    - Added `reply_to_message_id` nullable FK column and index to `chat_messages` (migration `0017_chat_reply_to.sql`).
    - Extended `sendMessage`, `listMessages`, and `listThreadReplies` to resolve and return `replyTo: { id, body, authorName }`.
@@ -608,9 +628,8 @@ Short log of significant technical decisions: what was decided, why, and what al
    - The outbox automatically drains sequentially (FIFO) via `window.addEventListener('online')` and WebSocket reconnection.
 
 **Alternatives considered:**
+
 - Blocking multi-message sending until server confirmation (rejected — breaks fluid conversational flow and causes perceived lag).
 - Thread replies only without inline quote replies (rejected — quote replies are essential for quick conversational context in main channels).
 
 **Consequences:** Zero-friction, resilient messaging experience on par with WhatsApp and Slack, with persistent offline support and clear delivery transparency.
-
-

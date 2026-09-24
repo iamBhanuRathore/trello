@@ -23,6 +23,7 @@ import {
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
+import { notifyProjectChannels } from '../chat/service';
 import {
   cachedBoardRead,
   cachedCardRead,
@@ -75,6 +76,22 @@ async function getBoardIdForCard(db: Database, cardId: string) {
     .where(eq(cards.id, cardId))
     .limit(1);
   return result?.boardId;
+}
+
+/** Resolve the project owning a card (card → list → board → project). */
+async function getProjectIdForCard(
+  db: Database,
+  cardId: string,
+  organizationId: string
+): Promise<string | null> {
+  const [row] = await db
+    .select({ projectId: boards.projectId })
+    .from(cards)
+    .innerJoin(lists, eq(lists.id, cards.listId))
+    .innerJoin(boards, eq(boards.id, lists.boardId))
+    .where(and(eq(cards.id, cardId), eq(cards.organizationId, organizationId)))
+    .limit(1);
+  return row?.projectId ?? null;
 }
 
 /** Bump card + board versions after a card mutation (cached cb map first, DB fallback). */
@@ -278,6 +295,17 @@ export async function createCard(db: Database, organizationId: string, input: Cr
   });
   await bumpBoardCache(boardInfo!.boardId);
   await bumpOrgCache(boardInfo!.organizationId);
+  // Linked-channel activity feed (best-effort, never breaks creation).
+  if (boardInfo?.projectId && input.actorId && card) {
+    const label = cardKey ? `**${cardKey}** ${card.title}` : `**${card.title}**`;
+    notifyProjectChannels(
+      db,
+      boardInfo.organizationId,
+      boardInfo.projectId,
+      input.actorId,
+      `🆕 ${label} created`
+    ).catch(() => {});
+  }
   // Subtask creation must invalidate the parent card modal (subtasksTotal/Done cached under cv).
   if (input.parentCardId) {
     await bumpForCard(db, input.parentCardId);
@@ -882,6 +910,25 @@ export async function moveCard(
     await bumpBoardCache(boardId);
   }
   await bumpForCard(db, id);
+  if (actorId) {
+    const [targetList] = await db
+      .select({ name: lists.name })
+      .from(lists)
+      .where(eq(lists.id, newListId))
+      .limit(1)
+      .catch(() => [null] as any);
+    const projectId = await getProjectIdForCard(db, id, organizationId).catch(() => null);
+    if (projectId) {
+      const label = card.key ? `**${card.key}** ${card.title}` : `**${card.title}**`;
+      notifyProjectChannels(
+        db,
+        organizationId,
+        projectId,
+        actorId,
+        `🔀 ${label} moved to **${targetList?.name || 'another column'}**`
+      ).catch(() => {});
+    }
+  }
   return card;
 }
 
@@ -911,6 +958,15 @@ export async function archiveCard(
   await bumpCardAndBoard(id, boardId ?? null);
   // Subtasks are embedded in the parent's cached payload — bump it too.
   if (card.parentCardId) await bumpCardCache(card.parentCardId);
+  if (actorId) {
+    const projectId = await getProjectIdForCard(db, id, organizationId).catch(() => null);
+    if (projectId) {
+      const label = card.key ? `**${card.key}** ${card.title}` : `**${card.title}**`;
+      notifyProjectChannels(db, organizationId, projectId, actorId, `🗃️ ${label} archived`).catch(
+        () => {}
+      );
+    }
+  }
   return card;
 }
 

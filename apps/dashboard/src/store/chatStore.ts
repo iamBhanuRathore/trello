@@ -11,6 +11,7 @@ export interface QueuedMessage {
   replyToMessageId?: string | null;
   replyTo?: { id: string; body: string; authorName: string } | null;
   isAnnouncement?: boolean;
+  attachmentIds?: string[];
   createdAt: string;
   author: {
     id: string;
@@ -101,8 +102,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
 
   setReplyingToMessage: (message) => set({ replyingToMessage: message }),
 
-  toggleDetailsPane: () =>
-    set((state) => ({ isDetailsPaneOpen: !state.isDetailsPaneOpen })),
+  toggleDetailsPane: () => set((state) => ({ isDetailsPaneOpen: !state.isDetailsPaneOpen })),
 
   setDetailsPaneOpen: (isOpen) => set({ isDetailsPaneOpen: isOpen }),
 
@@ -169,8 +169,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
 
   closeGlobalDock: () => set({ isGlobalDockOpen: false }),
 
-  toggleMinimizeDock: () =>
-    set((state) => ({ isDockMinimized: !state.isDockMinimized })),
+  toggleMinimizeDock: () => set((state) => ({ isDockMinimized: !state.isDockMinimized })),
 
   setDraft: (channelId, text) =>
     set((state) => ({
@@ -200,9 +199,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
 
   updateOutboxStatus: (tempId, status) =>
     set((state) => {
-      const next = state.outbox.map((m) =>
-        m.tempId === tempId ? { ...m, status } : m
-      );
+      const next = state.outbox.map((m) => (m.tempId === tempId ? { ...m, status } : m));
       saveOutboxToStorage(next);
       return { outbox: next };
     }),
@@ -230,6 +227,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
           parentMessageId: item.parentMessageId || undefined,
           replyToMessageId: item.replyToMessageId || undefined,
           isAnnouncement: item.isAnnouncement,
+          attachmentIds: item.attachmentIds,
         });
 
         removeFromOutbox(item.tempId);

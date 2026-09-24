@@ -20,6 +20,9 @@ import {
   listThreadReplies,
   markChannelRead,
   togglePinChannel,
+  linkChannelProject,
+  unlinkChannelProject,
+  createChatAttachment,
 } from './service';
 
 export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
@@ -325,5 +328,62 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     },
     {
       params: t.Object({ channelId: t.String() }),
+    }
+  )
+
+  // POST /v1/chat/channels/:channelId/project - Link a project (Owner/Admin)
+  .post(
+    '/channels/:channelId/project',
+    async ({ params: { channelId }, body, user, set }) => {
+      try {
+        return await linkChannelProject(
+          db,
+          channelId,
+          user.userId,
+          user.organizationId,
+          body.projectId
+        );
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ channelId: t.String() }),
+      body: t.Object({ projectId: t.String() }),
+    }
+  )
+
+  // DELETE /v1/chat/channels/:channelId/project - Unlink project (Owner/Admin)
+  .delete(
+    '/channels/:channelId/project',
+    async ({ params: { channelId }, user, set }) => {
+      try {
+        return await unlinkChannelProject(db, channelId, user.userId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ channelId: t.String() }),
+    }
+  )
+
+  // POST /v1/chat/channels/:channelId/attachments - Stage a file upload
+  .post(
+    '/channels/:channelId/attachments',
+    async ({ params: { channelId }, body, user, set }) => {
+      try {
+        return await createChatAttachment(db, channelId, user.userId, user.organizationId, body);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ channelId: t.String() }),
+      body: t.Object({
+        fileName: t.String(),
+        fileType: t.Optional(t.String()),
+        fileSize: t.Optional(t.Number()),
+      }),
     }
   );

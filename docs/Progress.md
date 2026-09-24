@@ -23,7 +23,7 @@
 ## Current State
 
 **Last updated:** 2026-09-24
-**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 (Workspace Collaboration & All-in-One Expansion / Huly Parity) in progress — 4.2 Team Chat substantially built (DMs, channels, threads, reactions, attachments, typing/presence, quote replies, offline outbox); channel→project activity-feed linking still open.
+**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED (DMs, channels, threads, reactions, attachments, typing/presence, quote replies, offline outbox, project linking + activity feed). Next: 4.1 Calendar.
 
 ### What exists
 
@@ -72,7 +72,7 @@
 
 - **Phase 4 (Workspace Collaboration & All-in-One Expansion / Huly Parity)**:
   - 4.1 Interactive Calendar & Time-Blocking (Motion / Cron Parity)
-  - 4.2 Team Chat & Real-Time Messaging (Slack / Discord Parity) — substantially done, open: channel→project linking with automated activity feed
+  - 4.2 Team Chat & Real-Time Messaging (Slack / Discord Parity) — DONE ✅
   - 4.3 Bi-Directional Git & Developer Automations (Linear / GitHub Engine)
   - 4.4 Real-Time Collaborative Multi-Cursor Docs (Notion / CRDT Parity)
   - 4.5 Live Audio/Video Huddles & Virtual Rooms (WebRTC)
@@ -1853,3 +1853,13 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   1. **Dev-only one-click login (`Login.tsx`)**: amber "Local dev quick login" panel with Owner/Admin/Member presets (Alex Vance, Elena Rostova, Jordan Rivera, all `Password123!`). Gated by `import.meta.env.DEV` — never renders in production builds.
   2. **Structural docs enforcement**: new `scripts/check-docs.sh` wired into `.husky/pre-push` — pushing `apps/`/`packages/` changes (except `docs/chore/ci/build/test`) fails unless the range also touches `docs/`; `[skip-docs]` trailer or `SKIP_DOCS_CHECK=1` for trivial changes. Rule documented in `AGENTS.md` §3.
 - Tests & Validation: dashboard `tsc` clean; hook tested against real history (fails on doc-less UI batch, passes on chat range, bypass works).
+
+### 2026-09-24 — Chat Completion: Project Linking + Activity Feed + File Uploads (4.2 DONE)
+
+- What was done:
+  1. **Channel→project linking (`0018` migration, `chat/service.ts`, `chat/routes.ts`)**: `project_id` FK on channels; `POST/DELETE /chat/channels/:id/project` (Owner/Admin only, same-org check, DMs rejected 400); project embedded in channel details; `ChatDetailsPane` "Linked Project" section with search picker + unlink.
+  2. **Automated activity feed**: `is_system` flag on messages rendered as centered pills (hover actions hidden); card created/moved/archived fan out via `notifyProjectChannels` (fire-and-forget, never breaks mutations).
+  3. **Chat file uploads**: `POST /channels/:id/attachments` (membership + 25 MB checks, presigned URL via new key-scope param in `lib/s3.ts`); composer Paperclip button with staged chips; `sendMessage` link scoped to same channel (closed cross-channel hijack).
+  4. **Migration hygiene**: retro-journaled `0017` (was silently skipped on fresh DBs) + journaled `0018`; applied to dev + test DBs. Note: bare `db:migrate` follows implicit `DATABASE_URL` — pass it explicitly per env.
+- Decisions made: feed as system messages over separate table; best-effort fan-out (see `Decisions.md` 2026-09-24).
+- Tests & Validation: `chat.test.ts` 14/14 (link perms, DM rejection, fan-out isolation, upload validation, send-linking); cards + presence suites pass (24/24); backend + dashboard `tsc` clean. Full `bun test` has 30 pre-existing failures (auth/boards/etc. FK-cleanup issue, fails on clean tree too).

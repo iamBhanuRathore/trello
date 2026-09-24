@@ -78,7 +78,7 @@ Checkable version of the Build Order from `trello-clone-architecture.md` §12. A
 
 - [x] Real-time 1-on-1 Direct Messages (DMs) & Team Channels (public/private)
 - [x] Message threads, reactions, file attachments, and rich markdown formatting
-- [ ] Channel-to-Project linking with automated activity feed
+- [x] Channel-to-Project linking with automated activity feed
 - [x] Real-time typing indicators and online presence across channels
 
 ### 4.3 Bi-Directional Git & Developer Automations (Linear / GitHub Engine)

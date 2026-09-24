@@ -1110,6 +1110,7 @@ export const chatChannels = pgTable(
     isAnnouncementOnly: boolean('is_announcement_only').notNull().default(false),
     allowMemberInvites: boolean('allow_member_invites').notNull().default(true),
     cardId: uuid('card_id').references(() => cards.id),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
     lastMessageAt: timestamp('last_message_at').notNull().defaultNow(),
     lastMessagePreview: text('last_message_preview'),
     ...timestamps,
@@ -1117,6 +1118,7 @@ export const chatChannels = pgTable(
   (t) => [
     index('chat_channels_org_idx').on(t.organizationId),
     index('chat_channels_card_idx').on(t.cardId),
+    index('chat_channels_project_idx').on(t.projectId),
     index('chat_channels_last_msg_idx').on(t.lastMessageAt),
   ]
 );
@@ -1160,6 +1162,7 @@ export const chatMessages = pgTable(
     parentMessageId: uuid('parent_message_id'),
     replyToMessageId: uuid('reply_to_message_id'),
     isEdited: boolean('is_edited').notNull().default(false),
+    isSystem: boolean('is_system').notNull().default(false),
     isAnnouncement: boolean('is_announcement').notNull().default(false),
     deletedBy: uuid('deleted_by').references(() => users.id),
     ...timestamps,
@@ -1177,16 +1180,21 @@ export const chatAttachments = pgTable(
   'chat_attachments',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    messageId: uuid('message_id')
+    messageId: uuid('message_id').references(() => chatMessages.id),
+    channelId: uuid('channel_id')
       .notNull()
-      .references(() => chatMessages.id),
+      .references(() => chatChannels.id, { onDelete: 'cascade' }),
+    uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
     fileName: varchar('file_name', { length: 500 }).notNull(),
     fileUrl: varchar('file_url', { length: 2048 }).notNull(),
     fileSize: integer('file_size').notNull().default(0),
     fileType: varchar('file_type', { length: 100 }).notNull().default('application/octet-stream'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
-  (t) => [index('chat_attachments_msg_idx').on(t.messageId)]
+  (t) => [
+    index('chat_attachments_msg_idx').on(t.messageId),
+    index('chat_attachments_channel_idx').on(t.channelId),
+  ]
 );
 
 // ─── Enterprise Chat: Reactions ───────────────────────────────────────────────

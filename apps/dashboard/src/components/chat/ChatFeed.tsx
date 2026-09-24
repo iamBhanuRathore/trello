@@ -18,10 +18,17 @@ import {
   CornerUpLeft,
   X,
   WifiOff,
+  Paperclip,
+  FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
-import { chatService, type ChatChannel, type ChatMessageItem } from '../../lib/chatService';
+import {
+  chatService,
+  type ChatChannel,
+  type ChatMessageItem,
+  type ChatAttachment,
+} from '../../lib/chatService';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
@@ -78,14 +85,18 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync draft on channel change
   useEffect(() => {
     setMessageText(drafts[channel.id] || '');
+    setPendingAttachments([]);
   }, [channel.id, drafts]);
 
   // Persist draft on text change
@@ -115,31 +126,29 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     const existingIds = new Set(messages.map((m) => m.id));
     const channelOutbox = outbox
       .filter((o) => o.channelId === channel.id && !existingIds.has(o.tempId))
-      .map(
-        (o): ChatMessageItem => ({
-          id: o.tempId,
-          channelId: o.channelId,
-          userId: o.userId,
-          body: o.body,
-          parentMessageId: o.parentMessageId,
-          replyToMessageId: o.replyToMessageId,
-          replyTo: o.replyTo,
-          status: o.status,
-          isEdited: false,
-          isAnnouncement: !!o.isAnnouncement,
-          createdAt: o.createdAt,
-          updatedAt: o.createdAt,
-          author: {
-            id: o.userId,
-            name: o.author.name,
-            email: o.author.email,
-            avatarUrl: o.author.avatarUrl,
-          },
-          attachments: [],
-          reactions: [],
-          replyCount: 0,
-        })
-      );
+      .map((o): ChatMessageItem => ({
+        id: o.tempId,
+        channelId: o.channelId,
+        userId: o.userId,
+        body: o.body,
+        parentMessageId: o.parentMessageId,
+        replyToMessageId: o.replyToMessageId,
+        replyTo: o.replyTo,
+        status: o.status,
+        isEdited: false,
+        isAnnouncement: !!o.isAnnouncement,
+        createdAt: o.createdAt,
+        updatedAt: o.createdAt,
+        author: {
+          id: o.userId,
+          name: o.author.name,
+          email: o.author.email,
+          avatarUrl: o.author.avatarUrl,
+        },
+        attachments: [],
+        reactions: [],
+        replyCount: 0,
+      }));
 
     return [...messages, ...channelOutbox];
   }, [messages, outbox, channel.id]);
@@ -212,7 +221,8 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
 
   const handleSendMessage = () => {
     const trimmed = messageText.trim();
-    if (!trimmed) return;
+    const stagedIds = pendingAttachments.map((a) => a.id);
+    if (!trimmed && stagedIds.length === 0) return;
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const currentReply = replyingToMessage;
@@ -228,7 +238,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
       id: tempId,
       channelId: channel.id,
       userId: user?.id || '',
-      body: trimmed,
+      body: trimmed || '📎 Attachment',
       replyToMessageId: replyTo?.id,
       replyTo,
       status: isOnline ? 'sending' : 'queued',
@@ -242,27 +252,28 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
         email: user?.email || '',
         avatarUrl: user?.avatarUrl,
       },
-      attachments: [],
+      attachments: pendingAttachments,
       reactions: [],
       replyCount: 0,
     };
 
     // Immediately add to TanStack query cache for instantaneous UI feedback
-    queryClient.setQueryData<ChatMessageItem[]>(
-      ['chat', 'messages', channel.id],
-      (old) => [...(old || []), optimisticMsg]
-    );
+    queryClient.setQueryData<ChatMessageItem[]>(['chat', 'messages', channel.id], (old) => [
+      ...(old || []),
+      optimisticMsg,
+    ]);
 
     // Enqueue in Outbox
     enqueueOutbox({
       tempId,
       channelId: channel.id,
       userId: user?.id || '',
-      body: trimmed,
+      body: trimmed || '📎 Attachment',
       parentMessageId: null,
       replyToMessageId: replyTo?.id,
       replyTo,
       isAnnouncement,
+      attachmentIds: stagedIds.length > 0 ? stagedIds : undefined,
       createdAt: optimisticMsg.createdAt,
       author: optimisticMsg.author,
       status: isOnline ? 'sending' : 'queued',
@@ -271,6 +282,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
 
     // Instantly reset composer and keep keyboard focus
     setMessageText('');
+    setPendingAttachments([]);
     setDraft(channel.id, '');
     setReplyingToMessage(null);
     setIsAnnouncement(false);
@@ -281,18 +293,17 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     if (isOnline) {
       chatService
         .sendMessage(channel.id, {
-          body: trimmed,
+          body: trimmed || '📎 Attachment',
           replyToMessageId: replyTo?.id,
           isAnnouncement,
+          attachmentIds: stagedIds.length > 0 ? stagedIds : undefined,
         })
         .then((serverMsg) => {
           removeFromOutbox(tempId);
-          queryClient.setQueryData<ChatMessageItem[]>(
-            ['chat', 'messages', channel.id],
-            (old) =>
-              old
-                ? old.map((m) => (m.id === tempId ? { ...serverMsg, status: 'sent' } : m))
-                : [serverMsg]
+          queryClient.setQueryData<ChatMessageItem[]>(['chat', 'messages', channel.id], (old) =>
+            old
+              ? old.map((m) => (m.id === tempId ? { ...serverMsg, status: 'sent' } : m))
+              : [serverMsg]
           );
           queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
         })
@@ -304,6 +315,33 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
             toast.error(err.response?.data?.message || err.message || 'Failed to send message');
           }
         });
+    }
+  };
+
+  const handleAttachFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    if (!isOnline) {
+      toast.error('You are offline. File uploads require a connection.');
+      return;
+    }
+    const oversized = files.find((f) => f.size > 25 * 1024 * 1024);
+    if (oversized) {
+      toast.error(`"${oversized.name}" exceeds the 25 MB chat upload limit.`);
+      return;
+    }
+    setIsUploading(true);
+    try {
+      for (const file of files) {
+        const { attachment } = await chatService.stageAttachment(channel.id, file);
+        setPendingAttachments((prev) => [...prev, attachment]);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || 'File upload failed');
+    } finally {
+      setIsUploading(false);
+      textareaRef.current?.focus();
     }
   };
 
@@ -737,8 +775,40 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
               <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/10 border-b border-amber-500/20 text-[11px] text-amber-600 dark:text-amber-400">
                 <WifiOff className="w-3.5 h-3.5 shrink-0" />
                 <span>
-                  You are offline. Messages will be queued and sent automatically when connection returns.
+                  You are offline. Messages will be queued and sent automatically when connection
+                  returns.
                 </span>
+              </div>
+            )}
+
+            {/* Staged Attachment Chips */}
+            {(pendingAttachments.length > 0 || isUploading) && (
+              <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-border/40">
+                {pendingAttachments.map((att) => (
+                  <span
+                    key={att.id}
+                    className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-muted/60 border border-border text-[11px] font-medium max-w-[220px]"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span className="truncate">{att.fileName}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPendingAttachments((prev) => prev.filter((a) => a.id !== att.id))
+                      }
+                      aria-label={`Remove ${att.fileName}`}
+                      className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {isUploading && (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Uploading...
+                  </span>
+                )}
               </div>
             )}
 
@@ -755,33 +825,56 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
 
             {/* Bottom Actions Bar */}
             <div className="flex items-center justify-between px-3 py-2 border-t border-border/40">
-              <p className="text-[11px] text-muted-foreground/70 hidden sm:flex items-center gap-1.5">
-                <span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
-                    Enter
-                  </kbd>{' '}
-                  to send
-                </span>
-                <span>•</span>
-                <span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
-                    Shift+Enter
-                  </kbd>{' '}
-                  newline
-                </span>
-                <span>•</span>
-                <span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
-                    ↑
-                  </kbd>{' '}
-                  edit last
-                </span>
-              </p>
+              <div className="flex items-center gap-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={handleAttachFiles}
+                  aria-label="Attach files"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading || !isOnline}
+                  title={isOnline ? 'Attach files (25 MB max)' : 'Attachments need a connection'}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isUploading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Paperclip className="w-4 h-4" />
+                  )}
+                </button>
+                <p className="text-[11px] text-muted-foreground/70 hidden lg:flex items-center gap-1.5 ml-1">
+                  <span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
+                      Enter
+                    </kbd>{' '}
+                    to send
+                  </span>
+                  <span>•</span>
+                  <span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
+                      Shift+Enter
+                    </kbd>{' '}
+                    newline
+                  </span>
+                  <span>•</span>
+                  <span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
+                      ↑
+                    </kbd>{' '}
+                    edit last
+                  </span>
+                </p>
+              </div>
 
               <button
                 type="button"
                 onClick={handleSendMessage}
-                disabled={!messageText.trim()}
+                disabled={!messageText.trim() && pendingAttachments.length === 0}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-sm ml-auto"
               >
                 <Send className="w-3.5 h-3.5" />

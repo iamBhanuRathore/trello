@@ -36,7 +36,10 @@ export async function generatePresignedUploadUrl(
   organizationId: string,
   cardId: string,
   fileName: string,
-  fileType?: string
+  fileType?: string,
+  // S3 key scope, e.g. `cards/<cardId>` (default) or `chat/<channelId>`.
+  // Local-dev fallback endpoints are key-agnostic, so only the S3 path changes.
+  keyScope?: string
 ) {
   // Sanitize filename and create a unique key
   const safeFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -51,7 +54,7 @@ export async function generatePresignedUploadUrl(
     return { uploadUrl, publicUrl, key: fileKey };
   }
 
-  const key = `orgs/${organizationId}/cards/${cardId}/${fileKey}`;
+  const key = `orgs/${organizationId}/${keyScope || `cards/${cardId}`}/${fileKey}`;
 
   const command = new PutObjectCommand({
     Bucket: env.STORAGE_BUCKET,

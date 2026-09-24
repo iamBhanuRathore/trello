@@ -11,6 +11,8 @@ export interface ChatChannel {
   isAnnouncementOnly: boolean;
   allowMemberInvites: boolean;
   cardId?: string | null;
+  projectId?: string | null;
+  project?: { id: string; name: string; key?: string | null } | null;
   unreadCount: number;
   isPinned: boolean;
   isMuted: boolean;
@@ -40,7 +42,8 @@ export interface ChatChannelMember {
 
 export interface ChatAttachment {
   id: string;
-  messageId: string;
+  messageId: string | null;
+  channelId?: string;
   fileName: string;
   fileUrl: string;
   fileSize: number;
@@ -69,6 +72,7 @@ export interface ChatMessageItem {
   } | null;
   status?: 'sending' | 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
   isEdited: boolean;
+  isSystem?: boolean;
   isAnnouncement: boolean;
   createdAt: string;
   updatedAt: string;
@@ -133,7 +137,11 @@ export const chatService = {
     return res.data;
   },
 
-  async addMember(channelId: string, userId: string, role: 'admin' | 'member' = 'member'): Promise<any> {
+  async addMember(
+    channelId: string,
+    userId: string,
+    role: 'admin' | 'member' = 'member'
+  ): Promise<any> {
     const res = await api.post(`/chat/channels/${channelId}/members`, { userId, role });
     return res.data;
   },
@@ -201,5 +209,33 @@ export const chatService = {
   async markChannelRead(channelId: string): Promise<any> {
     const res = await api.post(`/chat/channels/${channelId}/read`);
     return res.data;
+  },
+
+  async linkProject(channelId: string, projectId: string): Promise<any> {
+    const res = await api.post(`/chat/channels/${channelId}/project`, { projectId });
+    return res.data;
+  },
+
+  async unlinkProject(channelId: string): Promise<any> {
+    const res = await api.delete(`/chat/channels/${channelId}/project`);
+    return res.data;
+  },
+
+  async stageAttachment(
+    channelId: string,
+    file: File
+  ): Promise<{ uploadUrl: string; attachment: ChatAttachment }> {
+    const res = await api.post(`/chat/channels/${channelId}/attachments`, {
+      fileName: file.name,
+      fileType: file.type || 'application/octet-stream',
+      fileSize: file.size,
+    });
+    const { uploadUrl, attachment } = res.data;
+    await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    return { uploadUrl, attachment };
   },
 };

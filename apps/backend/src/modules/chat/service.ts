@@ -8,8 +8,10 @@ import {
   chatReactions,
   users,
   organizationMembers,
+  projects,
 } from '../../db/schema/index';
 import { eventBus } from '../../lib/event-bus';
+import { generatePresignedUploadUrl } from '../../lib/s3';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -319,6 +321,16 @@ export async function getChannelDetails(db: Database, channelId: string, current
     otherUser = members.find((m) => m.userId !== currentUserId) || null;
   }
 
+  let project: { id: string; name: string; key: string | null } | null = null;
+  if (channel.projectId) {
+    const [proj] = await db
+      .select({ id: projects.id, name: projects.name, key: projects.key })
+      .from(projects)
+      .where(eq(projects.id, channel.projectId))
+      .limit(1);
+    project = proj || null;
+  }
+
   return {
     ...channel,
     name: channel.type === 'direct' ? otherUser?.name || 'Direct Message' : channel.name,
@@ -328,6 +340,7 @@ export async function getChannelDetails(db: Database, channelId: string, current
     isMuted: membership?.isMuted || false,
     members,
     otherUser,
+    project,
   };
 }
 
@@ -650,12 +663,17 @@ export async function sendMessage(
 
   if (!message) throw httpError(500, 'Failed to create message');
 
-  // Link attachments if provided
+  // Link attachments if provided (scoped to this channel to prevent cross-channel hijack)
   if (input.attachmentIds && input.attachmentIds.length > 0) {
     await db
       .update(chatAttachments)
       .set({ messageId: message.id })
-      .where(inArray(chatAttachments.id, input.attachmentIds));
+      .where(
+        and(
+          inArray(chatAttachments.id, input.attachmentIds),
+          eq(chatAttachments.channelId, channelId)
+        )
+      );
   }
 
   // Update channel preview and timestamp if top-level
@@ -1091,4 +1109,250 @@ export async function togglePinChannel(db: Database, channelId: string, userId: 
     .returning();
 
   return updated;
+}
+
+// ─── Channel ↔ Project Linking & Activity Feed ───────────────────────────────
+
+async function requireChannelAdmin(db: Database, channelId: string, actorId: string) {
+  const [channel] = await db
+    .select()
+    .from(chatChannels)
+    .where(eq(chatChannels.id, channelId))
+    .limit(1);
+  if (!channel) throw httpError(404, 'Channel not found');
+
+  const [member] = await db
+    .select()
+    .from(chatChannelMembers)
+    .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, actorId)))
+    .limit(1);
+
+  if (!member) {
+    throw httpError(403, 'Access denied: not a member of this channel');
+  }
+
+  if (channel.type === 'direct') {
+    throw httpError(400, 'Direct message channels cannot be linked to a project');
+  }
+
+  if (member.role !== 'owner' && member.role !== 'admin') {
+    throw httpError(403, 'Permission denied: must be Channel Owner or Admin');
+  }
+
+  return channel;
+}
+
+export async function linkChannelProject(
+  db: Database,
+  channelId: string,
+  actorId: string,
+  organizationId: string,
+  projectId: string
+) {
+  await requireChannelAdmin(db, channelId, actorId);
+
+  const [project] = await db
+    .select({ id: projects.id, name: projects.name, key: projects.key })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+    .limit(1);
+
+  if (!project) throw httpError(404, 'Project not found in this organization');
+
+  const [updated] = await db
+    .update(chatChannels)
+    .set({ projectId: project.id })
+    .where(eq(chatChannels.id, channelId))
+    .returning();
+
+  await eventBus.broadcast(`chat:channel:${channelId}`, 'chat:channel_updated', updated);
+  await postSystemMessage(
+    db,
+    channelId,
+    actorId,
+    `🔗 Linked project **${project.key ? `${project.key} — ` : ''}${project.name}** to this channel. Task activity will appear here.`
+  );
+
+  return { ...updated, project };
+}
+
+export async function unlinkChannelProject(db: Database, channelId: string, actorId: string) {
+  await requireChannelAdmin(db, channelId, actorId);
+
+  const [updated] = await db
+    .update(chatChannels)
+    .set({ projectId: null })
+    .where(eq(chatChannels.id, channelId))
+    .returning();
+
+  await eventBus.broadcast(`chat:channel:${channelId}`, 'chat:channel_updated', updated);
+  await postSystemMessage(db, channelId, actorId, '🔓 Project unlinked from this channel.');
+
+  return updated;
+}
+
+/**
+ * Posts a system (activity-feed) message. Rendered as a centered pill,
+ * not a regular chat bubble. Bypasses announcement-only restriction so
+ * automation feedback always lands.
+ */
+export async function postSystemMessage(
+  db: Database,
+  channelId: string,
+  actorId: string,
+  body: string
+) {
+  const [channel] = await db
+    .select()
+    .from(chatChannels)
+    .where(eq(chatChannels.id, channelId))
+    .limit(1);
+  if (!channel) throw httpError(404, 'Channel not found');
+
+  const [membership] = await db
+    .select()
+    .from(chatChannelMembers)
+    .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, actorId)))
+    .limit(1);
+  if (!membership) throw httpError(403, 'Access denied: not a member of this channel');
+
+  const [message] = await db
+    .insert(chatMessages)
+    .values({ channelId, userId: actorId, body: body.trim(), isSystem: true })
+    .returning();
+  if (!message) throw httpError(500, 'Failed to post activity message');
+
+  const [author] = await db
+    .select({ id: users.id, name: users.name, email: users.email, avatarUrl: users.avatarUrl })
+    .from(users)
+    .where(eq(users.id, actorId))
+    .limit(1);
+
+  const fullMessage = {
+    ...message,
+    author,
+    replyTo: null,
+    attachments: [],
+    reactions: [],
+    replyCount: 0,
+  };
+
+  await db
+    .update(chatChannels)
+    .set({ lastMessageAt: new Date(), lastMessagePreview: body.trim().slice(0, 120) })
+    .where(eq(chatChannels.id, channelId));
+
+  await eventBus.broadcast(`chat:channel:${channelId}`, 'chat:message_created', fullMessage);
+
+  const members = await db
+    .select({ userId: chatChannelMembers.userId })
+    .from(chatChannelMembers)
+    .where(
+      and(
+        eq(chatChannelMembers.channelId, channelId),
+        sql`${chatChannelMembers.userId} != ${actorId}`
+      )
+    );
+  for (const m of members) {
+    await eventBus.broadcast(`user:inbox:${m.userId}`, 'chat:unread_bump', {
+      channelId,
+      messageId: message.id,
+      senderName: 'Activity',
+      preview: body.trim().slice(0, 80),
+    });
+  }
+
+  return fullMessage;
+}
+
+/**
+ * Fan-out helper for project domain events (card created/moved/completed).
+ * Never throws — activity feed must not break the underlying mutation.
+ */
+export async function notifyProjectChannels(
+  db: Database,
+  organizationId: string,
+  projectId: string,
+  actorId: string,
+  text: string
+): Promise<void> {
+  try {
+    const linked = await db
+      .select({ id: chatChannels.id })
+      .from(chatChannels)
+      .where(
+        and(
+          eq(chatChannels.organizationId, organizationId),
+          eq(chatChannels.projectId, projectId),
+          eq(chatChannels.isArchived, false)
+        )
+      );
+    for (const ch of linked) {
+      await postSystemMessage(db, ch.id, actorId, text).catch(() => {});
+    }
+  } catch {
+    // Activity feed is best-effort by design.
+  }
+}
+
+// ─── Chat File Attachments ───────────────────────────────────────────────────
+
+const CHAT_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+
+export async function createChatAttachment(
+  db: Database,
+  channelId: string,
+  userId: string,
+  organizationId: string,
+  input: { fileName: string; fileType?: string; fileSize?: number }
+) {
+  if (!input.fileName || input.fileName.trim().length === 0) {
+    throw httpError(400, 'fileName is required');
+  }
+  if (input.fileSize && input.fileSize > CHAT_UPLOAD_MAX_BYTES) {
+    throw httpError(400, 'File exceeds the 25 MB chat upload limit');
+  }
+
+  const [channel] = await db
+    .select()
+    .from(chatChannels)
+    .where(and(eq(chatChannels.id, channelId), eq(chatChannels.organizationId, organizationId)))
+    .limit(1);
+  if (!channel) throw httpError(404, 'Channel not found');
+
+  const [membership] = await db
+    .select()
+    .from(chatChannelMembers)
+    .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, userId)))
+    .limit(1);
+  if (!membership) throw httpError(403, 'Access denied: not a member of this channel');
+
+  if (channel.isAnnouncementOnly && membership.role === 'member') {
+    throw httpError(403, 'Only channel admins can post in this announcement channel');
+  }
+
+  const { uploadUrl, publicUrl } = await generatePresignedUploadUrl(
+    organizationId,
+    channelId,
+    input.fileName,
+    input.fileType,
+    `chat/${channelId}`
+  );
+
+  const [attachment] = await db
+    .insert(chatAttachments)
+    .values({
+      messageId: null,
+      channelId,
+      uploadedBy: userId,
+      fileName: input.fileName.trim(),
+      fileUrl: publicUrl,
+      fileSize: input.fileSize ?? 0,
+      fileType: input.fileType || 'application/octet-stream',
+    })
+    .returning();
+
+  if (!attachment) throw httpError(500, 'Failed to create attachment record');
+
+  return { uploadUrl, attachment };
 }

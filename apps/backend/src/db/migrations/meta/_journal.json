@@ -120,6 +120,20 @@
       "when": 1789350000000,
       "tag": "0016_enterprise_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789430400000,
+      "tag": "0017_chat_reply_to",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790127600000,
+      "tag": "0018_chat_project_link",
+      "breakpoints": true
     }
   ]
 }
