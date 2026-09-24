@@ -1911,3 +1911,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   3. **Verified live**: real HMAC-signed push against the running backend linked a card end-to-end (plus caught a same-key cross-org fan-out bug, fixed). E2E seeds cleaned from all DBs.
 - Decisions made: webhooks over GitHub App/Octokit; bot-user comment attribution (see `Decisions.md` 2026-09-25).
 - Tests & Validation: `git.test.ts` 8/8; calendar/chat/cards suites green (37/37); backend + dashboard `tsc` clean, dashboard build clean.
+
+### 2026-09-25 — nativeButton Warning on render-prop Triggers
+
+- **Bug:** console warning `Base UI: ... expected a native <button>` from `UserProfileDropdown` (navbar + sidebar). Session-54's auto-`nativeButton={false}` fix only covered the `children` path; the `render`-prop path (a `<div role="button">`) still defaulted to `nativeButton: true`.
+- **Fix (`@boardly/ui`):** `DropdownMenuTrigger` and `DialogTrigger` now detect a non-`<button>` `render` element and default `nativeButton` to false (explicit caller prop still wins).
+- Tests & Validation: dashboard `tsc` clean.

@@ -27,8 +27,21 @@ function DropdownMenuTrigger({
       />
     );
   }
+  // `render` with a non-<button> element (e.g. div[role=button]) must opt out
+  // of nativeButton, otherwise Base UI warns and drops button semantics.
+  const renderIsNonButtonElement =
+    React.isValidElement(render) && typeof render.type === 'string' && render.type !== 'button';
+  const renderProps =
+    renderIsNonButtonElement && (props as { nativeButton?: boolean }).nativeButton === undefined
+      ? { nativeButton: false as const }
+      : null;
   return (
-    <MenuPrimitive.Trigger data-slot="dropdown-menu-trigger" render={render} {...props}>
+    <MenuPrimitive.Trigger
+      data-slot="dropdown-menu-trigger"
+      render={render}
+      {...renderProps}
+      {...props}
+    >
       {children}
     </MenuPrimitive.Trigger>
   );

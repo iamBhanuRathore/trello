@@ -26,8 +26,15 @@ function DialogTrigger({
       />
     );
   }
+  // Same non-<button> render-prop handling as DropdownMenuTrigger.
+  const renderIsNonButtonElement =
+    React.isValidElement(render) && typeof render.type === 'string' && render.type !== 'button';
+  const renderProps =
+    renderIsNonButtonElement && (props as { nativeButton?: boolean }).nativeButton === undefined
+      ? { nativeButton: false as const }
+      : null;
   return (
-    <DialogPrimitive.Trigger data-slot="dialog-trigger" render={render} {...props}>
+    <DialogPrimitive.Trigger data-slot="dialog-trigger" render={render} {...renderProps} {...props}>
       {children}
     </DialogPrimitive.Trigger>
   );
