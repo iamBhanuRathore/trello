@@ -1942,3 +1942,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Fix (`authStore.ts`):** network errors and 5xx keep the stored session (queries retry on their own); only definitive 4xx clears it.
 - **Note for user:** hard-refresh the dashboard tab once to load the fixed bundle; the calendar UI itself is unchanged (write-API shipped, popovers still pending).
 - Tests & Validation: dashboard `tsc` clean.
+
+### 2026-09-25 — Google API Timeout Bound (Anti-Wedge)
+
+- **Finding:** backend observed at 100% CPU with 96 stuck in-flight requests during Google sync usage. Outbound `googleapis` calls had no timeout — one stalled call hangs its request and piles up on every client refetch.
+- **Fix (`calendar/service.ts`):** all 7 Google call sites wrapped in a 15s `withGoogleTimeout`; timeouts surface as 502s with `lastError` recorded, never hung requests. (Deliberately not unit-tested with a 15s hang — wrapper is 10 lines; fake-client suite still 18/18.)
+- **Ops note:** also confirmed a self-inflicted outage pattern — restarting dev.sh from `apps/backend` instead of repo root silently fails (`nohup: ./scripts/dev.sh: No such file`), leaving the API down. Always restart from root.
+- Tests & Validation: backend `tsc` clean, `calendar.test.ts` 18/18, backend live (401-without-token probe correct).

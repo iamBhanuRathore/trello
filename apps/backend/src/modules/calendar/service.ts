@@ -29,6 +29,28 @@ export function httpError(status: number, message: string): Error & { status: nu
   return err;
 }
 
+// Google has no client-side default timeout — one stalled call used to hang
+// the request (and pile up on every client refetch) until it wedged the
+// server. Every outbound call below goes through this 15s bound.
+const GOOGLE_TIMEOUT_MS = 15000;
+
+async function withGoogleTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Google API timeout after ${GOOGLE_TIMEOUT_MS}ms (${label})`)),
+          GOOGLE_TIMEOUT_MS
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export interface NormalizedExternalEvent {
   id: string;
   summary: string;
@@ -191,7 +213,9 @@ export async function pullExternalEvents(
 
   let data: any;
   try {
-    ({ data } = await (calendar as any).events.list(params));
+    ({ data } = await withGoogleTimeout<any>('events.list', () =>
+      (calendar as any).events.list(params)
+    ));
   } catch (err: any) {
     // Sync token expired/invalidated → fall back to a full pull once.
     if (useIncremental && (err?.code === 410 || err?.response?.status === 410)) {
@@ -296,9 +320,12 @@ export async function pushCardToGoogle(
 
   if (!body) {
     if (existing) {
-      await (calendar as any).events
-        .delete({ calendarId: conn.calendarId, eventId: existing.providerEventId })
-        .catch(() => {});
+      await withGoogleTimeout<any>('events.delete', () =>
+        (calendar as any).events.delete({
+          calendarId: conn.calendarId,
+          eventId: existing.providerEventId,
+        })
+      ).catch(() => {});
       await db.delete(calendarEventLinks).where(eq(calendarEventLinks.id, existing.id));
     }
     return { pushed: false };
@@ -307,16 +334,20 @@ export async function pushCardToGoogle(
   let eventId = existing?.providerEventId;
   try {
     if (eventId) {
-      await (calendar as any).events.patch({
-        calendarId: conn.calendarId,
-        eventId,
-        requestBody: body,
-      });
+      await withGoogleTimeout<any>('events.patch', () =>
+        (calendar as any).events.patch({
+          calendarId: conn.calendarId,
+          eventId,
+          requestBody: body,
+        })
+      );
     } else {
-      const { data } = await (calendar as any).events.insert({
-        calendarId: conn.calendarId,
-        requestBody: { ...body, extendedProperties: { private: { boardlyCardId: card.id } } },
-      });
+      const { data } = await withGoogleTimeout<any>('events.insert', () =>
+        (calendar as any).events.insert({
+          calendarId: conn.calendarId,
+          requestBody: { ...body, extendedProperties: { private: { boardlyCardId: card.id } } },
+        })
+      );
       eventId = data.id;
       await db
         .insert(calendarEventLinks)
@@ -462,15 +493,17 @@ export async function createExternalEvent(
 
   let data: any;
   try {
-    ({ data } = await (calendar as any).events.insert({
-      calendarId: conn.calendarId,
-      requestBody: {
-        summary: input.title.trim(),
-        description: (input.description || '').slice(0, 2000),
-        start: { dateTime: start },
-        end: { dateTime: end },
-      },
-    }));
+    ({ data } = await withGoogleTimeout<any>('events.insert', () =>
+      (calendar as any).events.insert({
+        calendarId: conn.calendarId,
+        requestBody: {
+          summary: input.title.trim(),
+          description: (input.description || '').slice(0, 2000),
+          start: { dateTime: start },
+          end: { dateTime: end },
+        },
+      })
+    ));
   } catch {
     throw httpError(502, 'Google Calendar event creation failed');
   }
@@ -511,11 +544,13 @@ export async function updateExternalEvent(
   const calendar = clientOverride || calendarClient(conn.refreshToken);
 
   try {
-    await (calendar as any).events.patch({
-      calendarId: conn.calendarId,
-      eventId,
-      requestBody: patch,
-    });
+    await withGoogleTimeout<any>('events.patch', () =>
+      (calendar as any).events.patch({
+        calendarId: conn.calendarId,
+        eventId,
+        requestBody: patch,
+      })
+    );
   } catch {
     throw httpError(502, 'Google Calendar event update failed');
   }
@@ -531,7 +566,9 @@ export async function deleteExternalEvent(
   const conn = await requireConnection(db, userId);
   const calendar = clientOverride || calendarClient(conn.refreshToken);
   try {
-    await (calendar as any).events.delete({ calendarId: conn.calendarId, eventId });
+    await withGoogleTimeout<any>('events.delete', () =>
+      (calendar as any).events.delete({ calendarId: conn.calendarId, eventId })
+    );
   } catch {
     throw httpError(502, 'Google Calendar event deletion failed');
   }
