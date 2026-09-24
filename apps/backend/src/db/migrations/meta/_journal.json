@@ -134,6 +134,13 @@
       "when": 1790127600000,
       "tag": "0018_chat_project_link",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790214000000,
+      "tag": "0019_calendar_scheduling",
+      "breakpoints": true
     }
   ]
 }

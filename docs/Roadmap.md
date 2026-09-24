@@ -69,10 +69,11 @@ Checkable version of the Build Order from `trello-clone-architecture.md` §12. A
 
 ### 4.1 Interactive Calendar & Time-Blocking (Motion / Cron Parity)
 
-- [ ] Interactive Calendar View (Month, Week, 3-Day, Day grid) with task scheduling
-- [ ] Drag-and-drop task time-blocking and duration resizing
-- [ ] 2-way Google Calendar & Microsoft Outlook synchronization
-- [ ] Milestone & Sprint schedule overlay on calendar
+- [x] Interactive Calendar View (Month, Week, Day grid) with task scheduling
+- [x] Drag-and-drop task time-blocking and duration resizing
+- [x] 2-way Google Calendar synchronization (direct Calendar API, per-user OAuth)
+- [ ] 2-way Microsoft Outlook synchronization (deferred — same connection/sync pattern as Google)
+- [x] Milestone & Sprint schedule overlay on calendar
 
 ### 4.2 Team Chat & Real-Time Messaging (Slack / Discord Parity)
 

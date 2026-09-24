@@ -24,6 +24,22 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-24 — Google Calendar Sync + Time-Blocking (Direct API, Motion/Cron Parity)
+
+**Context:** Roadmap 4.1 demanded calendar views, drag time-blocking, 2-way provider sync, and sprint/milestone overlays. The build-vs-integrate choice: full custom sync engine vs Google Calendar API directly.
+
+**Decision:**
+
+1. **Google API for sync, owned UI for views:** `googleapis` on the backend (`modules/calendar/`: `google.ts` OAuth + AES-GCM token crypto, `service.ts` sync/feed, `routes.ts`); hand-rolled Month/Week/Day grids on the frontend (zero date libs beyond `date-fns`, matching the hand-rolled SVG chart convention). No FullCalendar — bundle + theming cost for what pointer math covers.
+2. **Per-user connections, not org integrations:** OAuth consent is personal, so `calendar_connections` is user-scoped with unique `(user_id, provider)`; refresh tokens AES-GCM encrypted (`CALENDAR_TOKEN_KEY`). The existing org `integrations` mock catalog was left untouched.
+3. **Scheduling lives on cards:** `scheduled_start`/`scheduled_end` columns + `PATCH /calendar/cards/:id/schedule` (validates, reuses `updateCard`, best-effort push to actor's Google). Event links tracked in `calendar_event_links` for upsert/delete.
+4. **Incremental pull, on-demand push:** syncToken-based incremental pull when un-ranged (410 → one full re-pull); push on schedule + manual "Sync now". Google push webhooks deferred (needs public HTTPS channel setup — polling + instant push covers v1).
+5. **Outlook deferred:** same connection/sync pattern will apply; Roadmap bullet split to track it separately.
+
+**Alternatives considered:** FullCalendar (rejected — bundle/theming); WorkOS-proxied Google tokens (rejected — direct OAuth gives proper `calendar.events` scope + refresh tokens); syncing via org-level service account (rejected — per-user consent matches Google's model and avoids domain-wide delegation setup).
+
+**Consequences:** 4.1 done except Outlook. Any new provider copies `google.ts` + connection row. Server is "configured" only when `GOOGLE_CLIENT_ID/SECRET` + `CALENDAR_TOKEN_KEY` are set; UI degrades to local-only scheduling otherwise.
+
 ### 2026-09-24 — Channel→Project Activity Feed & Chat File Uploads (Slack Parity)
 
 **Context:** Roadmap 4.2 had one open bullet (channel-to-project linking with automated activity feed), and chat attachments were half-wired: `sendMessage` accepted `attachmentIds` but nothing created `chat_attachments` rows and the composer had no attach button. Two latent gaps surfaced along the way: migration `0017_chat_reply_to.sql` shipped without a journal entry (fresh DBs via `db:migrate` silently skip it), and bare `bun run db:migrate` migrates whatever `DATABASE_URL` resolves to rather than the documented dev DB.

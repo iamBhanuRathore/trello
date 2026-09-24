@@ -43,6 +43,7 @@ import {
   FolderOpen,
   MessageSquare,
   Keyboard,
+  CalendarDays,
 } from 'lucide-react';
 import { chatService } from '../lib/chatService';
 import { UserProfileDropdown } from './UserProfileDropdown';
@@ -243,7 +244,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-
               {/* My Tasks */}
               <SidebarMenuItem className={isCollapsed ? 'flex justify-center' : ''}>
                 <SidebarMenuButton
@@ -264,7 +264,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-
               {/* Timesheets */}
               <SidebarMenuItem className={isCollapsed ? 'flex justify-center' : ''}>
                 <SidebarMenuButton
@@ -285,8 +284,27 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-
-              {/* Chat & Collaboration */}
+              {/* Calendar & Scheduling */}
+              <SidebarMenuItem className={isCollapsed ? 'flex justify-center' : ''}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location.pathname === '/calendar'}
+                  tooltip="Calendar & Scheduling"
+                  className={
+                    isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''
+                  }
+                >
+                  <Link
+                    to="/calendar"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? 'Calendar & Scheduling' : undefined}
+                  >
+                    <CalendarDays className="w-4 h-4 text-violet-500 shrink-0" />
+                    {!isCollapsed && <span>Calendar</span>}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {/* Chat & Collaboration */}{' '}
               <SidebarMenuItem className={isCollapsed ? 'flex justify-center' : ''}>
                 <SidebarMenuButton
                   asChild
@@ -320,7 +338,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-
               {/* Marketplace */}
               <SidebarMenuItem className={isCollapsed ? 'flex justify-center' : ''}>
                 <SidebarMenuButton

@@ -23,7 +23,7 @@
 ## Current State
 
 **Last updated:** 2026-09-24
-**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED (DMs, channels, threads, reactions, attachments, typing/presence, quote replies, offline outbox, project linking + activity feed). Next: 4.1 Calendar.
+**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED; 4.1 Calendar substantially done (views, time-blocking, Google 2-way sync, overlays; Outlook deferred). Next: 4.3 Git automations.
 
 ### What exists
 
@@ -71,7 +71,7 @@
 ### What's in progress
 
 - **Phase 4 (Workspace Collaboration & All-in-One Expansion / Huly Parity)**:
-  - 4.1 Interactive Calendar & Time-Blocking (Motion / Cron Parity)
+  - 4.1 Interactive Calendar & Time-Blocking — DONE except Outlook sync (deferred)
   - 4.2 Team Chat & Real-Time Messaging (Slack / Discord Parity) — DONE ✅
   - 4.3 Bi-Directional Git & Developer Automations (Linear / GitHub Engine)
   - 4.4 Real-Time Collaborative Multi-Cursor Docs (Notion / CRDT Parity)
@@ -1863,3 +1863,12 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   4. **Migration hygiene**: retro-journaled `0017` (was silently skipped on fresh DBs) + journaled `0018`; applied to dev + test DBs. Note: bare `db:migrate` follows implicit `DATABASE_URL` — pass it explicitly per env.
 - Decisions made: feed as system messages over separate table; best-effort fan-out (see `Decisions.md` 2026-09-24).
 - Tests & Validation: `chat.test.ts` 14/14 (link perms, DM rejection, fan-out isolation, upload validation, send-linking); cards + presence suites pass (24/24); backend + dashboard `tsc` clean. Full `bun test` has 30 pre-existing failures (auth/boards/etc. FK-cleanup issue, fails on clean tree too).
+
+### 2026-09-24 — Calendar & Time-Blocking with Google Sync (4.1, Outlook deferred)
+
+- What was done:
+  1. **Backend `modules/calendar/` (`0019` migration)**: `scheduled_start/end` on cards + index; `calendar_connections` (per-user, AES-GCM refresh tokens) + `calendar_event_links`; Google OAuth (HMAC-bound state, `calendar.events` scope), incremental pull (syncToken, 410 fallback), push/upsert/delete, merged feed (my blocks, dues, unscheduled, sprints, milestones, Google overlay); `PATCH /calendar/cards/:id/schedule` under `card.update` guard.
+  2. **Frontend `/calendar`**: Month/Week/Day views, pointer drag-move/resize (15-min snap), click-to-place from unscheduled tray, sprint/milestone strip, Google connect/sync/disconnect badge, CardModal integration; sidebar nav + lazy route.
+  3. **Env templates**: `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI` + `CALENDAR_TOKEN_KEY` added to all `.env.example` files. Without them the page works local-only.
+- Decisions made: Google API for sync + owned UI over FullCalendar; per-user (not org) connections; Outlook deferred (see `Decisions.md` 2026-09-24).
+- Tests & Validation: `calendar.test.ts` 15/15 (state crypto, event builder, schedule validation, feed shape, 409 without connection); chat 14/14; backend + dashboard `tsc` clean, dashboard `vite build` clean.

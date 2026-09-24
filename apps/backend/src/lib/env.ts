@@ -50,6 +50,14 @@ const envSchema = z.object({
   WORKOS_REDIRECT_URI: z.string().optional(),
   WORKOS_WEBHOOK_SECRET: z.string().optional(),
 
+  // Google Calendar sync (direct Calendar API — optional at dev time).
+  // Create OAuth credentials at https://console.cloud.google.com/apis/credentials
+  // with the redirect URI below; refresh tokens are AES-GCM encrypted at rest.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().optional(),
+  CALENDAR_TOKEN_KEY: z.string().optional(),
+
   // Stripe (billing — optional at dev time)
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),

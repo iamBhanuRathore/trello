@@ -478,6 +478,8 @@ export const cards = pgTable(
     description: text('description'),
     position: real('position').notNull(),
     dueDate: timestamp('due_date'),
+    scheduledStart: timestamp('scheduled_start'),
+    scheduledEnd: timestamp('scheduled_end'),
     stageId: uuid('stage_id').references(() => stages.id),
     coverImage: varchar('cover_image', { length: 2048 }),
     storyPoints: integer('story_points'),
@@ -493,6 +495,7 @@ export const cards = pgTable(
     index('cards_org_idx').on(t.organizationId),
     index('cards_parent_idx').on(t.parentCardId),
     index('cards_stage_idx').on(t.stageId),
+    index('cards_scheduled_idx').on(t.scheduledStart, t.scheduledEnd),
   ]
 );
 
@@ -1215,6 +1218,56 @@ export const chatReactions = pgTable(
     uniqueIndex('chat_reactions_msg_user_emoji_idx').on(t.messageId, t.userId, t.emoji),
     index('chat_reactions_msg_idx').on(t.messageId),
   ]
+);
+
+// ─── Calendar: per-user provider connections (Google Calendar sync) ──────────
+// Tokens are personal (OAuth consent is per Google account), so connections are
+// user-scoped — unlike the org-scoped `integrations` mock catalog.
+export const calendarConnections = pgTable(
+  'calendar_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    provider: varchar('provider', { length: 32 }).notNull().default('google'),
+    googleSub: varchar('google_sub', { length: 255 }),
+    email: varchar('email', { length: 320 }),
+    refreshToken: text('refresh_token').notNull(),
+    scope: text('scope'),
+    calendarId: varchar('calendar_id', { length: 255 }).notNull().default('primary'),
+    syncToken: text('sync_token'),
+    lastSyncAt: timestamp('last_sync_at'),
+    lastError: text('last_error'),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('calendar_conn_user_provider_idx').on(t.userId, t.provider)]
+);
+
+// ─── Calendar: Boardly card ↔ provider event links (push tracking) ───────────
+export const calendarEventLinks = pgTable(
+  'calendar_event_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => calendarConnections.id),
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id),
+    providerEventId: varchar('provider_event_id', { length: 512 }).notNull(),
+    providerCalendarId: varchar('provider_calendar_id', { length: 255 })
+      .notNull()
+      .default('primary'),
+    lastPushedAt: timestamp('last_pushed_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('calendar_link_card_conn_idx').on(t.cardId, t.connectionId)]
 );
 
 // ─── User Working Hours ───────────────────────────────────────────────────────

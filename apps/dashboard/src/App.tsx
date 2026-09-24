@@ -57,6 +57,7 @@ const Timesheets = lazy(() =>
 );
 const MyTasks = lazy(() => import('./pages/MyTasks').then((m) => ({ default: m.MyTasks })));
 const ChatPage = lazy(() => import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })));
+const Calendar = lazy(() => import('./pages/Calendar').then((m) => ({ default: m.Calendar })));
 const Integrations = lazy(() =>
   import('./pages/Integrations').then((m) => ({ default: m.Integrations }))
 );
@@ -152,6 +153,7 @@ export function App() {
               <Route path="tasks" element={<MyTasks />} />
               <Route path="chat" element={<ChatPage />} />
               <Route path="chat/:channelId" element={<ChatPage />} />
+              <Route path="calendar" element={<Calendar />} />
               <Route element={<SettingsLayout />}>
                 <Route path="profile" element={<ProfileSettings />} />
                 <Route path="settings/profile" element={<ProfileSettings />} />
