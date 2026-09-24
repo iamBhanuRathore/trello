@@ -1890,3 +1890,8 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Bug:** pressing Ctrl+B in the chat composer both toggled the sidebar and inserted `**` — the shadcn `SidebarProvider` shortcut in `@boardly/ui` fired unconditionally, ignoring `defaultPrevented` and input focus.
 - **Fix (`packages/ui/sidebar.tsx`):** Cmd/Ctrl+B now yields to focused editors (skips when defaultPrevented or target is input/textarea/select/contentEditable). Upstream deviation noted in the file header per AGENTS.md §4.
 - Tests & Validation: dashboard `tsc` clean.
+
+### 2026-09-25 — Quick-Login Restyle
+
+- **Fix (`Login.tsx`):** replaced the amber 3-button dev grid with quiet account rows (avatar initial, name, email, role chip, arrow) under a "Local quick sign in" divider — matches page aesthetics, no tooltip overflow. Still `import.meta.env.DEV`-gated.
+- Tests & Validation: dashboard `tsc` clean.
