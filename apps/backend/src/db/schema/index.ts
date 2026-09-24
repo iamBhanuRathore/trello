@@ -1270,6 +1270,56 @@ export const calendarEventLinks = pgTable(
   (t) => [uniqueIndex('calendar_link_card_conn_idx').on(t.cardId, t.connectionId)]
 );
 
+// ─── Git automations: linked repos + card ↔ branch/commit/PR links ───────────
+// Webhook-driven (no GitHub API dependency): payloads carry all link data.
+// Secrets reuse the AES-GCM token crypto convention (see calendar/google.ts).
+export const gitRepositories = pgTable(
+  'git_repositories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    provider: varchar('provider', { length: 16 }).notNull().default('github'),
+    owner: varchar('owner', { length: 255 }).notNull(),
+    repo: varchar('repo', { length: 255 }).notNull(),
+    webhookSecret: text('webhook_secret').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    lastEventAt: timestamp('last_event_at'),
+    lastError: text('last_error'),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('git_repos_owner_repo_idx').on(t.organizationId, t.owner, t.repo)]
+);
+
+export const gitLinks = pgTable(
+  'git_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    repositoryId: uuid('repository_id')
+      .notNull()
+      .references(() => gitRepositories.id),
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id),
+    kind: varchar('kind', { length: 16 }).notNull(),
+    ref: varchar('ref', { length: 512 }).notNull(),
+    url: varchar('url', { length: 2048 }),
+    title: varchar('title', { length: 500 }),
+    state: varchar('state', { length: 32 }).notNull().default('open'),
+    author: varchar('author', { length: 255 }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('git_links_card_ref_idx').on(t.cardId, t.kind, t.ref),
+    index('git_links_repo_idx').on(t.repositoryId),
+  ]
+);
+
 // ─── User Working Hours ───────────────────────────────────────────────────────
 export const userWorkingHours = pgTable('user_working_hours', {
   id: uuid('id').primaryKey().defaultRandom(),

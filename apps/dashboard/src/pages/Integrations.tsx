@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
+import { gitService } from '../lib/gitService';
 import {
   Card,
   CardHeader,
@@ -18,7 +19,10 @@ import {
   Loader2,
   Link as LinkIcon,
   Unlink,
+  Copy,
+  Trash2,
 } from 'lucide-react';
+import { Input } from '@boardly/ui/input';
 import { toast } from 'sonner';
 
 type IntegrationProvider = 'slack' | 'github' | 'google_drive';
@@ -114,6 +118,8 @@ export const Integrations: React.FC = () => {
         </p>
       </div>
 
+      <GitHubReposPanel />
+
       {isLoading && !integrations ? (
         <div
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
@@ -200,5 +206,168 @@ export const Integrations: React.FC = () => {
         </div>
       )}
     </div>
+  );
+};
+
+/** Real GitHub repo linking (webhook-driven automations). */
+const GitHubReposPanel: React.FC = () => {
+  const queryClient = useQueryClient();
+  const [owner, setOwner] = useState('');
+  const [repo, setRepo] = useState('');
+  const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
+
+  const { data: repos = [] } = useQuery({
+    queryKey: ['git', 'repos'],
+    queryFn: () => gitService.listRepos(),
+  });
+
+  const connectMutation = useMutation({
+    mutationFn: () => gitService.connectRepo({ owner: owner.trim(), repo: repo.trim() }),
+    onSuccess: (data) => {
+      setRevealedSecret(data.webhookSecret);
+      setOwner('');
+      setRepo('');
+      toast.success('Repository connected — add the webhook below on GitHub');
+      queryClient.invalidateQueries({ queryKey: ['git', 'repos'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to connect repository');
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: (id: string) => gitService.disconnectRepo(id),
+    onSuccess: () => {
+      toast.success('Repository disconnected');
+      queryClient.invalidateQueries({ queryKey: ['git', 'repos'] });
+    },
+    onError: () => toast.error('Failed to disconnect repository'),
+  });
+
+  const copy = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error('Copy failed — select manually');
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-muted rounded-lg">
+            <Github className="h-6 w-6 text-gray-900 dark:text-gray-100" />
+          </div>
+          <div>
+            <CardTitle>GitHub Repositories</CardTitle>
+            <CardDescription>
+              Webhook-driven: mention ticket keys (e.g. BCW-12) in branches, commits, and PRs to
+              auto-link, comment, and move cards.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Input
+            placeholder="owner (e.g. acme)"
+            value={owner}
+            onChange={(e) => setOwner(e.target.value)}
+            className="h-9"
+            aria-label="Repository owner"
+          />
+          <Input
+            placeholder="repo (e.g. webapp)"
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+            className="h-9"
+            aria-label="Repository name"
+          />
+          <Button
+            onClick={() => connectMutation.mutate()}
+            disabled={!owner.trim() || !repo.trim() || connectMutation.isPending}
+            className="shrink-0 cursor-pointer"
+          >
+            {connectMutation.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <LinkIcon className="mr-2 h-4 w-4" />
+            )}
+            Connect repo
+          </Button>
+        </div>
+
+        {revealedSecret && (
+          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-1.5">
+            <p className="font-semibold text-amber-700 dark:text-amber-400">
+              Webhook secret (shown once — save it now):
+            </p>
+            <button
+              type="button"
+              onClick={() => copy(revealedSecret, 'Secret')}
+              className="font-mono break-all bg-background border border-border rounded-lg px-2 py-1.5 w-full text-left hover:border-primary/50 cursor-pointer"
+            >
+              {revealedSecret}
+            </button>
+            <p className="text-muted-foreground">
+              GitHub → repo Settings → Webhooks → Add webhook: Payload URL{' '}
+              <button
+                type="button"
+                onClick={() => copy(gitService.webhookUrl(), 'Webhook URL')}
+                className="font-mono text-foreground underline underline-offset-2 cursor-pointer"
+              >
+                {gitService.webhookUrl()}
+              </button>{' '}
+              · Content type application/json · events: push + pull requests + reviews.
+            </p>
+          </div>
+        )}
+
+        {repos.length > 0 && (
+          <div className="space-y-1.5">
+            {repos.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center gap-3 p-2.5 rounded-xl border border-border/60"
+              >
+                <Github className="w-4 h-4 text-muted-foreground shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold truncate">
+                    {r.owner}/{r.repo}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {r.linkCount} linked {r.linkCount === 1 ? 'item' : 'items'}
+                    {r.lastEventAt
+                      ? ` · last event ${new Date(r.lastEventAt).toLocaleString()}`
+                      : ' · no events yet'}
+                    {r.lastError ? ` · ⚠ ${r.lastError}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => disconnectMutation.mutate(r.id)}
+                  title="Disconnect repository"
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+      <CardFooter className="pt-4 border-t border-gray-100">
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => copy(gitService.webhookUrl(), 'Webhook URL')}
+        >
+          <Copy className="mr-2 h-4 w-4" />
+          Copy webhook URL
+        </Button>
+      </CardFooter>
+    </Card>
   );
 };

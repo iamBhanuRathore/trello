@@ -68,7 +68,7 @@ async function verifyListAccess(db: Database, listId: string, organizationId: st
   return list;
 }
 
-async function getBoardIdForCard(db: Database, cardId: string) {
+export async function getBoardIdForCard(db: Database, cardId: string) {
   const [result] = await db
     .select({ boardId: lists.boardId })
     .from(cards)

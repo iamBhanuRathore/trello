@@ -1902,3 +1902,12 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Fix:** callback moved to a public `calendarCallbackRoutes` instance (HMAC state still binds identity; Google `error=` params forwarded as dashboard `?error=` toasts); `PUBLIC_PATH_PREFIXES` bypass in the global derive (`/v1/invite/`, `/v1/calendar/google/callback`); fixed `DASHBOARD_URL` comma-list interpolation in redirects. Bypass returns a cast so `user` stays non-optional for authed handlers (0 new `tsc` errors).
 - **Note:** the user's original callback URL had `state=` but no `code=` — Google itself errored before consent. Now surfaces properly; retry Connect.
 - Tests & Validation: backend `tsc` clean; callback 302s correctly, invite preview returns JSON (not 401).
+
+### 2026-09-25 — GitHub Automations (4.3, GitLab deferred)
+
+- What was done:
+  1. **Backend `modules/git/` (`0020` migration)**: `git_repositories` (AES-sealed webhook secrets) + `git_links`; repo connect/list/disconnect under `integration.manage`; public HMAC-verified webhook (`/v1/git/webhooks/github`, added to `PUBLIC_PATH_PREFIXES`); push → commit links + bot comments; PR opened → link + In-Review move, merged → Done move, closed/sync/review → links + comments; same-repo multi-org fan-out with any-secret-verifies.
+  2. **Frontend**: TaskDetailView "Development" section (PR badges by state, commit list, copy-branch button) + ribbon shortcut; Integrations page GitHub panel (connect form, one-time secret reveal, webhook URL copy, repo list).
+  3. **Verified live**: real HMAC-signed push against the running backend linked a card end-to-end (plus caught a same-key cross-org fan-out bug, fixed). E2E seeds cleaned from all DBs.
+- Decisions made: webhooks over GitHub App/Octokit; bot-user comment attribution (see `Decisions.md` 2026-09-25).
+- Tests & Validation: `git.test.ts` 8/8; calendar/chat/cards suites green (37/37); backend + dashboard `tsc` clean, dashboard build clean.

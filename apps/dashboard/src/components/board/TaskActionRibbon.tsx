@@ -66,6 +66,11 @@ export function TaskActionRibbon({
       count: counts?.checklists,
     },
     {
+      id: 'development',
+      label: 'Development',
+      icon: <FolderGit2 className="w-3.5 h-3.5 text-slate-500" />,
+    },
+    {
       id: 'project',
       label: 'Project',
       icon: <FolderGit2 className="w-3.5 h-3.5 text-indigo-500" />,

@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-25 — GitHub Automations via Webhooks (No API Dependency)
+
+**Context:** 4.3 wanted repo sync, ticket auto-linking, PR-driven card movement, and review badges. A full GitHub App (private keys, JWT, installation tokens, Octokit) is heavy ops for v1; polling the REST API is rate-limited and latent.
+
+**Decision:** pure webhook ingestion. GitHub POSTs push/PR/review payloads (already containing commits, titles, branch refs, states) to a public HMAC-verified endpoint; everything derives from payload data. Ticket keys parsed from branch/commit/PR text; stage moves resolve the org's first `in_progress`/`done` category stage; comments authored by a dedicated no-login bot user; per-repo secrets AES-GCM sealed. Same-repo-multi-org fan-out with any-secret-verifies routing.
+
+**Alternatives considered:** GitHub App + Octokit (rejected for v1 — webhook payloads already carry every field the features need; add when check-runs or file contents are required); polling cron (rejected — latent, rate-limited).
+
+**Consequences:** Zero GitHub API surface, near-instant automation, works on any plan tier. GitLab follows the same shape (different HMAC header + payload mapping). Webhook secrets must be saved at connect time (shown once).
+
 ### 2026-09-24 — Google Calendar Sync + Time-Blocking (Direct API, Motion/Cron Parity)
 
 **Context:** Roadmap 4.1 demanded calendar views, drag time-blocking, 2-way provider sync, and sprint/milestone overlays. The build-vs-integrate choice: full custom sync engine vs Google Calendar API directly.

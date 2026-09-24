@@ -76,6 +76,7 @@ import {
 } from '@boardly/ui/dropdown-menu';
 import { MemberPicker } from './MemberPicker';
 import { LabelPicker } from './LabelPicker';
+import { GitDevSection } from './GitDevSection';
 import { TaskChatPane } from './TaskChatPane';
 import { RouteFallback } from '../common/RouteFallback';
 // Full subtask composer (code-split: loads only when opened).
@@ -2169,6 +2170,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                 </div>
               </div>
             </div>
+
+            {/* ─── CARD 7: DEVELOPMENT (GIT) ─── */}
+            {cardId && <GitDevSection cardId={cardId} />}
 
             {/* ─── CARD 7: TIME TRACKING ─── */}
             <div

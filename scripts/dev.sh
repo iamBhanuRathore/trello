@@ -19,7 +19,7 @@ MAGENTA='\033[0;35m'
 NC='\033[0m'
 
 echo -e "${BOLD}${CYAN}"
-cat << "EOF"
+cat <<"EOF"
   ____                        _ _       
  | __ )  ___   __ _ _ __   __| | |_   _ 
  |  _ \ / _ \ / _` | '__| / _` | | | | |
@@ -59,8 +59,8 @@ docker compose up -d postgres postgres_test redis
 # 5. Quick readiness check
 echo -n "⏳ Waiting for database services... "
 for i in {1..30}; do
-  if docker exec boardly_postgres pg_isready -U boardly -d boardly_dev >/dev/null 2>&1 && \
-     docker exec boardly_redis redis-cli ping >/dev/null 2>&1; then
+  if docker exec boardly_postgres pg_isready -U boardly -d boardly_dev >/dev/null 2>&1 &&
+    docker exec boardly_redis redis-cli ping >/dev/null 2>&1; then
     echo -e "${GREEN}READY!${NC}"
     break
   fi

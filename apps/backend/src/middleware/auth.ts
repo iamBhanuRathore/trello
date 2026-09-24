@@ -101,7 +101,7 @@ export async function verifyAccessToken(token: string): Promise<AuthContext> {
  * Genuinely public paths (browser OAuth redirects, share links) must be
  * listed in PUBLIC_PATH_PREFIXES to bypass the Bearer check.
  */
-const PUBLIC_PATH_PREFIXES = ['/v1/invite/', '/v1/calendar/google/callback'];
+const PUBLIC_PATH_PREFIXES = ['/v1/invite/', '/v1/calendar/google/callback', '/v1/git/webhooks/'];
 
 export const authPlugin = new Elysia({ name: 'auth' })
   .use(bearer())
