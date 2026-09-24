@@ -1917,3 +1917,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Bug:** console warning `Base UI: ... expected a native <button>` from `UserProfileDropdown` (navbar + sidebar). Session-54's auto-`nativeButton={false}` fix only covered the `children` path; the `render`-prop path (a `<div role="button">`) still defaulted to `nativeButton: true`.
 - **Fix (`@boardly/ui`):** `DropdownMenuTrigger` and `DialogTrigger` now detect a non-`<button>` `render` element and default `nativeButton` to false (explicit caller prop still wins).
 - Tests & Validation: dashboard `tsc` clean.
+
+### 2026-09-25 — Google Events Invisible on Week Grid
+
+- **Bug:** sync reported "1 Google events" but nothing rendered. The external-event filter copied the due-date pattern (`getHours() === h`) while rendering happens only in the midnight cell — hiding every non-midnight event. Verified backend returns the event correctly before fixing the UI.
+- **Fix (`Calendar.tsx`):** day-only filter for external blocks; added an all-day row in week/day headers; header height is now measured per column so drag math stays exact with chips present.
+- Tests & Validation: dashboard `tsc` + `vite build` clean.
