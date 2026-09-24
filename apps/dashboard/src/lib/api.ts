@@ -534,10 +534,15 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(originalRequest);
       } catch (err) {
-        // If refresh fails, log out the user
-        localStorage.removeItem('boardly_access_token');
-        localStorage.removeItem('boardly_refresh_token');
-        useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+        // Only a definitive auth rejection logs the user out. A reboot,
+        // network blip, or 5xx on the refresh call must never nuke the
+        // session — the original error propagates and the user retries.
+        const status = (err as any)?.response?.status;
+        if (status === 401 || status === 403 || status === 404) {
+          localStorage.removeItem('boardly_access_token');
+          localStorage.removeItem('boardly_refresh_token');
+          useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+        }
         return Promise.reject(error);
       }
     }

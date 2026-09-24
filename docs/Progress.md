@@ -1923,3 +1923,15 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Bug:** sync reported "1 Google events" but nothing rendered. The external-event filter copied the due-date pattern (`getHours() === h`) while rendering happens only in the midnight cell — hiding every non-midnight event. Verified backend returns the event correctly before fixing the UI.
 - **Fix (`Calendar.tsx`):** day-only filter for external blocks; added an all-day row in week/day headers; header height is now measured per column so drag math stays exact with chips present.
 - Tests & Validation: dashboard `tsc` + `vite build` clean.
+
+### 2026-09-25 — Session Wipe Only on Definitive Refresh Rejection
+
+- **Bug:** intermittent "error then logout" — any refresh-call failure (reboot blip, network error, 5xx) wiped tokens and dumped the user at login. Backend runs `--watch`, so reboots during active work made this bite regularly.
+- **Fix (`api.ts`):** session wipe now only on definitive 401/403/404 from `/auth/refresh`; network/5xx failures propagate the original error so the user retries with the session intact. Verified single backend/frontend process set (no dueling servers); live CORS headers confirmed correct on current code.
+- Tests & Validation: dashboard `tsc` clean.
+
+### 2026-09-25 — Google Event Write API (create/patch/delete)
+
+- **What was done:** `POST/PATCH/DELETE /calendar/google/events` reusing the stored connection + `calendarClient` (authed routes); validation-first (title/date checks before any Google call); 15→18 `calendar.test.ts` tests via injected fake client.
+- **Note:** frontend popovers (detail + quick-create) and draggable Google blocks are still to come — API is shippable independently.
+- Tests & Validation: backend `tsc` clean, `calendar.test.ts` 18/18.
