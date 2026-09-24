@@ -9,9 +9,6 @@ import {
   Pin,
   Megaphone,
   CheckSquare,
-  Bold,
-  Italic,
-  Code,
   ArrowDown,
   Loader2,
   Users,
@@ -20,6 +17,7 @@ import {
   WifiOff,
   Paperclip,
   FileText,
+  Plus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -87,11 +85,30 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   const [isSearching, setIsSearching] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isPlusOpen, setIsPlusOpen] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const plusMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the + menu on outside click / Escape
+  useEffect(() => {
+    if (!isPlusOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!plusMenuRef.current?.contains(e.target as Node)) setIsPlusOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsPlusOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [isPlusOpen]);
 
   // Sync draft on channel change
   useEffect(() => {
@@ -348,6 +365,22 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      insertFormatting('**');
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'i') {
+      e.preventDefault();
+      insertFormatting('*');
+      return;
+    }
+    if (mod && e.key === '`') {
+      e.preventDefault();
+      insertFormatting('`');
+      return;
+    }
     if ((e.key === 'Enter' && !e.shiftKey) || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
       handleSendMessage();
@@ -689,62 +722,23 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
           </div>
         ) : (
           <div className="rounded-2xl border border-border bg-background focus-within:border-primary shadow-xs transition-colors">
-            {/* Formatting Toolbar */}
-            <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/40">
-              <div className="flex items-center gap-1">
+            {/* Announcement active indicator */}
+            {isAnnouncement && (
+              <div className="flex items-center justify-between px-3 py-1 border-b border-amber-500/25 bg-amber-500/10 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                <span className="inline-flex items-center gap-1.5">
+                  <Megaphone className="w-3 h-3" />
+                  Announcement — visible to everyone
+                </span>
                 <button
                   type="button"
-                  onClick={() => insertFormatting('**')}
-                  title="Bold (Cmd+B)"
-                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                  onClick={() => setIsAnnouncement(false)}
+                  className="p-0.5 rounded hover:bg-amber-500/20 cursor-pointer"
+                  aria-label="Turn off announcement mode"
                 >
-                  <Bold className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => insertFormatting('*')}
-                  title="Italic (Cmd+I)"
-                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                >
-                  <Italic className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => insertFormatting('`')}
-                  title="Code"
-                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                >
-                  <Code className="w-3.5 h-3.5" />
-                </button>
-                <div className="h-4 w-px bg-border mx-1" />
-                <button
-                  type="button"
-                  onClick={() => setIsTaskPickerOpen(true)}
-                  title="Mention Task / Card"
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-                >
-                  <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Task</span>
+                  <X className="w-3 h-3" />
                 </button>
               </div>
-
-              {/* Announcement mode pill for group channel admins */}
-              {(channel.role === 'owner' || channel.role === 'admin') &&
-                channel.type !== 'direct' && (
-                  <button
-                    type="button"
-                    onClick={() => setIsAnnouncement(!isAnnouncement)}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold transition-colors cursor-pointer border ${
-                      isAnnouncement
-                        ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
-                        : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Megaphone className="w-3 h-3" />
-                    <span>Announcement</span>
-                  </button>
-                )}
-            </div>
+            )}
 
             {/* Replying to Message Preview Banner */}
             {replyingToMessage && (
@@ -824,8 +818,8 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
             />
 
             {/* Bottom Actions Bar */}
-            <div className="flex items-center justify-between px-3 py-2 border-t border-border/40">
-              <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 px-2 py-1.5">
+              <div className="relative">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -836,49 +830,81 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                 />
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploading || !isOnline}
-                  title={isOnline ? 'Attach files (25 MB max)' : 'Attachments need a connection'}
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={() => setIsPlusOpen((v) => !v)}
+                  title="More actions"
+                  aria-label="More message actions"
+                  aria-expanded={isPlusOpen}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    isPlusOpen
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  }`}
                 >
-                  {isUploading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Paperclip className="w-4 h-4" />
-                  )}
+                  <Plus className="w-4 h-4" />
                 </button>
-                <p className="text-[11px] text-muted-foreground/70 hidden lg:flex items-center gap-1.5 ml-1">
-                  <span>
-                    <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
-                      Enter
-                    </kbd>{' '}
-                    to send
-                  </span>
-                  <span>•</span>
-                  <span>
-                    <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
-                      Shift+Enter
-                    </kbd>{' '}
-                    newline
-                  </span>
-                  <span>•</span>
-                  <span>
-                    <kbd className="px-1.5 py-0.5 rounded bg-muted/60 border border-border/60 text-[10px] font-mono">
-                      ↑
-                    </kbd>{' '}
-                    edit last
-                  </span>
-                </p>
+                {isPlusOpen && (
+                  <div
+                    ref={plusMenuRef}
+                    className="absolute bottom-full left-0 mb-1.5 w-60 rounded-xl border border-border bg-popover shadow-xl p-1 z-30 animate-in fade-in-50 duration-100"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPlusOpen(false);
+                        if (isOnline) fileInputRef.current?.click();
+                        else toast.error('You are offline. File uploads require a connection.');
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-muted transition-colors cursor-pointer text-left"
+                    >
+                      <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span>Attach files</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground">25 MB max</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPlusOpen(false);
+                        setIsTaskPickerOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-muted transition-colors cursor-pointer text-left"
+                    >
+                      <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Mention task</span>
+                    </button>
+                    {(channel.role === 'owner' || channel.role === 'admin') &&
+                      channel.type !== 'direct' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsPlusOpen(false);
+                            setIsAnnouncement((v) => !v);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium hover:bg-muted transition-colors cursor-pointer text-left"
+                        >
+                          <Megaphone
+                            className={`w-3.5 h-3.5 ${isAnnouncement ? 'text-amber-500' : 'text-muted-foreground'}`}
+                          />
+                          <span>Announcement {isAnnouncement ? 'on' : 'off'}</span>
+                        </button>
+                      )}
+                    <div className="mt-1 pt-1 border-t border-border/60 px-2.5 py-1.5 text-[10px] text-muted-foreground leading-relaxed">
+                      <span className="font-mono">⌘B</span> bold ·{' '}
+                      <span className="font-mono">⌘I</span> italic ·{' '}
+                      <span className="font-mono">⌘`</span> code
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button
                 type="button"
                 onClick={handleSendMessage}
                 disabled={!messageText.trim() && pendingAttachments.length === 0}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-sm ml-auto"
+                aria-label="Send message"
+                className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-sm"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>Send</span>
+                <span className="hidden sm:inline">Send</span>
               </button>
             </div>
           </div>

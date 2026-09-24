@@ -1878,3 +1878,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Bug:** the `<` back chevron in the floating chat dock (`GlobalChatDock.tsx:192`) was a dead click — `openGlobalDock(null)` hit `channelId ?? fallback`, and `null ?? x` keeps `x`, so the conversation never closed back to the list.
 - **Fix:** `chatStore.openGlobalDock` now distinguishes `undefined` (launcher fallback preserved) from explicit `null` (clears to conversation list).
 - Tests & Validation: dashboard `tsc` clean; all other dock entry points (`openGlobalDock()`, `openGlobalDock(id)`) behavior unchanged.
+
+### 2026-09-25 — Chat Composer De-clutter (Slack-Style)
+
+- **Problem:** composer had three chrome rows (formatting toolbar, textarea, hints bar) around a two-line input — overwhelming for a chat box.
+- **Fix (`ChatFeed.tsx`):** removed the always-visible toolbar + hints bar. Same functionality via: real `⌘/Ctrl+B/I/\`` shortcuts (previously the titles advertised shortcuts that didn't exist), a single `+` menu (attach, mention task, admin announcement toggle) with click-outside/Escape dismissal, and an announcement indicator that only appears when active. Upload progress still shows in the staged-chips row.
+- Tests & Validation: dashboard `tsc` clean.
