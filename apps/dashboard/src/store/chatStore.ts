@@ -164,7 +164,9 @@ export const useChatStore = create<ChatStoreState>((set) => ({
     set((state) => ({
       isGlobalDockOpen: true,
       isDockMinimized: false,
-      dockedChannelId: channelId ?? state.dockedChannelId ?? state.activeChannelId,
+      // Explicit null clears to the conversation list; undefined keeps current.
+      dockedChannelId:
+        channelId === undefined ? (state.dockedChannelId ?? state.activeChannelId) : channelId,
     })),
 
   closeGlobalDock: () => set({ isGlobalDockOpen: false }),

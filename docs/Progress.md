@@ -1872,3 +1872,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   3. **Env templates**: `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI` + `CALENDAR_TOKEN_KEY` added to all `.env.example` files. Without them the page works local-only.
 - Decisions made: Google API for sync + owned UI over FullCalendar; per-user (not org) connections; Outlook deferred (see `Decisions.md` 2026-09-24).
 - Tests & Validation: `calendar.test.ts` 15/15 (state crypto, event builder, schedule validation, feed shape, 409 without connection); chat 14/14; backend + dashboard `tsc` clean, dashboard `vite build` clean.
+
+### 2026-09-25 — Chat Dock Back-Button Fix
+
+- **Bug:** the `<` back chevron in the floating chat dock (`GlobalChatDock.tsx:192`) was a dead click — `openGlobalDock(null)` hit `channelId ?? fallback`, and `null ?? x` keeps `x`, so the conversation never closed back to the list.
+- **Fix:** `chatStore.openGlobalDock` now distinguishes `undefined` (launcher fallback preserved) from explicit `null` (clears to conversation list).
+- Tests & Validation: dashboard `tsc` clean; all other dock entry points (`openGlobalDock()`, `openGlobalDock(id)`) behavior unchanged.
