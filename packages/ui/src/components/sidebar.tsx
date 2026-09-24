@@ -1,5 +1,10 @@
 'use client';
 
+// Boardly customization (vs upstream shadcn sidebar): the Cmd/Ctrl+B shortcut
+// yields to focused editors — it skips when the event was defaultPrevented or
+// the target is an input/textarea/select/contentEditable, so editor shortcuts
+// like chat bold (Ctrl+B) don't also toggle the sidebar.
+
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { PanelLeft } from 'lucide-react';
@@ -95,10 +100,23 @@ const SidebarProvider = React.forwardRef<
       return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
     }, [isMobile, setOpen, setOpenMobile]);
 
-    // Keyboard shortcut (Cmd+B or Ctrl+B)
+    // Keyboard shortcut (Cmd+B or Ctrl+B). Yields to focused editors:
+    // if a text field already handled the keystroke (e.g. chat bold),
+    // or focus is inside an editable surface, typing wins over toggling.
     React.useEffect(() => {
       const handleKeyDown = (event: KeyboardEvent) => {
         if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
+          if (event.defaultPrevented) return;
+          const target = event.target as HTMLElement | null;
+          if (
+            target &&
+            (target.tagName === 'INPUT' ||
+              target.tagName === 'TEXTAREA' ||
+              target.tagName === 'SELECT' ||
+              target.isContentEditable)
+          ) {
+            return;
+          }
           event.preventDefault();
           toggleSidebar();
         }

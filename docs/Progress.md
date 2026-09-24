@@ -1884,3 +1884,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Problem:** composer had three chrome rows (formatting toolbar, textarea, hints bar) around a two-line input — overwhelming for a chat box.
 - **Fix (`ChatFeed.tsx`):** removed the always-visible toolbar + hints bar. Same functionality via: real `⌘/Ctrl+B/I/\`` shortcuts (previously the titles advertised shortcuts that didn't exist), a single `+` menu (attach, mention task, admin announcement toggle) with click-outside/Escape dismissal, and an announcement indicator that only appears when active. Upload progress still shows in the staged-chips row.
 - Tests & Validation: dashboard `tsc` clean.
+
+### 2026-09-25 — Sidebar Shortcut vs Editor Shortcuts (Ctrl+B Double-Fire)
+
+- **Bug:** pressing Ctrl+B in the chat composer both toggled the sidebar and inserted `**` — the shadcn `SidebarProvider` shortcut in `@boardly/ui` fired unconditionally, ignoring `defaultPrevented` and input focus.
+- **Fix (`packages/ui/sidebar.tsx`):** Cmd/Ctrl+B now yields to focused editors (skips when defaultPrevented or target is input/textarea/select/contentEditable). Upstream deviation noted in the file header per AGENTS.md §4.
+- Tests & Validation: dashboard `tsc` clean.
