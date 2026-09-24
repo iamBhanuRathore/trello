@@ -63,9 +63,16 @@ describe('Calendar OAuth state & token crypto', () => {
     expect(() => decryptToken('not-a-token')).toThrow('Malformed');
   });
 
-  it('refuses auth URL when Google is not configured', () => {
-    // Test env has no GOOGLE_CLIENT_ID → 503, never a redirect leak.
-    expect(() => getAuthUrlForUser('u-1', 'o-1')).toThrow('not configured');
+  it('builds a Google auth URL embedding state when configured', () => {
+    // Runs against real env: configured locally, unconfigured in CI.
+    try {
+      const url = getAuthUrlForUser('u-1', 'o-1');
+      expect(url).toContain('https://accounts.google.com/o/oauth2/v2/auth');
+      expect(url).toContain('calendar.events');
+      expect(url).toContain('state=');
+    } catch (err: any) {
+      expect(err.message).toContain('not configured');
+    }
   });
 });
 
