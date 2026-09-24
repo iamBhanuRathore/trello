@@ -22,7 +22,7 @@
 
 ## Current State
 
-**Last updated:** 2026-09-15
+**Last updated:** 2026-09-24
 **Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 (Workspace Collaboration & All-in-One Expansion / Huly Parity) in progress — 4.2 Team Chat substantially built (DMs, channels, threads, reactions, attachments, typing/presence, quote replies, offline outbox); channel→project activity-feed linking still open.
 
 ### What exists
@@ -1846,3 +1846,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   4. MyTasks server pagination + infinite scroll (`728459f`); single `getCard` payload embedding comments/checklists/attachments/subtasks/timelogs (`2c224eb`); optimistic board updates with rollback toasts (`1a33f0c`); staged observer picker (`a05954f`); card-dialog `replace` history (`b66c8ad`); labels-admin via tree aggregate (`e0d7259`).
   5. Ops: Vercel SPA fallback rewrite (`7653c24`), CI auto-migrate prod DB on migration changes (`cdc694d`), Dockerfile frozen-install fix + dev/prod env templates (`a6d61f3`), migration `0013` org-member backfill (`5f34f33`), `0015` `IF NOT EXISTS` idempotency (`79eeeea`).
 - Tests & Validation: `tsc` + `vite build` clean per commit; no behavior-contract changes, visual/loading states only.
+
+### 2026-09-24 — Dev Quick Login + Docs-Enforcement Hook
+
+- What was done:
+  1. **Dev-only one-click login (`Login.tsx`)**: amber "Local dev quick login" panel with Owner/Admin/Member presets (Alex Vance, Elena Rostova, Jordan Rivera, all `Password123!`). Gated by `import.meta.env.DEV` — never renders in production builds.
+  2. **Structural docs enforcement**: new `scripts/check-docs.sh` wired into `.husky/pre-push` — pushing `apps/`/`packages/` changes (except `docs/chore/ci/build/test`) fails unless the range also touches `docs/`; `[skip-docs]` trailer or `SKIP_DOCS_CHECK=1` for trivial changes. Rule documented in `AGENTS.md` §3.
+- Tests & Validation: dashboard `tsc` clean; hook tested against real history (fails on doc-less UI batch, passes on chat range, bypass works).

@@ -16,7 +16,18 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronUp,
+  FlaskConical,
 } from 'lucide-react';
+
+// Local-dev only: one-click sign-in with seeded Acme accounts (all use
+// Password123!, see docs/SEED_CREDENTIALS.md). Stripped from prod builds
+// via import.meta.env.DEV so demo credentials never ship to production.
+const DEV_QUICK_ACCOUNTS = [
+  { name: 'Alex Vance', email: 'alex.vance@acme.corp', role: 'Org Owner' },
+  { name: 'Elena Rostova', email: 'elena.rostova@acme.corp', role: 'Org Admin' },
+  { name: 'Jordan Rivera', email: 'jordan.rivera@acme.corp', role: 'Member' },
+] as const;
+const DEV_PASSWORD = 'Password123!';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -25,6 +36,7 @@ export function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [quickLoginEmail, setQuickLoginEmail] = useState<string | null>(null);
 
   // SSO Expandable State
   const [showSSO, setShowSSO] = useState(false);
@@ -45,17 +57,28 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
+    await signInWith(email, password);
+  };
+
+  const signInWith = async (signInEmail: string, signInPassword: string) => {
     setError('');
     setIsLoading(true);
     try {
-      const res = await api.post('/auth/sign-in', { email, password });
+      const res = await api.post('/auth/sign-in', { email: signInEmail, password: signInPassword });
       login(res.data);
       navigate('/', { replace: true });
     } catch (err: any) {
       setError(getApiErrorMessage(err, 'Invalid email or password. Please try again.'));
     } finally {
       setIsLoading(false);
+      setQuickLoginEmail(null);
     }
+  };
+
+  const handleQuickLogin = async (presetEmail: string) => {
+    if (isLoading || isGoogleLoading) return;
+    setQuickLoginEmail(presetEmail);
+    await signInWith(presetEmail, DEV_PASSWORD);
   };
 
   const handleGoogleLogin = async () => {
@@ -144,19 +167,16 @@ export function Login() {
             </div>
             <span className="text-xl font-bold tracking-tight">Boardly</span>
           </div>
-
           <div className="mb-6">
             <h2 className="text-2xl font-bold tracking-tight text-foreground mb-1">Welcome back</h2>
             <p className="text-sm text-muted-foreground">Sign in to your account to continue</p>
           </div>
-
           {error && (
             <div className="mb-5 flex items-start gap-3 p-3.5 rounded-xl bg-destructive/10 border border-destructive/25 text-destructive animate-in fade-in-50 duration-200">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <p className="text-sm font-medium leading-snug">{error}</p>
             </div>
           )}
-
           {/* Social Sign-In (Google OAuth via WorkOS) */}
           <div className="space-y-3 mb-5">
             <Button
@@ -203,7 +223,6 @@ export function Login() {
               </span>
             </div>
           </div>
-
           {/* Email + Password Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
@@ -264,8 +283,37 @@ export function Login() {
               )}
             </Button>
           </form>
-
-          {/* Enterprise SSO Accordion / Section */}
+          {/* Dev-only one-click login (never rendered in production builds) */}
+          {import.meta.env.DEV && (
+            <div className="mt-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2.5">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+                <FlaskConical className="w-3.5 h-3.5" />
+                Local dev quick login
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {DEV_QUICK_ACCOUNTS.map((account) => (
+                  <button
+                    key={account.email}
+                    type="button"
+                    onClick={() => handleQuickLogin(account.email)}
+                    disabled={isLoading || isGoogleLoading}
+                    title={`${account.email} (${account.role})`}
+                    className="flex flex-col items-center gap-0.5 px-2 py-2 rounded-lg bg-background border border-border/70 hover:border-primary/60 hover:bg-muted/60 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {quickLoginEmail === account.email && isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <span className="text-xs font-semibold truncate max-w-full">
+                        {account.name.split(' ')[0]}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-muted-foreground">{account.role}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Enterprise SSO Accordion / Section */}{' '}
           <div className="mt-5 pt-4 border-t border-border/60">
             <button
               type="button"
@@ -331,7 +379,6 @@ export function Login() {
               </form>
             )}
           </div>
-
           <p className="mt-6 text-sm text-center text-muted-foreground">
             Don&apos;t have an account?{' '}
             <Link
