@@ -12,6 +12,9 @@ import {
   pushAllScheduled,
   scheduleCard,
   getCalendarFeed,
+  createExternalEvent,
+  updateExternalEvent,
+  deleteExternalEvent,
 } from './service';
 
 export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar'] })
@@ -82,6 +85,61 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
       return handleRouteError(err, set);
     }
   })
+
+  // POST /v1/calendar/google/events - Quick-create a Google meeting
+  .post(
+    '/google/events',
+    async ({ body, user, set }) => {
+      try {
+        return await createExternalEvent(db, user.userId, body);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        title: t.String(),
+        start: t.Optional(t.Union([t.String(), t.Null()])),
+        end: t.Optional(t.Union([t.String(), t.Null()])),
+        description: t.Optional(t.String()),
+      }),
+    }
+  )
+
+  // PATCH /v1/calendar/google/events/:eventId - Reschedule/rename a Google meeting
+  .patch(
+    '/google/events/:eventId',
+    async ({ params: { eventId }, body, user, set }) => {
+      try {
+        return await updateExternalEvent(db, user.userId, eventId, body);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ eventId: t.String() }),
+      body: t.Object({
+        title: t.Optional(t.String()),
+        start: t.Optional(t.Union([t.String(), t.Null()])),
+        end: t.Optional(t.Union([t.String(), t.Null()])),
+      }),
+    }
+  )
+
+  // DELETE /v1/calendar/google/events/:eventId - Cancel a Google meeting
+  .delete(
+    '/google/events/:eventId',
+    async ({ params: { eventId }, user, set }) => {
+      try {
+        return await deleteExternalEvent(db, user.userId, eventId);
+      } catch (err: any) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ eventId: t.String() }),
+    }
+  )
 
   // PATCH /v1/calendar/cards/:id/schedule - Time-block a task
   .patch(

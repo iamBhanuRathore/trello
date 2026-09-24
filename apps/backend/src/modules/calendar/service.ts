@@ -437,6 +437,107 @@ export async function scheduleCard(
   return updated;
 }
 
+// ─── Google event writes (quick-create / reschedule / cancel) ───────────────
+
+function parseRange(start?: string | null, end?: string | null): { start: string; end: string } {
+  if (!start) throw httpError(400, 'Event start is required');
+  const s = new Date(start);
+  if (isNaN(s.getTime())) throw httpError(400, 'Invalid date format — expected ISO 8601');
+  let e = end ? new Date(end) : new Date(s.getTime() + 60 * 60_000);
+  if (end && isNaN(e.getTime())) throw httpError(400, 'Invalid date format — expected ISO 8601');
+  if (e <= s) e = new Date(s.getTime() + 60 * 60_000);
+  return { start: s.toISOString(), end: e.toISOString() };
+}
+
+export async function createExternalEvent(
+  db: Database,
+  userId: string,
+  input: { title: string; start?: string | null; end?: string | null; description?: string },
+  clientOverride?: CalendarApi
+) {
+  if (!input.title?.trim()) throw httpError(400, 'Event title is required');
+  const conn = await requireConnection(db, userId);
+  const { start, end } = parseRange(input.start, input.end);
+  const calendar = clientOverride || calendarClient(conn.refreshToken);
+
+  let data: any;
+  try {
+    ({ data } = await (calendar as any).events.insert({
+      calendarId: conn.calendarId,
+      requestBody: {
+        summary: input.title.trim(),
+        description: (input.description || '').slice(0, 2000),
+        start: { dateTime: start },
+        end: { dateTime: end },
+      },
+    }));
+  } catch {
+    throw httpError(502, 'Google Calendar event creation failed');
+  }
+
+  await db
+    .update(calendarConnections)
+    .set({ lastSyncAt: new Date(), lastError: null, updatedAt: new Date() })
+    .where(eq(calendarConnections.id, conn.id));
+  return {
+    id: String(data.id),
+    summary: String(data.summary || input.title),
+    start,
+    end,
+    allDay: false,
+    htmlLink: data.htmlLink || null,
+  };
+}
+
+export async function updateExternalEvent(
+  db: Database,
+  userId: string,
+  eventId: string,
+  input: { title?: string; start?: string | null; end?: string | null },
+  clientOverride?: CalendarApi
+) {
+  const conn = await requireConnection(db, userId);
+  const patch: any = {};
+  if (input.title !== undefined) {
+    if (!input.title.trim()) throw httpError(400, 'Event title cannot be empty');
+    patch.summary = input.title.trim();
+  }
+  if (input.start !== undefined || input.end !== undefined) {
+    const { start, end } = parseRange(input.start, input.end);
+    patch.start = { dateTime: start };
+    patch.end = { dateTime: end };
+  }
+  if (Object.keys(patch).length === 0) throw httpError(400, 'Nothing to update');
+  const calendar = clientOverride || calendarClient(conn.refreshToken);
+
+  try {
+    await (calendar as any).events.patch({
+      calendarId: conn.calendarId,
+      eventId,
+      requestBody: patch,
+    });
+  } catch {
+    throw httpError(502, 'Google Calendar event update failed');
+  }
+  return { success: true };
+}
+
+export async function deleteExternalEvent(
+  db: Database,
+  userId: string,
+  eventId: string,
+  clientOverride?: CalendarApi
+) {
+  const conn = await requireConnection(db, userId);
+  const calendar = clientOverride || calendarClient(conn.refreshToken);
+  try {
+    await (calendar as any).events.delete({ calendarId: conn.calendarId, eventId });
+  } catch {
+    throw httpError(502, 'Google Calendar event deletion failed');
+  }
+  return { success: true };
+}
+
 // ─── Merged feed (tasks + sprints + phases + Google) ─────────────────────────
 
 export async function getCalendarFeed(

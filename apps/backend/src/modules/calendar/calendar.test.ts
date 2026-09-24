@@ -16,6 +16,9 @@ import {
   getCalendarFeed,
   pullExternalEvents,
   getAuthUrlForUser,
+  createExternalEvent,
+  updateExternalEvent,
+  deleteExternalEvent,
 } from './service';
 
 const TEST_DB_URL =
@@ -205,5 +208,91 @@ describe('scheduleCard validation', () => {
   it('pull without connection throws 409', async () => {
     const { user } = await setupCard();
     expect(pullExternalEvents(db, user.id)).rejects.toThrow('not connected');
+  });
+});
+
+describe('Google event writes (fake client)', () => {
+  const fakeClient: any = {
+    events: {
+      insert: async ({ requestBody }: any) => ({
+        data: { id: 'g-ev-1', summary: requestBody.summary, htmlLink: 'https://cal/g-ev-1' },
+      }),
+      patch: async () => ({ data: {} }),
+      delete: async () => ({ data: {} }),
+    },
+  };
+
+  async function setupConnected() {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { user, organization } = await signUp(db, {
+      name: 'GCal Writer',
+      email: `gcalw_${id}@cal.com`,
+      password: 'pass',
+      orgName: `GCalW Org ${id}`,
+      orgSlug: `gcalw-org-${id}`,
+    });
+    await db.insert(schema.calendarConnections).values({
+      organizationId: organization.id,
+      userId: user.id,
+      provider: 'google',
+      email: 'writer@gmail.com',
+      refreshToken: 'dummy-encrypted',
+    });
+    return { user, organization };
+  }
+
+  it('validates title and dates before touching Google', async () => {
+    const { user } = await setupConnected();
+    expect(createExternalEvent(db, user.id, { title: '   ' }, fakeClient)).rejects.toThrow(
+      'title is required'
+    );
+    expect(
+      createExternalEvent(db, user.id, { title: 'M', start: 'nope' }, fakeClient)
+    ).rejects.toThrow('Invalid date format');
+    expect(updateExternalEvent(db, user.id, 'g-ev-1', {}, fakeClient)).rejects.toThrow(
+      'Nothing to update'
+    );
+  });
+
+  it('creates, reschedules, and deletes through the fake client', async () => {
+    const { user } = await setupConnected();
+    const created = await createExternalEvent(
+      db,
+      user.id,
+      { title: 'Standup', start: '2026-09-25T10:00:00Z', end: '2026-09-25T10:30:00Z' },
+      fakeClient
+    );
+    expect(created.id).toBe('g-ev-1');
+    expect(created.start).toBe('2026-09-25T10:00:00.000Z');
+
+    const updated = await updateExternalEvent(
+      db,
+      user.id,
+      'g-ev-1',
+      { start: '2026-09-25T11:00:00Z', end: '2026-09-25T11:30:00Z' },
+      fakeClient
+    );
+    expect(updated.success).toBe(true);
+
+    const deleted = await deleteExternalEvent(db, user.id, 'g-ev-1', fakeClient);
+    expect(deleted.success).toBe(true);
+  });
+
+  it('requires a connection for writes', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { user } = await signUp(db, {
+      name: 'No GCal',
+      email: `nogcal_${id}@cal.com`,
+      password: 'pass',
+      orgName: `NoGCal Org ${id}`,
+      orgSlug: `nogcal-org-${id}`,
+    });
+    expect(createExternalEvent(db, user.id, { title: 'M' }, fakeClient)).rejects.toThrow(
+      'not connected'
+    );
+    expect(updateExternalEvent(db, user.id, 'x', { title: 'M' }, fakeClient)).rejects.toThrow(
+      'not connected'
+    );
+    expect(deleteExternalEvent(db, user.id, 'x', fakeClient)).rejects.toThrow('not connected');
   });
 });
