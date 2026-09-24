@@ -22,8 +22,8 @@
 
 ## Current State
 
-**Last updated:** 2026-08-29
-**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 (Workspace Collaboration & All-in-One Expansion / Huly Parity) added to ROADMAP.md.
+**Last updated:** 2026-09-15
+**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 (Workspace Collaboration & All-in-One Expansion / Huly Parity) in progress — 4.2 Team Chat substantially built (DMs, channels, threads, reactions, attachments, typing/presence, quote replies, offline outbox); channel→project activity-feed linking still open.
 
 ### What exists
 
@@ -58,19 +58,21 @@
   - Project Docs & Wiki Knowledge Base (`/projects/:projectId/docs`) with Markdown editor, preview mode, and bidirectional task card linking
   - Trello JSON & structured task list migration wizard (`ImportModal.tsx`)
   - Stage Template Manager, Sprint Planner, Lifecycle Phases, Webhook & Notification Settings, Integrations manager, Super Admin & Tenant dashboards
+- ✅ Team Chat & Real-Time Messaging (`/chat` + floating `GlobalChatDock`): 1-on-1 DMs, public/private channels, threads, quote replies, reactions, attachments, markdown, typing indicators, timezone/working-hours presence, delivery ticks, offline outbox (`apps/backend/src/modules/chat`, `apps/dashboard/src/components/chat/`)
+- ✅ Read-path performance: Upstash versioned read cache (`lib/cache.ts`), breadth caching + `GET /v1/workspaces/tree`, `GET /v1/boards/:id/full` aggregate (kills board N+1), FK index migration `0015`, hot-query `Promise.all` fan-out
 - ✅ `apps/mobile` — Expo (React Native) + TypeScript
-  - Mobile authentication (`LoginScreen.tsx`)
-  - Workspaces & Projects Navigator (`WorkspacesScreen.tsx`)
-  - Horizontal Kanban Board & Lists (`BoardScreen.tsx`) with quick task addition
-  - Card Detail Modal (`CardDetailScreen.tsx`) with live comment thread and checklist item toggle
-  - Offline Action Queue (`OfflineQueueScreen.tsx`) with optimistic local execution and auto-sync replay engine (`offlineQueue.ts`)
-  - Push Device token registration (`/v1/notifications/push-devices`)
+- Mobile authentication (`LoginScreen.tsx`)
+- Workspaces & Projects Navigator (`WorkspacesScreen.tsx`)
+- Horizontal Kanban Board & Lists (`BoardScreen.tsx`) with quick task addition
+- Card Detail Modal (`CardDetailScreen.tsx`) with live comment thread and checklist item toggle
+- Offline Action Queue (`OfflineQueueScreen.tsx`) with optimistic local execution and auto-sync replay engine (`offlineQueue.ts`)
+- Push Device token registration (`/v1/notifications/push-devices`)
 
 ### What's in progress
 
 - **Phase 4 (Workspace Collaboration & All-in-One Expansion / Huly Parity)**:
   - 4.1 Interactive Calendar & Time-Blocking (Motion / Cron Parity)
-  - 4.2 Team Chat & Real-Time Messaging (Slack / Discord Parity)
+  - 4.2 Team Chat & Real-Time Messaging (Slack / Discord Parity) — substantially done, open: channel→project linking with automated activity feed
   - 4.3 Bi-Directional Git & Developer Automations (Linear / GitHub Engine)
   - 4.4 Real-Time Collaborative Multi-Cursor Docs (Notion / CRDT Parity)
   - 4.5 Live Audio/Video Huddles & Virtual Rooms (WebRTC)
@@ -1818,4 +1820,29 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - Decisions made: Modeled delivery receipts and offline outbox queuing after WhatsApp, Telegram, and Slack desktop standards to guarantee zero data loss and unblocked compose ergonomics.
 - Tests & Validation: Verified TypeScript clean build via `tsc -b && vite build` in `apps/dashboard`; verified backend tests (`bun test apps/backend/src/modules/chat/chat.test.ts` — 3/3 passed).
 
+### 2026-09-14 — Aggressive Breadth Caching + Workspaces Tree (Neon Free-Tier Latency)
 
+- What was done:
+  1. Extended `lib/cache.ts` with versioned org/workspace/project scopes (`ov/wv/pv`, 60-120s) + TTL-only reads (getMe 60s, notifications 20s, search 30s, members 30s).
+  2. New `GET /v1/workspaces/tree` returns workspaces→projects→boards in 3 queries, one cached payload; `Workspaces.tsx`/`AppSidebar.tsx` use it (`staleTime 30s`), killing the 18-request N+1.
+  3. Fixed stale gaps first: board/label/list-rename/list-delete/subtask-parent/trash bumps.
+- Decisions made: Cache breadth not TTL length; 20-60s stale windows on inbox/search/members documented (see `Decisions.md` 2026-09-14).
+- Tests & Validation: Repeat loads skip Neon (1 Upstash RTT); mutations pay version bumps; free Upstash stays <256MB via short TTLs.
+
+### 2026-09-14 — Board Full Aggregate Endpoint (Kills Board N+1)
+
+- What was done:
+  1. New `GET /v1/boards/:id/full` returns `{board, lists:[{...list, cards:[enriched]}]}` in ~8 Neon queries, cached under `bv:{board}` (`boardfull` scope).
+  2. `BoardView.tsx` uses single `['board','full',id]` query (`staleTime 30s`) with skeleton columns, error+retry, empty-list states.
+- Decisions made: Per-list `listCards` cache kept for other surfaces; board-first-load miss cost unchanged (~8 queries once per 60s). See `Decisions.md` 2026-09-14.
+- Tests & Validation: Board loads skip Neon on hit (1 Upstash RTT); `tsc` + `vite build` clean.
+
+### 2026-09-14 — Dashboard Loading/UX Polish Batch (Shift-Free Skeletons, Shared Error States)
+
+- What was done:
+  1. Shift-free loading: persistent headers + layout-matched skeletons across BoardView, Integrations, Marketplace, MyTasks, Portfolio, Profile, Phases, Reports, Sprints (`23de182`, `83e97b7`); centered empty/error states in viewport reserves (`9bda000`, `80d39f7`).
+  2. Shared `QueryError` + skeleton/error states across pages, grid `isError`, centered task-dialog loading (`c4b3246`); `EnterpriseDataGrid` client perf (debounced search, lazy distinct values, memoized rows, Blob CSV export — `2653b84`).
+  3. shadcn-style `Select` in `@boardly/ui`, all native selects migrated (`6bdfcfb`); settings sub-sidebar shell for profile/notifications (`dd0c055`).
+  4. MyTasks server pagination + infinite scroll (`728459f`); single `getCard` payload embedding comments/checklists/attachments/subtasks/timelogs (`2c224eb`); optimistic board updates with rollback toasts (`1a33f0c`); staged observer picker (`a05954f`); card-dialog `replace` history (`b66c8ad`); labels-admin via tree aggregate (`e0d7259`).
+  5. Ops: Vercel SPA fallback rewrite (`7653c24`), CI auto-migrate prod DB on migration changes (`cdc694d`), Dockerfile frozen-install fix + dev/prod env templates (`a6d61f3`), migration `0013` org-member backfill (`5f34f33`), `0015` `IF NOT EXISTS` idempotency (`79eeeea`).
+- Tests & Validation: `tsc` + `vite build` clean per commit; no behavior-contract changes, visual/loading states only.
