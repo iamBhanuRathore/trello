@@ -84,10 +84,11 @@ Checkable version of the Build Order from `trello-clone-architecture.md` §12. A
 
 ### 4.3 Bi-Directional Git & Developer Automations (Linear / GitHub Engine)
 
-- [ ] Native GitHub / GitLab App integration with automatic repo syncing
-- [ ] Auto-link branches, commits, and Pull Requests to ticket keys (e.g. `BCW-12`)
-- [ ] Automated card movement on PR events (Opened → In Review, Merged → Done)
-- [ ] Card PR review status badges and branch creation CLI/copy helper
+- [x] Native GitHub integration with automatic repo syncing (webhook-driven, no API dependency)
+- [x] Auto-link branches, commits, and Pull Requests to ticket keys (e.g. `BCW-12`)
+- [x] Automated card movement on PR events (Opened → In Review, Merged → Done)
+- [x] Card PR review status badges and branch creation CLI/copy helper
+- [ ] GitLab support (same webhook pattern — provider extension point ready)
 
 ### 4.4 Real-Time Collaborative Multi-Cursor Docs (Notion / CRDT Parity)
 
