@@ -16,6 +16,8 @@
 ## 3. Documentation Updates Rule
 
 - Keep markdown documents in `docs/` (e.g. `Progress.md`, `Decisions.md`) updated after implementing significant features or architectural changes.
+- **Enforced by `scripts/check-docs.sh` in `.husky/pre-push`**: pushing code changes under `apps/`/`packages/` (any type except `docs/chore/ci/build/test`) fails unless the pushed range also touches `docs/` (`Progress.md` log + Current State, `Roadmap.md` checkboxes, `Decisions.md` if non-trivial). The push is the "session end" event — batch micro-commits, document once per push.
+- **Trivial changes**: add a `[skip-docs]` trailer to the commit message (visible in history) or set `SKIP_DOCS_CHECK=1` for local emergencies. Skipping must be explicit, never silent.
 
 ## 4. Response Conciseness & Output Token Reduction (STRICT)
 

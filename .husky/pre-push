@@ -1,2 +1,7 @@
 # Run TypeScript validation before pushing to remote
 bun run typecheck
+
+# Enforce Documentation Updates Rule (AGENTS.md §3): the push is the
+# "session end" event — feat/fix/perf-style code changes must be
+# accompanied by docs/ updates, or carry an explicit [skip-docs] trailer.
+./scripts/check-docs.sh
