@@ -1935,3 +1935,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **What was done:** `POST/PATCH/DELETE /calendar/google/events` reusing the stored connection + `calendarClient` (authed routes); validation-first (title/date checks before any Google call); 15→18 `calendar.test.ts` tests via injected fake client.
 - **Note:** frontend popovers (detail + quick-create) and draggable Google blocks are still to come — API is shippable independently.
 - Tests & Validation: backend `tsc` clean, `calendar.test.ts` 18/18.
+
+### 2026-09-25 — checkAuth No Longer Wipes Session on Reboot Blips
+
+- **Bug (user-reported):** returning from Google OAuth landed on login with "Cannot reach the API server". `checkAuth` wiped tokens on _any_ `/auth/me` failure — including network errors when the backend was mid-restart (`--watch` reboots). Previous fix only covered the refresh path, not app boot.
+- **Fix (`authStore.ts`):** network errors and 5xx keep the stored session (queries retry on their own); only definitive 4xx clears it.
+- **Note for user:** hard-refresh the dashboard tab once to load the fixed bundle; the calendar UI itself is unchanged (write-API shipped, popovers still pending).
+- Tests & Validation: dashboard `tsc` clean.

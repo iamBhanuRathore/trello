@@ -38,7 +38,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (refreshToken) {
         await api.post('/auth/sign-out', { refreshToken });
       }
-    } catch (err) { }
+    } catch (err) {}
     localStorage.removeItem('boardly_access_token');
     localStorage.removeItem('boardly_refresh_token');
     set({ user: null, isAuthenticated: false, isLoading: false });
@@ -53,7 +53,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const res = await api.get('/auth/me');
       set({ user: res.data, isAuthenticated: true, isLoading: false });
-    } catch (error) {
+    } catch (error: any) {
+      const status = error?.response?.status;
+      // Reboot/network blip (or 5xx): the stored session may still be valid.
+      // Keep tokens and stay authenticated — queries retry on their own.
+      // Only a definitive rejection clears the session below.
+      if (status === undefined || status >= 500) {
+        set({ isLoading: false });
+        return;
+      }
       // If a login just occurred with a new token, do not wipe the new session
       const currentToken = localStorage.getItem('boardly_access_token');
       if (!currentToken || currentToken === token) {
