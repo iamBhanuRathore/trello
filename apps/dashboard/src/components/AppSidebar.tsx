@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import { chatService } from '../lib/chatService';
 import { UserProfileDropdown } from './UserProfileDropdown';
+import { getInitials } from '../utils/avatar';
 
 interface AppSidebarProps {
   onOpenTrash?: () => void;
@@ -432,7 +433,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                         title={`Workspace: ${ws.name}`}
                         className="w-8 h-8 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary flex items-center justify-center text-xs font-bold transition-colors cursor-pointer border border-primary/20 shadow-2xs"
                       >
-                        {ws.name.charAt(0).toUpperCase()}
+                        {getInitials(ws.name)}
                       </Link>
                     );
                   }
@@ -458,7 +459,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                           className="flex items-center gap-2 flex-1 min-w-0 py-1.5 pr-2 text-xs font-semibold text-sidebar-foreground truncate"
                         >
                           <div className="w-4 h-4 rounded-md bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
-                            {ws.name.charAt(0).toUpperCase()}
+                            {getInitials(ws.name)}
                           </div>
                           <span className="truncate">{ws.name}</span>
                         </Link>

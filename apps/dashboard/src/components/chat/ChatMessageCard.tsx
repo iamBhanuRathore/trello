@@ -18,6 +18,7 @@ import { PresenceBadge } from './PresenceBadge';
 import type { ChatMessageItem } from '../../lib/chatService';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
+import { getInitials } from '../../utils/avatar';
 
 interface ChatMessageCardProps {
   message: ChatMessageItem;
@@ -222,7 +223,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center">
-                {message.author?.name?.charAt(0).toUpperCase() || 'U'}
+                {getInitials(message.author?.name)}
               </div>
             )}
             <span className="absolute -bottom-0.5 -right-0.5">

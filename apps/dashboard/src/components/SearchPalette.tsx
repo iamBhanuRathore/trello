@@ -28,17 +28,7 @@ import {
   User,
 } from 'lucide-react';
 import { chatService } from '../lib/chatService';
-
-function useDebounceValue<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
-}
+import { useDebouncedValue as useDebounceValue } from '../hooks/useDebouncedValue';
 
 interface SearchItem {
   id: string;

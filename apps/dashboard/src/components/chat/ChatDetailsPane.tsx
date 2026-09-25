@@ -30,6 +30,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { getInitials } from '../../utils/avatar';
 
 interface ChatDetailsPaneProps {
   channel: ChatChannel;
@@ -302,7 +303,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
                     />
                   ) : (
                     <div className="w-16 h-16 rounded-full bg-primary/10 text-primary font-bold text-xl flex items-center justify-center ring-2 ring-border shadow-sm">
-                      {channel.otherUser.name.charAt(0).toUpperCase()}
+                      {getInitials(channel.otherUser.name)}
                     </div>
                   )}
                   <span className="absolute bottom-0 right-0 ring-2 ring-card rounded-full">
@@ -642,7 +643,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
                               />
                             ) : (
                               <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center">
-                                {member.name.charAt(0).toUpperCase()}
+                                {getInitials(member.name)}
                               </div>
                             )}
                             <span className="absolute -bottom-0.5 -right-0.5">
@@ -883,7 +884,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
                                   />
                                 ) : (
                                   <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center shrink-0">
-                                    {c.name.charAt(0).toUpperCase()}
+                                    {getInitials(c.name)}
                                   </div>
                                 )}
                                 <div className="min-w-0">

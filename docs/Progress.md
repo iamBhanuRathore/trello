@@ -1990,3 +1990,12 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Symptom (user-reported):** dragging a Google meeting intermittently fails with a DevTools "CORS error" on `PATCH /google/events/:id`, while GETs in the same window succeed. Server log shows no trace of the PATCH (never arrived); preflight + PATCH paths verified correct live (204/401-with-CORS). Most likely a request dying in a `--watch` reboot window, which DevTools mislabels as CORS (same mislabeling our own `api.ts` documents).
 - **Fix (frontend):** 30s timeouts on all Google-write calls + `describeCalendarError` — network failures now toast "change NOT saved … please retry" instead of a raw message, so silent data-loss confusion is impossible.
 - Tests & Validation: dashboard `tsc` + `vite build` clean.
+
+### 2026-09-26 — Light Security Pass + Redundancy Cleanup
+
+- **Dependencies:** `bun audit` was 53 vulns (1 critical). Fixed the two direct-dep issues: `drizzle-orm` 0.44.7 → 0.45.3 (HIGH SQL-identifier injection) and `nodemailer` 9.0.6 → 9.1.1 — tsc clean, 39/39 chat/calendar/cards tests pass. Residual 48 are transitive (tar, xmldom, esbuild, postcss, hono/shadcn, mobile image-size) needing parent major bumps — documented, not actioned.
+- **Secrets:** all `.env*` gitignored, only `.example` tracked, no private keys in history or tree.
+- **Rate limits:** single global `rateLimiterMiddleware` under `/v1` covers all routes including public (invite, webhooks, OAuth callback, auth). CSRF N/A (Bearer tokens, no cookies); public GET-with-effects (OAuth callback) secured by HMAC state.
+- **Cleanup:** shared `useDebouncedValue` hook (removed 2 copies); deleted dead dashboard `superAdminService.ts` + dead platform trio in `orgService`; `getMembers` delegates to `getMembersWithCount`; canonical `utils/avatar.ts` adopted across 9 chat/sidebar files; native `confirm()` in `TaskChatPane` → `ConfirmDialog`; marketplace filters + git repo lookup pushed to SQL; billing payment-failed email loop de-N+1'd (single batched user fetch).
+- **Deferred (audited, risky without need):** member-picker consolidation (5 variants), date-format helper rollout, `React.memo` row memoization, remaining transitive dep majors.
+- Tests & Validation: backend + dashboard + super-admin `tsc` clean; git/calendar/developer suites green except pre-existing FK-cleanup failures (fail on clean tree too).

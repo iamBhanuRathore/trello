@@ -11,6 +11,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { getInitials } from '../../utils/avatar';
 
 interface NewDirectMessageModalProps {
   isOpen: boolean;
@@ -175,7 +176,7 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
                       <img src={m.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center">
-                        {m.name.charAt(0).toUpperCase()}
+                        {getInitials(m.name)}
                       </div>
                     )}
                     <span className="absolute bottom-0 right-0 translate-x-0.5 translate-y-0.5">

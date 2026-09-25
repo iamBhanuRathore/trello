@@ -42,28 +42,6 @@ export interface MemberActivitySummary {
   };
 }
 
-export interface PlatformUser {
-  id: string;
-  name: string;
-  email: string;
-  avatarUrl?: string | null;
-  isPlatformAdmin: boolean;
-  lastLoginAt?: string | null;
-  deactivatedAt?: string | null;
-  createdAt: string;
-  organizationsCount: number;
-  isMultiCompany: boolean;
-  organizations: Array<{
-    organizationId: string;
-    organizationName: string;
-    organizationSlug: string;
-    role: string;
-    status: string;
-    lastActiveAt?: string | null;
-    joinedAt: string;
-  }>;
-}
-
 export const orgService = {
   getOrg: async (orgId: string) => {
     const res = await api.get(`/orgs/${orgId}`);
@@ -89,17 +67,8 @@ export const orgService = {
       userIds?: string[];
     }
   ): Promise<OrgMember[]> => {
-    const queryParams: Record<string, any> = {};
-    if (params?.search) queryParams.search = params.search;
-    if (params?.limit !== undefined) queryParams.limit = params.limit;
-    if (params?.offset !== undefined) queryParams.offset = params.offset;
-    if (params?.role) queryParams.role = params.role;
-    if (params?.status) queryParams.status = params.status;
-    if (params?.userIds && params.userIds.length > 0) {
-      queryParams.userIds = params.userIds.join(',');
-    }
-    const res = await api.get(`/orgs/${orgId}/members`, { params: queryParams });
-    return res.data;
+    const { members } = await orgService.getMembersWithCount(orgId, params);
+    return members;
   },
 
   getMembersWithCount: async (
@@ -192,22 +161,6 @@ export const orgService = {
 
   removeMember: async (orgId: string, memberId: string) => {
     const res = await api.delete(`/orgs/${orgId}/members/${memberId}`);
-    return res.data;
-  },
-
-  // Super Admin Cross-Org intelligence
-  getPlatformUsers: async (): Promise<PlatformUser[]> => {
-    const res = await api.get('/superadmin/users');
-    return res.data;
-  },
-
-  getPlatformUser: async (userId: string) => {
-    const res = await api.get(`/superadmin/users/${userId}`);
-    return res.data;
-  },
-
-  forceLogoutPlatformUser: async (userId: string) => {
-    const res = await api.post(`/superadmin/users/${userId}/force-logout`);
     return res.data;
   },
 };

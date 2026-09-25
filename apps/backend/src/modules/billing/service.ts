@@ -1,4 +1,4 @@
-import { eq, sql, and, count } from 'drizzle-orm';
+import { eq, sql, and, count, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   subscriptions,
@@ -28,7 +28,13 @@ import {
 import { sendEmail } from '../../lib/email';
 import Stripe from 'stripe';
 
-export const BILLABLE_ROLES = ['org_owner', 'org_admin', 'billing_manager', 'workspace_admin', 'member'] as const;
+export const BILLABLE_ROLES = [
+  'org_owner',
+  'org_admin',
+  'billing_manager',
+  'workspace_admin',
+  'member',
+] as const;
 export type BillableRole = (typeof BILLABLE_ROLES)[number];
 
 export function isBillableRole(role: string): boolean {
@@ -69,8 +75,8 @@ export async function getBillingOverview(orgId: string) {
   const plan = sub?.planId
     ? await db.query.plans.findFirst({ where: eq(plans.id, sub.planId) })
     : org.planId
-    ? await db.query.plans.findFirst({ where: eq(plans.id, org.planId) })
-    : await db.query.plans.findFirst({ where: eq(plans.tier, 'free') });
+      ? await db.query.plans.findFirst({ where: eq(plans.id, org.planId) })
+      : await db.query.plans.findFirst({ where: eq(plans.tier, 'free') });
 
   const currentTier = plan?.tier ?? 'free';
   const totalPaidSeats = sub?.seatCount ?? 5;
@@ -163,8 +169,22 @@ export async function getBillingOverview(orgId: string) {
   }
 
   // Pricing calculations
-  const monthlyRatePerSeat = currentTier === 'business' ? 20 : currentTier === 'pro' ? 10 : currentTier === 'enterprise' ? 36 : 0;
-  const annualRatePerSeat = currentTier === 'business' ? 16 : currentTier === 'pro' ? 8 : currentTier === 'enterprise' ? 30 : 0;
+  const monthlyRatePerSeat =
+    currentTier === 'business'
+      ? 20
+      : currentTier === 'pro'
+        ? 10
+        : currentTier === 'enterprise'
+          ? 36
+          : 0;
+  const annualRatePerSeat =
+    currentTier === 'business'
+      ? 16
+      : currentTier === 'pro'
+        ? 8
+        : currentTier === 'enterprise'
+          ? 30
+          : 0;
   const interval = sub?.billingInterval === 'annual' ? 'annual' : 'monthly';
   const effectiveRate = interval === 'annual' ? annualRatePerSeat : monthlyRatePerSeat;
   const estimatedMonthlyTotal = currentTier === 'free' ? 0 : totalPaidSeats * effectiveRate;
@@ -271,7 +291,8 @@ export async function checkAndReserveSeatSlot(
           )
         );
 
-      const totalBillable = Number(activeCount[0]?.count ?? 0) + Number(pendingCount[0]?.count ?? 0);
+      const totalBillable =
+        Number(activeCount[0]?.count ?? 0) + Number(pendingCount[0]?.count ?? 0);
 
       if (totalBillable < totalPaidSeats) {
         return {
@@ -301,8 +322,8 @@ export async function checkAndReserveSeatSlot(
       const plan = sub?.planId
         ? await tx.query.plans.findFirst({ where: eq(plans.id, sub.planId) })
         : org?.planId
-        ? await tx.query.plans.findFirst({ where: eq(plans.id, org.planId) })
-        : null;
+          ? await tx.query.plans.findFirst({ where: eq(plans.id, org.planId) })
+          : null;
 
       const guestCap = getGuestCap(plan?.tier ?? 'free', totalPaidSeats);
 
@@ -327,7 +348,8 @@ export async function checkAndReserveSeatSlot(
           )
         );
 
-      const totalGuests = Number(activeGuests[0]?.count ?? 0) + Number(pendingGuests[0]?.count ?? 0);
+      const totalGuests =
+        Number(activeGuests[0]?.count ?? 0) + Number(pendingGuests[0]?.count ?? 0);
 
       if (totalGuests < guestCap) {
         return {
@@ -361,7 +383,9 @@ export async function previewSeatChange(orgId: string, additionalSeats: number) 
 
   if (!sub?.stripeCustomerId || !sub?.stripeSubscriptionId || !sub?.stripeSubscriptionItemId) {
     // If not on Stripe (e.g. Free or dev), calculate standard estimated pricing
-    const plan = sub?.planId ? await db.query.plans.findFirst({ where: eq(plans.id, sub.planId) }) : null;
+    const plan = sub?.planId
+      ? await db.query.plans.findFirst({ where: eq(plans.id, sub.planId) })
+      : null;
     const unitPrice = plan?.tier === 'business' ? 20 : 10;
     return {
       immediateAmountDue: unitPrice * additionalSeats * 100, // cents
@@ -756,7 +780,10 @@ export async function processStripeWebhook(event: Stripe.Event) {
             where: eq(organizations.id, orgId),
           });
           const adminMember = await db.query.organizationMembers.findFirst({
-            where: and(eq(organizationMembers.organizationId, orgId), eq(organizationMembers.role, 'org_owner')),
+            where: and(
+              eq(organizationMembers.organizationId, orgId),
+              eq(organizationMembers.role, 'org_owner')
+            ),
           });
           const adminUser = adminMember
             ? await db.query.users.findFirst({ where: eq(users.id, adminMember.userId) })
@@ -768,7 +795,8 @@ export async function processStripeWebhook(event: Stripe.Event) {
               planName: planTier === 'business' ? 'Boardly Business' : 'Boardly Pro',
               seatCount: seatQuantity,
               billingInterval: interval,
-              amount: planTier === 'business' ? `$${seatQuantity * 20}/mo` : `$${seatQuantity * 10}/mo`,
+              amount:
+                planTier === 'business' ? `$${seatQuantity * 20}/mo` : `$${seatQuantity * 10}/mo`,
               manageUrl: `${env.DASHBOARD_URL.split(',')[0]}/admin/billing`,
             });
             sendEmail({
@@ -792,7 +820,12 @@ export async function processStripeWebhook(event: Stripe.Event) {
 
         if (sub) {
           const seatQuantity = stripeSub.items.data[0]?.quantity ?? sub.seatCount;
-          const status = stripeSub.status === 'past_due' ? 'past_due' : stripeSub.status === 'canceled' ? 'canceled' : 'active';
+          const status =
+            stripeSub.status === 'past_due'
+              ? 'past_due'
+              : stripeSub.status === 'canceled'
+                ? 'canceled'
+                : 'active';
           const pStart = (stripeSub as any).current_period_start
             ? new Date((stripeSub as any).current_period_start * 1000)
             : new Date();
@@ -887,7 +920,9 @@ export async function processStripeWebhook(event: Stripe.Event) {
             .where(eq(subscriptions.id, sub.id));
 
           // Alert Billing Managers
-          const org = await db.query.organizations.findFirst({ where: eq(organizations.id, sub.organizationId) });
+          const org = await db.query.organizations.findFirst({
+            where: eq(organizations.id, sub.organizationId),
+          });
           const adminMembers = await db.query.organizationMembers.findMany({
             where: and(
               eq(organizationMembers.organizationId, sub.organizationId),
@@ -895,8 +930,16 @@ export async function processStripeWebhook(event: Stripe.Event) {
             ),
           });
 
-          for (const member of adminMembers) {
-            const u = await db.query.users.findFirst({ where: eq(users.id, member.userId) });
+          // Single batched user fetch (was: one query per member in the loop).
+          const memberEmails = await db.query.users.findMany({
+            columns: { email: true },
+            where: inArray(
+              users.id,
+              adminMembers.map((m) => m.userId)
+            ),
+          });
+
+          for (const u of memberEmails) {
             if (u?.email && org) {
               const emailData = renderPaymentFailedEmail({
                 orgName: org.name,

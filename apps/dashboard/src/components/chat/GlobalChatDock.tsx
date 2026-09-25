@@ -21,6 +21,7 @@ import { PresenceBadge } from './PresenceBadge';
 import { NewDirectMessageModal } from './NewDirectMessageModal';
 import { NewChannelModal } from './NewChannelModal';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { getInitials } from '../../utils/avatar';
 
 export const GlobalChatDock: React.FC = () => {
   const location = useLocation();
@@ -209,7 +210,7 @@ export const GlobalChatDock: React.FC = () => {
                     />
                   ) : (
                     <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center">
-                      {currentChannel.otherUser.name.charAt(0).toUpperCase()}
+                      {getInitials(currentChannel.otherUser.name)}
                     </div>
                   )}
                   <span className="absolute -bottom-0.5 -right-0.5">
@@ -390,7 +391,7 @@ export const GlobalChatDock: React.FC = () => {
                                 />
                               ) : (
                                 <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center">
-                                  {ch.otherUser.name.charAt(0).toUpperCase()}
+                                  {getInitials(ch.otherUser.name)}
                                 </div>
                               )}
                               <span className="absolute -bottom-0.5 -right-0.5">

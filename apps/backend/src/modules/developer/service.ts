@@ -1,11 +1,7 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, ilike, or } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import type { Database } from '../../db/index';
-import {
-  apiKeys,
-  marketplaceApps,
-  installedApps,
-} from '../../db/schema/index';
+import { apiKeys, marketplaceApps, installedApps } from '../../db/schema/index';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -92,11 +88,7 @@ export async function revokeApiKey(db: Database, organizationId: string, keyId: 
 
 export async function verifyApiKey(db: Database, rawKey: string) {
   const keyHash = hashKey(rawKey);
-  const [key] = await db
-    .select()
-    .from(apiKeys)
-    .where(eq(apiKeys.keyHash, keyHash))
-    .limit(1);
+  const [key] = await db.select().from(apiKeys).where(eq(apiKeys.keyHash, keyHash)).limit(1);
 
   if (!key) return null;
 
@@ -105,10 +97,7 @@ export async function verifyApiKey(db: Database, rawKey: string) {
   }
 
   // Update last used timestamp asynchronously
-  await db
-    .update(apiKeys)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(apiKeys.id, key.id));
+  await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, key.id));
 
   return key;
 }
@@ -119,7 +108,8 @@ export const SEED_MARKETPLACE_APPS = [
   {
     name: 'GitHub Sync & PR Tracker',
     slug: 'github-sync',
-    description: 'Link pull requests, branches, and commits directly to board cards. Automate column moves on PR merge.',
+    description:
+      'Link pull requests, branches, and commits directly to board cards. Automate column moves on PR merge.',
     developerName: 'Boardly Labs',
     category: 'developer',
     isVerified: true,
@@ -132,7 +122,8 @@ export const SEED_MARKETPLACE_APPS = [
   {
     name: 'Slack Alerts & Digest',
     slug: 'slack-alerts',
-    description: 'Post real-time card activity, mentions, and daily sprint progress digests to designated Slack channels.',
+    description:
+      'Post real-time card activity, mentions, and daily sprint progress digests to designated Slack channels.',
     developerName: 'Boardly Labs',
     category: 'communication',
     isVerified: true,
@@ -145,7 +136,8 @@ export const SEED_MARKETPLACE_APPS = [
   {
     name: 'Custom Fields Pro',
     slug: 'custom-fields-pro',
-    description: 'Extend cards with dropdowns, formulas, currency, and multi-select tags tailored to your workflow.',
+    description:
+      'Extend cards with dropdowns, formulas, currency, and multi-select tags tailored to your workflow.',
     developerName: 'Workflow Studio',
     category: 'utility',
     isVerified: true,
@@ -155,7 +147,8 @@ export const SEED_MARKETPLACE_APPS = [
   {
     name: 'Time Tracker Pro',
     slug: 'time-tracker-pro',
-    description: 'Live stopwatch timer on cards with client billing rate calculation and invoice preparation.',
+    description:
+      'Live stopwatch timer on cards with client billing rate calculation and invoice preparation.',
     developerName: 'Chronos Tools',
     category: 'analytics',
     isVerified: true,
@@ -167,7 +160,8 @@ export const SEED_MARKETPLACE_APPS = [
   {
     name: 'Jira Dual-Sync Connector',
     slug: 'jira-sync',
-    description: 'Two-way synchronization between Boardly boards and Jira Software epics and issues.',
+    description:
+      'Two-way synchronization between Boardly boards and Jira Software epics and issues.',
     developerName: 'Enterprise Bridges',
     category: 'automation',
     isVerified: true,
@@ -210,21 +204,29 @@ export async function listMarketplaceApps(
   // Ensure apps are seeded
   await seedMarketplaceApps(db);
 
-  let apps = await db.select().from(marketplaceApps);
-
+  // Filters pushed to SQL (catalog is small today, but this keeps the
+  // endpoint O(matches) instead of O(catalog) as it grows).
+  const conditions = [];
   if (query?.category && query.category !== 'all') {
-    apps = apps.filter((a) => a.category.toLowerCase() === query.category!.toLowerCase());
+    conditions.push(eq(marketplaceApps.category, query.category));
   }
-
   if (query?.search && query.search.trim()) {
-    const q = query.search.trim().toLowerCase();
-    apps = apps.filter(
-      (a) =>
-        a.name.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q) ||
-        a.developerName.toLowerCase().includes(q)
+    const q = `%${query.search.trim().replace(/[%_\\]/g, '\\$&')}%`;
+    conditions.push(
+      or(
+        ilike(marketplaceApps.name, q),
+        ilike(marketplaceApps.description, q),
+        ilike(marketplaceApps.developerName, q)
+      )
     );
   }
+  const apps =
+    conditions.length > 0
+      ? await db
+          .select()
+          .from(marketplaceApps)
+          .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+      : await db.select().from(marketplaceApps);
 
   // Query installed apps for this org
   const installed = await db
@@ -290,7 +292,9 @@ export async function installMarketplaceApp(
   const [existing] = await db
     .select()
     .from(installedApps)
-    .where(and(eq(installedApps.appId, input.appId), eq(installedApps.organizationId, organizationId)))
+    .where(
+      and(eq(installedApps.appId, input.appId), eq(installedApps.organizationId, organizationId))
+    )
     .limit(1);
 
   if (existing) {

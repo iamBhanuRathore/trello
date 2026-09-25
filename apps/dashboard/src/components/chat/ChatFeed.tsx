@@ -33,6 +33,7 @@ import { PresenceBadge } from './PresenceBadge';
 import { ChatMessageCard } from './ChatMessageCard';
 import { TimezoneComposerBanner } from './TimezoneComposerBanner';
 import { TaskMentionPickerModal } from './TaskMentionPickerModal';
+import { getInitials } from '../../utils/avatar';
 
 interface ChatFeedProps {
   channel: ChatChannel;
@@ -491,7 +492,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                 />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center">
-                  {channel.otherUser.name.charAt(0).toUpperCase()}
+                  {getInitials(channel.otherUser.name)}
                 </div>
               )}
               <span className="absolute -bottom-0.5 -right-0.5">

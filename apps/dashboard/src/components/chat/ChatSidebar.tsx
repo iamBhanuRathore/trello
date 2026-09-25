@@ -20,6 +20,7 @@ import { NewChannelModal } from './NewChannelModal';
 import { NewDirectMessageModal } from './NewDirectMessageModal';
 import { WorkingHoursModal } from './WorkingHoursModal';
 import { KeyboardShortcutsModal } from '../KeyboardShortcutsModal';
+import { getInitials } from '../../utils/avatar';
 
 interface ChatSidebarProps {
   onSelectChannel?: (channelId: string) => void;
@@ -152,7 +153,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
                 />
               ) : (
                 <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold text-[11px] flex items-center justify-center">
-                  {channel.name.charAt(0).toUpperCase()}
+                  {getInitials(channel.name)}
                 </div>
               )}
               <span className="absolute -bottom-0.5 -right-0.5">

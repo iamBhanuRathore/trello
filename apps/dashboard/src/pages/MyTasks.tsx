@@ -18,6 +18,7 @@ import {
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { api } from '../lib/api';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { QueryError } from '../components/common/QueryError';
 import { CardModal } from '../components/board/CardModal';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
@@ -27,15 +28,6 @@ type FilterTab = 'all' | 'assigned' | 'observing' | 'participating' | 'created';
 type ViewMode = 'grid' | 'list';
 
 const PAGE_SIZE = 24;
-
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
 
 export function MyTasks() {
   const queryClient = useQueryClient();

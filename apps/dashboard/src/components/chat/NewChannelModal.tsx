@@ -11,6 +11,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { getInitials } from '../../utils/avatar';
 
 interface NewChannelModalProps {
   isOpen: boolean;
@@ -383,7 +384,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
                       />
                     ) : (
                       <div className="w-4 h-4 rounded-full bg-primary/20 text-primary font-bold text-[9px] flex items-center justify-center shrink-0">
-                        {m.name.charAt(0).toUpperCase()}
+                        {getInitials(m.name)}
                       </div>
                     )}
                     <span className="truncate max-w-[110px]">{m.name}</span>
@@ -436,7 +437,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
                             />
                           ) : (
                             <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center shrink-0">
-                              {m.name.charAt(0).toUpperCase()}
+                              {getInitials(m.name)}
                             </div>
                           )}
                           <span className="absolute bottom-0 right-0 translate-x-0.5 translate-y-0.5">

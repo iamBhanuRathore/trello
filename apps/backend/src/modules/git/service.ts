@@ -313,8 +313,17 @@ export async function findRepositoriesForWebhook(
   owner: string,
   repo: string
 ): Promise<any[]> {
-  const rows = await db.select().from(gitRepositories).where(eq(gitRepositories.owner, owner));
-  return rows.filter((r) => r.repo.toLowerCase() === repo.toLowerCase() && r.isActive);
+  // Both predicates in SQL (was: owner-only + JS lowercase filter).
+  return db
+    .select()
+    .from(gitRepositories)
+    .where(
+      and(
+        eq(gitRepositories.owner, owner),
+        sql`lower(${gitRepositories.repo}) = lower(${repo})`,
+        eq(gitRepositories.isActive, true)
+      )
+    );
 }
 
 /** Back-compat single lookup (first match). Prefer fan-out via handleGitHubWebhook. */

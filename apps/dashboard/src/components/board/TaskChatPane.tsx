@@ -39,6 +39,7 @@ import { orgService } from '../../lib/orgService';
 import { useAuthStore } from '../../store/authStore';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { CreateTaskFromMessageModal } from './CreateTaskFromMessageModal';
+import { ConfirmDialog } from '../common/ConfirmDialog';
 import { MemberPicker } from './MemberPicker';
 import { useChatStore } from '../../store/chatStore';
 
@@ -219,6 +220,7 @@ export function TaskChatPane({
   // Interactive message state
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [activeMenuCommentId, setActiveMenuCommentId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -655,13 +657,17 @@ export function TaskChatPane({
     setActiveMenuCommentId(null);
   };
 
-  // Delete message
-  const handleDeleteComment = async (comment: ChatMessage) => {
+  // Delete message (confirmed via dialog, never native confirm())
+  const handleDeleteComment = (comment: ChatMessage) => {
     if (!onDeleteMessage) return;
-    if (confirm('Are you sure you want to delete this message?')) {
-      await onDeleteMessage(comment.id);
-    }
+    setPendingDeleteId(comment.id);
     setActiveMenuCommentId(null);
+  };
+
+  const confirmDeleteComment = async () => {
+    if (!onDeleteMessage || !pendingDeleteId) return;
+    await onDeleteMessage(pendingDeleteId);
+    setPendingDeleteId(null);
   };
 
   return (
@@ -1385,6 +1391,19 @@ export function TaskChatPane({
           </div>
         </div>
       </div>
+
+      {/* ─── Delete Message Confirmation ─── */}
+      <ConfirmDialog
+        open={!!pendingDeleteId}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteId(null);
+        }}
+        title="Delete this message?"
+        description="The message will be permanently removed for everyone. This cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={confirmDeleteComment}
+      />
 
       {/* ─── Create Task From Message Modal ─── */}
       <CreateTaskFromMessageModal

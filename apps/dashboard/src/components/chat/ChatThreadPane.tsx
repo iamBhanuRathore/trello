@@ -11,6 +11,7 @@ import { PresenceBadge } from './PresenceBadge';
 import { TaskPreviewCard } from './TaskPreviewCard';
 import { TaskMentionPickerModal } from './TaskMentionPickerModal';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { getInitials } from '../../utils/avatar';
 
 interface ChatThreadPaneProps {
   parentMessage: ChatMessageItem;
@@ -180,213 +181,213 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
       />
       <div className="fixed inset-y-0 right-0 z-40 w-80 sm:w-96 2xl:static 2xl:z-20 2xl:w-96 border-l border-border bg-card flex flex-col h-full shrink-0 shadow-2xl 2xl:shadow-none select-none animate-in slide-in-from-right duration-200">
         {/* Header */}
-      <div className="h-14 px-4 border-b border-border flex items-center justify-between shrink-0 bg-background/50">
-        <div className="flex items-center gap-2">
-          <CornerDownRight className="w-4 h-4 text-blue-500" />
-          <h3 className="text-sm font-bold text-foreground">Thread</h3>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close thread"
-          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Parent Message Card */}
-        <div className="p-3 rounded-xl bg-muted/30 border border-border space-y-2">
+        <div className="h-14 px-4 border-b border-border flex items-center justify-between shrink-0 bg-background/50">
           <div className="flex items-center gap-2">
-            <div className="relative shrink-0">
-              {parentMessage.author?.avatarUrl ? (
-                <img
-                  src={parentMessage.author.avatarUrl}
-                  alt=""
-                  className="w-7 h-7 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center">
-                  {parentMessage.author?.name?.charAt(0).toUpperCase() || 'U'}
-                </div>
-              )}
-              <span className="absolute -bottom-0.5 -right-0.5">
-                <PresenceBadge status={parentPresence?.status || 'offline'} size="sm" />
-              </span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-foreground truncate">
-                  {parentMessage.author?.name || 'Teammate'}
-                </span>
-                <span className="text-[10px] text-muted-foreground font-mono">
-                  {formatMsgDate(parentMessage.createdAt)}
+            <CornerDownRight className="w-4 h-4 text-blue-500" />
+            <h3 className="text-sm font-bold text-foreground">Thread</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close thread"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Parent Message Card */}
+          <div className="p-3 rounded-xl bg-muted/30 border border-border space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="relative shrink-0">
+                {parentMessage.author?.avatarUrl ? (
+                  <img
+                    src={parentMessage.author.avatarUrl}
+                    alt=""
+                    className="w-7 h-7 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center">
+                    {getInitials(parentMessage.author?.name)}
+                  </div>
+                )}
+                <span className="absolute -bottom-0.5 -right-0.5">
+                  <PresenceBadge status={parentPresence?.status || 'offline'} size="sm" />
                 </span>
               </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-foreground truncate">
+                    {parentMessage.author?.name || 'Teammate'}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {formatMsgDate(parentMessage.createdAt)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-foreground/90 pl-9 break-words">
+              {renderContent(parentMessage.body)}
             </div>
           </div>
-          <div className="text-xs text-foreground/90 pl-9 break-words">
-            {renderContent(parentMessage.body)}
+
+          {/* Divider / Replies Count */}
+          <div className="flex items-center gap-2 py-1">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">
+              {replies.length} {replies.length === 1 ? 'Reply' : 'Replies'}
+            </span>
+            <div className="h-px flex-1 bg-border" />
           </div>
+
+          {/* Replies Stream */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          ) : replies.length === 0 ? (
+            <div className="text-center py-8 text-xs text-muted-foreground">
+              No replies yet. Start the conversation!
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {replies.map((reply) => {
+                const replyPresence = presenceMap[reply.userId];
+                return (
+                  <div
+                    key={reply.id}
+                    className="group relative flex items-start gap-2.5 p-2 rounded-xl hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="relative shrink-0 mt-0.5">
+                      {reply.author?.avatarUrl ? (
+                        <img
+                          src={reply.author.avatarUrl}
+                          alt=""
+                          className="w-6 h-6 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center">
+                          {getInitials(reply.author?.name)}
+                        </div>
+                      )}
+                      <span className="absolute -bottom-0.5 -right-0.5">
+                        <PresenceBadge status={replyPresence?.status || 'offline'} size="sm" />
+                      </span>
+                    </div>
+
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-foreground truncate">
+                          {reply.author?.name || 'Teammate'}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {formatMsgDate(reply.createdAt)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-foreground/90 break-words">
+                        {renderContent(reply.body)}
+                      </div>
+
+                      {/* Reactions tray for replies */}
+                      {reply.reactions && reply.reactions.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                          {reply.reactions.map((r) => (
+                            <button
+                              key={r.emoji}
+                              type="button"
+                              onClick={() =>
+                                reactionMutation.mutate({ messageId: reply.id, emoji: r.emoji })
+                              }
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] border cursor-pointer ${
+                                r.hasReacted
+                                  ? 'bg-blue-500/15 border-blue-500/30 text-blue-600 dark:text-blue-400 font-bold'
+                                  : 'bg-muted/40 border-border text-muted-foreground'
+                              }`}
+                            >
+                              <span>{r.emoji}</span>
+                              <span>{r.count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Reaction Button on Hover */}
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-2 flex items-center gap-1 bg-card border border-border shadow-sm rounded-lg p-0.5">
+                      {COMMON_EMOJIS.slice(0, 3).map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => reactionMutation.mutate({ messageId: reply.id, emoji })}
+                          className="p-1 hover:bg-muted rounded text-xs transition-transform hover:scale-125 cursor-pointer"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={repliesEndRef} />
+            </div>
+          )}
         </div>
 
-        {/* Divider / Replies Count */}
-        <div className="flex items-center gap-2 py-1">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-[11px] font-semibold text-muted-foreground tracking-wider uppercase">
-            {replies.length} {replies.length === 1 ? 'Reply' : 'Replies'}
-          </span>
-          <div className="h-px flex-1 bg-border" />
-        </div>
+        {/* Reply Composer */}
+        <div className="p-3 border-t border-border bg-background/50 space-y-2 shrink-0">
+          <div className="relative rounded-xl border border-border bg-background focus-within:border-primary transition-colors">
+            <textarea
+              ref={textareaRef}
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Reply to thread... (Enter to send)"
+              rows={2}
+              className="w-full px-3 py-2 text-xs bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground"
+            />
 
-        {/* Replies Stream */}
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2 className="w-5 h-5 animate-spin" />
-          </div>
-        ) : replies.length === 0 ? (
-          <div className="text-center py-8 text-xs text-muted-foreground">
-            No replies yet. Start the conversation!
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {replies.map((reply) => {
-              const replyPresence = presenceMap[reply.userId];
-              return (
-                <div
-                  key={reply.id}
-                  className="group relative flex items-start gap-2.5 p-2 rounded-xl hover:bg-muted/30 transition-colors"
+            <div className="flex items-center justify-between px-2 py-1.5 border-t border-border/40">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsTaskPickerOpen(true)}
+                  title="Mention Task"
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                 >
-                  <div className="relative shrink-0 mt-0.5">
-                    {reply.author?.avatarUrl ? (
-                      <img
-                        src={reply.author.avatarUrl}
-                        alt=""
-                        className="w-6 h-6 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-primary/10 text-primary font-bold text-[10px] flex items-center justify-center">
-                        {reply.author?.name?.charAt(0).toUpperCase() || 'U'}
-                      </div>
-                    )}
-                    <span className="absolute -bottom-0.5 -right-0.5">
-                      <PresenceBadge status={replyPresence?.status || 'offline'} size="sm" />
-                    </span>
-                  </div>
+                  <CheckSquare className="w-3.5 h-3.5" />
+                </button>
+              </div>
 
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-foreground truncate">
-                        {reply.author?.name || 'Teammate'}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {formatMsgDate(reply.createdAt)}
-                      </span>
-                    </div>
-                    <div className="text-xs text-foreground/90 break-words">
-                      {renderContent(reply.body)}
-                    </div>
-
-                    {/* Reactions tray for replies */}
-                    {reply.reactions && reply.reactions.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                        {reply.reactions.map((r) => (
-                          <button
-                            key={r.emoji}
-                            type="button"
-                            onClick={() =>
-                              reactionMutation.mutate({ messageId: reply.id, emoji: r.emoji })
-                            }
-                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] border cursor-pointer ${
-                              r.hasReacted
-                                ? 'bg-blue-500/15 border-blue-500/30 text-blue-600 dark:text-blue-400 font-bold'
-                                : 'bg-muted/40 border-border text-muted-foreground'
-                            }`}
-                          >
-                            <span>{r.emoji}</span>
-                            <span>{r.count}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Reaction Button on Hover */}
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-2 top-2 flex items-center gap-1 bg-card border border-border shadow-sm rounded-lg p-0.5">
-                    {COMMON_EMOJIS.slice(0, 3).map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => reactionMutation.mutate({ messageId: reply.id, emoji })}
-                        className="p-1 hover:bg-muted rounded text-xs transition-transform hover:scale-125 cursor-pointer"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={repliesEndRef} />
-          </div>
-        )}
-      </div>
-
-      {/* Reply Composer */}
-      <div className="p-3 border-t border-border bg-background/50 space-y-2 shrink-0">
-        <div className="relative rounded-xl border border-border bg-background focus-within:border-primary transition-colors">
-          <textarea
-            ref={textareaRef}
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Reply to thread... (Enter to send)"
-            rows={2}
-            className="w-full px-3 py-2 text-xs bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground"
-          />
-
-          <div className="flex items-center justify-between px-2 py-1.5 border-t border-border/40">
-            <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setIsTaskPickerOpen(true)}
-                title="Mention Task"
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                onClick={handleSend}
+                disabled={!replyText.trim() || sendReplyMutation.isPending}
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-sm"
               >
-                <CheckSquare className="w-3.5 h-3.5" />
+                {sendReplyMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Send className="w-3 h-3" />
+                )}
+                <span>Reply</span>
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={!replyText.trim() || sendReplyMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer shadow-sm"
-            >
-              {sendReplyMutation.isPending ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <Send className="w-3 h-3" />
-              )}
-              <span>Reply</span>
-            </button>
           </div>
+          <p className="text-[10px] text-muted-foreground/70 px-1">
+            <span className="font-semibold">Enter</span> to send,{' '}
+            <span className="font-semibold">Shift+Enter</span> for newline
+          </p>
         </div>
-        <p className="text-[10px] text-muted-foreground/70 px-1">
-          <span className="font-semibold">Enter</span> to send,{' '}
-          <span className="font-semibold">Shift+Enter</span> for newline
-        </p>
-      </div>
 
-      {/* Task Mention Modal */}
-      <TaskMentionPickerModal
-        isOpen={isTaskPickerOpen}
-        onClose={() => setIsTaskPickerOpen(false)}
-        onSelectTask={handleInsertTask}
-      />
-    </div>
+        {/* Task Mention Modal */}
+        <TaskMentionPickerModal
+          isOpen={isTaskPickerOpen}
+          onClose={() => setIsTaskPickerOpen(false)}
+          onSelectTask={handleInsertTask}
+        />
+      </div>
     </>
   );
 };
