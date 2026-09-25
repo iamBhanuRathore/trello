@@ -29,7 +29,12 @@ import {
   setHours,
   setMinutes,
 } from 'date-fns';
-import { calendarService, type CalendarFeed, type CalendarExternal } from '../lib/calendarService';
+import {
+  calendarService,
+  describeCalendarError,
+  type CalendarFeed,
+  type CalendarExternal,
+} from '../lib/calendarService';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { CardModal } from '../components/board/CardModal';
 import { EventPopover, type CalendarSelection } from '../components/calendar/EventPopover';
@@ -211,7 +216,7 @@ export function Calendar() {
       invalidateFeed();
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || err.message || 'Failed to create meeting');
+      toast.error(describeCalendarError(err, 'Failed to create meeting'));
     },
   });
 
@@ -224,7 +229,7 @@ export function Calendar() {
       }),
     onSuccess: () => invalidateFeed(),
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || err.message || 'Failed to move meeting');
+      toast.error(describeCalendarError(err, 'Failed to move meeting'));
       invalidateFeed();
     },
   });
@@ -237,7 +242,7 @@ export function Calendar() {
       invalidateFeed();
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || err.message || 'Failed to delete meeting');
+      toast.error(describeCalendarError(err, 'Failed to delete meeting'));
     },
   });
 

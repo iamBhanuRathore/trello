@@ -1984,3 +1984,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   3. **Empty states:** tray distinguishes "all scheduled" from "no tasks assigned" (onboarding copy); explicit local-timezone chip in the header.
   4. **Caching:** feed uses `keepPreviousData` + "Updating…" indicator (MyTasks pattern) so view switches don't flash.
 - Tests & Validation: dashboard `tsc` + `vite build` clean; layout logic verified via standalone cases (dashboard has no unit runner).
+
+### 2026-09-26 — Google-Write Timeouts + Honest Failure Toasts
+
+- **Symptom (user-reported):** dragging a Google meeting intermittently fails with a DevTools "CORS error" on `PATCH /google/events/:id`, while GETs in the same window succeed. Server log shows no trace of the PATCH (never arrived); preflight + PATCH paths verified correct live (204/401-with-CORS). Most likely a request dying in a `--watch` reboot window, which DevTools mislabels as CORS (same mislabeling our own `api.ts` documents).
+- **Fix (frontend):** 30s timeouts on all Google-write calls + `describeCalendarError` — network failures now toast "change NOT saved … please retry" instead of a raw message, so silent data-loss confusion is impossible.
+- Tests & Validation: dashboard `tsc` + `vite build` clean.

@@ -1,5 +1,16 @@
 import { api } from './api';
 
+// Google writes go to Google's servers and back — bound them client-side too
+// so a stall fails loudly instead of hanging the mutation forever.
+const WRITE_TIMEOUT_MS = 30000;
+
+export function describeCalendarError(err: any, fallback: string): string {
+  if (!err?.response) {
+    return 'Server unreachable — change NOT saved. The meeting on Google is untouched; please retry.';
+  }
+  return err.response?.data?.message || err.message || fallback;
+}
+
 export interface CalendarBlock {
   kind: 'task';
   id: string;
@@ -124,7 +135,9 @@ export const calendarService = {
     end?: string | null;
     description?: string;
   }): Promise<CalendarExternal> {
-    const res = await api.post('/calendar/google/events', payload);
+    const res = await api.post('/calendar/google/events', payload, {
+      timeout: WRITE_TIMEOUT_MS,
+    });
     return res.data;
   },
 
@@ -132,12 +145,16 @@ export const calendarService = {
     eventId: string,
     payload: { title?: string; start?: string | null; end?: string | null; addConference?: boolean }
   ): Promise<{ success: boolean; hangoutLink?: string | null }> {
-    const res = await api.patch(`/calendar/google/events/${eventId}`, payload);
+    const res = await api.patch(`/calendar/google/events/${eventId}`, payload, {
+      timeout: WRITE_TIMEOUT_MS,
+    });
     return res.data;
   },
 
   async deleteExternalEvent(eventId: string): Promise<{ success: boolean }> {
-    const res = await api.delete(`/calendar/google/events/${eventId}`);
+    const res = await api.delete(`/calendar/google/events/${eventId}`, {
+      timeout: WRITE_TIMEOUT_MS,
+    });
     return res.data;
   },
 };
