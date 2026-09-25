@@ -11,6 +11,7 @@
 A comprehensive End-to-End audit was executed across the entire **Boardly** platform (both Frontend Single Page App and Backend REST & WebSocket APIs). The testing encompassed multiple roles (**Org Owner**, **Org Admin**, **CTO**, **Product Lead**, **Developer**, **Plain Member**, and **External Stakeholder**) and all major functional modules.
 
 ### Overall Health & Test Results
+
 - **Backend Test Suite:** 109 Passing / 3 Failing (RBAC router regression).
 - **Frontend Build Status:** Failing TypeScript compilation due to deprecated TS 6/7 compiler flags.
 - **UI/UX & Feature Verification:** Core Kanban workflows, card details, markdown descriptions, checklists, time tracking, search palette, docs wiki, branding, and audit logs are functional with high responsiveness, but several critical logic, routing, error-boundary, and UX defects were uncovered.
@@ -19,16 +20,18 @@ A comprehensive End-to-End audit was executed across the entire **Boardly** plat
 
 ## 🗂️ Defect Summary Table
 
-| ID | Category | Title | Severity | Status | Affected Files / Components |
-|---|---|---|---|---|---|
-| **BUG-01** | Backend / RBAC | Organization Router `.use()` Middleware Leak Causes False 403s | **CRITICAL** | ✅ **Resolved** | [`apps/backend/src/modules/organizations/routes.ts`](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/organizations/routes.ts) |
-| **BUG-02** | Frontend / Build | `tsconfig.app.json` Deprecated `baseUrl` Breaks Production Build | **HIGH** | ✅ **Resolved** | [`apps/dashboard/tsconfig.app.json`](file:///Users/bhanurathore/projects/trello/apps/dashboard/tsconfig.app.json) |
-| **BUG-03** | Frontend / Routing | Missing 404 Catch-All Route Renders Blank Dark Screen | **HIGH** | ✅ **Resolved** | [`apps/dashboard/src/App.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/App.tsx) |
-| **BUG-04** | Backend / DB | Postgres Invalid UUID Syntax on Label Operations & Automations | **HIGH** | ✅ **Resolved** | [`apps/backend/src/modules/cards/service.ts`](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/cards/service.ts) |
-| **BUG-05** | UI/UX / Admin | Billing Page "Upgrade Plan" Button Is Non-Functional (Dead Click) | **MEDIUM** | ✅ **Resolved** | [`apps/dashboard/src/pages/admin/Billing.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/admin/Billing.tsx) |
-| **BUG-06** | UI/UX / Reports | Project Reports Infinite Spinner on Error / Missing Empty State | **MEDIUM** | ✅ **Resolved** | [`apps/dashboard/src/pages/ProjectReports.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/ProjectReports.tsx) |
-| **BUG-07** | UI/UX / Forms | Stage Templates WIP Limit Input Allows Unvalidated Input Values | **LOW** | ✅ **Resolved** | [`apps/dashboard/src/pages/admin/StageTemplates.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/admin/StageTemplates.tsx) |
-| **BUG-08** | Code Quality | Unused Imports & Exhaustive-Deps React Warnings | **LOW** | ✅ **Resolved** | Multiple Dashboard Components |
+| ID         | Category           | Title                                                                         | Severity     | Status          | Affected Files / Components                                                                                                                         |
+| ---------- | ------------------ | ----------------------------------------------------------------------------- | ------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **BUG-01** | Backend / RBAC     | Organization Router `.use()` Middleware Leak Causes False 403s                | **CRITICAL** | ✅ **Resolved** | [`apps/backend/src/modules/organizations/routes.ts`](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/organizations/routes.ts)   |
+| **BUG-02** | Frontend / Build   | `tsconfig.app.json` Deprecated `baseUrl` Breaks Production Build              | **HIGH**     | ✅ **Resolved** | [`apps/dashboard/tsconfig.app.json`](file:///Users/bhanurathore/projects/trello/apps/dashboard/tsconfig.app.json)                                   |
+| **BUG-03** | Frontend / Routing | Missing 404 Catch-All Route Renders Blank Dark Screen                         | **HIGH**     | ✅ **Resolved** | [`apps/dashboard/src/App.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/App.tsx)                                               |
+| **BUG-04** | Backend / DB       | Postgres Invalid UUID Syntax on Label Operations & Automations                | **HIGH**     | ✅ **Resolved** | [`apps/backend/src/modules/cards/service.ts`](file:///Users/bhanurathore/projects/trello/apps/backend/src/modules/cards/service.ts)                 |
+| **BUG-05** | UI/UX / Admin      | Billing Page "Upgrade Plan" Button Is Non-Functional (Dead Click)             | **MEDIUM**   | ✅ **Resolved** | [`apps/dashboard/src/pages/admin/Billing.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/admin/Billing.tsx)               |
+| **BUG-06** | UI/UX / Reports    | Project Reports Infinite Spinner on Error / Missing Empty State               | **MEDIUM**   | ✅ **Resolved** | [`apps/dashboard/src/pages/ProjectReports.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/ProjectReports.tsx)             |
+| **BUG-07** | UI/UX / Forms      | Stage Templates WIP Limit Input Allows Unvalidated Input Values               | **LOW**      | ✅ **Resolved** | [`apps/dashboard/src/pages/admin/StageTemplates.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/admin/StageTemplates.tsx) |
+| **BUG-08** | Code Quality       | Unused Imports & Exhaustive-Deps React Warnings                               | **LOW**      | ✅ **Resolved** | Multiple Dashboard Components                                                                                                                       |
+| **BUG-09** | Frontend / UX      | Opening a Just-Created Card Shows "Task not found" (Optimistic Temp-ID Click) | **MEDIUM**   | ✅ **Resolved** | [`apps/dashboard/src/pages/BoardView.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/BoardView.tsx)                       |
+| **BUG-10** | Frontend / UX      | Sidebar "Search or jump to…" Button Silently Does Nothing                     | **MEDIUM**   | ✅ **Resolved** | [`apps/dashboard/src/components/AppSidebar.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/components/AppSidebar.tsx)           |
 
 ---
 
@@ -48,6 +51,7 @@ A comprehensive End-to-End audit was executed across the entire **Boardly** plat
   3. This causes **3 unit/integration test failures** in `apps/backend/src/modules/organizations/org.routes.test.ts`.
 
 #### Steps to Reproduce:
+
 1. Run `bun run --cwd apps/backend test`.
 2. Observe test failure:
    ```text
@@ -57,13 +61,17 @@ A comprehensive End-to-End audit was executed across the entire **Boardly** plat
    ```
 
 #### Recommended Fix:
+
 Do not chain `.use(requirePermission(...))` at the top level of the same router. Instead, scope permissions per route using Elysia's `beforeHandle` route hook or nested `.guard()` blocks:
+
 ```typescript
 .get('/:orgId/members', handler, {
   beforeHandle: requirePermission('org.read').beforeHandle
 })
 ```
+
 or
+
 ```typescript
 .guard({ beforeHandle: requirePermission('org.read') }, (app) =>
   app.get('/:orgId/members', handler)
@@ -85,10 +93,12 @@ or
   This prevents building the frontend production bundle for deployments.
 
 #### Steps to Reproduce:
+
 1. Execute in terminal: `bun run --cwd apps/dashboard build`.
 2. Build halts with Exit Code 2.
 
 #### Recommended Fix:
+
 Add `"ignoreDeprecations": "6.0"` to compilerOptions in `apps/dashboard/tsconfig.app.json` or migrate path aliases to standard bundler path resolutions.
 
 ---
@@ -104,10 +114,12 @@ Add `"ignoreDeprecations": "6.0"` to compilerOptions in `apps/dashboard/tsconfig
   When a user navigates to an invalid URL path (e.g. `http://localhost:5173/random-unmatched-route-xyz`), the React router matches no route and renders an empty layout (a blank dark screen) without an error message, "404 Page Not Found" graphic, or navigation button to return to `/` or `/login`.
 
 #### Steps to Reproduce:
+
 1. Log in and navigate to `http://localhost:5173/non-existent-page`.
 2. Observe complete blank page without feedback.
 
 #### Recommended Fix:
+
 Add a fallback catch-all route `<Route path="*" element={<NotFoundPage />} />` inside `App.tsx` with a friendly "Page Not Found" screen and a "Return to Dashboard" action button.
 
 ---
@@ -126,10 +138,12 @@ Add a fallback catch-all route `<Route path="*" element={<NotFoundPage />} />` i
   ```
 
 #### Steps to Reproduce:
+
 1. Trigger card label attachment with non-UUID label ID.
 2. Observe 500 error log in backend database queries.
 
 #### Recommended Fix:
+
 Ensure all label handlers validate `z.string().uuid()` or parse valid UUIDs before executing SQL inserts against Postgres UUID columns.
 
 ---
@@ -143,11 +157,13 @@ Ensure all label handlers validate `z.string().uuid()` or parse valid UUIDs befo
   On the Billing Admin page, the "Upgrade Plan" button is rendered prominently in the UI. However, clicking the button does not trigger any action, modal, toast notification, or checkout link.
 
 #### Steps to Reproduce:
+
 1. Navigate to `http://localhost:5173/admin/billing`.
 2. Click on the "Upgrade Plan" button.
 3. Observe nothing happens.
 
 #### Recommended Fix:
+
 Connect the button to an upgrade plan modal or display a contact sales / tier selector dialog.
 
 ---
@@ -159,16 +175,18 @@ Connect the button to an upgrade plan modal or display a contact sales / tier se
 - **File:** [`apps/dashboard/src/pages/ProjectReports.tsx`](file:///Users/bhanurathore/projects/trello/apps/dashboard/src/pages/ProjectReports.tsx#L80-L89)
 - **Visual Evidence:**  
   ![Reports Loading State](/Users/bhanurathore/.gemini/antigravity-ide/brain/0fe9c3c7-6b47-41d8-b3cf-fc4fc4c8d2e8/project_reports_page_1787718964000.png)  
-  *Loaded Reports State:*  
+  _Loaded Reports State:_  
   ![Reports Loaded](/Users/bhanurathore/.gemini/antigravity-ide/brain/0fe9c3c7-6b47-41d8-b3cf-fc4fc4c8d2e8/project_reports_page_loaded_1787718968828.png)
 - **Description:**
   When navigating to `/projects/:projectId/reports`, if the initial summary query takes time, encounters a 404, or fails to fetch data, the page gets stuck in `Loading project analytics...` without an error alert or retry button.
 
 #### Steps to Reproduce:
+
 1. Navigate to `/projects/non-existent-project-id/reports`.
 2. Observe infinite spinner without error message.
 
 #### Recommended Fix:
+
 Handle `isError` explicitly in `useQuery` and render an `ErrorState` component with a retry button and back link.
 
 ---
@@ -185,6 +203,7 @@ Handle `isError` explicitly in `useQuery` and render an `ErrorState` component w
   When configuring stage templates, the WIP (Work-in-Progress) limit number input does not enforce `min={0}` or `max={999}` HTML constraints, allowing negative numbers or non-numeric characters to be entered before saving.
 
 #### Recommended Fix:
+
 Add `min={0}` and input sanitization to the WIP limit input element.
 
 ---
@@ -208,11 +227,13 @@ Add `min={0}` and input sanitization to the WIP limit input element.
 The following key platform capabilities were validated and confirmed working smoothly:
 
 ### 1. 🛡️ Authentication & Access Controls
+
 - **Invalid Credentials Handling:** Proper error prompt and feedback displayed (`login_error_message_1787638754057.png`).
 - **Valid Login & Token Persistence:** Alex Vance (`alex.vance@acme.corp`) logged in and token persisted in `localStorage`.
 - **Admin & Super Admin Navigation:** Role guards successfully permit Org Owner to access `/admin/*` and `/super-admin/*`.
 
 ### 2. 🗄️ Organization Administration & Governance
+
 - **Users Management (`/admin/users`):** Filtering, role badges, and user counts displayed cleanly (`filtered_users_admin_owner_1787718916319.png`).
 - **Audit Logs (`/admin/audit-logs`):** Event history, actor search filter, and CSV export work properly (`audit_logs_main_1787639354863.png`).
 - **Branding Customizer (`/admin/branding`):** Organization name, primary brand color picker, and live preview persist and save correctly (`branding_persisted_1787639454121.png`).
@@ -221,6 +242,7 @@ The following key platform capabilities were validated and confirmed working smo
 - **Super Admin Tenants & Plans (`/super-admin/tenants`, `/super-admin/plans`):** Multi-tenant catalog and plan tier matrices load properly (`superadmin_tenants_page_1787718946133.png`, `superadmin_plans_page_1787718950393.png`).
 
 ### 3. 📋 Kanban Board & Card Management
+
 - **Card Creation & Inline Inputs:** Tasks added instantly to lists.
 - **Task Detail Modal (`TaskDetailView`):**
   - Title editing and autosave.
@@ -231,6 +253,7 @@ The following key platform capabilities were validated and confirmed working smo
   - Label assignment with color tags.
 
 ### 4. ⚡ Productivity & Search
+
 - **Global Command Palette (`Control+K` / `Cmd+K`):** Instant search indexing for cards, boards, and quick actions (`search_command_palette_1787718998362.png`).
 - **Project Docs & Wiki (`/projects/:id/docs`):** Rich document creation, markdown rendering, and task linking (`project_docs_page_1787718987188.png`).
 - **Timesheets (`/timesheets`):** User hours aggregation matrix with date filtering.
@@ -240,21 +263,21 @@ The following key platform capabilities were validated and confirmed working smo
 
 ## 📸 Screenshots & Visual Media Reference
 
-| Area | Image File | Description |
-|---|---|---|
-| **Login Error Feedback** | `login_error_message_1787638754057.png` | Invalid credentials error banner |
-| **Admin Audit Trail** | `audit_logs_main_1787639354863.png` | Compliance audit logs table and filters |
-| **Admin Users Management** | `filtered_users_admin_owner_1787718916319.png` | User directory with search filter |
-| **Branding Settings** | `branding_persisted_1787639454121.png` | Live brand color and org name customizer |
-| **Stage Templates** | `verify_stage_inputs_1787639516968.png` | Workflow builder and WIP limit controls |
-| **Task Modal & Markdown** | `saved_description_1787718184871.png` | Card modal with rendered description |
-| **Time Tracking Entry** | `logged_time_entry_1787718676261.png` | Logged duration and time log history |
-| **Analytics & Reports** | `project_reports_page_loaded_1787718968828.png` | Velocity, Burndown, and CFD charts |
-| **Project Docs Wiki** | `project_docs_page_1787718987188.png` | Documentation and markdown preview |
-| **Global Command Palette** | `search_command_palette_1787718998362.png` | Cmd+K Search dialog and instant results |
-| **Super Admin Tenants** | `superadmin_tenants_page_1787718946133.png` | Multi-tenant organization list |
-| **Super Admin Plans** | `superadmin_plans_page_1787718950393.png` | Subscription tiers and feature limits |
-| **404 Route Defect** | `route_404_page_1787718954866.png` | Blank screen on unmatched route |
+| Area                       | Image File                                      | Description                              |
+| -------------------------- | ----------------------------------------------- | ---------------------------------------- |
+| **Login Error Feedback**   | `login_error_message_1787638754057.png`         | Invalid credentials error banner         |
+| **Admin Audit Trail**      | `audit_logs_main_1787639354863.png`             | Compliance audit logs table and filters  |
+| **Admin Users Management** | `filtered_users_admin_owner_1787718916319.png`  | User directory with search filter        |
+| **Branding Settings**      | `branding_persisted_1787639454121.png`          | Live brand color and org name customizer |
+| **Stage Templates**        | `verify_stage_inputs_1787639516968.png`         | Workflow builder and WIP limit controls  |
+| **Task Modal & Markdown**  | `saved_description_1787718184871.png`           | Card modal with rendered description     |
+| **Time Tracking Entry**    | `logged_time_entry_1787718676261.png`           | Logged duration and time log history     |
+| **Analytics & Reports**    | `project_reports_page_loaded_1787718968828.png` | Velocity, Burndown, and CFD charts       |
+| **Project Docs Wiki**      | `project_docs_page_1787718987188.png`           | Documentation and markdown preview       |
+| **Global Command Palette** | `search_command_palette_1787718998362.png`      | Cmd+K Search dialog and instant results  |
+| **Super Admin Tenants**    | `superadmin_tenants_page_1787718946133.png`     | Multi-tenant organization list           |
+| **Super Admin Plans**      | `superadmin_plans_page_1787718950393.png`       | Subscription tiers and feature limits    |
+| **404 Route Defect**       | `route_404_page_1787718954866.png`              | Blank screen on unmatched route          |
 
 ---
 
@@ -267,3 +290,51 @@ The following key platform capabilities were validated and confirmed working smo
 5. **Step 5 (Medium):** Wire the "Upgrade Plan" button on `/admin/billing` to open a plan selection modal (`BUG-05`).
 6. **Step 6 (Medium):** Add error state and retry UI in `ProjectReports.tsx` when analytics queries fail or return 404 (`BUG-06`).
 7. **Step 7 (Low):** Sanitize WIP limit inputs on `/admin/stages` and clean up linter warnings (`BUG-07`, `BUG-08`).
+
+---
+
+## 🤖 Automated E2E Suite (Playwright, 2026-09-26)
+
+Two-tier suite under `apps/dashboard/e2e/` (`smoke` gates PRs, `full` runs nightly/on-demand),
+using seed personas from `docs/SEED_CREDENTIALS.md` (`Password123!`) for role coverage plus
+isolated `e2e-<stamp>` entities (deleted in `afterAll`) for mutation flows.
+Result at introduction: **19 passed, 1 skipped (intentional prod-guard placeholder), 0 failed.**
+CI job `e2e-smoke` in `.github/workflows/ci.yml` runs the smoke tier against seeded Postgres + Redis.
+
+### 🟠 BUG-09: Opening a Just-Created Card Shows "Task not found"
+
+**Severity:** MEDIUM — affects every fast user, not just tests.
+
+**Context:** The inline card composer is optimistic: new tiles render immediately with
+`temp-*` ids until the server responds (`onReplaceCard`). Clicking the tile in that
+window opens `CardModal` with the temp id, and `GET /v1/cards/temp-…` 404s into the
+"Task not found" wall, which never retries.
+
+#### Steps to Reproduce:
+
+1. On any board, click "+ Add a card", type a title, submit.
+2. Within ~1s (before the server round-trip replaces the tile), click the new card.
+3. Modal shows "Task not found — This card may have been deleted or archived."
+
+#### Fix Applied:
+
+`handleCardClick` in `BoardView.tsx` ignores `temp-`-prefixed ids (the tile is replaced
+with the real card within a beat, so the click is safely dropped).
+
+### 🟠 BUG-10: Sidebar "Search or jump to…" Button Silently Does Nothing
+
+**Severity:** MEDIUM — dead control in primary navigation.
+
+**Context:** The button synthesizes `Cmd+K` via `window.dispatchEvent(new KeyboardEvent(...))`,
+but `SearchPalette` listens at `document` level — and window-targeted events never reach
+document listeners. Real keyboard Cmd+K worked, so this only broke the clickable path.
+
+#### Steps to Reproduce:
+
+1. Click "Search or jump to…" in the sidebar (do not press Cmd+K).
+2. Nothing happens — no palette, no error.
+
+#### Fix Applied:
+
+Dispatch the synthetic event on `document` instead of `window` in `AppSidebar.tsx`.
+Covered by `e2e/full/misc.spec.ts` (palette opens via button click).

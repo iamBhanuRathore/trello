@@ -1999,3 +1999,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Cleanup:** shared `useDebouncedValue` hook (removed 2 copies); deleted dead dashboard `superAdminService.ts` + dead platform trio in `orgService`; `getMembers` delegates to `getMembersWithCount`; canonical `utils/avatar.ts` adopted across 9 chat/sidebar files; native `confirm()` in `TaskChatPane` → `ConfirmDialog`; marketplace filters + git repo lookup pushed to SQL; billing payment-failed email loop de-N+1'd (single batched user fetch).
 - **Deferred (audited, risky without need):** member-picker consolidation (5 variants), date-format helper rollout, `React.memo` row memoization, remaining transitive dep majors.
 - Tests & Validation: backend + dashboard + super-admin `tsc` clean; git/calendar/developer suites green except pre-existing FK-cleanup failures (fail on clean tree too).
+
+### 2026-09-26 — Playwright E2E Suite (Smoke + Full) Using Seed Personas
+
+- **What was done:** two-tier suite in `apps/dashboard/e2e/` (`smoke`: auth across Alex/Elena/Leo/Raymond, role guards, isolated board loop; `full`: two-user chat, calendar views, signed git webhooks, admin flows, palette/marketplace/timesheets). Isolated `e2e-<stamp>` entities deleted in `afterAll`; seed data never mutated. CI `e2e-smoke` job added (seeded Postgres + Redis, backend + dashboard boot, artifact upload on failure).
+- **Bugs found & fixed by the suite:** BUG-09 (temp-id card click → "Task not found" wall; guard in `BoardView.handleCardClick`), BUG-10 (sidebar search button dispatched Cmd+K on `window`, never reaching the `document`-level palette listener; dispatch on `document`). Both logged in `E2E_TESTING_REPORT.md`.
+- Tests & Validation: **19 passed, 1 skipped (intentional), 0 failed**; dashboard `tsc` + build clean.

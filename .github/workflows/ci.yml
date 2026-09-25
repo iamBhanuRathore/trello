@@ -73,3 +73,85 @@ jobs:
 
       - name: Run unit & integration test suites
         run: bun run test
+
+  e2e-smoke:
+    name: E2E smoke (Playwright)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: boardly
+          POSTGRES_PASSWORD: boardly_test
+          POSTGRES_DB: boardly_test
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U boardly -d boardly_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://boardly:boardly_test@localhost:5433/boardly_test
+      DATABASE_TEST_URL: postgresql://boardly:boardly_test@localhost:5433/boardly_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-test-jwt-secret-at-least-32-characters
+      REFRESH_TOKEN_SECRET: ci-test-refresh-secret-at-least-32-chars
+      NODE_ENV: test
+      API_URL: http://localhost:3001
+      DASHBOARD_URL: http://localhost:5173,http://localhost:5174
+      E2E_BASE_URL: http://localhost:5173
+      E2E_API_URL: http://localhost:3001/v1
+      CI: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: bunx --cwd apps/dashboard playwright install --with-deps chromium
+
+      - name: Migrate + seed (base + Acme demo org for personas)
+        run: |
+          bun run --cwd apps/backend db:migrate
+          bun run --cwd apps/backend db:seed
+          bun run --cwd apps/backend db:seed:org
+
+      - name: Start backend + dashboard
+        run: |
+          (bun run --cwd apps/backend dev &)
+          (bun run --cwd apps/dashboard dev -- --port 5173 --strictPort &)
+          for i in $(seq 1 24); do
+            curl -sf http://localhost:3001/v1/calendar/google/status >/dev/null 2>&1 && curl -sf http://localhost:5173 >/dev/null 2>&1 && break
+            sleep 5
+          done
+
+      - name: Run Playwright smoke suite
+        run: bun run --cwd apps/dashboard test:e2e:smoke
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/dashboard/playwright-report
+            apps/dashboard/test-results

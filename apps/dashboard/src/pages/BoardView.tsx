@@ -169,6 +169,10 @@ export function BoardView() {
 
   const handleCardClick = useCallback(
     (cardId: string) => {
+      // Optimistic tiles carry temp ids until the server responds — opening
+      // the modal for one 404s ("Task not found"). Ignore the click; the
+      // tile is replaced with the real card within a beat.
+      if (!cardId || cardId.startsWith('temp-')) return;
       setSelectedCardId(cardId);
       emitCardFocus(cardId);
       // Replace: dialog state is ephemeral — pushing would make browser-Back

@@ -136,7 +136,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   };
 
   const triggerSearchPalette = () => {
-    window.dispatchEvent(
+    // Dispatch on document (not window): the palette listens at document
+    // level, and window-targeted events never reach document listeners.
+    document.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'k',
         metaKey: true,
