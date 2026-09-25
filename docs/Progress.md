@@ -1970,3 +1970,8 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **What was done:** pull requests `conferenceDataVersion: 1` and maps `hangoutLink`, `location`, `organizer`, `recurrence[]`; PATCH accepts `addConference` (Meet `createRequest`, returns fresh `hangoutLink`); popover shows Join Meet (or Add Meet link), location, humanized recurrence ("Repeats weekly on Mon"), mailto attendees; task popover keeps Open-in-Google for pushed blocks.
 - **Verified live:** added a real Meet link to the user's own "Test" event via the API and read it back through pull — no iframe needed, Google itself renders the call UI.
 - Tests & Validation: `calendar.test.ts` 20/20 (mapping + Meet-request shape); backend + dashboard `tsc` clean, dashboard build clean.
+
+### 2026-09-25 — Current-Time Line on Calendar Grid
+
+- **What was done:** Google-style red now-line with dot across today's column in Week/Day views (absent in Month, matching Google); local-time math reusing the grid's per-column header measurement; 60s live refresh; auto-scrolls into view on entry until the user scrolls manually.
+- Tests & Validation: dashboard `tsc` + `vite build` clean.
