@@ -405,6 +405,7 @@ export function Calendar() {
                     title: block.title,
                     start: block.start,
                     end: block.end,
+                    googleUrl: block.googleUrl || null,
                   },
                   anchor,
                 })
@@ -453,6 +454,7 @@ export function Calendar() {
                     title: block.title,
                     start: block.start,
                     end: block.end,
+                    googleUrl: block.googleUrl || null,
                   },
                   anchor,
                 })
@@ -667,7 +669,14 @@ function MonthGrid({
   onOpenTask: (id: string) => void;
   onSelectDay: (d: Date) => void;
   onSelectTask: (
-    block: { id: string; key?: string | null; title: string; start: string; end?: string | null },
+    block: {
+      id: string;
+      key?: string | null;
+      title: string;
+      start: string;
+      end?: string | null;
+      googleUrl?: string | null;
+    },
     anchor: { x: number; y: number }
   ) => void;
   onSelectExternal: (event: CalendarExternal, anchor: { x: number; y: number }) => void;
@@ -832,7 +841,14 @@ function TimeGrid({
   onResize: (cardId: string, day: Date, startISO: string, mins: number) => void;
   onOpenTask: (id: string) => void;
   onSelectTask: (
-    block: { id: string; key?: string | null; title: string; start: string; end?: string | null },
+    block: {
+      id: string;
+      key?: string | null;
+      title: string;
+      start: string;
+      end?: string | null;
+      googleUrl?: string | null;
+    },
     anchor: { x: number; y: number }
   ) => void;
   onSelectExternal: (event: CalendarExternal, anchor: { x: number; y: number }) => void;

@@ -24,6 +24,20 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-25 — Calendar Write UX: Popovers over Modals, Scoped Google Writes
+
+**Context:** The calendar needed detail views, quick-create, and rescheduling of Google meetings. Two choices: full modals vs anchored popovers, and how far Google-write permissions should reach.
+
+**Decision:**
+
+1. **Popovers, not modals:** event details and quick-create render in viewport-clamped portal popovers (Escape/outside-click dismissal, same convention as card hover previews). A modal would steal context on a dense grid; the popover keeps the time slot visible while acting.
+2. **Google writes stay user-scoped:** create/patch/delete act only on the connector's own calendar via stored refresh tokens — never service-wide. Pushed task links store `html_url` so tasks can deep-link back to Google.
+3. **Press-then-drag:** click selects (popover), 5px movement promotes to drag. Distinguishes inspection from rearrangement without modifier keys, matching Google Calendar.
+
+**Alternatives considered:** Full CardModal-style dialogs for event details (rejected — overkill, loses grid context); Google push webhook channels for instant inbound sync (rejected — needs public HTTPS; polling + instant push covers v1, same call as before).
+
+**Consequences:** All calendar interactions complete without leaving the grid. Outlook later copies the same three endpoints.
+
 ### 2026-09-25 — GitHub Automations via Webhooks (No API Dependency)
 
 **Context:** 4.3 wanted repo sync, ticket auto-linking, PR-driven card movement, and review badges. A full GitHub App (private keys, JWT, installation tokens, Octokit) is heavy ops for v1; polling the REST API is rate-limited and latent.

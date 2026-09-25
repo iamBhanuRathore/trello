@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
-import { ExternalLink, Trash2, FolderOpen, Clock, X } from 'lucide-react';
+import { ExternalLink, Trash2, FolderOpen, Clock, X, Users } from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { CalendarExternal } from '../../lib/calendarService';
 
@@ -13,6 +13,7 @@ export type CalendarSelection =
       title: string;
       start: string;
       end?: string | null;
+      googleUrl?: string | null;
     }
   | { kind: 'external'; event: CalendarExternal };
 
@@ -118,6 +119,22 @@ export const EventPopover: React.FC<{
         </span>
       </div>
 
+      {selection.kind === 'external' && (
+        <div className="space-y-1.5 text-xs">
+          {selection.event.description && (
+            <p className="text-muted-foreground leading-relaxed line-clamp-3">
+              {selection.event.description}
+            </p>
+          )}
+          {(selection.event.attendees?.length || 0) > 0 && (
+            <p className="inline-flex items-start gap-1.5 text-muted-foreground">
+              <Users className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span className="break-all">{selection.event.attendees!.join(', ')}</span>
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-1.5 pt-0.5">
         {selection.kind === 'task' ? (
           <>
@@ -129,6 +146,17 @@ export const EventPopover: React.FC<{
               <FolderOpen className="w-3.5 h-3.5" />
               Open task
             </button>
+            {selection.googleUrl && (
+              <a
+                href={selection.googleUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Google
+              </a>
+            )}
             <button
               type="button"
               onClick={() => onUnscheduleTask(selection.id)}

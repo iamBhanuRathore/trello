@@ -9,6 +9,7 @@ export interface CalendarBlock {
   end?: string | null;
   stageId?: string | null;
   listId?: string | null;
+  googleUrl?: string | null;
 }
 
 export interface CalendarDue {
@@ -46,6 +47,8 @@ export interface CalendarExternal {
   end: string | null;
   allDay: boolean;
   htmlLink?: string | null;
+  description?: string | null;
+  attendees?: string[];
 }
 
 export interface UnscheduledTask {

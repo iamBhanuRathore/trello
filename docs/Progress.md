@@ -1958,3 +1958,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
   3. **Draggable Google meetings**: move + resize via new update endpoint, server refetch restores on failure (rollback by refetch).
   4. **Times on every block** + press-then-drag model (click selects without accidental drags; 5px threshold promotes to drag).
 - Tests & Validation: dashboard `tsc` + `vite build` clean. Backend `calendar.test.ts` already covered the write endpoints.
+
+### 2026-09-25 — Calendar Detail Completeness (Attendees, Descriptions, Push Links)
+
+- **Gap vs plan:** popovers lacked attendee lists, description snippets, and task "Open in Google" for pushed blocks.
+- **Fix:** pull maps `attendees[]` (capped 10) + 500-char descriptions; pushes store `html_url` (migration `0021`) surfaced as `googleUrl` on feed blocks; popover renders both plus the deep link. Decisions note added (popover-over-modal, user-scoped writes).
+- Tests & Validation: `calendar.test.ts` 19/19 (pull mapping, htmlLink round-trip); backend + dashboard `tsc` clean, dashboard build clean.

@@ -1265,6 +1265,7 @@ export const calendarEventLinks = pgTable(
     providerCalendarId: varchar('provider_calendar_id', { length: 255 })
       .notNull()
       .default('primary'),
+    htmlUrl: varchar('html_url', { length: 2048 }),
     lastPushedAt: timestamp('last_pushed_at').notNull().defaultNow(),
   },
   (t) => [uniqueIndex('calendar_link_card_conn_idx').on(t.cardId, t.connectionId)]

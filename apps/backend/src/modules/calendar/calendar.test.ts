@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
@@ -219,6 +220,23 @@ describe('Google event writes (fake client)', () => {
       }),
       patch: async () => ({ data: {} }),
       delete: async () => ({ data: {} }),
+      list: async () => ({
+        data: {
+          items: [
+            {
+              id: 'g-ext-1',
+              summary: 'Team sync',
+              start: { dateTime: '2026-09-25T10:00:00Z' },
+              end: { dateTime: '2026-09-25T10:30:00Z' },
+              description: 'Weekly alignment meeting notes here',
+              attendees: [{ email: 'a@x.co' }, { displayName: 'NoMail' }],
+              htmlLink: 'https://cal/g-ext-1',
+              status: 'confirmed',
+            },
+            { id: 'g-gone', status: 'cancelled', summary: 'Gone' },
+          ],
+        },
+      }),
     },
   };
 
@@ -294,5 +312,67 @@ describe('Google event writes (fake client)', () => {
       'not connected'
     );
     expect(deleteExternalEvent(db, user.id, 'x', fakeClient)).rejects.toThrow('not connected');
+  });
+
+  it('maps attendees and descriptions on pull, stores htmlLink on push', async () => {
+    const { user, organization } = await setupConnected();
+    const { events } = await pullExternalEvents(db, user.id, {}, fakeClient);
+    expect(events.length).toBe(1);
+    expect(events[0]!.summary).toBe('Team sync');
+    expect(events[0]!.description).toContain('Weekly alignment');
+    expect(events[0]!.attendees).toContain('a@x.co');
+
+    // Push a scheduled card and verify the htmlLink round-trips into the feed.
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS2' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App2',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'B2',
+    });
+    const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
+    const card = await createCard(db, organization.id, {
+      listId: list!.id,
+      title: 'Push me',
+      assigneeId: user.id,
+      actorId: user.id,
+    });
+    await scheduleCard(db, card!.id, organization.id, user.id, {
+      start: '2026-09-25T10:00:00Z',
+      end: '2026-09-25T11:00:00Z',
+    });
+    const { pushCardToGoogle } = await import('./service');
+    const [conn] = await db
+      .select()
+      .from(schema.calendarConnections)
+      .where(eq(schema.calendarConnections.userId, user.id))
+      .limit(1);
+    await pushCardToGoogle(
+      db,
+      conn!.id,
+      organization.id,
+      {
+        id: card!.id,
+        key: card!.key,
+        title: 'Push me',
+        scheduledStart: '2026-09-25T10:00:00Z',
+        scheduledEnd: '2026-09-25T11:00:00Z',
+      },
+      fakeClient
+    );
+
+    const feed = await getCalendarFeed(
+      db,
+      organization.id,
+      user.id,
+      { from: '2026-09-01T00:00:00Z', to: '2026-10-31T00:00:00Z' },
+      fakeClient
+    );
+    const block = feed.blocks.find((b) => b.id === card!.id);
+    expect(block?.googleUrl).toBe('https://cal/g-ev-1');
   });
 });

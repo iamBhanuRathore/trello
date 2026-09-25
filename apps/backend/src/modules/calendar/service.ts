@@ -1,4 +1,4 @@
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   calendarConnections,
@@ -58,6 +58,8 @@ export interface NormalizedExternalEvent {
   end: string | null;
   allDay: boolean;
   htmlLink?: string | null;
+  description?: string | null;
+  attendees?: string[];
 }
 
 // ─── Connection lifecycle ────────────────────────────────────────────────────
@@ -248,6 +250,13 @@ export async function pullExternalEvents(
       end: e.end?.dateTime || e.end?.date || null,
       allDay: !e.start?.dateTime,
       htmlLink: e.htmlLink || null,
+      description: typeof e.description === 'string' ? e.description.slice(0, 500) : null,
+      attendees: Array.isArray(e.attendees)
+        ? e.attendees
+            .map((a: any) => a?.email || a?.displayName)
+            .filter(Boolean)
+            .slice(0, 10)
+        : [],
     }));
 
   return { events, incremental: useIncremental };
@@ -332,6 +341,7 @@ export async function pushCardToGoogle(
   }
 
   let eventId = existing?.providerEventId;
+  let htmlUrl: string | null = existing?.htmlUrl || null;
   try {
     if (eventId) {
       await withGoogleTimeout<any>('events.patch', () =>
@@ -349,6 +359,7 @@ export async function pushCardToGoogle(
         })
       );
       eventId = data.id;
+      htmlUrl = data.htmlLink || null;
       await db
         .insert(calendarEventLinks)
         .values({
@@ -357,6 +368,7 @@ export async function pushCardToGoogle(
           cardId: card.id,
           providerEventId: String(eventId),
           providerCalendarId: conn.calendarId,
+          htmlUrl,
         })
         .onConflictDoNothing();
     }
@@ -366,7 +378,7 @@ export async function pushCardToGoogle(
 
   await db
     .update(calendarEventLinks)
-    .set({ lastPushedAt: new Date() })
+    .set({ lastPushedAt: new Date(), htmlUrl })
     .where(
       and(eq(calendarEventLinks.cardId, card.id), eq(calendarEventLinks.connectionId, connectionId))
     );
@@ -610,6 +622,26 @@ export async function getCalendarFeed(
     )
     .limit(500);
 
+  // Pushed-event URLs for the user's own connections (Open-in-Google).
+  const userConns = await db
+    .select({ id: calendarConnections.id })
+    .from(calendarConnections)
+    .where(eq(calendarConnections.userId, userId));
+  const connIds = userConns.map((c) => c.id);
+  let pushedUrls = new Map<string, string>();
+  if (connIds.length > 0) {
+    const linkRows = await db
+      .select({
+        cardId: calendarEventLinks.cardId,
+        htmlUrl: calendarEventLinks.htmlUrl,
+      })
+      .from(calendarEventLinks)
+      .where(inArray(calendarEventLinks.connectionId, connIds));
+    pushedUrls = new Map(
+      linkRows.filter((r) => r.htmlUrl).map((r) => [r.cardId, r.htmlUrl as string])
+    );
+  }
+
   const blocks = myCards
     .filter((c) => c.scheduledStart)
     .map((c) => ({
@@ -621,6 +653,7 @@ export async function getCalendarFeed(
       end: c.scheduledEnd,
       stageId: c.stageId,
       listId: c.listId,
+      googleUrl: pushedUrls.get(c.id) || null,
     }));
 
   const dueDates = myCards
