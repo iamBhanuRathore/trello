@@ -90,10 +90,11 @@ export function Calendar() {
     return { from: toISO(start), to: toISO(addDays(start, 1)) };
   }, [view, cursor]);
 
-  const { data: feed } = useQuery<CalendarFeed>({
+  const { data: feed, isFetching: isFeedFetching } = useQuery<CalendarFeed>({
     queryKey: ['calendar', 'feed', range.from, range.to],
     queryFn: () => calendarService.feed(range.from, range.to),
     staleTime: 30000,
+    placeholderData: (prev) => prev,
   });
 
   const { data: googleStatus, refetch: refetchStatus } = useQuery({
@@ -123,6 +124,44 @@ export function Calendar() {
   useEscapeKey(() => {
     if (placeTaskId) setPlaceTaskId(null);
   }, !!placeTaskId);
+
+  // Keyboard navigation (skipped while typing or when a popover/modal is open).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === 'INPUT' ||
+          t.tagName === 'TEXTAREA' ||
+          t.tagName === 'SELECT' ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (selection || createDraft || activeCardId) return;
+      const k = e.key.toLowerCase();
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        nav(-1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        nav(1);
+      } else if (k === 't') {
+        e.preventDefault();
+        setCursor(new Date());
+      } else if (k === 'm') {
+        setView('month');
+      } else if (k === 'w') {
+        setView('week');
+      } else if (k === 'd') {
+        setView('day');
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, cursor, selection, createDraft, activeCardId, placeTaskId]);
 
   const scheduleMutation = useMutation({
     mutationFn: ({
@@ -338,7 +377,18 @@ export function Calendar() {
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-        <h2 className="text-base font-bold tracking-tight mr-2">{title}</h2>
+        <h2 className="text-base font-bold tracking-tight mr-1">{title}</h2>
+        <span
+          className="text-[10px] font-mono text-muted-foreground border border-border/60 rounded-md px-1.5 py-0.5 mr-2 hidden sm:inline"
+          title="All times shown in your local timezone"
+        >
+          {Intl.DateTimeFormat().resolvedOptions().timeZone}
+        </span>
+        {isFeedFetching && (
+          <span className="text-[10px] text-muted-foreground animate-pulse mr-2 hidden sm:inline">
+            Updating…
+          </span>
+        )}
 
         <div className="flex items-center rounded-xl bg-muted/50 border border-border p-0.5">
           {(['month', 'week', 'day'] as CalendarView[]).map((v) => (
@@ -536,11 +586,22 @@ export function Calendar() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-              {(feed?.unscheduled || []).length === 0 && (
-                <p className="text-[11px] text-muted-foreground text-center py-6">
-                  Nothing unscheduled — every assigned task has a time block.
-                </p>
-              )}
+              {(feed?.unscheduled || []).length === 0 &&
+                ((feed?.blocks || []).length > 0 || (feed?.dueDates || []).length > 0 ? (
+                  <p className="text-[11px] text-muted-foreground text-center py-6">
+                    Nothing unscheduled — every assigned task has a time block.
+                  </p>
+                ) : (
+                  <div className="text-center py-6 space-y-2">
+                    <p className="text-xs font-semibold">No tasks on your plate</p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Tasks assigned to you appear here.
+                      <br />
+                      Create a workspace, add a board, and assign yourself a card — then drag it
+                      onto the calendar.
+                    </p>
+                  </div>
+                ))}
               {(feed?.unscheduled || []).map((t) => (
                 <button
                   key={t.id}
@@ -1189,53 +1250,69 @@ function TimeGrid({
                 className="relative border-b border-l border-border/40"
                 style={{ height: HOUR_H }}
               >
-                {h === 0 && (
-                  <>
-                    {dayBlocks.map((b) => (
-                      <BlockChip
-                        key={b.id}
-                        block={b}
-                        dragActive={!!drag}
-                        onOpen={() => onOpenTask(b.id)}
-                        onSelect={(e) => {
-                          const anchor = anchorFromClient(e.clientX, e.clientY);
-                          onSelectTask(b, anchor);
-                        }}
-                        onPressStart={(e) =>
-                          startBlockPress(e, {
-                            kind: 'task',
-                            id: b.id,
-                            startISO: b.start,
-                            endISO: b.end,
-                          })
-                        }
-                        onPressUp={resolvePressUp}
-                        onResizeStart={(e) => startBlockDrag(e, b, 'resize')}
-                      />
-                    ))}
-                    {dayExt.map((e) => (
-                      <ExternalBlockChip
-                        key={e.id}
-                        event={e}
-                        dragActive={!!drag}
-                        onSelect={(ev) => {
-                          const anchor = anchorFromClient(ev.clientX, ev.clientY);
-                          onSelectExternal(e, anchor);
-                        }}
-                        onPressStart={(ev) =>
-                          startBlockPress(ev, {
-                            kind: 'external',
-                            id: e.id,
-                            startISO: e.start!,
-                            endISO: e.end,
-                          })
-                        }
-                        onPressUp={resolvePressUp}
-                        onResizeStart={(ev) => startExternalDrag(ev, e, 'resize')}
-                      />
-                    ))}
-                  </>
-                )}
+                {h === 0 &&
+                  (() => {
+                    const timed = [
+                      ...dayBlocks.map((b) => ({ id: `t:${b.id}`, start: b.start, end: b.end })),
+                      ...dayExt.map((e) => ({ id: `e:${e.id}`, start: e.start!, end: e.end })),
+                    ];
+                    const layout = layoutDayColumns(timed);
+                    return (
+                      <>
+                        {dayBlocks.map((b) => {
+                          const l = layout.get(`t:${b.id}`) || { col: 0, cols: 1 };
+                          return (
+                            <BlockChip
+                              key={b.id}
+                              block={b}
+                              dragActive={!!drag}
+                              layoutStyle={columnStyle(l.col, l.cols)}
+                              onOpen={() => onOpenTask(b.id)}
+                              onSelect={(e) => {
+                                const anchor = anchorFromClient(e.clientX, e.clientY);
+                                onSelectTask(b, anchor);
+                              }}
+                              onPressStart={(e) =>
+                                startBlockPress(e, {
+                                  kind: 'task',
+                                  id: b.id,
+                                  startISO: b.start,
+                                  endISO: b.end,
+                                })
+                              }
+                              onPressUp={resolvePressUp}
+                              onResizeStart={(e) => startBlockDrag(e, b, 'resize')}
+                            />
+                          );
+                        })}
+                        {dayExt.map((e) => {
+                          const l = layout.get(`e:${e.id}`) || { col: 0, cols: 1 };
+                          return (
+                            <ExternalBlockChip
+                              key={e.id}
+                              event={e}
+                              dragActive={!!drag}
+                              layoutStyle={columnStyle(l.col, l.cols)}
+                              onSelect={(ev) => {
+                                const anchor = anchorFromClient(ev.clientX, ev.clientY);
+                                onSelectExternal(e, anchor);
+                              }}
+                              onPressStart={(ev) =>
+                                startBlockPress(ev, {
+                                  kind: 'external',
+                                  id: e.id,
+                                  startISO: e.start!,
+                                  endISO: e.end,
+                                })
+                              }
+                              onPressUp={resolvePressUp}
+                              onResizeStart={(ev) => startExternalDrag(ev, e, 'resize')}
+                            />
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
                 {dayDues.map((d) => (
                   <button
                     key={d.id}
@@ -1333,6 +1410,71 @@ function blockStyle(startISO: string, endISO?: string | null): React.CSSProperti
   return { top, height };
 }
 
+/**
+ * Google-style overlap layout: concurrent blocks share the day width
+ * side-by-side instead of stacking. Returns column assignment per id.
+ */
+export function layoutDayColumns(
+  items: { id: string; start: string; end?: string | null }[]
+): Map<string, { col: number; cols: number }> {
+  const withTimes = items.map((it) => {
+    const s = new Date(it.start).getTime();
+    const e = it.end ? new Date(it.end).getTime() : s + 60 * 60_000;
+    return { id: it.id, s, e: Math.max(e, s + 15 * 60_000) };
+  });
+  // Union-find clusters of transitively overlapping intervals.
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    const p = parent.get(x) || x;
+    if (p !== x) parent.set(x, find(p));
+    return parent.get(x) || x;
+  };
+  for (const it of withTimes) parent.set(it.id, it.id);
+  const sorted = [...withTimes].sort((a, b) => a.s - b.s || a.e - b.e);
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length && sorted[j]!.s < sorted[i]!.e; j++) {
+      const a = find(sorted[i]!.id);
+      const b = find(sorted[j]!.id);
+      if (a !== b) parent.set(a, b);
+    }
+  }
+  const clusters = new Map<string, typeof withTimes>();
+  for (const it of withTimes) {
+    const root = find(it.id);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root)!.push(it);
+  }
+  // Greedy column packing per cluster (interval-graph coloring).
+  const out = new Map<string, { col: number; cols: number }>();
+  for (const members of clusters.values()) {
+    const ordered = [...members].sort((a, b) => a.s - b.s || a.e - b.e);
+    const colEnds: number[] = [];
+    const assignment = new Map<string, number>();
+    for (const m of ordered) {
+      let col = colEnds.findIndex((end) => end <= m.s);
+      if (col === -1) {
+        col = colEnds.length;
+        colEnds.push(m.e);
+      } else {
+        colEnds[col] = m.e;
+      }
+      assignment.set(m.id, col);
+    }
+    const cols = colEnds.length;
+    for (const [id, col] of assignment) out.set(id, { col, cols });
+  }
+  return out;
+}
+
+function columnStyle(col: number, cols: number): React.CSSProperties {
+  if (cols <= 1) return {};
+  return {
+    left: `calc(4px + (100% - 8px) * ${col} / ${cols})`,
+    width: `calc((100% - 8px) / ${cols} - 2px)`,
+    right: 'auto' as const,
+  };
+}
+
 function formatTimeRange(startISO: string, endISO?: string | null): string {
   const start = new Date(startISO);
   const end = endISO ? new Date(endISO) : new Date(start.getTime() + 60 * 60_000);
@@ -1347,6 +1489,7 @@ function BlockChip({
   onPressStart,
   onPressUp,
   onResizeStart,
+  layoutStyle,
 }: {
   block: { id: string; key?: string | null; title: string; start: string; end?: string | null };
   dragActive: boolean;
@@ -1355,6 +1498,7 @@ function BlockChip({
   onPressStart: (e: React.PointerEvent) => void;
   onPressUp: (e: React.PointerEvent) => void;
   onResizeStart: (e: React.PointerEvent) => void;
+  layoutStyle?: React.CSSProperties;
 }) {
   return (
     <div
@@ -1368,7 +1512,7 @@ function BlockChip({
       onDoubleClick={onOpen}
       title={`${block.key ? `[${block.key}] ` : ''}${block.title} — ${formatTimeRange(block.start, block.end)} (click for details, drag to move, double-click to open)`}
       className="absolute left-1 right-1 rounded-lg bg-primary/15 border border-primary/30 border-l-4 border-l-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary overflow-hidden cursor-grab active:cursor-grabbing z-[6] hover:bg-primary/25"
-      style={blockStyle(block.start, block.end)}
+      style={{ ...blockStyle(block.start, block.end), ...layoutStyle }}
     >
       <span className="block truncate pointer-events-none">
         {block.key ? `${block.key} ` : ''}
@@ -1394,6 +1538,7 @@ function ExternalBlockChip({
   onPressStart,
   onPressUp,
   onResizeStart,
+  layoutStyle,
 }: {
   event: CalendarExternal;
   dragActive: boolean;
@@ -1401,6 +1546,7 @@ function ExternalBlockChip({
   onPressStart: (e: React.PointerEvent) => void;
   onPressUp: (e: React.PointerEvent) => void;
   onResizeStart: (e: React.PointerEvent) => void;
+  layoutStyle?: React.CSSProperties;
 }) {
   if (!event.start) return null;
   return (
@@ -1414,7 +1560,7 @@ function ExternalBlockChip({
       }}
       title={`${event.summary} — ${formatTimeRange(event.start, event.end)} (click for details, drag to reschedule)`}
       className="absolute left-1 right-1 rounded-lg bg-muted/70 border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground overflow-hidden cursor-grab active:cursor-grabbing z-[6] hover:border-primary/40 hover:text-foreground"
-      style={blockStyle(event.start, event.end)}
+      style={{ ...blockStyle(event.start, event.end), ...layoutStyle }}
     >
       <span className="block truncate pointer-events-none font-semibold">{event.summary}</span>
       <span className="block truncate text-[9px] opacity-80 pointer-events-none">

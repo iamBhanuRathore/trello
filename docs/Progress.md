@@ -1975,3 +1975,12 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 
 - **What was done:** Google-style red now-line with dot across today's column in Week/Day views (absent in Month, matching Google); local-time math reusing the grid's per-column header measurement; 60s live refresh; auto-scrolls into view on entry until the user scrolls manually.
 - Tests & Validation: dashboard `tsc` + `vite build` clean.
+
+### 2026-09-26 — Calendar Polish Batch (Overlap, Keyboard, Empty States, TZ)
+
+- **What was done (`Calendar.tsx`, frontend-only):**
+  1. **Overlap layout:** concurrent blocks share day width side-by-side (`layoutDayColumns` interval-graph coloring, exported pure); verified with extracted-function cases (split/chain/adjacent).
+  2. **Keyboard nav:** `←/→` move, `T` today, `M/W/D` views — skipped in inputs and while popovers/modals open; no conflicts with global chords.
+  3. **Empty states:** tray distinguishes "all scheduled" from "no tasks assigned" (onboarding copy); explicit local-timezone chip in the header.
+  4. **Caching:** feed uses `keepPreviousData` + "Updating…" indicator (MyTasks pattern) so view switches don't flash.
+- Tests & Validation: dashboard `tsc` + `vite build` clean; layout logic verified via standalone cases (dashboard has no unit runner).
