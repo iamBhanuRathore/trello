@@ -1964,3 +1964,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Gap vs plan:** popovers lacked attendee lists, description snippets, and task "Open in Google" for pushed blocks.
 - **Fix:** pull maps `attendees[]` (capped 10) + 500-char descriptions; pushes store `html_url` (migration `0021`) surfaced as `googleUrl` on feed blocks; popover renders both plus the deep link. Decisions note added (popover-over-modal, user-scoped writes).
 - Tests & Validation: `calendar.test.ts` 19/19 (pull mapping, htmlLink round-trip); backend + dashboard `tsc` clean, dashboard build clean.
+
+### 2026-09-25 — Plan B: Meet/Location/Recurrence Deep Links + Add-Meet
+
+- **What was done:** pull requests `conferenceDataVersion: 1` and maps `hangoutLink`, `location`, `organizer`, `recurrence[]`; PATCH accepts `addConference` (Meet `createRequest`, returns fresh `hangoutLink`); popover shows Join Meet (or Add Meet link), location, humanized recurrence ("Repeats weekly on Mon"), mailto attendees; task popover keeps Open-in-Google for pushed blocks.
+- **Verified live:** added a real Meet link to the user's own "Test" event via the API and read it back through pull — no iframe needed, Google itself renders the call UI.
+- Tests & Validation: `calendar.test.ts` 20/20 (mapping + Meet-request shape); backend + dashboard `tsc` clean, dashboard build clean.

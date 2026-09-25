@@ -1,7 +1,18 @@
 import React, { useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
-import { ExternalLink, Trash2, FolderOpen, Clock, X, Users } from 'lucide-react';
+import {
+  ExternalLink,
+  Trash2,
+  FolderOpen,
+  Clock,
+  X,
+  Users,
+  Video,
+  MapPin,
+  Repeat,
+  Plus,
+} from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { CalendarExternal } from '../../lib/calendarService';
 
@@ -25,6 +36,39 @@ function fmtRange(startISO: string, endISO?: string | null): string {
   const end = new Date(endISO);
   const sameDay = format(end, 'yyyy-MM-dd') === format(start, 'yyyy-MM-dd');
   return `${date} · ${t0} – ${format(end, sameDay ? 'h:mm a' : 'MMM d, h:mm a')}`;
+}
+
+const DAY_NAMES: Record<string, string> = {
+  MO: 'Mon',
+  TU: 'Tue',
+  WE: 'Wed',
+  TH: 'Thu',
+  FR: 'Fri',
+  SA: 'Sat',
+  SU: 'Sun',
+};
+
+/** Humanize the common RRULE shapes; fall back to the raw rule. */
+function fmtRecurrence(rules?: string[]): string | null {
+  const rule = (rules || [])[0];
+  if (!rule) return null;
+  const m = rule.match(/FREQ=([A-Z]+)/);
+  if (!m) return rule;
+  const freq = m[1]!.toLowerCase();
+  const byday = rule.match(/BYDAY=([A-Z,]+)/);
+  const days = byday
+    ? byday[1]!
+        .split(',')
+        .map((d) => DAY_NAMES[d] || d)
+        .join(', ')
+    : null;
+  const interval = rule.match(/INTERVAL=(\d+)/);
+  const everyN = interval && interval[1] !== '1' ? interval[1] : null;
+  if (freq === 'daily') return everyN ? `Repeats every ${everyN} days` : 'Repeats daily';
+  if (freq === 'weekly') return days ? `Repeats weekly on ${days}` : 'Repeats weekly';
+  if (freq === 'monthly') return everyN ? `Repeats every ${everyN} months` : 'Repeats monthly';
+  if (freq === 'yearly') return 'Repeats yearly';
+  return `Repeats ${freq}`;
 }
 
 function usePopoverPosition(anchor: { x: number; y: number }) {
@@ -51,6 +95,7 @@ export const EventPopover: React.FC<{
   onOpenTask: (id: string) => void;
   onUnscheduleTask: (id: string) => void;
   onDeleteExternal: (id: string) => void;
+  onAddMeet: (id: string) => void;
   isWorking: boolean;
 }> = ({
   anchor,
@@ -59,6 +104,7 @@ export const EventPopover: React.FC<{
   onOpenTask,
   onUnscheduleTask,
   onDeleteExternal,
+  onAddMeet,
   isWorking,
 }) => {
   const { ref, pos } = usePopoverPosition(anchor);
@@ -126,10 +172,35 @@ export const EventPopover: React.FC<{
               {selection.event.description}
             </p>
           )}
+          {selection.event.location && (
+            <p className="inline-flex items-start gap-1.5 text-muted-foreground">
+              <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span className="break-all">{selection.event.location}</span>
+            </p>
+          )}
+          {fmtRecurrence(selection.event.recurrence) && (
+            <p className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <Repeat className="w-3.5 h-3.5 shrink-0" />
+              <span>{fmtRecurrence(selection.event.recurrence)}</span>
+            </p>
+          )}
           {(selection.event.attendees?.length || 0) > 0 && (
             <p className="inline-flex items-start gap-1.5 text-muted-foreground">
               <Users className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span className="break-all">{selection.event.attendees!.join(', ')}</span>
+              <span className="break-all">
+                {selection.event.attendees!.map((a, i) => (
+                  <span key={a}>
+                    {i > 0 && ', '}
+                    {a.includes('@') ? (
+                      <a href={`mailto:${a}`} className="hover:text-foreground hover:underline">
+                        {a}
+                      </a>
+                    ) : (
+                      a
+                    )}
+                  </span>
+                ))}
+              </span>
             </p>
           )}
         </div>
@@ -168,12 +239,33 @@ export const EventPopover: React.FC<{
           </>
         ) : (
           <>
+            {selection.event.hangoutLink ? (
+              <a
+                href={selection.event.hangoutLink}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90"
+              >
+                <Video className="w-3.5 h-3.5" />
+                Join Meet
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onAddMeet(selection.event.id)}
+                disabled={isWorking}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 cursor-pointer disabled:opacity-50"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Meet link
+              </button>
+            )}
             {selection.event.htmlLink && (
               <a
                 href={selection.event.htmlLink}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 Open in Google

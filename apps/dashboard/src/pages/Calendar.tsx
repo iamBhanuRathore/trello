@@ -202,6 +202,31 @@ export function Calendar() {
     },
   });
 
+  const addMeetMutation = useMutation({
+    mutationFn: (eventId: string) =>
+      calendarService.updateExternalEvent(eventId, { addConference: true }),
+    onSuccess: (res, eventId) => {
+      toast.success('Google Meet link added');
+      // Flip the open popover to Join mode instantly; feed refresh follows.
+      setSelection((prev) => {
+        if (!prev || prev.selection.kind !== 'external' || prev.selection.event.id !== eventId) {
+          return prev;
+        }
+        return {
+          ...prev,
+          selection: {
+            ...prev.selection,
+            event: { ...prev.selection.event, hangoutLink: res.hangoutLink || undefined },
+          },
+        };
+      });
+      invalidateFeed();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || err.message || 'Failed to add Meet link');
+    },
+  });
+
   const unscheduleMutation = useMutation({
     mutationFn: (cardId: string) => calendarService.schedule(cardId, null, null),
     onSuccess: () => {
@@ -569,7 +594,12 @@ export function Calendar() {
           }}
           onUnscheduleTask={(id) => unscheduleMutation.mutate(id)}
           onDeleteExternal={(id) => deleteExternalMutation.mutate(id)}
-          isWorking={unscheduleMutation.isPending || deleteExternalMutation.isPending}
+          onAddMeet={(id) => addMeetMutation.mutate(id)}
+          isWorking={
+            unscheduleMutation.isPending ||
+            deleteExternalMutation.isPending ||
+            addMeetMutation.isPending
+          }
         />
       )}
 

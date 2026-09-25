@@ -122,6 +122,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
         title: t.Optional(t.String()),
         start: t.Optional(t.Union([t.String(), t.Null()])),
         end: t.Optional(t.Union([t.String(), t.Null()])),
+        addConference: t.Optional(t.Boolean()),
       }),
     }
   )

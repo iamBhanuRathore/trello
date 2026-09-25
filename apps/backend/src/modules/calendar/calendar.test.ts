@@ -213,12 +213,19 @@ describe('scheduleCard validation', () => {
 });
 
 describe('Google event writes (fake client)', () => {
+  const seenPatches: any[] = [];
   const fakeClient: any = {
     events: {
       insert: async ({ requestBody }: any) => ({
         data: { id: 'g-ev-1', summary: requestBody.summary, htmlLink: 'https://cal/g-ev-1' },
       }),
-      patch: async () => ({ data: {} }),
+      patch: async (args: any) => {
+        seenPatches.push(args);
+        if (args.requestBody?.conferenceData) {
+          return { data: { hangoutLink: 'https://meet.google.com/abc-defg-hij' } };
+        }
+        return { data: {} };
+      },
       delete: async () => ({ data: {} }),
       list: async () => ({
         data: {
@@ -230,6 +237,10 @@ describe('Google event writes (fake client)', () => {
               end: { dateTime: '2026-09-25T10:30:00Z' },
               description: 'Weekly alignment meeting notes here',
               attendees: [{ email: 'a@x.co' }, { displayName: 'NoMail' }],
+              location: 'Room 3B, HQ',
+              hangoutLink: 'https://meet.google.com/abc-defg-hij',
+              organizer: { email: 'boss@x.co' },
+              recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO'],
               htmlLink: 'https://cal/g-ext-1',
               status: 'confirmed',
             },
@@ -321,6 +332,10 @@ describe('Google event writes (fake client)', () => {
     expect(events[0]!.summary).toBe('Team sync');
     expect(events[0]!.description).toContain('Weekly alignment');
     expect(events[0]!.attendees).toContain('a@x.co');
+    expect(events[0]!.location).toBe('Room 3B, HQ');
+    expect(events[0]!.hangoutLink).toBe('https://meet.google.com/abc-defg-hij');
+    expect(events[0]!.organizer).toBe('boss@x.co');
+    expect(events[0]!.recurrence).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO']);
 
     // Push a scheduled card and verify the htmlLink round-trips into the feed.
     const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS2' });
@@ -374,5 +389,24 @@ describe('Google event writes (fake client)', () => {
     );
     const block = feed.blocks.find((b) => b.id === card!.id);
     expect(block?.googleUrl).toBe('https://cal/g-ev-1');
+  });
+
+  it('attaches a Meet conference on addConference', async () => {
+    const { user } = await setupConnected();
+    seenPatches.length = 0;
+    const res = await updateExternalEvent(
+      db,
+      user.id,
+      'g-ext-1',
+      { addConference: true },
+      fakeClient
+    );
+    expect(res.success).toBe(true);
+    expect(res.hangoutLink).toBe('https://meet.google.com/abc-defg-hij');
+    const last = seenPatches[seenPatches.length - 1];
+    expect(last.conferenceDataVersion).toBe(1);
+    expect(last.requestBody.conferenceData.createRequest.conferenceSolutionKey.type).toBe(
+      'hangoutsMeet'
+    );
   });
 });

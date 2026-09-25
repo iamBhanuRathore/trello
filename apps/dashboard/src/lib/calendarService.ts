@@ -49,6 +49,10 @@ export interface CalendarExternal {
   htmlLink?: string | null;
   description?: string | null;
   attendees?: string[];
+  location?: string | null;
+  hangoutLink?: string | null;
+  organizer?: string | null;
+  recurrence?: string[];
 }
 
 export interface UnscheduledTask {
@@ -126,8 +130,8 @@ export const calendarService = {
 
   async updateExternalEvent(
     eventId: string,
-    payload: { title?: string; start?: string | null; end?: string | null }
-  ): Promise<{ success: boolean }> {
+    payload: { title?: string; start?: string | null; end?: string | null; addConference?: boolean }
+  ): Promise<{ success: boolean; hangoutLink?: string | null }> {
     const res = await api.patch(`/calendar/google/events/${eventId}`, payload);
     return res.data;
   },

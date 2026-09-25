@@ -60,6 +60,10 @@ export interface NormalizedExternalEvent {
   htmlLink?: string | null;
   description?: string | null;
   attendees?: string[];
+  location?: string | null;
+  hangoutLink?: string | null;
+  organizer?: string | null;
+  recurrence?: string[];
 }
 
 // ─── Connection lifecycle ────────────────────────────────────────────────────
@@ -204,6 +208,7 @@ export async function pullExternalEvents(
     singleEvents: true,
     orderBy: 'startTime',
     maxResults: 250,
+    conferenceDataVersion: 1,
   };
   if (useIncremental) {
     params.syncToken = conn.syncToken;
@@ -257,6 +262,11 @@ export async function pullExternalEvents(
             .filter(Boolean)
             .slice(0, 10)
         : [],
+      location: typeof e.location === 'string' && e.location ? e.location.slice(0, 200) : null,
+      hangoutLink:
+        e.hangoutLink || e.conferenceData?.entryPoints?.find?.((p: any) => p?.uri)?.uri || null,
+      organizer: e.organizer?.email || e.organizer?.displayName || null,
+      recurrence: Array.isArray(e.recurrence) ? e.recurrence.slice(0, 5) : [],
     }));
 
   return { events, incremental: useIncremental };
@@ -538,7 +548,7 @@ export async function updateExternalEvent(
   db: Database,
   userId: string,
   eventId: string,
-  input: { title?: string; start?: string | null; end?: string | null },
+  input: { title?: string; start?: string | null; end?: string | null; addConference?: boolean },
   clientOverride?: CalendarApi
 ) {
   const conn = await requireConnection(db, userId);
@@ -552,21 +562,34 @@ export async function updateExternalEvent(
     patch.start = { dateTime: start };
     patch.end = { dateTime: end };
   }
+  if (input.addConference) {
+    patch.conferenceData = {
+      createRequest: {
+        requestId: `${eventId}-${Date.now()}`,
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+      },
+    };
+  }
   if (Object.keys(patch).length === 0) throw httpError(400, 'Nothing to update');
   const calendar = clientOverride || calendarClient(conn.refreshToken);
 
   try {
-    await withGoogleTimeout<any>('events.patch', () =>
+    const { data } = await withGoogleTimeout<any>('events.patch', () =>
       (calendar as any).events.patch({
         calendarId: conn.calendarId,
         eventId,
+        conferenceDataVersion: 1,
         requestBody: patch,
       })
     );
+    const hangoutLink =
+      (data as any)?.hangoutLink ||
+      (data as any)?.conferenceData?.entryPoints?.find?.((p: any) => p?.uri)?.uri ||
+      null;
+    return { success: true as const, hangoutLink };
   } catch {
     throw httpError(502, 'Google Calendar event update failed');
   }
-  return { success: true };
 }
 
 export async function deleteExternalEvent(
