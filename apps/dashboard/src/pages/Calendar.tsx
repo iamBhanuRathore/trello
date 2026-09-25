@@ -9,7 +9,6 @@ import {
   Link2,
   Unlink,
   RefreshCw,
-  ExternalLink,
   Flag,
   Zap,
   MousePointerClick,
@@ -30,9 +29,14 @@ import {
   setHours,
   setMinutes,
 } from 'date-fns';
-import { calendarService, type CalendarFeed } from '../lib/calendarService';
+import { calendarService, type CalendarFeed, type CalendarExternal } from '../lib/calendarService';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { CardModal } from '../components/board/CardModal';
+import { EventPopover, type CalendarSelection } from '../components/calendar/EventPopover';
+import {
+  QuickCreatePopover,
+  type QuickCreateValue,
+} from '../components/calendar/QuickCreatePopover';
 
 type CalendarView = 'month' | 'week' | 'day';
 
@@ -58,6 +62,15 @@ export function Calendar() {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [placeTaskId, setPlaceTaskId] = useState<string | null>(null);
   const [isTrayOpen, setIsTrayOpen] = useState(true);
+  const [selection, setSelection] = useState<{
+    selection: CalendarSelection;
+    anchor: { x: number; y: number };
+  } | null>(null);
+  const [createDraft, setCreateDraft] = useState<{
+    day: Date;
+    mins: number;
+    anchor: { x: number; y: number };
+  } | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
@@ -145,6 +158,81 @@ export function Calendar() {
       toast.error(err.response?.data?.message || err.message || 'Sync failed');
     },
   });
+
+  const invalidateFeed = () => {
+    queryClient.invalidateQueries({ queryKey: ['calendar', 'feed'] });
+  };
+
+  const createExternalMutation = useMutation({
+    mutationFn: (payload: { title: string; start: string; end: string }) =>
+      calendarService.createExternalEvent(payload),
+    onSuccess: () => {
+      toast.success('Meeting created on Google Calendar');
+      setCreateDraft(null);
+      invalidateFeed();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || err.message || 'Failed to create meeting');
+    },
+  });
+
+  const updateExternalMutation = useMutation({
+    mutationFn: (payload: { eventId: string; start?: string; end?: string; title?: string }) =>
+      calendarService.updateExternalEvent(payload.eventId, {
+        start: payload.start,
+        end: payload.end,
+        title: payload.title,
+      }),
+    onSuccess: () => invalidateFeed(),
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || err.message || 'Failed to move meeting');
+      invalidateFeed();
+    },
+  });
+
+  const deleteExternalMutation = useMutation({
+    mutationFn: (eventId: string) => calendarService.deleteExternalEvent(eventId),
+    onSuccess: () => {
+      toast.success('Meeting deleted from Google Calendar');
+      setSelection(null);
+      invalidateFeed();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || err.message || 'Failed to delete meeting');
+    },
+  });
+
+  const unscheduleMutation = useMutation({
+    mutationFn: (cardId: string) => calendarService.schedule(cardId, null, null),
+    onSuccess: () => {
+      toast.success('Time block removed');
+      setSelection(null);
+      invalidateFeed();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || err.message || 'Failed to remove block');
+    },
+  });
+
+  const handleQuickCreate = (value: QuickCreateValue) => {
+    if (!createDraft) return;
+    if (value.mode === 'meeting') {
+      const start = atTime(createDraft.day, createDraft.mins);
+      createExternalMutation.mutate({
+        title: value.title,
+        start: toISO(start),
+        end: toISO(new Date(start.getTime() + 60 * 60_000)),
+      });
+    } else if (value.taskId) {
+      const start = atTime(createDraft.day, createDraft.mins);
+      scheduleMutation.mutate({
+        cardId: value.taskId,
+        start: toISO(start),
+        end: toISO(new Date(start.getTime() + 60 * 60_000)),
+      });
+      setCreateDraft(null);
+    }
+  };
 
   const connectGoogle = async () => {
     try {
@@ -308,6 +396,22 @@ export function Calendar() {
                 setCursor(d);
                 setView('day');
               }}
+              onSelectTask={(block, anchor) =>
+                setSelection({
+                  selection: {
+                    kind: 'task',
+                    id: block.id,
+                    key: block.key,
+                    title: block.title,
+                    start: block.start,
+                    end: block.end,
+                  },
+                  anchor,
+                })
+              }
+              onSelectExternal={(event, anchor) =>
+                setSelection({ selection: { kind: 'external', event }, anchor })
+              }
             />
           ) : (
             <TimeGrid
@@ -340,6 +444,52 @@ export function Calendar() {
                 }
               }}
               onOpenTask={setActiveCardId}
+              onSelectTask={(block, anchor) =>
+                setSelection({
+                  selection: {
+                    kind: 'task',
+                    id: block.id,
+                    key: block.key,
+                    title: block.title,
+                    start: block.start,
+                    end: block.end,
+                  },
+                  anchor,
+                })
+              }
+              onSelectExternal={(event, anchor) =>
+                setSelection({ selection: { kind: 'external', event }, anchor })
+              }
+              onEmptyClick={(day, mins, clientX, clientY) => {
+                if (placeTaskId) return;
+                setCreateDraft({
+                  day,
+                  mins: snapMinutes(mins),
+                  anchor: {
+                    x: Math.min(clientX, window.innerWidth - 340),
+                    y: Math.min(clientY, window.innerHeight - 320),
+                  },
+                });
+              }}
+              onExternalMove={(eventId, day, mins, durationMin) => {
+                const start = atTime(day, mins);
+                updateExternalMutation.mutate({
+                  eventId,
+                  start: toISO(start),
+                  end: toISO(new Date(start.getTime() + durationMin * 60_000)),
+                });
+              }}
+              onExternalResize={(eventId, startISO, day, mins) => {
+                const start = new Date(startISO);
+                const end = atTime(day, mins);
+                if (end > start) {
+                  updateExternalMutation.mutate({
+                    eventId,
+                    start: start.toISOString(),
+                    end: toISO(end),
+                  });
+                }
+              }}
             />
           )}
         </div>
@@ -405,6 +555,33 @@ export function Calendar() {
         }}
         onSelectCard={(id) => setActiveCardId(id)}
       />
+
+      {selection && (
+        <EventPopover
+          anchor={selection.anchor}
+          selection={selection.selection}
+          onClose={() => setSelection(null)}
+          onOpenTask={(id) => {
+            setSelection(null);
+            setActiveCardId(id);
+          }}
+          onUnscheduleTask={(id) => unscheduleMutation.mutate(id)}
+          onDeleteExternal={(id) => deleteExternalMutation.mutate(id)}
+          isWorking={unscheduleMutation.isPending || deleteExternalMutation.isPending}
+        />
+      )}
+
+      {createDraft && (
+        <QuickCreatePopover
+          anchor={createDraft.anchor}
+          slotLabel={format(atTime(createDraft.day, createDraft.mins), 'EEE, MMM d · h:mm a')}
+          unscheduled={feed?.unscheduled || []}
+          googleConnected={!!googleStatus?.connected}
+          isWorking={createExternalMutation.isPending || scheduleMutation.isPending}
+          onClose={() => setCreateDraft(null)}
+          onConfirm={handleQuickCreate}
+        />
+      )}
     </div>
   );
 }
@@ -481,12 +658,19 @@ function MonthGrid({
   feed,
   onOpenTask,
   onSelectDay,
+  onSelectTask,
+  onSelectExternal,
 }: {
   days: Date[];
   cursor: Date;
   feed?: CalendarFeed;
   onOpenTask: (id: string) => void;
   onSelectDay: (d: Date) => void;
+  onSelectTask: (
+    block: { id: string; key?: string | null; title: string; start: string; end?: string | null },
+    anchor: { x: number; y: number }
+  ) => void;
+  onSelectExternal: (event: CalendarExternal, anchor: { x: number; y: number }) => void;
 }) {
   const inMonth = (d: Date) => d.getMonth() === cursor.getMonth();
   return (
@@ -534,7 +718,8 @@ function MonthGrid({
                   tabIndex={0}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onOpenTask(b.id);
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    onSelectTask(b, { x: r.left, y: r.bottom + 6 });
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') onOpenTask(b.id);
@@ -552,7 +737,11 @@ function MonthGrid({
                   tabIndex={0}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onOpenTask(d.id);
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    onSelectTask(
+                      { id: d.id, key: d.key, title: d.title, start: d.start },
+                      { x: r.left, y: r.bottom + 6 }
+                    );
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') onOpenTask(d.id);
@@ -566,7 +755,20 @@ function MonthGrid({
               {externals.slice(0, 1).map((e) => (
                 <span
                   key={e.id}
-                  className="block truncate px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground text-[10px]"
+                  role="button"
+                  tabIndex={0}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+                    onSelectExternal(e, { x: r.left, y: r.bottom + 6 });
+                  }}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter') {
+                      const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+                      onSelectExternal(e, { x: r.left, y: r.bottom + 6 });
+                    }
+                  }}
+                  className="block truncate px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground text-[10px] hover:text-foreground cursor-pointer"
                 >
                   {e.start ? format(new Date(e.start), 'HH:mm') : ''} {e.summary}
                 </span>
@@ -588,6 +790,7 @@ function MonthGrid({
 
 interface DragState {
   mode: 'move' | 'resize' | 'create';
+  kind: 'task' | 'external';
   cardId?: string;
   day: Date;
   startMins: number;
@@ -595,6 +798,16 @@ interface DragState {
   origDurationMin: number;
   pointerId: number;
   topOffset: number;
+}
+
+interface PendingPress {
+  kind: 'task' | 'external';
+  id: string;
+  startISO: string;
+  endISO?: string | null;
+  x: number;
+  y: number;
+  pointerId: number;
 }
 
 function TimeGrid({
@@ -605,6 +818,11 @@ function TimeGrid({
   onMove,
   onResize,
   onOpenTask,
+  onSelectTask,
+  onSelectExternal,
+  onEmptyClick,
+  onExternalMove,
+  onExternalResize,
 }: {
   days: Date[];
   feed?: CalendarFeed;
@@ -613,9 +831,19 @@ function TimeGrid({
   onMove: (cardId: string, day: Date, mins: number, durationMin: number) => void;
   onResize: (cardId: string, day: Date, startISO: string, mins: number) => void;
   onOpenTask: (id: string) => void;
+  onSelectTask: (
+    block: { id: string; key?: string | null; title: string; start: string; end?: string | null },
+    anchor: { x: number; y: number }
+  ) => void;
+  onSelectExternal: (event: CalendarExternal, anchor: { x: number; y: number }) => void;
+  onEmptyClick: (day: Date, mins: number, clientX: number, clientY: number) => void;
+  onExternalMove: (eventId: string, day: Date, mins: number, durationMin: number) => void;
+  onExternalResize: (eventId: string, startISO: string, day: Date, mins: number) => void;
 }) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const pendingRef = useRef<PendingPress | null>(null);
+  const downRef = useRef<{ x: number; y: number; t: number } | null>(null);
 
   // Header height varies with all-day chips — measure the target column.
   const headerOffset = useCallback((dayIndex: number): number => {
@@ -648,14 +876,42 @@ function TimeGrid({
     [days.length]
   );
 
+  const anchorFromClient = (clientX: number, clientY: number) => ({
+    x: Math.min(clientX, window.innerWidth - 300),
+    y: Math.min(clientY + 6, window.innerHeight - 260),
+  });
+
+  const beginDragFromPending = (pending: PendingPress, dayIdx: number, mins: number) => {
+    const start = new Date(pending.startISO);
+    const end = pending.endISO ? new Date(pending.endISO) : new Date(start.getTime() + 60 * 60_000);
+    setDrag({
+      mode: 'move',
+      kind: pending.kind,
+      cardId: pending.id,
+      day: days[dayIdx]!,
+      startMins: start.getHours() * 60 + start.getMinutes(),
+      curMins: mins,
+      origDurationMin: Math.max(15, Math.round((end.getTime() - start.getTime()) / 60000)),
+      pointerId: pending.pointerId,
+      topOffset: headerOffset(dayIdx),
+      ...(pending.kind === 'external' ? { startISO: pending.startISO } : {}),
+    } as DragState & { startISO?: string });
+  };
+
   const handleGridPointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-block]')) return;
-    if (!placeTaskId) return;
+    pendingRef.current = null;
+    if (!placeTaskId) {
+      // Record for click-to-create (fires on pointerup if unmoved).
+      downRef.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+      return;
+    }
     const idx = dayIndexFromEvent(e);
     const mins = snapMinutes(minsFromEvent(e, idx));
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setDrag({
       mode: 'create',
+      kind: 'task',
       cardId: placeTaskId,
       day: days[idx]!,
       startMins: mins,
@@ -667,27 +923,82 @@ function TimeGrid({
   };
 
   const handleGridPointerMove = (e: React.PointerEvent) => {
-    if (!drag || e.pointerId !== drag.pointerId) return;
-    const idx = dayIndexFromEvent(e);
-    const mins = snapMinutes(minsFromEvent(e, idx));
-    setDrag({ ...drag, day: days[idx]!, curMins: mins });
-  };
-
-  const handleGridPointerUp = (e: React.PointerEvent) => {
-    if (!drag || e.pointerId !== drag.pointerId) return;
-    const d = drag;
-    setDrag(null);
-    const lo = Math.min(d.startMins, d.curMins);
-    if (d.mode === 'create' && d.cardId) {
-      onPlace(d.day, lo);
-    } else if (d.mode === 'move' && d.cardId) {
-      onMove(d.cardId, d.day, lo, d.origDurationMin);
-    } else if (d.mode === 'resize' && d.cardId) {
-      onResize(d.cardId, d.day, (d as any).startISO, Math.max(d.startMins + 15, d.curMins));
+    if (drag) {
+      if (e.pointerId !== drag.pointerId) return;
+      const idx = dayIndexFromEvent(e);
+      const mins = snapMinutes(minsFromEvent(e, idx));
+      setDrag({ ...drag, day: days[idx]!, curMins: mins });
+      return;
+    }
+    // Promote a block press to a drag past the movement threshold.
+    const pending = pendingRef.current;
+    if (pending && e.pointerId === pending.pointerId) {
+      if (Math.hypot(e.clientX - pending.x, e.clientY - pending.y) > 5) {
+        const idx = dayIndexFromEvent(e);
+        const mins = snapMinutes(minsFromEvent(e, idx));
+        pendingRef.current = null;
+        beginDragFromPending(pending, idx, mins);
+      }
     }
   };
 
+  const handleGridPointerUp = (e: React.PointerEvent) => {
+    if (drag) {
+      if (e.pointerId !== drag.pointerId) return;
+      const d = drag;
+      setDrag(null);
+      const lo = Math.min(d.startMins, d.curMins);
+      if (d.mode === 'create' && d.cardId) {
+        onPlace(d.day, lo);
+      } else if (d.mode === 'move' && d.cardId) {
+        if (d.kind === 'external') onExternalMove(d.cardId, d.day, lo, d.origDurationMin);
+        else onMove(d.cardId, d.day, lo, d.origDurationMin);
+      } else if (d.mode === 'resize' && d.cardId) {
+        if (d.kind === 'external')
+          onExternalResize(
+            d.cardId,
+            (d as any).startISO,
+            d.day,
+            Math.max(d.startMins + 15, d.curMins)
+          );
+        else onResize(d.cardId, d.day, (d as any).startISO, Math.max(d.startMins + 15, d.curMins));
+      }
+      return;
+    }
+    // Plain click on empty space → quick-create popover.
+    const down = downRef.current;
+    downRef.current = null;
+    pendingRef.current = null;
+    if (!down || placeTaskId) return;
+    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+    const idx = dayIndexFromEvent(e);
+    onEmptyClick(days[idx]!, snapMinutes(minsFromEvent(e, idx)), e.clientX, e.clientY);
+  };
+
   // place-mode task id is captured into drag state at pointerdown.
+
+  const startBlockPress = (
+    e: React.PointerEvent,
+    press: { kind: 'task' | 'external'; id: string; startISO: string; endISO?: string | null }
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    pendingRef.current = { ...press, x: e.clientX, y: e.clientY, pointerId: e.pointerId };
+  };
+
+  const resolvePressUp = (e: React.PointerEvent) => {
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    if (!pending || e.pointerId !== pending.pointerId) return;
+    const anchor = anchorFromClient(e.clientX, e.clientY);
+    if (pending.kind === 'task') {
+      const block = (feed?.blocks || []).find((b) => b.id === pending.id);
+      if (block) onSelectTask(block, anchor);
+    } else {
+      const event = (feed?.external || []).find((ev) => ev.id === pending.id);
+      if (event) onSelectExternal(event, anchor);
+    }
+  };
 
   const startBlockDrag = (
     e: React.PointerEvent,
@@ -703,6 +1014,7 @@ function TimeGrid({
     const blockDayIdx = days.findIndex((d) => isSameDay(d, start));
     setDrag({
       mode,
+      kind: 'task',
       cardId: block.id,
       day: new Date(start.getFullYear(), start.getMonth(), start.getDate()),
       startMins,
@@ -711,6 +1023,33 @@ function TimeGrid({
       pointerId: e.pointerId,
       topOffset: headerOffset(blockDayIdx >= 0 ? blockDayIdx : 0),
       ...(mode === 'resize' ? { startISO: block.start } : {}),
+    } as DragState & { startISO?: string });
+  };
+
+  const startExternalDrag = (
+    e: React.PointerEvent,
+    event: { id: string; start: string | null; end?: string | null },
+    mode: 'move' | 'resize'
+  ) => {
+    if (!event.start) return;
+    e.stopPropagation();
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    const start = new Date(event.start);
+    const end = event.end ? new Date(event.end) : new Date(start.getTime() + 60 * 60_000);
+    const startMins = start.getHours() * 60 + start.getMinutes();
+    const blockDayIdx = days.findIndex((d) => isSameDay(d, start));
+    setDrag({
+      mode,
+      kind: 'external',
+      cardId: event.id,
+      day: new Date(start.getFullYear(), start.getMonth(), start.getDate()),
+      startMins,
+      curMins: mode === 'resize' ? end.getHours() * 60 + end.getMinutes() : startMins,
+      origDurationMin: Math.max(15, Math.round((end.getTime() - start.getTime()) / 60000)),
+      pointerId: e.pointerId,
+      topOffset: headerOffset(blockDayIdx >= 0 ? blockDayIdx : 0),
+      startISO: event.start,
     } as DragState & { startISO?: string });
   };
 
@@ -810,25 +1149,44 @@ function TimeGrid({
                       <BlockChip
                         key={b.id}
                         block={b}
+                        dragActive={!!drag}
                         onOpen={() => onOpenTask(b.id)}
-                        onMoveStart={(e) => startBlockDrag(e, b, 'move')}
+                        onSelect={(e) => {
+                          const anchor = anchorFromClient(e.clientX, e.clientY);
+                          onSelectTask(b, anchor);
+                        }}
+                        onPressStart={(e) =>
+                          startBlockPress(e, {
+                            kind: 'task',
+                            id: b.id,
+                            startISO: b.start,
+                            endISO: b.end,
+                          })
+                        }
+                        onPressUp={resolvePressUp}
                         onResizeStart={(e) => startBlockDrag(e, b, 'resize')}
                       />
                     ))}
                     {dayExt.map((e) => (
-                      <a
+                      <ExternalBlockChip
                         key={e.id}
-                        href={e.htmlLink || undefined}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(ev) => ev.stopPropagation()}
-                        title={e.summary}
-                        className="absolute left-1 right-1 rounded-lg bg-muted/70 border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground truncate flex items-center gap-1"
-                        style={blockStyle(e.start!, e.end)}
-                      >
-                        <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                        <span className="truncate">{e.summary}</span>
-                      </a>
+                        event={e}
+                        dragActive={!!drag}
+                        onSelect={(ev) => {
+                          const anchor = anchorFromClient(ev.clientX, ev.clientY);
+                          onSelectExternal(e, anchor);
+                        }}
+                        onPressStart={(ev) =>
+                          startBlockPress(ev, {
+                            kind: 'external',
+                            id: e.id,
+                            startISO: e.start!,
+                            endISO: e.end,
+                          })
+                        }
+                        onPressUp={resolvePressUp}
+                        onResizeStart={(ev) => startExternalDrag(ev, e, 'resize')}
+                      />
                     ))}
                   </>
                 )}
@@ -868,33 +1226,96 @@ function blockStyle(startISO: string, endISO?: string | null): React.CSSProperti
   return { top, height };
 }
 
+function formatTimeRange(startISO: string, endISO?: string | null): string {
+  const start = new Date(startISO);
+  const end = endISO ? new Date(endISO) : new Date(start.getTime() + 60 * 60_000);
+  return `${format(start, 'h:mm a')} – ${format(end, 'h:mm a')}`;
+}
+
 function BlockChip({
   block,
+  dragActive,
   onOpen,
-  onMoveStart,
+  onSelect,
+  onPressStart,
+  onPressUp,
   onResizeStart,
 }: {
   block: { id: string; key?: string | null; title: string; start: string; end?: string | null };
+  dragActive: boolean;
   onOpen: () => void;
-  onMoveStart: (e: React.PointerEvent) => void;
+  onSelect: (e: React.PointerEvent) => void;
+  onPressStart: (e: React.PointerEvent) => void;
+  onPressUp: (e: React.PointerEvent) => void;
   onResizeStart: (e: React.PointerEvent) => void;
 }) {
   return (
     <div
       data-block
-      onPointerDown={onMoveStart}
+      onPointerDown={onPressStart}
+      onPointerUp={(e) => {
+        if (dragActive) return;
+        onPressUp(e);
+        onSelect(e);
+      }}
       onDoubleClick={onOpen}
-      title={`${block.key ? `[${block.key}] ` : ''}${block.title} — drag to move, double-click to open`}
+      title={`${block.key ? `[${block.key}] ` : ''}${block.title} — ${formatTimeRange(block.start, block.end)} (click for details, drag to move, double-click to open)`}
       className="absolute left-1 right-1 rounded-lg bg-primary/15 border border-primary/30 border-l-4 border-l-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary overflow-hidden cursor-grab active:cursor-grabbing z-[6] hover:bg-primary/25"
       style={blockStyle(block.start, block.end)}
     >
       <span className="block truncate pointer-events-none">
-        {format(new Date(block.start), 'HH:mm')} {block.key ? `${block.key} ` : ''}
+        {block.key ? `${block.key} ` : ''}
         {block.title}
+      </span>
+      <span className="block truncate text-[9px] font-medium opacity-80 pointer-events-none">
+        {formatTimeRange(block.start, block.end)}
       </span>
       <span
         role="separator"
         aria-label="Resize block"
+        onPointerDown={onResizeStart}
+        className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-primary/40 rounded-b-lg"
+      />
+    </div>
+  );
+}
+
+function ExternalBlockChip({
+  event,
+  dragActive,
+  onSelect,
+  onPressStart,
+  onPressUp,
+  onResizeStart,
+}: {
+  event: CalendarExternal;
+  dragActive: boolean;
+  onSelect: (e: React.PointerEvent) => void;
+  onPressStart: (e: React.PointerEvent) => void;
+  onPressUp: (e: React.PointerEvent) => void;
+  onResizeStart: (e: React.PointerEvent) => void;
+}) {
+  if (!event.start) return null;
+  return (
+    <div
+      data-block
+      onPointerDown={onPressStart}
+      onPointerUp={(e) => {
+        if (dragActive) return;
+        onPressUp(e);
+        onSelect(e);
+      }}
+      title={`${event.summary} — ${formatTimeRange(event.start, event.end)} (click for details, drag to reschedule)`}
+      className="absolute left-1 right-1 rounded-lg bg-muted/70 border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground overflow-hidden cursor-grab active:cursor-grabbing z-[6] hover:border-primary/40 hover:text-foreground"
+      style={blockStyle(event.start, event.end)}
+    >
+      <span className="block truncate pointer-events-none font-semibold">{event.summary}</span>
+      <span className="block truncate text-[9px] opacity-80 pointer-events-none">
+        {formatTimeRange(event.start, event.end)}
+      </span>
+      <span
+        role="separator"
+        aria-label="Resize meeting"
         onPointerDown={onResizeStart}
         className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-primary/40 rounded-b-lg"
       />

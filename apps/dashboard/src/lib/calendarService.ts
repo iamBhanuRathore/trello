@@ -110,4 +110,27 @@ export const calendarService = {
     const res = await api.post('/calendar/sync/push');
     return res.data;
   },
+
+  async createExternalEvent(payload: {
+    title: string;
+    start?: string | null;
+    end?: string | null;
+    description?: string;
+  }): Promise<CalendarExternal> {
+    const res = await api.post('/calendar/google/events', payload);
+    return res.data;
+  },
+
+  async updateExternalEvent(
+    eventId: string,
+    payload: { title?: string; start?: string | null; end?: string | null }
+  ): Promise<{ success: boolean }> {
+    const res = await api.patch(`/calendar/google/events/${eventId}`, payload);
+    return res.data;
+  },
+
+  async deleteExternalEvent(eventId: string): Promise<{ success: boolean }> {
+    const res = await api.delete(`/calendar/google/events/${eventId}`);
+    return res.data;
+  },
 };

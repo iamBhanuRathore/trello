@@ -1949,3 +1949,12 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Fix (`calendar/service.ts`):** all 7 Google call sites wrapped in a 15s `withGoogleTimeout`; timeouts surface as 502s with `lastError` recorded, never hung requests. (Deliberately not unit-tested with a 15s hang — wrapper is 10 lines; fake-client suite still 18/18.)
 - **Ops note:** also confirmed a self-inflicted outage pattern — restarting dev.sh from `apps/backend` instead of repo root silently fails (`nohup: ./scripts/dev.sh: No such file`), leaving the API down. Always restart from root.
 - Tests & Validation: backend `tsc` clean, `calendar.test.ts` 18/18, backend live (401-without-token probe correct).
+
+### 2026-09-25 — Calendar Industry-Standard Interactions
+
+- **What was done (frontend, zero backend edits):**
+  1. **Event detail popover** (`components/calendar/EventPopover.tsx`): click any block → anchored popover with title, formatted time range, source badge; task actions (open task, remove block), Google actions (open in Google, delete). Month + week/day views.
+  2. **Quick-create on empty slots** (`QuickCreatePopover.tsx`): click any empty slot → popover with Meeting/Task toggle; meetings create directly on Google, tasks pick from unscheduled list. Enter confirms, Esc cancels.
+  3. **Draggable Google meetings**: move + resize via new update endpoint, server refetch restores on failure (rollback by refetch).
+  4. **Times on every block** + press-then-drag model (click selects without accidental drags; 5px threshold promotes to drag).
+- Tests & Validation: dashboard `tsc` + `vite build` clean. Backend `calendar.test.ts` already covered the write endpoints.
