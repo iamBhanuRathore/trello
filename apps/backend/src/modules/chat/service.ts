@@ -198,61 +198,70 @@ export async function listUserChannels(db: Database, organizationId: string, use
     )
     .orderBy(desc(chatChannelMembers.isPinned), desc(chatChannels.lastMessageAt));
 
-  const result = [];
+  if (memberships.length === 0) return [];
 
-  for (const row of memberships) {
-    const channel = row.channel;
-    const member = row.member;
+  const channelIds = memberships.map((r) => r.channel.id);
 
-    // Calculate unread count
-    const readCutoff = member.lastReadAt
-      ? new Date(member.lastReadAt).toISOString()
-      : '1970-01-01T00:00:00.000Z';
-    const [unreadResult] = await db
-      .select({ count: sql<number>`count(*)` })
+  // Batched enrichments: 3 queries total regardless of channel count.
+  // (The DB is remote with ~80ms RTT, so the old per-channel loop turned
+  // this endpoint into seconds.) Unread counts join the reader's own
+  // membership row so the per-channel lastReadAt cutoff applies inside SQL.
+  const [unreadRows, memberCountRows, otherUserRows] = await Promise.all([
+    db
+      .select({
+        channelId: chatMessages.channelId,
+        count: sql<number>`count(*)`,
+      })
       .from(chatMessages)
+      .innerJoin(
+        chatChannelMembers,
+        and(
+          eq(chatChannelMembers.channelId, chatMessages.channelId),
+          eq(chatChannelMembers.userId, userId)
+        )
+      )
       .where(
         and(
-          eq(chatMessages.channelId, channel.id),
-          sql`${chatMessages.createdAt} > ${readCutoff}::timestamp`,
+          inArray(chatMessages.channelId, channelIds),
           sql`${chatMessages.userId} != ${userId}`,
-          isNull(chatMessages.deletedAt)
+          isNull(chatMessages.deletedAt),
+          sql`${chatMessages.createdAt} > coalesce(${chatChannelMembers.lastReadAt}, '1970-01-01'::timestamp)`
         )
-      );
-
-    const unreadCount = Number(unreadResult?.count || 0);
-
-    // If direct message, find other user
-    let otherUser: any = null;
-    if (channel.type === 'direct') {
-      const [otherMember] = await db
-        .select({
-          id: users.id,
-          name: users.name,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
-          timezone: users.timezone,
-        })
-        .from(chatChannelMembers)
-        .innerJoin(users, eq(chatChannelMembers.userId, users.id))
-        .where(
-          and(
-            eq(chatChannelMembers.channelId, channel.id),
-            sql`${chatChannelMembers.userId} != ${userId}`
-          )
-        )
-        .limit(1);
-
-      otherUser = otherMember || null;
-    }
-
-    // Count total members
-    const [membersCountRow] = await db
-      .select({ count: sql<number>`count(*)` })
+      )
+      .groupBy(chatMessages.channelId),
+    db
+      .select({ channelId: chatChannelMembers.channelId, count: sql<number>`count(*)` })
       .from(chatChannelMembers)
-      .where(eq(chatChannelMembers.channelId, channel.id));
+      .where(inArray(chatChannelMembers.channelId, channelIds))
+      .groupBy(chatChannelMembers.channelId),
+    db
+      .select({
+        channelId: chatChannelMembers.channelId,
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        timezone: users.timezone,
+      })
+      .from(chatChannelMembers)
+      .innerJoin(users, eq(chatChannelMembers.userId, users.id))
+      .where(
+        and(
+          inArray(chatChannelMembers.channelId, channelIds),
+          sql`${chatChannelMembers.userId} != ${userId}`
+        )
+      ),
+  ]);
 
-    result.push({
+  const unreadByChannel = new Map(unreadRows.map((r) => [r.channelId, Number(r.count || 0)]));
+  const memberCountByChannel = new Map(
+    memberCountRows.map((r) => [r.channelId, Number(r.count || 0)])
+  );
+  const otherUserByChannel = new Map(otherUserRows.map((r) => [r.channelId, r]));
+
+  return memberships.map(({ channel, member }) => {
+    const otherUser = channel.type === 'direct' ? otherUserByChannel.get(channel.id) || null : null;
+    return {
       id: channel.id,
       type: channel.type,
       name: channel.type === 'direct' ? otherUser?.name || 'Direct Message' : channel.name,
@@ -263,16 +272,14 @@ export async function listUserChannels(db: Database, organizationId: string, use
       isAnnouncementOnly: channel.isAnnouncementOnly,
       allowMemberInvites: channel.allowMemberInvites,
       cardId: channel.cardId,
-      unreadCount,
+      unreadCount: unreadByChannel.get(channel.id) || 0,
       isPinned: member.isPinned,
       isMuted: member.isMuted,
       role: member.role,
-      memberCount: Number(membersCountRow?.count || 1),
+      memberCount: memberCountByChannel.get(channel.id) || 1,
       otherUser,
-    });
-  }
-
-  return result;
+    };
+  });
 }
 
 export async function getChannelDetails(db: Database, channelId: string, currentUserId: string) {

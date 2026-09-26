@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, isNull } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   intakeForms,
@@ -61,11 +61,20 @@ export async function createIntakeForm(
   const baseSlug = generateSlug(input.title);
   const slug = `${baseSlug}-${Date.now().toString(36)}`;
 
-  const defaultFields = input.fields && input.fields.length > 0 ? input.fields : [
-    { id: 'title', label: 'Issue / Request Title', type: 'text', required: true },
-    { id: 'description', label: 'Detailed Description', type: 'textarea', required: true },
-    { id: 'priority', label: 'Urgency', type: 'select', options: ['Low', 'Medium', 'High', 'Critical'], required: false },
-  ];
+  const defaultFields =
+    input.fields && input.fields.length > 0
+      ? input.fields
+      : [
+          { id: 'title', label: 'Issue / Request Title', type: 'text', required: true },
+          { id: 'description', label: 'Detailed Description', type: 'textarea', required: true },
+          {
+            id: 'priority',
+            label: 'Urgency',
+            type: 'select',
+            options: ['Low', 'Medium', 'High', 'Critical'],
+            required: false,
+          },
+        ];
 
   const [form] = await db
     .insert(intakeForms)
@@ -115,20 +124,25 @@ export async function getFormsByBoard(db: Database, organizationId: string, boar
     )
     .orderBy(desc(intakeForms.createdAt));
 
-  const results = [];
-  for (const f of forms) {
-    const [subCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(formSubmissions)
-      .where(eq(formSubmissions.formId, f.id));
+  if (forms.length === 0) return [];
 
-    results.push({
-      ...f,
-      submissionCount: subCount?.count || 0,
-    });
-  }
+  // Single grouped count (was: one count query per form).
+  const counts = await db
+    .select({ formId: formSubmissions.formId, count: sql<number>`count(*)::int` })
+    .from(formSubmissions)
+    .where(
+      inArray(
+        formSubmissions.formId,
+        forms.map((f) => f.id)
+      )
+    )
+    .groupBy(formSubmissions.formId);
+  const countByForm = new Map(counts.map((c) => [c.formId, Number(c.count || 0)]));
 
-  return results;
+  return forms.map((f) => ({
+    ...f,
+    submissionCount: countByForm.get(f.id) || 0,
+  }));
 }
 
 export async function getPublicFormBySlug(db: Database, slug: string) {
@@ -190,7 +204,8 @@ export async function updateIntakeForm(
   if (input.listId) updates.listId = input.listId;
   if (input.fields !== undefined) updates.fields = input.fields;
   if (input.isPublished !== undefined) updates.isPublished = input.isPublished;
-  if (input.defaultAssigneeId !== undefined) updates.defaultAssigneeId = input.defaultAssigneeId || null;
+  if (input.defaultAssigneeId !== undefined)
+    updates.defaultAssigneeId = input.defaultAssigneeId || null;
   if (input.slaHours !== undefined) updates.slaHours = input.slaHours || null;
 
   const [updated] = await db
@@ -235,7 +250,11 @@ export async function submitIntakeForm(
   if (!form) throw httpError(404, 'Form not found or not accepting responses');
 
   // 1. Calculate Card Title & Description
-  const titleField = input.data['title'] || input.data['summary'] || input.data['subject'] || `${form.title} Submission`;
+  const titleField =
+    input.data['title'] ||
+    input.data['summary'] ||
+    input.data['subject'] ||
+    `${form.title} Submission`;
   const cardTitle = String(titleField).trim();
 
   let formattedDesc = `**Submitted by**: ${input.submittedByName || 'Anonymous'} (${input.submittedByEmail || 'No email provided'})\n\n---\n\n`;

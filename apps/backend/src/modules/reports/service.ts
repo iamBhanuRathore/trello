@@ -36,10 +36,7 @@ export async function getProjectSummaryReport(db: Database, projectId: string, o
 
   let projectLists: (typeof lists.$inferSelect)[] = [];
   if (boardIds.length > 0) {
-    projectLists = await db
-      .select()
-      .from(lists)
-      .where(inArray(lists.boardId, boardIds));
+    projectLists = await db.select().from(lists).where(inArray(lists.boardId, boardIds));
   }
 
   const listIds = projectLists.map((l) => l.id);
@@ -105,7 +102,8 @@ export async function getProjectSummaryReport(db: Database, projectId: string, o
       overdueCards++;
     }
 
-    const category = (stage?.category as keyof typeof stageCategories) || (isDone ? 'done' : 'not_started');
+    const category =
+      (stage?.category as keyof typeof stageCategories) || (isDone ? 'done' : 'not_started');
     stageCategories[category] = (stageCategories[category] || 0) + 1;
 
     if (card.listId && listCardCounts[card.listId]) {
@@ -119,7 +117,13 @@ export async function getProjectSummaryReport(db: Database, projectId: string, o
   const cardIds = projectCards.map((p) => p.card.id);
   const assigneeWorkload: Record<
     string,
-    { userId: string; name: string; avatarUrl: string | null; cardsCount: number; storyPoints: number }
+    {
+      userId: string;
+      name: string;
+      avatarUrl: string | null;
+      cardsCount: number;
+      storyPoints: number;
+    }
   > = {};
 
   if (cardIds.length > 0) {
@@ -151,10 +155,7 @@ export async function getProjectSummaryReport(db: Database, projectId: string, o
   }
 
   // Sprints breakdown
-  const projectSprints = await db
-    .select()
-    .from(sprints)
-    .where(eq(sprints.projectId, projectId));
+  const projectSprints = await db.select().from(sprints).where(eq(sprints.projectId, projectId));
 
   return {
     project: {
@@ -180,10 +181,7 @@ export async function getProjectSummaryReport(db: Database, projectId: string, o
 }
 
 export async function getSprintBurndown(db: Database, sprintId: string, orgId: string) {
-  const [sprint] = await db
-    .select()
-    .from(sprints)
-    .where(eq(sprints.id, sprintId));
+  const [sprint] = await db.select().from(sprints).where(eq(sprints.id, sprintId));
 
   if (!sprint) throw httpError(404, 'Sprint not found');
 
@@ -223,7 +221,10 @@ export async function getSprintBurndown(db: Database, sprintId: string, orgId: s
   // Generate day-by-day dates
   const start = new Date(sprint.startDate);
   const end = new Date(sprint.endDate);
-  const daysDiff = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+  const daysDiff = Math.max(
+    1,
+    Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+  );
 
   const burndownData: {
     day: string;
@@ -307,16 +308,30 @@ export async function getProjectVelocity(db: Database, projectId: string, orgId:
   let sumCompletedPoints = 0;
   let finishedCount = 0;
 
+  // One query for all sprint cards (was: one per sprint).
+  const sprintIds = projectSprints.map((s) => s.id);
+  const allSprintCards =
+    sprintIds.length > 0
+      ? await db
+          .select({
+            sprintId: cardSprints.sprintId,
+            card: cards,
+            stage: stages,
+          })
+          .from(cardSprints)
+          .innerJoin(cards, eq(cardSprints.cardId, cards.id))
+          .leftJoin(stages, eq(cards.stageId, stages.id))
+          .where(and(inArray(cardSprints.sprintId, sprintIds), eq(cards.organizationId, orgId)))
+      : [];
+  const cardsBySprint = new Map<string, typeof allSprintCards>();
+  for (const row of allSprintCards) {
+    const list = cardsBySprint.get(row.sprintId);
+    if (list) list.push(row);
+    else cardsBySprint.set(row.sprintId, [row]);
+  }
+
   for (const s of projectSprints) {
-    const sprintCards = await db
-      .select({
-        card: cards,
-        stage: stages,
-      })
-      .from(cardSprints)
-      .innerJoin(cards, eq(cardSprints.cardId, cards.id))
-      .leftJoin(stages, eq(cards.stageId, stages.id))
-      .where(and(eq(cardSprints.sprintId, s.id), eq(cards.organizationId, orgId)));
+    const sprintCards = cardsBySprint.get(s.id) || [];
 
     let planned = 0;
     let completed = 0;
@@ -447,10 +462,7 @@ export async function getCumulativeFlowDiagram(
 
   if (!project) throw httpError(404, 'Project not found');
 
-  const projectBoards = await db
-    .select()
-    .from(boards)
-    .where(eq(boards.projectId, projectId));
+  const projectBoards = await db.select().from(boards).where(eq(boards.projectId, projectId));
 
   const boardIds = projectBoards.map((b) => b.id);
   let projectCards: {
@@ -459,10 +471,7 @@ export async function getCumulativeFlowDiagram(
   }[] = [];
 
   if (boardIds.length > 0) {
-    const projectLists = await db
-      .select()
-      .from(lists)
-      .where(inArray(lists.boardId, boardIds));
+    const projectLists = await db.select().from(lists).where(inArray(lists.boardId, boardIds));
 
     const listIds = projectLists.map((l) => l.id);
     if (listIds.length > 0) {
@@ -502,13 +511,16 @@ export async function getCumulativeFlowDiagram(
   for (let i = days - 1; i >= 0; i--) {
     const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
     const dateStr = date.toISOString().split('T')[0]!;
-    
+
     // Simulate historical progression curve ending at today's real distribution
     const progressFactor = (days - i) / days;
     const historicalDone = Math.round(doneCount * Math.pow(progressFactor, 1.2));
     const historicalInProgress = Math.round(inProgressCount * Math.min(1, progressFactor * 1.1));
     const historicalBlocked = Math.round(blockedCount * progressFactor);
-    const historicalNotStarted = Math.max(0, totalCards - (historicalDone + historicalInProgress + historicalBlocked));
+    const historicalNotStarted = Math.max(
+      0,
+      totalCards - (historicalDone + historicalInProgress + historicalBlocked)
+    );
 
     timeline.push({
       date: dateStr,
@@ -528,11 +540,7 @@ export async function getCumulativeFlowDiagram(
   };
 }
 
-export async function getLeadAndCycleTime(
-  db: Database,
-  projectId: string,
-  orgId: string
-) {
+export async function getLeadAndCycleTime(db: Database, projectId: string, orgId: string) {
   const [project] = await db
     .select()
     .from(projects)
@@ -540,19 +548,13 @@ export async function getLeadAndCycleTime(
 
   if (!project) throw httpError(404, 'Project not found');
 
-  const projectBoards = await db
-    .select()
-    .from(boards)
-    .where(eq(boards.projectId, projectId));
+  const projectBoards = await db.select().from(boards).where(eq(boards.projectId, projectId));
 
   const boardIds = projectBoards.map((b) => b.id);
-  let completedCards: typeof cards.$inferSelect[] = [];
+  let completedCards: (typeof cards.$inferSelect)[] = [];
 
   if (boardIds.length > 0) {
-    const projectLists = await db
-      .select()
-      .from(lists)
-      .where(inArray(lists.boardId, boardIds));
+    const projectLists = await db.select().from(lists).where(inArray(lists.boardId, boardIds));
 
     const listIds = projectLists.map((l) => l.id);
     if (listIds.length > 0) {
@@ -568,20 +570,27 @@ export async function getLeadAndCycleTime(
           )
         );
 
-      completedCards = allCards
-        .filter((c) => c.stage?.category === 'done')
-        .map((c) => c.card);
+      completedCards = allCards.filter((c) => c.stage?.category === 'done').map((c) => c.card);
     }
   }
 
   const leadTimes: number[] = [];
   const cycleTimes: number[] = [];
-  const dataPoints: { id: string; title: string; leadTimeDays: number; cycleTimeDays: number; completedAt: string }[] = [];
+  const dataPoints: {
+    id: string;
+    title: string;
+    leadTimeDays: number;
+    cycleTimeDays: number;
+    completedAt: string;
+  }[] = [];
 
   for (const card of completedCards) {
     const created = new Date(card.createdAt).getTime();
     const updated = new Date(card.updatedAt).getTime();
-    const leadDays = Math.max(0.1, Number(((updated - created) / (1000 * 60 * 60 * 24)).toFixed(1)));
+    const leadDays = Math.max(
+      0.1,
+      Number(((updated - created) / (1000 * 60 * 60 * 24)).toFixed(1))
+    );
     const cycleDays = Math.max(0.1, Number((leadDays * 0.65).toFixed(1))); // Lead time minus backlog wait
 
     leadTimes.push(leadDays);
@@ -598,8 +607,14 @@ export async function getLeadAndCycleTime(
   leadTimes.sort((a, b) => a - b);
   cycleTimes.sort((a, b) => a - b);
 
-  const avgLeadTime = leadTimes.length > 0 ? Number((leadTimes.reduce((a, b) => a + b, 0) / leadTimes.length).toFixed(1)) : 0;
-  const avgCycleTime = cycleTimes.length > 0 ? Number((cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length).toFixed(1)) : 0;
+  const avgLeadTime =
+    leadTimes.length > 0
+      ? Number((leadTimes.reduce((a, b) => a + b, 0) / leadTimes.length).toFixed(1))
+      : 0;
+  const avgCycleTime =
+    cycleTimes.length > 0
+      ? Number((cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length).toFixed(1))
+      : 0;
 
   const p85Index = Math.floor(leadTimes.length * 0.85);
   const p85LeadTime = leadTimes[p85Index] || avgLeadTime;
@@ -649,7 +664,8 @@ export async function getWorkspacePortfolioHealth(
 
     let health: 'healthy' | 'at_risk' | 'critical' = 'healthy';
     if (summary.metrics.overdueCards > 4) health = 'critical';
-    else if (summary.metrics.overdueCards > 1 || summary.metrics.completionRate < 30) health = 'at_risk';
+    else if (summary.metrics.overdueCards > 1 || summary.metrics.completionRate < 30)
+      health = 'at_risk';
 
     projectReports.push({
       id: proj.id,
@@ -661,7 +677,8 @@ export async function getWorkspacePortfolioHealth(
     });
   }
 
-  const overallCompletion = totalCards > 0 ? Math.round((totalCompletedCards / totalCards) * 100) : 0;
+  const overallCompletion =
+    totalCards > 0 ? Math.round((totalCompletedCards / totalCards) * 100) : 0;
 
   return {
     workspace: {
@@ -678,4 +695,3 @@ export async function getWorkspacePortfolioHealth(
     projects: projectReports,
   };
 }
-
