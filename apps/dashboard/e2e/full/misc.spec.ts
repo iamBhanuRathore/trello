@@ -10,7 +10,9 @@ test.describe('productivity surfaces', () => {
     await expect(palette).toBeVisible({ timeout: 10000 });
     await palette.fill('Boardly Core');
     await expect(page.getByText(/boardly core web app/i).first()).toBeVisible({ timeout: 10000 });
+    // Escape must close the palette (LIFO stack regression test).
     await page.keyboard.press('Escape');
+    await expect(palette).toBeHidden({ timeout: 5000 });
   });
 
   test('my tasks, timesheets, marketplace render', async ({ page }) => {

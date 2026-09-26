@@ -2005,3 +2005,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **What was done:** two-tier suite in `apps/dashboard/e2e/` (`smoke`: auth across Alex/Elena/Leo/Raymond, role guards, isolated board loop; `full`: two-user chat, calendar views, signed git webhooks, admin flows, palette/marketplace/timesheets). Isolated `e2e-<stamp>` entities deleted in `afterAll`; seed data never mutated. CI `e2e-smoke` job added (seeded Postgres + Redis, backend + dashboard boot, artifact upload on failure).
 - **Bugs found & fixed by the suite:** BUG-09 (temp-id card click → "Task not found" wall; guard in `BoardView.handleCardClick`), BUG-10 (sidebar search button dispatched Cmd+K on `window`, never reaching the `document`-level palette listener; dispatch on `document`). Both logged in `E2E_TESTING_REPORT.md`.
 - Tests & Validation: **19 passed, 1 skipped (intentional), 0 failed**; dashboard `tsc` + build clean.
+
+### 2026-09-26 — Palette Escape Dead (LIFO Stale Entries)
+
+- **Bug (user-reported):** Esc did nothing on the command palette despite the advertised shortcut.
+- **Root cause:** the global LIFO Escape stack in `@boardly/ui/dialog.tsx` accumulates stale entries — `DialogContent` effects register even for closed always-rendered dialogs — and the top entry belonged to an unmounted dialog whose hidden-close click was a no-op. Proven in-browser: stack size 3 with one dialog open; synthetic Escape never reached bubble listeners (capture `stopPropagation` fired) while the palette stayed open.
+- **Fix:** stack entries now report whether they actually closed something (null/detached ref = stale); the Escape walker drops stale entries down to the first live dialog. Palette Esc-close covered by `e2e/full/misc.spec.ts`.
+- Tests & Validation: dashboard `tsc` clean; Playwright Esc assertion green.

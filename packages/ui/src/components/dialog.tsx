@@ -61,16 +61,22 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
   );
 }
 
-const dialogEscapeStack: Array<() => void> = [];
+type DialogEscapeCloser = () => boolean;
+
+const dialogEscapeStack: Array<DialogEscapeCloser> = [];
 let isDialogEscapeListenerAttached = false;
 
 function handleDialogGlobalEscape(e: KeyboardEvent) {
   if (e.key === 'Escape' || e.key === 'Esc') {
-    if (dialogEscapeStack.length > 0) {
+    // Walk down from the top, dropping stale entries (unmounted content)
+    // until one actually closes something. Stale entries accumulate because
+    // DialogContent effects run even for closed always-rendered dialogs.
+    while (dialogEscapeStack.length > 0) {
+      const topClose = dialogEscapeStack[dialogEscapeStack.length - 1];
       e.preventDefault();
       e.stopPropagation();
-      const topClose = dialogEscapeStack[dialogEscapeStack.length - 1];
-      topClose?.();
+      if (topClose?.()) break;
+      dialogEscapeStack.pop();
     }
   }
 }
@@ -91,8 +97,14 @@ function DialogContent({
       isDialogEscapeListenerAttached = true;
     }
 
-    const triggerClose = () => {
-      internalCloseRef.current?.click();
+    const triggerClose: DialogEscapeCloser = () => {
+      // Only a mounted close button can close anything — a null or detached
+      // ref means this entry belongs to closed/unmounted content: report it
+      // stale so the stack walker drops it and tries the next entry down.
+      const el = internalCloseRef.current;
+      if (!el || !el.isConnected) return false;
+      el.click();
+      return true;
     };
 
     dialogEscapeStack.push(triggerClose);
