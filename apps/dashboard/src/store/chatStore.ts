@@ -186,7 +186,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
       readReceipts: {
         ...state.readReceipts,
         [channelId]: {
-          ...(state.readReceipts[channelId] || {}),
+          ...state.readReceipts[channelId],
           [userId]: readAt,
         },
       },
@@ -221,6 +221,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
     const { outbox, updateOutboxStatus, removeFromOutbox } = useChatStore.getState();
     if (outbox.length === 0) return;
 
+    // eslint-disable-next-line unicorn/no-useless-spread -- snapshot: removeFromOutbox mutates the store array mid-loop
     for (const item of [...outbox]) {
       try {
         updateOutboxStatus(item.tempId, 'sending');

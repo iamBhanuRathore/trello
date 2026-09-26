@@ -89,7 +89,7 @@ export async function updateList(
 ) {
   // We need to verify that this list belongs to a board in the user's org
   const [existingList] = await db
-    .select({ listId: lists.id, boardId: lists.boardId })
+    .select({ listId: lists.id, boardId: lists.boardId, name: lists.name })
     .from(lists)
     .innerJoin(boards, eq(boards.id, lists.boardId))
     .where(and(eq(lists.id, id), eq(boards.organizationId, organizationId)))
@@ -106,7 +106,7 @@ export async function updateList(
   eventBus.broadcast(`board:${existingList.boardId}`, 'list.updated', updatedList);
   await bumpBoardCache(existingList.boardId);
   // getCard caches listName under cv — rename must bump member cards.
-  if (input.name !== undefined && input.name !== undefined) {
+  if (input.name !== undefined && input.name !== existingList.name) {
     const memberCards = await db.select({ id: cards.id }).from(cards).where(eq(cards.listId, id));
     await Promise.all(memberCards.map((c) => bumpCardCache(c.id)));
   }

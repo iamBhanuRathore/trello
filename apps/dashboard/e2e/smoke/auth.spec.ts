@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginAs, PERSONAS, PASSWORD } from '../helpers';
+import { loginAs, PERSONAS } from '../helpers';
 
 test.describe('auth across seed personas', () => {
   test('owner can log in and sees their name', async ({ page }) => {
@@ -53,7 +53,7 @@ test.describe('auth across seed personas', () => {
     await expect(page).toHaveURL(/login/, { timeout: 10000 });
   });
 
-  test('dev quick-login panel is hidden in production build', async ({ page }) => {
+  test('dev quick-login panel is hidden in production build', async () => {
     // Placeholder: DEV-gated panel must never render in prod. This runs in dev,
     // so it documents the invariant; CI prod check asserts absence.
     test.skip(true, 'requires production build');

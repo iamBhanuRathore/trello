@@ -17,6 +17,40 @@ export function httpError(status: number, message: string, details?: any): HttpE
 }
 
 /**
+ * Narrowing helpers for `catch (err: unknown)` — prefer these over `as any`.
+ */
+export function errorMessage(err: unknown, fallback = 'Unknown error'): string {
+  if (err instanceof Error) return err.message || fallback;
+  if (typeof err === 'string' && err) return err;
+  return fallback;
+}
+
+export function errorStatus(err: unknown): number | undefined {
+  if (typeof err === 'object' && err !== null && 'status' in err) {
+    const status = (err as { status: unknown }).status;
+    if (typeof status === 'number') return status;
+  }
+  return undefined;
+}
+
+export function errorCode(err: unknown): unknown {
+  if (typeof err === 'object' && err !== null && 'code' in err) {
+    return (err as { code: unknown }).code;
+  }
+  return undefined;
+}
+
+export function errorResponseStatus(err: unknown): unknown {
+  if (typeof err === 'object' && err !== null && 'response' in err) {
+    const response = (err as { response: unknown }).response;
+    if (typeof response === 'object' && response !== null && 'status' in response) {
+      return (response as { status: unknown }).status;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Checks if a string contains internal/sensitive database queries, SQL keywords, or connection strings.
  */
 export function isSensitiveDatabaseMessage(msg: string): boolean {

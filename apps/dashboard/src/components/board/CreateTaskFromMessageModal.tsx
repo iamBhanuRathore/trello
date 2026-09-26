@@ -98,7 +98,7 @@ export function CreateTaskFromMessageModal({
       setDueDate(format(targetDeadline, "yyyy-MM-dd'T'HH:mm"));
       setIsUrgent(false);
     }
-  }, [comment, isOpen, cardTitle, defaultListId, lists]);
+  }, [comment, isOpen, cardTitle, defaultListId, lists, targetListId, user?.id]);
 
   // Keep target list synced if lists load after modal opens
   useEffect(() => {

@@ -37,7 +37,7 @@ import { Tooltip } from '@boardly/ui';
 import { ImportModal } from '../components/board/ImportModal';
 import { QueryError } from '../components/common/QueryError';
 
-export const BOARD_GRADIENTS = [
+const BOARD_GRADIENTS = [
   { id: 'blue', name: 'Oceanic Blue', value: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' },
   {
     id: 'violet',
@@ -61,13 +61,11 @@ export const BOARD_GRADIENTS = [
   { id: 'slate', name: 'Modern Slate', value: 'linear-gradient(135deg, #475569 0%, #334155 100%)' },
 ];
 
-export const PROFESSIONAL_BOARD_FALLBACK = 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)';
-
 /**
  * Resolves board gradient, automatically upgrading legacy dark/pitch-black gradients
  * into rich, vibrant, modern palettes that look amazing in both light and dark themes.
  */
-export function resolveBoardGradient(bg?: string, index: number = 0): string {
+function resolveBoardGradient(bg?: string, index: number = 0): string {
   if (!bg) {
     return BOARD_GRADIENTS[index % BOARD_GRADIENTS.length].value;
   }

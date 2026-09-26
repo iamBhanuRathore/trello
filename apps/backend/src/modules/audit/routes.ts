@@ -21,7 +21,7 @@ export const auditRoutes = new Elysia({ prefix: '/audit', tags: ['Audit'] })
           limit: query.limit ? Number(query.limit) : undefined,
           offset: query.offset ? Number(query.offset) : undefined,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -56,7 +56,7 @@ export const auditRoutes = new Elysia({ prefix: '/audit', tags: ['Audit'] })
           ipAddress: ip,
           userAgent: userAgent,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

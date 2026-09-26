@@ -14,7 +14,7 @@ export const importerRoutes = new Elysia({ prefix: '/import', tags: ['Importers'
     async ({ params: { projectId }, body, user, set }) => {
       try {
         return await importTrelloBoard(db, user.organizationId, projectId, body.trelloData);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -31,7 +31,7 @@ export const importerRoutes = new Elysia({ prefix: '/import', tags: ['Importers'
     async ({ params: { projectId }, body, user, set }) => {
       try {
         return await importGenericTasks(db, user.organizationId, projectId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

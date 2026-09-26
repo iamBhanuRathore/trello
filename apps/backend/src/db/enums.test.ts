@@ -58,7 +58,7 @@ describe('Shared enums mirror Drizzle pgEnums', () => {
 
   for (const [name, shared, pg] of cases) {
     it(`${name} matches pgEnum values`, () => {
-      expect([...Object.values(shared)].sort()).toEqual([...pg.enumValues].sort());
+      expect(Object.values(shared).sort()).toEqual([...pg.enumValues].sort());
     });
   }
 });

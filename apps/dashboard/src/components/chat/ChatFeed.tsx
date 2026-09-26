@@ -471,7 +471,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     }
 
     return groups;
-  }, [messages, searchQuery]);
+  }, [mergedMessages, searchQuery]);
 
   // Check announcement permissions
   const isAnnouncementRestricted =

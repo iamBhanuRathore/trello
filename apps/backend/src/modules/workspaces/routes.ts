@@ -22,7 +22,7 @@ export const workspaceRoutes = new Elysia({ prefix: '/workspaces', tags: ['Works
     async ({ user, set }) => {
       try {
         return await getWorkspaceTree(db, user.organizationId, user.userId, user.isPlatformAdmin);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -37,7 +37,7 @@ export const workspaceRoutes = new Elysia({ prefix: '/workspaces', tags: ['Works
     async ({ user, set }) => {
       try {
         return await listWorkspaces(db, user.organizationId, user.userId, user.isPlatformAdmin);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -58,7 +58,7 @@ export const workspaceRoutes = new Elysia({ prefix: '/workspaces', tags: ['Works
           visibility: body.visibility as any,
           creatorId: user.userId,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -78,7 +78,7 @@ export const workspaceRoutes = new Elysia({ prefix: '/workspaces', tags: ['Works
     async ({ params, user, set }) => {
       try {
         return await getWorkspace(db, params.id, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -93,7 +93,7 @@ export const workspaceRoutes = new Elysia({ prefix: '/workspaces', tags: ['Works
     async ({ params, body, user, set }) => {
       try {
         return await updateWorkspace(db, params.id, user.organizationId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -110,7 +110,7 @@ export const workspaceRoutes = new Elysia({ prefix: '/workspaces', tags: ['Works
       try {
         await deleteWorkspace(db, params.id, user.organizationId);
         return { success: true };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

@@ -1,4 +1,5 @@
 import { db } from '../../db/index';
+import { logger } from '../../lib/logger';
 import { notifications, notificationPreferences } from '../../db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 
@@ -6,7 +7,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 // For the MVP, we just expose a function we can call to mock the cron execution.
 
 export async function processNotificationDigests() {
-  console.log('[Digest Cron] Starting digest processing...');
+  logger.info({}, 'Digest cron: starting digest processing');
 
   // 1. Find all unsent (undispatched) notifications that are meant for email/push digest
   // In a real app we would join with preferences. For MVP, we'll fetch undispatched and group them.
@@ -21,18 +22,23 @@ export async function processNotificationDigests() {
     .where(eq(notifications.isDispatched, false));
 
   if (pendingNotifs.length === 0) {
-    console.log('[Digest Cron] No pending notifications to process.');
+    logger.info({}, 'Digest cron: no pending notifications');
     return;
   }
 
   // 2. We need to check if these pending notifications fall under 'digest_daily' or 'digest_weekly'
-  const userIds = [...new Set(pendingNotifs.map(n => n.userId))];
-  const orgIds = [...new Set(pendingNotifs.map(n => n.organizationId))];
+  const userIds = [...new Set(pendingNotifs.map((n) => n.userId))];
+  const orgIds = [...new Set(pendingNotifs.map((n) => n.organizationId))];
 
   const prefs = await db
     .select()
     .from(notificationPreferences)
-    .where(and(inArray(notificationPreferences.userId, userIds), inArray(notificationPreferences.organizationId, orgIds)));
+    .where(
+      and(
+        inArray(notificationPreferences.userId, userIds),
+        inArray(notificationPreferences.organizationId, orgIds)
+      )
+    );
 
   // Map preferences for quick lookup: `${userId}-${orgId}-${eventType}-email`
   const prefMap = new Map();
@@ -63,9 +69,9 @@ export async function processNotificationDigests() {
 
     // 4. Simulate sending emails
     for (const [userId, count] of Object.entries(emailsToSend)) {
-      console.log(`[Email Mock] Sent Digest Email to user ${userId} with ${count} bundled notifications.`);
+      logger.info({ userId, count }, 'Digest email sent');
     }
   } else {
-    console.log('[Digest Cron] No digest notifications met the criteria to be sent right now.');
+    logger.info({}, 'Digest cron: no notifications met dispatch criteria');
   }
 }

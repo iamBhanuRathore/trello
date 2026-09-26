@@ -11,7 +11,7 @@ import {
   organizations,
   plans,
 } from '../db/schema/index';
-import { eq, and, or, isNull, sql } from 'drizzle-orm';
+import { eq, and, or, isNull, sql, type SQL } from 'drizzle-orm';
 import { type PermissionKey, PlanTier } from '@boardly/shared-types';
 import { getDataClient, isRedisAvailable } from '../redis/client';
 import { getCachedAllow, setCachedAllow } from '../lib/cache';
@@ -157,22 +157,13 @@ export function requirePermission(permissionKey: PermissionKey) {
     }
 
     // Map alias keys if granular permission isn't directly seeded
-    let permCondition = eq(permissions.key, permissionKey);
+    let permCondition: SQL | undefined = eq(permissions.key, permissionKey);
     if (permissionKey === 'card.move') {
-      permCondition = or(
-        eq(permissions.key, 'card.move'),
-        eq(permissions.key, 'card.update')
-      ) as any;
+      permCondition = or(eq(permissions.key, 'card.move'), eq(permissions.key, 'card.update'));
     } else if (permissionKey === 'card.archive') {
-      permCondition = or(
-        eq(permissions.key, 'card.archive'),
-        eq(permissions.key, 'card.delete')
-      ) as any;
+      permCondition = or(eq(permissions.key, 'card.archive'), eq(permissions.key, 'card.delete'));
     } else if (permissionKey === 'board.archive') {
-      permCondition = or(
-        eq(permissions.key, 'board.archive'),
-        eq(permissions.key, 'board.delete')
-      ) as any;
+      permCondition = or(eq(permissions.key, 'board.archive'), eq(permissions.key, 'board.delete'));
     }
 
     // If user.organizationId is undefined/null, look up their active organization membership

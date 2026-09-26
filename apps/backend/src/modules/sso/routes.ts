@@ -17,7 +17,7 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
     async ({ body, set }) => {
       try {
         return await generateSSOLoginUrl(db, body.domain);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -33,7 +33,7 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
     async ({ body, set }) => {
       try {
         return await processSSOCallback(db, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -54,13 +54,17 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
         const authHeader = headers['authorization'] || '';
         const token = authHeader.replace(/^Bearer\s+/i, '');
         return await processSCIMWebhook(db, token, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
       body: t.Object({
-        action: t.Union([t.Literal('user.create'), t.Literal('user.update'), t.Literal('user.delete')]),
+        action: t.Union([
+          t.Literal('user.create'),
+          t.Literal('user.update'),
+          t.Literal('user.delete'),
+        ]),
         email: t.String(),
         name: t.Optional(t.String()),
       }),
@@ -76,7 +80,7 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
     async ({ user, set }) => {
       try {
         return await getSSOConfig(db, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -91,7 +95,7 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
     async ({ body, user, set }) => {
       try {
         return await updateSSOConfig(db, user.organizationId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

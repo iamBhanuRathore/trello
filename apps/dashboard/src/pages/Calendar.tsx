@@ -1360,7 +1360,10 @@ function NowLine({
 }) {
   const [now, setNow] = useState(() => new Date());
   const userScrolledRef = useRef(false);
-  const scroller = () => gridRef.current?.parentElement as HTMLElement | null;
+  const scroller = useCallback(
+    () => gridRef.current?.parentElement as HTMLElement | null,
+    [gridRef]
+  );
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60000);
@@ -1388,7 +1391,7 @@ function NowLine({
     };
     container.addEventListener('scroll', onScroll, { passive: true });
     return () => container.removeEventListener('scroll', onScroll);
-  }, [gridRef]);
+  }, [scroller, gridRef]);
 
   if (!isToday) return null;
 
@@ -1419,7 +1422,7 @@ function blockStyle(startISO: string, endISO?: string | null): React.CSSProperti
  * Google-style overlap layout: concurrent blocks share the day width
  * side-by-side instead of stacking. Returns column assignment per id.
  */
-export function layoutDayColumns(
+function layoutDayColumns(
   items: { id: string; start: string; end?: string | null }[]
 ): Map<string, { col: number; cols: number }> {
   const withTimes = items.map((it) => {

@@ -19,7 +19,7 @@ export const roleRoutes = new Elysia({ prefix: '/roles', tags: ['Roles'] })
     async ({ set }) => {
       try {
         return await getAvailablePermissions(db);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -34,7 +34,7 @@ export const roleRoutes = new Elysia({ prefix: '/roles', tags: ['Roles'] })
     async ({ user, set }) => {
       try {
         return await listRoles(db, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -49,7 +49,7 @@ export const roleRoutes = new Elysia({ prefix: '/roles', tags: ['Roles'] })
     async ({ body, user, set }) => {
       try {
         return await createCustomRole(db, user.organizationId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -68,7 +68,7 @@ export const roleRoutes = new Elysia({ prefix: '/roles', tags: ['Roles'] })
     async ({ params: { id }, body, user, set }) => {
       try {
         return await updateCustomRole(db, user.organizationId, id, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -88,7 +88,7 @@ export const roleRoutes = new Elysia({ prefix: '/roles', tags: ['Roles'] })
     async ({ params: { id }, user, set }) => {
       try {
         return await deleteCustomRole(db, user.organizationId, id);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

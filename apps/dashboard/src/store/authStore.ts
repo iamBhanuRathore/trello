@@ -38,7 +38,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (refreshToken) {
         await api.post('/auth/sign-out', { refreshToken });
       }
-    } catch (err) {}
+    } catch {}
     localStorage.removeItem('boardly_access_token');
     localStorage.removeItem('boardly_refresh_token');
     set({ user: null, isAuthenticated: false, isLoading: false });

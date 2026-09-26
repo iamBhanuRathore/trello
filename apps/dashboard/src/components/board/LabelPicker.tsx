@@ -20,19 +20,6 @@ interface LabelPickerProps {
   onClose: () => void;
 }
 
-export const PRESET_LABEL_COLORS = [
-  { color: '#ef4444', name: 'Red' },
-  { color: '#f97316', name: 'Orange' },
-  { color: '#f59e0b', name: 'Amber' },
-  { color: '#10b981', name: 'Emerald' },
-  { color: '#06b6d4', name: 'Cyan' },
-  { color: '#3b82f6', name: 'Blue' },
-  { color: '#8b5cf6', name: 'Violet' },
-  { color: '#ec4899', name: 'Pink' },
-  { color: '#6366f1', name: 'Indigo' },
-  { color: '#14b8a6', name: 'Teal' },
-];
-
 export function LabelPicker({ boardId, cardId, cardLabelIds, onClose }: LabelPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);

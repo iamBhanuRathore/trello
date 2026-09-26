@@ -165,7 +165,7 @@ export function BoardView() {
       setSelectedCardId(cardParam);
       emitCardFocus(cardParam);
     }
-  }, [searchParams, emitCardFocus]);
+  }, [searchParams, emitCardFocus, selectedCardId]);
 
   const handleCardClick = useCallback(
     (cardId: string) => {
@@ -833,7 +833,7 @@ function ListColumn({
     if (user?.id && !assigneeId) {
       setAssigneeId(user.id);
     }
-  }, [user?.id]);
+  }, [user?.id, assigneeId]);
 
   // Quick assignee selector uses server-side search (async) — no full fetch.
 

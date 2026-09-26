@@ -21,7 +21,7 @@ export const presenceRoutes = new Elysia({ prefix: '/presence', tags: ['Presence
       try {
         const userIds = query.ids ? query.ids.split(',').filter(Boolean) : [];
         return await batchGetUsersPresence(db, userIds);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -36,7 +36,7 @@ export const presenceRoutes = new Elysia({ prefix: '/presence', tags: ['Presence
   .get('/me', async ({ user, set }) => {
     try {
       return await computeUserPresence(db, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -47,7 +47,7 @@ export const presenceRoutes = new Elysia({ prefix: '/presence', tags: ['Presence
     async ({ body, user, set }) => {
       try {
         return await setUserPresenceOverride(db, user.userId, body as any);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -70,7 +70,7 @@ export const presenceRoutes = new Elysia({ prefix: '/presence', tags: ['Presence
   .delete('/me', async ({ user, set }) => {
     try {
       return await clearUserPresenceOverride(db, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -79,7 +79,7 @@ export const presenceRoutes = new Elysia({ prefix: '/presence', tags: ['Presence
   .get('/working-hours', async ({ user, set }) => {
     try {
       return await getUserWorkingHours(db, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -90,7 +90,7 @@ export const presenceRoutes = new Elysia({ prefix: '/presence', tags: ['Presence
     async ({ body, user, set }) => {
       try {
         return await updateUserWorkingHours(db, user.userId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

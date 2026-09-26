@@ -7,6 +7,7 @@ import {
 } from '../../db/schema';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { eventBus } from '../../lib/event-bus';
+import { logger } from '../../lib/logger';
 import { cachedTTL, invalidateTTL } from '../../lib/cache';
 
 // ─── Service Functions ───────────────────────────────────────────────────────
@@ -119,10 +120,14 @@ export async function updatePreferences(
 export function setupNotificationListeners(db: Database) {
   eventBus.on(
     'internal',
-    async (data: { event: string; payload: any; actorId: string; organizationId: string }) => {
+    async (data: { event: string; payload: unknown; actorId: string; organizationId: string }) => {
+      const { event, actorId, organizationId } = data;
+      const payload = data.payload as {
+        cardId?: string;
+        commentText?: string;
+        assigneeId?: string;
+      };
       try {
-        const { event, payload, actorId, organizationId } = data;
-
         if (event === 'card.commented' || event === 'card.assigned') {
           const { cardId, commentText } = payload;
 
@@ -191,9 +196,7 @@ export function setupNotificationListeners(db: Database) {
                 }
                 if (!suppressInstantEmail) {
                   isDispatched = true; // We will send it right now
-                  console.log(
-                    `[Email Mock] Sending INSTANT email for event '${event}' to user ${userId}.`
-                  );
+                  logger.info({ event, userId }, 'Sending instant email');
                 } else {
                   isDispatched = false; // Queue it because of DND
                 }
@@ -201,9 +204,7 @@ export function setupNotificationListeners(db: Database) {
             } else {
               // Default behavior if no pref: instant, no DND
               isDispatched = true;
-              console.log(
-                `[Email Mock] Sending INSTANT email (default) for event '${event}' to user ${userId}.`
-              );
+              logger.info({ event, userId }, 'Sending instant email (default prefs)');
             }
 
             notifData.push({
@@ -220,7 +221,7 @@ export function setupNotificationListeners(db: Database) {
           }
         }
       } catch (err) {
-        console.error('Error processing notification event:', err);
+        logger.error({ err, event }, 'Error processing notification event');
       }
     }
   );
@@ -302,15 +303,16 @@ export async function dispatchPushNotification(
   userId: string,
   title: string,
   body: string,
-  _data?: Record<string, any>
+  _data?: Record<string, unknown>
 ) {
   const devices = await getUserPushDevices(db, userId);
   const results = [];
 
   for (const dev of devices) {
     // Simulated Expo / FCM push dispatch
-    console.log(
-      `[Push Notification Dispatch] Sending to ${dev.platform} (${dev.token.substring(0, 15)}...): ${title} - ${body}`
+    logger.info(
+      { platform: dev.platform, deviceId: dev.id, title, body },
+      'Push notification dispatched'
     );
     results.push({
       deviceId: dev.id,

@@ -36,8 +36,8 @@ export function WebhookSettings() {
     try {
       const data = await getWebhooks(user.organizationId);
       setWebhooks(data);
-    } catch (err) {
-      console.error(err);
+    } catch {
+      toast.error('Failed to load webhooks');
     } finally {
       setLoading(false);
     }
@@ -62,7 +62,6 @@ export function WebhookSettings() {
       loadWebhooks();
       toast.success('Webhook created successfully');
     } catch (err: any) {
-      console.error(err);
       toast.error(err?.response?.data?.message || 'Failed to create webhook');
     }
   };
@@ -74,7 +73,6 @@ export function WebhookSettings() {
       loadWebhooks();
       toast.success('Webhook deleted successfully');
     } catch (err: any) {
-      console.error(err);
       toast.error(err?.response?.data?.message || 'Failed to delete webhook');
     }
   };
@@ -89,8 +87,8 @@ export function WebhookSettings() {
     try {
       await updateWebhook(user!.organizationId, id, { isEnabled });
       loadWebhooks();
-    } catch (err) {
-      console.error(err);
+    } catch {
+      toast.error('Failed to update webhook');
     }
   };
 

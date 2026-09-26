@@ -26,12 +26,7 @@ interface ImportModalProps {
   projectName?: string;
 }
 
-export function ImportModal({
-  open,
-  onOpenChange,
-  projectId,
-  projectName,
-}: ImportModalProps) {
+export function ImportModal({ open, onOpenChange, projectId, projectName }: ImportModalProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,7 +89,7 @@ export function ImportModal({
           );
           setParsedData(null);
         }
-      } catch (err) {
+      } catch {
         setErrorMsg('Invalid JSON file format.');
         setParsedData(null);
       }
@@ -132,7 +127,8 @@ export function ImportModal({
             <div>
               <DialogTitle className="text-base font-bold">Migrate / Import Board</DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                Import a Trello board or JSON export into <strong>{projectName || 'your project'}</strong>.
+                Import a Trello board or JSON export into{' '}
+                <strong>{projectName || 'your project'}</strong>.
               </DialogDescription>
             </div>
           </div>
@@ -170,7 +166,8 @@ export function ImportModal({
                 </div>
                 <p className="font-semibold text-sm">{fileName}</p>
                 <p className="text-xs text-muted-foreground">
-                  {importType === 'trello' ? 'Trello Board Export' : 'Structured Task List'} detected.
+                  {importType === 'trello' ? 'Trello Board Export' : 'Structured Task List'}{' '}
+                  detected.
                 </p>
               </div>
             ) : (
@@ -222,7 +219,10 @@ export function ImportModal({
                       ? Array.isArray(parsedData.cards)
                         ? parsedData.cards.filter((c: any) => !c.closed).length
                         : 0
-                      : parsedData.lists?.reduce((acc: number, l: any) => acc + (l.tasks?.length || 0), 0) || 0}
+                      : parsedData.lists?.reduce(
+                          (acc: number, l: any) => acc + (l.tasks?.length || 0),
+                          0
+                        ) || 0}
                   </span>
                   <span className="text-muted-foreground text-[10px]">Cards</span>
                 </div>

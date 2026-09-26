@@ -10,6 +10,7 @@ import {
   projects,
 } from '../../db/schema/index';
 import { eventBus } from '../../lib/event-bus';
+import { errorMessage, errorCode, errorResponseStatus, errorStatus } from '../../lib/errors';
 import { updateCard } from '../cards/service';
 import {
   isGoogleConfigured,
@@ -223,14 +224,14 @@ export async function pullExternalEvents(
     ({ data } = await withGoogleTimeout<any>('events.list', () =>
       (calendar as any).events.list(params)
     ));
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Sync token expired/invalidated → fall back to a full pull once.
-    if (useIncremental && (err?.code === 410 || err?.response?.status === 410)) {
+    if (useIncremental && (errorCode(err) === 410 || errorResponseStatus(err) === 410)) {
       return pullExternalEvents(db, userId, {}, clientOverride);
     }
     await db
       .update(calendarConnections)
-      .set({ lastError: String(err?.message || err).slice(0, 500), updatedAt: new Date() })
+      .set({ lastError: errorMessage(err).slice(0, 500), updatedAt: new Date() })
       .where(eq(calendarConnections.id, conn.id));
     throw httpError(502, 'Google Calendar pull failed');
   }
@@ -763,9 +764,9 @@ export async function getCalendarFeed(
       { from: from.toISOString(), to: to.toISOString() },
       clientOverride
     ));
-  } catch (err: any) {
+  } catch (err: unknown) {
     // No connection (409) simply means Google overlay is off; other errors surface.
-    if (err?.status !== 409) externalError = err?.message || 'Google pull failed';
+    if (errorStatus(err) !== 409) externalError = errorMessage(err, 'Google pull failed');
   }
 
   return {

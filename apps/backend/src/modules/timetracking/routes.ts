@@ -2,12 +2,7 @@ import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { handleRouteError } from '../../lib/errors';
-import {
-  logTime,
-  getCardTimeLogs,
-  deleteTimeLog,
-  getTimesheet,
-} from './service';
+import { logTime, getCardTimeLogs, deleteTimeLog, getTimesheet } from './service';
 
 export const timeTrackingRoutes = new Elysia({ prefix: '/time-tracking', tags: ['TimeTracking'] })
   .use(authPlugin)
@@ -24,7 +19,7 @@ export const timeTrackingRoutes = new Elysia({ prefix: '/time-tracking', tags: [
           loggedDate: body.loggedDate,
           isBillable: body.isBillable,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -46,7 +41,7 @@ export const timeTrackingRoutes = new Elysia({ prefix: '/time-tracking', tags: [
     async ({ params: { cardId }, user, set }) => {
       try {
         return await getCardTimeLogs(db, user.organizationId, cardId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -62,7 +57,7 @@ export const timeTrackingRoutes = new Elysia({ prefix: '/time-tracking', tags: [
     async ({ params: { id }, user, set }) => {
       try {
         return await deleteTimeLog(db, user.organizationId, user.userId, id);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -83,7 +78,7 @@ export const timeTrackingRoutes = new Elysia({ prefix: '/time-tracking', tags: [
           startDate: query.startDate,
           endDate: query.endDate,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

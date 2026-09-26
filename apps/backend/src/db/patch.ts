@@ -65,8 +65,8 @@ for (const url of urls) {
     `);
     await sql.end();
     console.log(`✅ Applied schema patch to ${url}`);
-  } catch (err: any) {
-    console.error(`Error on ${url}:`, err.message);
+  } catch (err: unknown) {
+    console.error(`Error on ${url}:`, err instanceof Error ? err.message : err);
   }
 }
 process.exit(0);

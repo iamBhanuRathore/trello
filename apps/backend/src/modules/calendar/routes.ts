@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
-import { handleRouteError } from '../../lib/errors';
+import { handleRouteError, errorMessage } from '../../lib/errors';
 import { env } from '../../lib/env';
 import {
   connectionStatus,
@@ -24,7 +24,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
   .get('/google/status', async ({ user, set }) => {
     try {
       return await connectionStatus(db, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -33,7 +33,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
   .get('/google/auth-url', async ({ user, set }) => {
     try {
       return { url: getAuthUrlForUser(user.userId, user.organizationId) };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -42,7 +42,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
   .delete('/google', async ({ user, set }) => {
     try {
       return await disconnectCalendar(db, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -56,7 +56,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
           from: query.from,
           to: query.to,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -72,7 +72,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
   .post('/sync/pull', async ({ user, set }) => {
     try {
       return await pullExternalEvents(db, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -81,7 +81,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
   .post('/sync/push', async ({ user, set }) => {
     try {
       return await pushAllScheduled(db, user.userId, user.organizationId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -92,7 +92,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
     async ({ body, user, set }) => {
       try {
         return await createExternalEvent(db, user.userId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -112,7 +112,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
     async ({ params: { eventId }, body, user, set }) => {
       try {
         return await updateExternalEvent(db, user.userId, eventId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -133,7 +133,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
     async ({ params: { eventId }, user, set }) => {
       try {
         return await deleteExternalEvent(db, user.userId, eventId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -148,7 +148,7 @@ export const calendarRoutes = new Elysia({ prefix: '/calendar', tags: ['Calendar
     async ({ params: { id }, body, user, set }) => {
       try {
         return await scheduleCard(db, id, user.organizationId, user.userId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -185,8 +185,8 @@ export const calendarCallbackRoutes = new Elysia({ prefix: '/calendar', tags: ['
       set.status = 302;
       set.headers['location'] = `${env.DASHBOARD_URL.split(',')[0]}/calendar?connected=1`;
       return 'Connected — redirecting to Boardly…';
-    } catch (err: any) {
-      const message = encodeURIComponent(err?.message || 'Calendar connect failed');
+    } catch (err: unknown) {
+      const message = encodeURIComponent(errorMessage(err, 'Calendar connect failed'));
       set.status = 302;
       set.headers['location'] = `${env.DASHBOARD_URL.split(',')[0]}/calendar?error=${message}`;
       return 'Connection failed — redirecting to Boardly…';

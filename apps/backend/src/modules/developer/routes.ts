@@ -23,7 +23,7 @@ export const developerRoutes = new Elysia()
         .get('/', async ({ user, set }) => {
           try {
             return await listApiKeys(db, user.organizationId);
-          } catch (err: any) {
+          } catch (err: unknown) {
             return handleRouteError(err, set);
           }
         })
@@ -32,7 +32,7 @@ export const developerRoutes = new Elysia()
           async ({ body, user, set }) => {
             try {
               return await generateApiKey(db, user.organizationId, body);
-            } catch (err: any) {
+            } catch (err: unknown) {
               return handleRouteError(err, set);
             }
           },
@@ -47,7 +47,7 @@ export const developerRoutes = new Elysia()
         .delete('/:id', async ({ params, user, set }) => {
           try {
             return await revokeApiKey(db, user.organizationId, params.id);
-          } catch (err: any) {
+          } catch (err: unknown) {
             return handleRouteError(err, set);
           }
         })
@@ -63,14 +63,14 @@ export const developerRoutes = new Elysia()
             category: query.category,
             search: query.search,
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           return handleRouteError(err, set);
         }
       })
       .get('/:id', async ({ params, user, set }) => {
         try {
           return await getMarketplaceApp(db, user.organizationId, params.id);
-        } catch (err: any) {
+        } catch (err: unknown) {
           return handleRouteError(err, set);
         }
       })
@@ -83,7 +83,7 @@ export const developerRoutes = new Elysia()
               boardId: body?.boardId,
               config: body?.config,
             });
-          } catch (err: any) {
+          } catch (err: unknown) {
             return handleRouteError(err, set);
           }
         },
@@ -102,7 +102,7 @@ export const developerRoutes = new Elysia()
         async ({ params, body, user, set }) => {
           try {
             return await updateInstalledApp(db, user.organizationId, params.id, body);
-          } catch (err: any) {
+          } catch (err: unknown) {
             return handleRouteError(err, set);
           }
         },
@@ -119,7 +119,7 @@ export const developerRoutes = new Elysia()
         async ({ params, user, set }) => {
           try {
             return await uninstallMarketplaceApp(db, user.organizationId, params.id);
-          } catch (err: any) {
+          } catch (err: unknown) {
             return handleRouteError(err, set);
           }
         },

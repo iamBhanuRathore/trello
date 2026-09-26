@@ -164,9 +164,11 @@ function formatActivityText(c: ChatMessage): string {
   // First line in case of multiline lists
   const firstLine = cleanBody.split('\n')[0].trim();
 
-  // Remove leading emojis like 📋, ➕, ☑️, ⬜, 🗑️, etc. and trim
+  // Remove leading emojis like 📋, ➕, ☑️, ⬜, 🗑️, etc. and trim.
+  // NOTE: variation selectors (U+FE00–FE0F are combining marks) must not sit
+  // inside the character class — match U+FE0F (the common one) separately.
   const textWithoutEmoji = firstLine
-    .replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\s]+/u, '')
+    .replace(/^(?:\uFE0F|[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F900}-\u{1F9FF}\s])+/u, '')
     .trim();
 
   // Lowercase initial verb: "Added checklist..." -> "added checklist..."
@@ -214,6 +216,10 @@ export function TaskChatPane({
 
   // Attachment & Screenshot upload states
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  // Ref mirror so the unmount cleanup revokes the *latest* object URLs
+  // (a []-dep closure would only ever see the initial empty array).
+  const pendingAttachmentsRef = useRef(pendingAttachments);
+  pendingAttachmentsRef.current = pendingAttachments;
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -233,7 +239,7 @@ export function TaskChatPane({
   // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
-      pendingAttachments.forEach((att) => {
+      pendingAttachmentsRef.current.forEach((att) => {
         if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
       });
     };
@@ -568,8 +574,7 @@ export function TaskChatPane({
                 uploadedLinks.push(`[📎 ${item.name}](${publicUrl})`);
               }
             }
-          } catch (err: any) {
-            console.error('Failed to upload file:', err);
+          } catch {
             toast.error(`Failed to upload ${item.name}`);
           }
         }

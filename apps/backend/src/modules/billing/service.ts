@@ -21,6 +21,7 @@ import {
 } from '../../lib/stripe';
 import { env } from '../../lib/env';
 import { logger } from '../../lib/logger';
+import { errorMessage } from '../../lib/errors';
 import {
   renderSubscriptionActivatedEmail,
   renderPaymentFailedEmail,
@@ -971,7 +972,7 @@ export async function processStripeWebhook(event: Stripe.Event) {
     });
 
     return { received: true };
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error({ err, eventId: event.id }, 'Error processing webhook event');
     await db
       .insert(billingEvents)
@@ -979,7 +980,7 @@ export async function processStripeWebhook(event: Stripe.Event) {
         stripeEventId: event.id,
         eventType: event.type,
         payload: event.data.object as unknown as Record<string, unknown>,
-        error: err.message,
+        error: errorMessage(err),
       })
       .onConflictDoNothing();
     throw err;

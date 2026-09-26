@@ -15,7 +15,7 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
       try {
         if (!query.workspaceId) throw new Error('workspaceId query parameter is required');
         return await listProjects(db, query.workspaceId, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -38,7 +38,7 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
           startDate: body.startDate,
           endDate: body.endDate,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -60,7 +60,7 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
     async ({ params, user, set }) => {
       try {
         return await getProject(db, params.id, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -75,16 +75,23 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
     async ({ params, body, user, set }) => {
       try {
         return await updateProject(db, params.id, user.organizationId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
       beforeHandle: requirePermission('project.update'),
-      body: t.Object({ 
-        name: t.Optional(t.String()), 
-        status: t.Optional(t.Union([t.Literal('active'), t.Literal('on_hold'), t.Literal('completed'), t.Literal('archived')])),
-        description: t.Optional(t.String())
+      body: t.Object({
+        name: t.Optional(t.String()),
+        status: t.Optional(
+          t.Union([
+            t.Literal('active'),
+            t.Literal('on_hold'),
+            t.Literal('completed'),
+            t.Literal('archived'),
+          ])
+        ),
+        description: t.Optional(t.String()),
       }),
     }
   )
@@ -96,7 +103,7 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
       try {
         await deleteProject(db, params.id, user.organizationId);
         return { success: true };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

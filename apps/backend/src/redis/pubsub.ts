@@ -6,7 +6,7 @@ import { getPubClient, getSubClient, isRedisAvailable } from './client';
 export interface RealtimeBroadcastMessage {
   topic: string;
   event: string;
-  payload: any;
+  payload: unknown;
   instanceId: string;
   timestamp: number;
 }
@@ -73,8 +73,13 @@ export function onRedisBroadcast(handler: MessageHandler): () => void {
 /**
  * Publishes a broadcast event to the Redis cluster channel.
  * Returns true if published to Redis, false if Redis is unavailable.
+ * Never hangs the caller: slow/hung Redis fails fast to the in-memory path.
  */
-export async function publishToRedis(topic: string, event: string, payload: any): Promise<boolean> {
+export async function publishToRedis(
+  topic: string,
+  event: string,
+  payload: unknown
+): Promise<boolean> {
   const pub = getPubClient();
   if (!pub || !isRedisAvailable()) {
     return false;
@@ -89,7 +94,12 @@ export async function publishToRedis(topic: string, event: string, payload: any)
   };
 
   try {
-    await pub.publish(env.REDIS_CHANNEL, JSON.stringify(message));
+    await Promise.race([
+      pub.publish(env.REDIS_CHANNEL, JSON.stringify(message)),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Redis publish timeout')), 1500)
+      ),
+    ]);
     return true;
   } catch (err) {
     logger.warn({ err, topic, event }, 'Failed to publish message to Redis');

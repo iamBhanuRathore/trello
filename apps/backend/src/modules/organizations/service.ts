@@ -15,6 +15,7 @@ import {
   auditLog,
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
+import { logger } from '../../lib/logger';
 import { cachedTTL, invalidateTTL, bumpOrgCache } from '../../lib/cache';
 import {
   renderInviteEmail,
@@ -22,7 +23,7 @@ import {
   renderAccountReactivatedEmail,
 } from '../../lib/emailTemplates';
 import { checkAndReserveSeatSlot } from '../billing/service';
-import { httpError } from '../../lib/errors';
+import { httpError, errorMessage, errorStatus } from '../../lib/errors';
 export { httpError };
 
 export const ALLOWED_ORG_ROLES = [
@@ -439,7 +440,7 @@ export async function inviteMember(
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       })
     ).text,
-  }).catch((err) => console.error('[invite] Email send failed silently:', err));
+  }).catch((err: unknown) => logger.error({ err }, 'Invite email send failed silently'));
 
   return result;
 }
@@ -471,8 +472,11 @@ export async function bulkInviteMembers(
         item.workspaceIds
       );
       successful.push(member);
-    } catch (err: any) {
-      const errMsg = err?.status < 500 && err?.message ? err.message : 'Failed to invite user.';
+    } catch (err: unknown) {
+      const status = errorStatus(err);
+      const message = errorMessage(err, '');
+      const errMsg =
+        status !== undefined && status < 500 && message ? message : 'Failed to invite user.';
       failed.push({ email: emailStr, error: errMsg });
     }
   }
@@ -688,8 +692,8 @@ export async function deactivateMember(
           text: emailContent.text,
         });
       }
-    } catch (err) {
-      console.error('[deactivateMember] Deactivation email notification failed silently:', err);
+    } catch (err: unknown) {
+      logger.error({ err }, 'Deactivation email notification failed silently');
     }
   })();
 
@@ -777,8 +781,8 @@ export async function reactivateMember(
           text: emailContent.text,
         });
       }
-    } catch (err) {
-      console.error('[reactivateMember] Reactivation email notification failed silently:', err);
+    } catch (err: unknown) {
+      logger.error({ err }, 'Reactivation email notification failed silently');
     }
   })();
 

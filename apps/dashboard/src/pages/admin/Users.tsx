@@ -617,7 +617,7 @@ export const Users: React.FC = () => {
         ),
       },
     ],
-    [user?.id]
+    [user?.id, reactivateMutation, forceLogoutMutation]
   );
 
   // DataGrid Columns for Pending Invitations
@@ -708,7 +708,7 @@ export const Users: React.FC = () => {
         ),
       },
     ],
-    []
+    [resendInviteMutation, revokeInviteMutation]
   );
 
   return (

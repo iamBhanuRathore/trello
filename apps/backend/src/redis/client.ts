@@ -31,6 +31,9 @@ function createClientOptions(url: string): RedisOptions {
   return {
     lazyConnect: true,
     maxRetriesPerRequest: 3,
+    // Fail fast: an unbounded Redis command can wedge the Bun event loop and
+    // hang any request awaiting it (e.g. webhook → broadcast). 2s per command.
+    commandTimeout: 2000,
     // Upstash requires TLS; auto-upgrade plain `redis://…upstash.io` URLs.
     ...(isUpstashUrl(url) && !url.startsWith('rediss://') ? { tls: {} } : {}),
     retryStrategy(times) {

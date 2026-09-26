@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "overrides": [
+    {
+      "files": ["src/**/*.ts"],
+      "rules": {
+        "no-console": "error"
+      }
+    },
+    {
+      "files": ["src/db/**/*.ts", "src/lib/logger.ts", "src/lib/env.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
+}

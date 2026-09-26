@@ -11,6 +11,7 @@ import {
   handleGitHubWebhook,
   verifySignature,
   branchNameFor,
+  type GitHubWebhookPayload,
 } from './service';
 import { decryptToken } from '../calendar/google';
 import { getCard } from '../cards/service';
@@ -29,7 +30,7 @@ export const gitRoutes = new Elysia({ prefix: '/git', tags: ['Git'] })
       .get('/repos', async ({ user, set }) => {
         try {
           return await listRepositories(db, user.organizationId);
-        } catch (err: any) {
+        } catch (err: unknown) {
           return handleRouteError(err, set);
         }
       })
@@ -40,7 +41,7 @@ export const gitRoutes = new Elysia({ prefix: '/git', tags: ['Git'] })
         async ({ body, user, set }) => {
           try {
             return await connectRepository(db, user.organizationId, body);
-          } catch (err: any) {
+          } catch (err: unknown) {
             return handleRouteError(err, set);
           }
         },
@@ -60,7 +61,7 @@ export const gitRoutes = new Elysia({ prefix: '/git', tags: ['Git'] })
         async ({ params: { id }, user, set }) => {
           try {
             return await disconnectRepository(db, user.organizationId, id);
-          } catch (err: any) {
+          } catch (err: unknown) {
             return handleRouteError(err, set);
           }
         },
@@ -73,7 +74,7 @@ export const gitRoutes = new Elysia({ prefix: '/git', tags: ['Git'] })
         async ({ params: { id }, user, set }) => {
           try {
             return await listCardLinks(db, user.organizationId, id);
-          } catch (err: any) {
+          } catch (err: unknown) {
             return handleRouteError(err, set);
           }
         },
@@ -87,7 +88,7 @@ export const gitRoutes = new Elysia({ prefix: '/git', tags: ['Git'] })
           try {
             const card = await getCard(db, id, user.organizationId);
             return { branch: branchNameFor(card.key || `task-${id.slice(0, 8)}`, card.title) };
-          } catch (err: any) {
+          } catch (err: unknown) {
             return handleRouteError(err, set);
           }
         },
@@ -105,9 +106,9 @@ export const gitWebhookRoutes = new Elysia({ prefix: '/git', tags: ['Git'] }).po
   async ({ headers, body, set }) => {
     try {
       const raw = typeof body === 'string' ? body : JSON.stringify(body);
-      let payload: any;
+      let payload: GitHubWebhookPayload;
       try {
-        payload = typeof body === 'string' ? JSON.parse(body) : body;
+        payload = (typeof body === 'string' ? JSON.parse(body) : body) as GitHubWebhookPayload;
       } catch {
         set.status = 400;
         return { error: 'Invalid JSON payload' };
@@ -120,7 +121,9 @@ export const gitWebhookRoutes = new Elysia({ prefix: '/git', tags: ['Git'] }).po
         return { error: 'No linked repository for ' + (fullName || 'unknown') };
       }
       const signature =
-        (headers as any)['x-hub-signature-256'] || (headers as any)['X-Hub-Signature-256'] || null;
+        (headers as Record<string, string | undefined>)['x-hub-signature-256'] ||
+        (headers as Record<string, string | undefined>)['X-Hub-Signature-256'] ||
+        null;
       // The same repo may be linked by multiple orgs with different secrets —
       // accept if ANY candidate secret verifies.
       let verified = false;
@@ -136,17 +139,24 @@ export const gitWebhookRoutes = new Elysia({ prefix: '/git', tags: ['Git'] }).po
         return { error: 'Invalid webhook signature' };
       }
       const event =
-        (headers as any)['x-github-event'] || (headers as any)['X-GitHub-Event'] || 'unknown';
+        (headers as Record<string, string | undefined>)['x-github-event'] ||
+        (headers as Record<string, string | undefined>)['X-GitHub-Event'] ||
+        'unknown';
       const delivery =
-        (headers as any)['x-github-delivery'] || (headers as any)['X-GitHub-Delivery'] || 'n/a';
+        (headers as Record<string, string | undefined>)['x-github-delivery'] ||
+        (headers as Record<string, string | undefined>)['X-GitHub-Delivery'] ||
+        'n/a';
       return await handleGitHubWebhook(db, event, delivery, payload);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   },
   {
     query: t.Object({ repoId: t.Optional(t.String()) }),
     // Parse as text so the HMAC runs over the exact raw bytes GitHub signed.
-    type: 'text',
+    // NOTE: Elysia's body-parsing hook is `parse`, not `type` — `type: 'text'`
+    // was silently ignored, the JSON parser re-serialized the body, and any
+    // payload whose whitespace differed from JS JSON.stringify failed HMAC.
+    parse: 'text',
   }
 );

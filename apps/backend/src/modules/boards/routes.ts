@@ -29,7 +29,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
       try {
         if (!query.projectId) throw new Error('projectId query parameter is required');
         return await listBoards(db, query.projectId, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -50,7 +50,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
           name: body.name,
           background: body.background,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -71,7 +71,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     async ({ params, user, set }) => {
       try {
         return await getBoardFull(db, params.id, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -86,7 +86,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     async ({ params, user, set }) => {
       try {
         return await getBoard(db, params.id, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -101,7 +101,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     async ({ params, body, user, set }) => {
       try {
         return await updateBoard(db, params.id, user.organizationId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -118,7 +118,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
       try {
         await deleteBoard(db, params.id, user.organizationId);
         return { success: true };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -133,7 +133,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     async ({ params, user, set }) => {
       try {
         return await archiveBoard(db, params.id, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -148,7 +148,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     async ({ params, set }) => {
       try {
         return await getBoardLabels(db, params.id);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -163,7 +163,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     async ({ params, body, set }) => {
       try {
         return await createBoardLabel(db, params.id, body.name, body.color);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -179,7 +179,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     async ({ params, body, set }) => {
       try {
         return await updateBoardLabel(db, params.labelId, body.name, body.color);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -196,7 +196,7 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
       try {
         await deleteBoardLabel(db, params.labelId);
         return { success: true };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

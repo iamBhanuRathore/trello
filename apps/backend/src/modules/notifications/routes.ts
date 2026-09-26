@@ -20,7 +20,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
     try {
       const res = await listNotifications(db, user.userId, user.organizationId);
       return res;
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -28,7 +28,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
   .patch('/:id/read', async ({ params, user, set }) => {
     try {
       return await markAsRead(db, params.id, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -36,7 +36,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
   .post('/read-all', async ({ user, set }) => {
     try {
       return await markAllAsRead(db, user.userId, user.organizationId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -44,34 +44,45 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
   .get('/preferences', async ({ user, set }) => {
     try {
       return await getPreferences(db, user.userId, user.organizationId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
 
-  .put('/preferences', async ({ user, body, set }) => {
-    try {
-      return await updatePreferences(db, user.userId, user.organizationId, body.preferences);
-    } catch (err: any) {
-      return handleRouteError(err, set);
+  .put(
+    '/preferences',
+    async ({ user, body, set }) => {
+      try {
+        return await updatePreferences(db, user.userId, user.organizationId, body.preferences);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      body: t.Object({
+        preferences: t.Array(
+          t.Object({
+            eventType: t.String(),
+            channel: t.Union([t.Literal('in_app'), t.Literal('email'), t.Literal('push')]),
+            frequency: t.Union([
+              t.Literal('instant'),
+              t.Literal('digest_daily'),
+              t.Literal('digest_weekly'),
+              t.Literal('off'),
+            ]),
+            quietHoursStart: t.Optional(t.Union([t.Number(), t.Null()])),
+            quietHoursEnd: t.Optional(t.Union([t.Number(), t.Null()])),
+          })
+        ),
+      }),
     }
-  }, {
-    body: t.Object({
-      preferences: t.Array(t.Object({
-        eventType: t.String(),
-        channel: t.Union([t.Literal('in_app'), t.Literal('email'), t.Literal('push')]),
-        frequency: t.Union([t.Literal('instant'), t.Literal('digest_daily'), t.Literal('digest_weekly'), t.Literal('off')]),
-        quietHoursStart: t.Optional(t.Union([t.Number(), t.Null()])),
-        quietHoursEnd: t.Optional(t.Union([t.Number(), t.Null()]))
-      }))
-    })
-  })
+  )
 
   // ── Mobile Push Device Management ──────────────────────────────────────────
   .get('/push-devices', async ({ user, set }) => {
     try {
       return await getUserPushDevices(db, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -81,7 +92,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
     async ({ user, body, set }) => {
       try {
         return await registerPushDevice(db, user.userId, user.organizationId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -97,7 +108,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
   .delete('/push-devices/:token', async ({ user, params, set }) => {
     try {
       return await unregisterPushDevice(db, user.userId, params.token);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -108,7 +119,7 @@ export const notificationRoutes = new Elysia({ prefix: '/notifications', tags: [
       const { processNotificationDigests } = await import('./digest.cron');
       await processNotificationDigests();
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   });

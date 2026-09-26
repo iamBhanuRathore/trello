@@ -73,12 +73,21 @@ export async function updateSSOConfig(
       .update(ssoConfigurations)
       .set({
         provider: input.provider ?? existing.provider,
-        domain: input.domain !== undefined ? input.domain.trim().toLowerCase().replace(/^@/, '') : existing.domain,
+        domain:
+          input.domain !== undefined
+            ? input.domain.trim().toLowerCase().replace(/^@/, '')
+            : existing.domain,
         idpMetadataUrl: input.idpMetadataUrl ?? existing.idpMetadataUrl,
         clientId: input.clientId ?? existing.clientId,
         clientSecret: input.clientSecret ?? existing.clientSecret,
-        workosOrganizationId: input.workosOrganizationId !== undefined ? input.workosOrganizationId.trim() : existing.workosOrganizationId,
-        workosConnectionId: input.workosConnectionId !== undefined ? input.workosConnectionId.trim() : existing.workosConnectionId,
+        workosOrganizationId:
+          input.workosOrganizationId !== undefined
+            ? input.workosOrganizationId.trim()
+            : existing.workosOrganizationId,
+        workosConnectionId:
+          input.workosConnectionId !== undefined
+            ? input.workosConnectionId.trim()
+            : existing.workosConnectionId,
         scimEnabled: input.scimEnabled ?? existing.scimEnabled,
         scimToken: input.scimEnabled ? scimToken : null,
         enforceSSO: input.enforceSSO ?? existing.enforceSSO,
@@ -122,7 +131,11 @@ export async function updateSSOConfig(
   }
 }
 
-export async function generateSSOLoginUrl(db: Database, domain: string, customRedirectUri?: string) {
+export async function generateSSOLoginUrl(
+  db: Database,
+  domain: string,
+  customRedirectUri?: string
+) {
   const cleanDomain = domain.trim().toLowerCase().replace(/^@/, '');
   const [config] = await db
     .select()
@@ -165,7 +178,7 @@ export async function generateSSOLoginUrl(db: Database, domain: string, customRe
         state,
       });
     }
-  } catch (err) {
+  } catch {
     loginUrl = `https://login.boardly.com/sso/authorize?provider=${config.provider}&domain=${cleanDomain}&client_id=${config.clientId || 'boardly_enterprise'}&state=${state}`;
   }
 
@@ -200,11 +213,7 @@ export async function processSSOCallback(
   }
 
   // 1. Find or Provision User
-  let [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, cleanEmail))
-    .limit(1);
+  let [user] = await db.select().from(users).where(eq(users.email, cleanEmail)).limit(1);
 
   if (!user) {
     const [newUser] = await db
@@ -285,11 +294,7 @@ export async function processSCIMWebhook(
   const cleanEmail = event.email.trim().toLowerCase();
 
   if (event.action === 'user.create' || event.action === 'user.update') {
-    let [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, cleanEmail))
-      .limit(1);
+    let [user] = await db.select().from(users).where(eq(users.email, cleanEmail)).limit(1);
 
     if (!user) {
       const [newUser] = await db
@@ -301,7 +306,10 @@ export async function processSCIMWebhook(
         .returning();
       user = newUser!;
     } else if (event.name) {
-      await db.update(users).set({ name: event.name, updatedAt: new Date() }).where(eq(users.id, user.id));
+      await db
+        .update(users)
+        .set({ name: event.name, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
     }
 
     await db
@@ -316,11 +324,7 @@ export async function processSCIMWebhook(
 
     return { status: 'synced', userId: user.id };
   } else if (event.action === 'user.delete') {
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, cleanEmail))
-      .limit(1);
+    const [user] = await db.select().from(users).where(eq(users.email, cleanEmail)).limit(1);
 
     if (user) {
       await db

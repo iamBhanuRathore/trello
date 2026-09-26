@@ -58,8 +58,7 @@ export function NotificationSettings() {
         setQuietHoursStart(dndPref.quietHoursStart);
         setQuietHoursEnd(dndPref.quietHoursEnd);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
       setLoadError(true);
     } finally {
       setLoading(false);
@@ -100,8 +99,7 @@ export function NotificationSettings() {
       }
       await updateNotificationPreferences(payload);
       toast.success('Notification preferences saved successfully!');
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error('Failed to save notification preferences.');
     } finally {
       setSaving(false);

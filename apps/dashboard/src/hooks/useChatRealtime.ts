@@ -11,6 +11,7 @@ const WS_URL = import.meta.env.VITE_API_URL
 export function useChatRealtime(passedChannelId?: string | null) {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+  const userId = user?.id;
   const token = typeof window !== 'undefined' ? localStorage.getItem('boardly_access_token') : null;
   const wsRef = useRef<WebSocket | null>(null);
   const prevChannelIdRef = useRef<string | null>(null);
@@ -23,6 +24,11 @@ export function useChatRealtime(passedChannelId?: string | null) {
   } = useChatStore();
 
   const activeChannelId = passedChannelId !== undefined ? passedChannelId : storeChannelId;
+  // Latest channel for the connect-once effect below: channel switches are
+  // handled by the dedicated subscription effect, so the socket must NOT
+  // reconnect when the channel changes (hence a ref, not a dep).
+  const activeChannelIdRef = useRef(activeChannelId);
+  activeChannelIdRef.current = activeChannelId;
 
   // Periodic sweeper for expired typing states
   useEffect(() => {
@@ -34,10 +40,10 @@ export function useChatRealtime(passedChannelId?: string | null) {
 
   // Connect and maintain WebSocket connection
   useEffect(() => {
-    if (!token || !user) return;
+    if (!token || !userId) return;
 
     let isMounted = true;
-    let heartbeatTimer: any = null;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
     let ws: WebSocket;
 
     try {
@@ -58,9 +64,10 @@ export function useChatRealtime(passedChannelId?: string | null) {
       }, 25000);
 
       // If active channel exists on connect, subscribe to it
-      if (activeChannelId) {
-        ws.send(JSON.stringify({ action: 'chat:join', channelId: activeChannelId }));
-        prevChannelIdRef.current = activeChannelId;
+      const channelAtConnect = activeChannelIdRef.current;
+      if (channelAtConnect) {
+        ws.send(JSON.stringify({ action: 'chat:join', channelId: channelAtConnect }));
+        prevChannelIdRef.current = channelAtConnect;
       }
 
       // Flush offline outbox queue on socket reconnection
@@ -126,9 +133,9 @@ export function useChatRealtime(passedChannelId?: string | null) {
 
         // 5. User Typing Indicator
         else if (type === 'chat:user_typing') {
-          const { channelId, userId, userName, isTyping } = payload;
-          if (userId !== user.id) {
-            setTyping(channelId, userId, userName, isTyping);
+          const { channelId, userId: typerId, userName, isTyping } = payload;
+          if (typerId !== userId) {
+            setTyping(channelId, typerId, userName, isTyping);
           }
         }
 
@@ -164,7 +171,7 @@ export function useChatRealtime(passedChannelId?: string | null) {
       }
       wsRef.current = null;
     };
-  }, [token, user?.id]);
+  }, [token, userId, queryClient, setTyping, setUserPresence]);
 
   // Handle channel switching subscriptions
   useEffect(() => {

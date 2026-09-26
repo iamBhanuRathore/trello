@@ -57,7 +57,7 @@ export const cardPublicRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] }
       const arrayBuffer = await request.arrayBuffer();
       await Bun.write(filePath, arrayBuffer);
       return { success: true };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -71,7 +71,7 @@ export const cardPublicRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] }
         return 'File not found';
       }
       return file;
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   });
@@ -95,7 +95,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           limit: query?.limit ? parseInt(query.limit, 10) : 50,
           offset: query?.offset ? parseInt(query.offset, 10) : 0,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -123,7 +123,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       try {
         if (!query.listId) throw new Error('listId query parameter is required');
         return await listCards(db, query.listId, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -155,7 +155,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           checklist: body.checklist,
           actorId: user.userId,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -191,7 +191,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, set }) => {
       try {
         return await getCard(db, params.id, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -206,7 +206,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await updateCard(db, params.id, user.organizationId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -229,7 +229,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await moveCard(db, params.id, user.organizationId, body.listId, body.position);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -245,7 +245,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, set }) => {
       try {
         return await deleteCard(db, params.id, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -260,7 +260,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, set }) => {
       try {
         return await archiveCard(db, params.id, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -275,7 +275,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await cloneCard(db, params.id, user.organizationId, body || {});
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -300,7 +300,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await assignUserToCard(db, params.id, body.userId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -311,7 +311,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .delete('/:id/assignees/:userId', async ({ params, user, set }) => {
     try {
       return await removeUserFromCard(db, params.id, params.userId, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -320,7 +320,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .get('/:id/participants', async ({ params, set }) => {
     try {
       return await getCardParticipants(db, params.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -329,7 +329,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await addParticipantToCard(db, params.id, body.userId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -340,7 +340,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .delete('/:id/participants/:userId', async ({ params, user, set }) => {
     try {
       return await removeParticipantFromCard(db, params.id, params.userId, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -349,7 +349,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .get('/:id/comments', async ({ params, set }) => {
     try {
       return await listComments(db, params.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -358,7 +358,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await createComment(db, params.id, user.userId, body.body, body.mentionedUserIds);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -381,7 +381,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           body.body,
           user.isPlatformAdmin
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -401,7 +401,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           user.organizationId,
           user.isPlatformAdmin
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -414,7 +414,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .get('/:id/attachments', async ({ params, set }) => {
     try {
       return await listAttachments(db, params.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -438,7 +438,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           body.sizeBytes
         );
         return { uploadUrl, attachment };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -453,7 +453,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .delete('/:id/attachments/:attachmentId', async ({ params, user, set }) => {
     try {
       return await deleteAttachment(db, params.attachmentId, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -464,7 +464,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, set }) => {
       try {
         return await getCardLabels(db, params.id);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -478,7 +478,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await attachLabelToCard(db, params.id, body.labelId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -493,7 +493,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, set }) => {
       try {
         return await removeLabelFromCard(db, params.id, params.labelId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -507,7 +507,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .get('/:id/checklists', async ({ params, set }) => {
     try {
       return await getCardChecklists(db, params.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -523,7 +523,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           user.userId,
           body.items
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -540,7 +540,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await createBulkChecklistItems(db, params.checklistId, body.items, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -564,7 +564,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           body.dueDate ? new Date(body.dueDate) : undefined,
           user.userId
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -582,7 +582,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await updateChecklistItem(db, params.itemId, body, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -600,7 +600,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, set }) => {
       try {
         return await deleteChecklistItem(db, params.itemId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -614,7 +614,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, body, user, set }) => {
       try {
         return await updateChecklist(db, params.checklistId, body.title, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -628,7 +628,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, set }) => {
       try {
         return await deleteChecklist(db, params.checklistId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -641,7 +641,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .get('/:id/watchers', async ({ params, set }) => {
     try {
       return await getCardWatchers(db, params.id);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -651,7 +651,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       try {
         const targetUserId = (body as any)?.userId || user.userId;
         return await watchCard(db, params.id, targetUserId, user.organizationId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -665,7 +665,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       try {
         const targetUserId = (body as any)?.userId || user.userId;
         return await unwatchCard(db, params.id, targetUserId, user.organizationId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -676,7 +676,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .delete('/:id/watch/:userId', async ({ params, user, set }) => {
     try {
       return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -686,7 +686,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       try {
         const targetUserId = (body as any)?.userId || user.userId;
         return await unwatchCard(db, params.id, targetUserId, user.organizationId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -700,7 +700,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       try {
         const targetUserId = (body as any)?.userId || user.userId;
         return await unwatchCard(db, params.id, targetUserId, user.organizationId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -711,7 +711,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .delete('/:id/unwatch/:userId', async ({ params, user, set }) => {
     try {
       return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -720,7 +720,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .get('/:id/subtasks', async ({ params, user, set }) => {
     try {
       return await listSubtasks(db, params.id, user.organizationId);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   });

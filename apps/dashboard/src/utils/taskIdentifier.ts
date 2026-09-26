@@ -2,14 +2,16 @@
  * Generates a clean, user-friendly, human-readable, and strictly sequential incremental
  * Task Identifier (e.g., 'CFP-1', 'CFP-2', 'ENG-142', 'PROJ-10') following Jira / Linear standards.
  */
-export function getTaskIdentifier(card?: {
-  id?: string;
-  key?: string | null;
-  taskNumber?: number | null;
-  projectKey?: string | null;
-  boardName?: string | null;
-  projectName?: string | null;
-} | null): string {
+export function getTaskIdentifier(
+  card?: {
+    id?: string;
+    key?: string | null;
+    taskNumber?: number | null;
+    projectKey?: string | null;
+    boardName?: string | null;
+    projectName?: string | null;
+  } | null
+): string {
   if (!card) return 'TASK-1';
 
   // 1. If backend has already computed the sequential key (e.g. 'CFP-1', 'BCW-5')
@@ -97,8 +99,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
     const successful = document.execCommand('copy');
     document.body.removeChild(textArea);
     return successful;
-  } catch (err) {
-    console.error('Failed to copy to clipboard', err);
+  } catch {
     return false;
   }
 }

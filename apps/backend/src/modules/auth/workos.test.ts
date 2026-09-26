@@ -49,8 +49,12 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.ssoConfigurations).where(eq(schema.ssoConfigurations.organizationId, orgId));
-    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
+    await db
+      .delete(schema.ssoConfigurations)
+      .where(eq(schema.ssoConfigurations.organizationId, orgId));
+    await db
+      .delete(schema.organizationMembers)
+      .where(eq(schema.organizationMembers.organizationId, orgId));
     await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
     await client.end();
   });
@@ -75,9 +79,10 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
     try {
       await getSSOAuthorizationUrl(db, 'non-existent-company-domain.io');
       expect(true).toBe(false); // Should not reach here
-    } catch (err: any) {
-      expect(err.status).toBe(404);
-      expect(err.message).toContain('No enterprise Single Sign-On configured');
+    } catch (err: unknown) {
+      const httpErr = err as { status?: unknown; message?: unknown };
+      expect(httpErr.status).toBe(404);
+      expect(String(httpErr.message)).toContain('No enterprise Single Sign-On configured');
     }
   });
 

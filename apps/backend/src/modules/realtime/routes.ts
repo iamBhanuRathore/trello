@@ -4,16 +4,41 @@ import { eventBus } from '../../lib/event-bus';
 import { presenceStore, initializeRedisPubSub, onRedisBroadcast } from '../../redis';
 import type { PresenceUser } from '../../redis';
 import { db } from '../../db/index';
-import { handleChatSocketAction } from '../chat/chat.gateway';
-import { handlePresenceSocketAction, handlePresenceDisconnect } from '../presence/presence.gateway';
+import { handleChatSocketAction, type ChatSocketMessage } from '../chat/chat.gateway';
+import {
+  handlePresenceSocketAction,
+  handlePresenceDisconnect,
+  type PresenceSocketMessage,
+} from '../presence/presence.gateway';
 import { recordUserHeartbeat } from '../presence/presenceService';
+
+/** Framework-untyped WS connection bag — documented here instead of `any`. */
+export interface RealtimeWsData {
+  query?: { token?: string };
+  userId?: string;
+  subscribedBoards?: Set<string>;
+}
+
+/** Inbound WS protocol: chat + presence gateway messages plus board actions. */
+export interface SocketInboundMessage {
+  action?: string;
+  channelId?: string;
+  boardId?: string;
+  cardId?: string;
+  isTyping?: boolean;
+  status?: PresenceSocketMessage['status'];
+  customStatusText?: string;
+  expiresInMinutes?: number;
+  user?: { name?: string; email?: string; avatarUrl?: string | null };
+}
 
 export type { PresenceUser };
 
 export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
   async open(ws) {
     // Validate token
-    const token = (ws.data.query as any)?.token;
+    const wsData = ws.data as RealtimeWsData;
+    const token = wsData.query?.token;
     if (!token) {
       ws.send({ type: 'error', message: 'Missing token' });
       ws.close();
@@ -22,8 +47,8 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
 
     try {
       const payload = await verifyAccessToken(token);
-      (ws.data as any).userId = payload.userId;
-      (ws.data as any).subscribedBoards = new Set<string>();
+      wsData.userId = payload.userId;
+      wsData.subscribedBoards = new Set<string>();
 
       // Subscribe user to personal inbox & organization presence feed
       ws.subscribe(`user:inbox:${payload.userId}`);
@@ -37,23 +62,26 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
       return;
     }
   },
-  async message(ws, message: any) {
+  async message(ws, message: SocketInboundMessage) {
     if (!message || typeof message !== 'object') return;
 
-    const userId = (ws.data as any).userId;
-    const subscribedBoards = (ws.data as any).subscribedBoards as Set<string>;
+    const wsData = ws.data as RealtimeWsData;
+    const userId = wsData.userId;
+    const subscribedBoards = wsData.subscribedBoards;
 
     // 1. Route Chat Gateway actions (chat:join, chat:leave, chat:typing, chat:read)
     if (typeof message.action === 'string' && message.action.startsWith('chat:')) {
-      await handleChatSocketAction(ws, message, db);
+      await handleChatSocketAction(ws, message as ChatSocketMessage, db);
       return;
     }
 
     // 2. Route Presence Gateway actions (presence:heartbeat, presence:status_override)
     if (typeof message.action === 'string' && message.action.startsWith('presence:')) {
-      await handlePresenceSocketAction(ws, message, db);
+      await handlePresenceSocketAction(ws, message as PresenceSocketMessage, db);
       return;
     }
+
+    if (!userId) return;
 
     // 3. Board Real-time: Subscribe & Register Presence
     if (message.action === 'subscribe' && message.boardId) {
@@ -129,8 +157,9 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
     }
   },
   async close(ws) {
-    const userId = (ws.data as any)?.userId;
-    const subscribedBoards = (ws.data as any)?.subscribedBoards as Set<string>;
+    const wsData = ws.data as RealtimeWsData | undefined;
+    const userId = wsData?.userId;
+    const subscribedBoards = wsData?.subscribedBoards;
 
     if (userId) {
       await handlePresenceDisconnect(userId);
@@ -149,7 +178,11 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
   },
 });
 
-export function setupRealtimeEventBus(server: any) {
+export function setupRealtimeEventBus(
+  server: {
+    publish: (topic: string, message: string) => unknown;
+  } | null
+) {
   // 1. Hook up Redis Pub/Sub receiver to local server publish
   initializeRedisPubSub().catch(() => {});
   onRedisBroadcast(({ topic, event, payload }) => {

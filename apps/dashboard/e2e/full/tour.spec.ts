@@ -5,7 +5,6 @@ import { loginAs } from '../helpers';
 // (not login redirect, blank page, or perpetual spinner).
 const WS = '813c4ce7-da0c-40b3-84a3-5d70a6a58cbc';
 const PROJ = 'ee468270-affb-42d4-a49f-6ee69fb8f043';
-const BOARD = 'c9b14bca-cebb-406e-bb64-b807372ea618';
 
 const ROUTES: [string, RegExp][] = [
   [`/projects/${PROJ}/sprints`, /sprint/i],

@@ -21,7 +21,7 @@ export const docRoutes = new Elysia({ tags: ['Docs'] })
     async ({ params: { id }, body, user, set }) => {
       try {
         return await createDocument(db, user.organizationId, id, user.userId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -41,7 +41,7 @@ export const docRoutes = new Elysia({ tags: ['Docs'] })
     async ({ params: { id }, user, set }) => {
       try {
         return await listProjectDocuments(db, user.organizationId, id);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -57,7 +57,7 @@ export const docRoutes = new Elysia({ tags: ['Docs'] })
     async ({ params: { id }, user, set }) => {
       try {
         return await getDocument(db, user.organizationId, id);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -73,7 +73,7 @@ export const docRoutes = new Elysia({ tags: ['Docs'] })
     async ({ params: { id }, body, user, set }) => {
       try {
         return await updateDocument(db, user.organizationId, id, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -94,7 +94,7 @@ export const docRoutes = new Elysia({ tags: ['Docs'] })
     async ({ params: { id }, user, set }) => {
       try {
         return await deleteDocument(db, user.organizationId, id);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -110,7 +110,7 @@ export const docRoutes = new Elysia({ tags: ['Docs'] })
     async ({ params: { id, cardId }, user, set }) => {
       try {
         return await linkCardToDocument(db, user.organizationId, id, cardId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -129,7 +129,7 @@ export const docRoutes = new Elysia({ tags: ['Docs'] })
     async ({ params: { id, cardId }, user, set }) => {
       try {
         return await unlinkCardFromDocument(db, user.organizationId, id, cardId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

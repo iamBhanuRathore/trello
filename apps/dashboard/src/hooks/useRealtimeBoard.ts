@@ -99,13 +99,13 @@ export function useRealtimeBoard(boardId: string | undefined) {
         ) {
           queryClient.invalidateQueries({ queryKey: ['lists', boardId] });
         }
-      } catch (err) {
-        console.error('Failed to parse WS message', err);
+      } catch {
+        // Unparseable frame — ignore; the next update will resync.
       }
     };
 
-    ws.onerror = (err) => {
-      console.warn('Realtime WS error:', err);
+    ws.onerror = () => {
+      // Connection-level errors are surfaced via onclose/reconnect, not here.
     };
 
     // 4. Heartbeat keep-alive every 25s to maintain presence TTL

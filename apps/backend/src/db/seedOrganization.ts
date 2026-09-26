@@ -66,6 +66,8 @@ export interface UserPersona {
   email: string;
   orgRole: 'org_owner' | 'org_admin' | 'billing_manager' | 'workspace_admin' | 'member';
   title: string;
+  /** Platform-level super-admin (Boardly OPS console). Only demo CEO holds this. */
+  isPlatformAdmin?: boolean;
   department:
     | 'Executive'
     | 'Engineering'
@@ -84,6 +86,7 @@ export const SEED_USERS: UserPersona[] = [
     email: 'alex.vance@acme.corp',
     orgRole: 'org_owner',
     title: 'Chief Executive Officer & Founder',
+    isPlatformAdmin: true,
     department: 'Executive',
     avatarUrl:
       'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
@@ -581,6 +584,13 @@ export const SEED_USERS: UserPersona[] = [
 
 export async function seedFullOrganization(force = false) {
   try {
+    // Platform-admin backfill (idempotent, runs even on the fast-path skip below):
+    // the OPS console login + superadmin.spec expect Alex to hold isPlatformAdmin.
+    await db
+      .update(users)
+      .set({ isPlatformAdmin: true })
+      .where(eq(users.email, 'alex.vance@acme.corp'))
+      .catch(() => {});
     // Fast path: dev.sh runs this on every boot. A full replay is ~3-4 min of
     // sequential statements plus unbounded log-table growth (time/audit/activity
     // rows have no conflict guard). Skip when the org looks complete.
@@ -700,7 +710,15 @@ export async function seedFullOrganization(force = false) {
             passwordHash,
             avatarUrl: persona.avatarUrl,
             timezone: 'America/New_York',
+            isPlatformAdmin: persona.isPlatformAdmin ?? false,
           })
+          .returning();
+      } else if ((dbUser.isPlatformAdmin ?? false) !== (persona.isPlatformAdmin ?? false)) {
+        // Keep the flag in sync on re-runs (e.g. Alex ⇄ platform admin).
+        [dbUser] = await db
+          .update(users)
+          .set({ isPlatformAdmin: persona.isPlatformAdmin ?? false })
+          .where(eq(users.id, dbUser.id))
           .returning();
       }
 

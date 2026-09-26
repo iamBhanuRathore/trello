@@ -673,3 +673,15 @@ Short log of significant technical decisions: what was decided, why, and what al
 - Thread replies only without inline quote replies (rejected — quote replies are essential for quick conversational context in main channels).
 
 **Consequences:** Zero-friction, resilient messaging experience on par with WhatsApp and Slack, with persistent offline support and clear delivery transparency.
+
+## 2026-09-26 — Test-Log Fixes: Seed Platform Admin, Webhook Batching, Lint Gates
+
+**Context:** Five defects from the full-project test pass (FIND-03..07) fixed in one session.
+
+1. **Alex Vance carries `isPlatformAdmin` (FIND-03).** The OPS login page labels Alex "CEO / Platform Admin Demo Account" and the e2e spec logs in as him, but no seed granted the flag — app, spec, and UI contradicted each other. Alternatives: separate `admin@platform.com` account (rejected — more moving parts across seed/spec/login UI for a demo env) vs relaxing the gate (rejected — weakens the platform boundary). Chose to make the seed match the product's stated demo model. Org-level RBAC unaffected (flag only gates the OPS console + global visibility already implied by org_owner in tests).
+
+2. **Webhook correctness via batching, not backgrounding (FIND-04).** The hang was serial per-card awaits × duplicate ticket keys, not just slow Redis. Alternatives: background the post-processing and return 200 immediately (rejected — delivery receipt would lie about link creation; GitHub retries on 5xx/timeout, so a fast-but-dishonest 200 is worse than a fast-and-complete one) vs parallel `Promise.all` per card (rejected — pool of 5–10 still serializes 30 cards into waves). Chose single-statement bulk writes (`ON CONFLICT DO UPDATE` with `excluded.*`, bulk comment insert, one board lookup): constant ~5 statements regardless of fan-out. Timeouts (`commandTimeout`, publish races) stay as backstops, which also partially mitigates BUG-11.
+
+3. **`no-console: error` with narrow exceptions (FIND-07).** Gated in all three apps; backend exempts `db/*` CLI scripts, `lib/logger.ts` (the implementation), and `lib/env.ts` (boot validation; can't import logger — circular dep via `logger → env`). Dashboard/super-admin gate is blanket; the gate immediately caught 8 more live `console.*` sites (incl. 3 silent-failure catches converted to toasts). Residual `any` at external-SDK/test/drizzle-builder boundaries left as tracked debt rather than cosmetic-cast.
+
+**Consequences:** Elysia `parse` (not `type`) is now the documented pattern for raw-body routes; bulk-write is the pattern for webhook fan-out; `errorMessage/errorStatus/errorCode/errorResponseStatus` are the standard `unknown`-catch narrowers.

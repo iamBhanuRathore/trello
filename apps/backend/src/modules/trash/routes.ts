@@ -13,7 +13,7 @@ export const trashRoutes = new Elysia({ prefix: '/trash' })
     async ({ user, set }) => {
       try {
         return await listTrash(db, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -28,7 +28,7 @@ export const trashRoutes = new Elysia({ prefix: '/trash' })
     async ({ user, body, set }) => {
       try {
         return await restoreItem(db, user.organizationId, body.itemType as any, body.itemId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -52,7 +52,7 @@ export const trashRoutes = new Elysia({ prefix: '/trash' })
     async ({ user, set }) => {
       try {
         return await emptyTrash(db, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -66,13 +66,8 @@ export const trashRoutes = new Elysia({ prefix: '/trash' })
     '/:itemType/:itemId',
     async ({ user, params, set }) => {
       try {
-        return await hardDeleteItem(
-          db,
-          user.organizationId,
-          params.itemType as any,
-          params.itemId
-        );
-      } catch (err: any) {
+        return await hardDeleteItem(db, user.organizationId, params.itemType as any, params.itemId);
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

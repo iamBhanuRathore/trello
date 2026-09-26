@@ -1,6 +1,6 @@
 import Elysia, { t } from 'elysia';
 import { authPlugin } from '../../middleware/auth';
-import { handleRouteError } from '../../lib/errors';
+import { handleRouteError, errorMessage } from '../../lib/errors';
 import { constructWebhookEvent } from '../../lib/stripe';
 import {
   getBillingOverview,
@@ -21,46 +21,40 @@ import { eq } from 'drizzle-orm';
 
 export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] })
   // ─── Public Stripe Webhook Receiver ──────────────────────────────────────────
-  .post(
-    '/webhook',
-    async ({ request, set }) => {
-      try {
-        const signature = request.headers.get('stripe-signature');
-        if (!signature) {
-          set.status = 400;
-          return { error: 'Missing stripe-signature header' };
-        }
-
-        const rawBody = await request.text();
-        const event = constructWebhookEvent(rawBody, signature);
-        const result = await processStripeWebhook(event);
-        return result;
-      } catch (err: any) {
-        logger.error({ err }, 'Stripe webhook signature validation or processing error');
+  .post('/webhook', async ({ request, set }) => {
+    try {
+      const signature = request.headers.get('stripe-signature');
+      if (!signature) {
         set.status = 400;
-        return { error: `Webhook Error: ${err.message}` };
+        return { error: 'Missing stripe-signature header' };
       }
+
+      const rawBody = await request.text();
+      const event = constructWebhookEvent(rawBody, signature);
+      const result = await processStripeWebhook(event);
+      return result;
+    } catch (err: unknown) {
+      logger.error({ err }, 'Stripe webhook signature validation or processing error');
+      set.status = 400;
+      return { error: `Webhook Error: ${errorMessage(err)}` };
     }
-  )
+  })
 
   // ─── Authenticated Billing Endpoints ─────────────────────────────────────────
   .use(authPlugin)
 
   // GET /v1/billing/overview
-  .get(
-    '/overview',
-    async ({ user, set }) => {
-      try {
-        if (!user?.organizationId) {
-          set.status = 400;
-          return { error: 'Active organization required' };
-        }
-        return await getBillingOverview(user.organizationId);
-      } catch (err: any) {
-        return handleRouteError(err, set);
+  .get('/overview', async ({ user, set }) => {
+    try {
+      if (!user?.organizationId) {
+        set.status = 400;
+        return { error: 'Active organization required' };
       }
+      return await getBillingOverview(user.organizationId);
+    } catch (err: unknown) {
+      return handleRouteError(err, set);
     }
-  )
+  })
 
   // POST /v1/billing/checkout
   .post(
@@ -84,7 +78,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
           userEmail,
           idempotencyKey,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -108,7 +102,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
           return { error: 'Active organization required' };
         }
         return await previewSeatChange(user.organizationId, body.additionalSeats ?? 1);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -130,7 +124,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
         }
         const idempotencyKey = body.idempotencyKey || `inc_${user.organizationId}_${Date.now()}`;
         return await increaseSeats(user.organizationId, body.additionalSeats ?? 1, idempotencyKey);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -152,8 +146,12 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
           return { error: 'Active organization required' };
         }
         const idempotencyKey = body.idempotencyKey || `dec_${user.organizationId}_${Date.now()}`;
-        return await scheduleSeatDecrease(user.organizationId, body.targetSeatCount, idempotencyKey);
-      } catch (err: any) {
+        return await scheduleSeatDecrease(
+          user.organizationId,
+          body.targetSeatCount,
+          idempotencyKey
+        );
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -166,20 +164,17 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
   )
 
   // POST /v1/billing/cancel
-  .post(
-    '/cancel',
-    async ({ user, set }) => {
-      try {
-        if (!user?.organizationId) {
-          set.status = 400;
-          return { error: 'Active organization required' };
-        }
-        return await requestSubscriptionCancellation(user.organizationId);
-      } catch (err: any) {
-        return handleRouteError(err, set);
+  .post('/cancel', async ({ user, set }) => {
+    try {
+      if (!user?.organizationId) {
+        set.status = 400;
+        return { error: 'Active organization required' };
       }
+      return await requestSubscriptionCancellation(user.organizationId);
+    } catch (err: unknown) {
+      return handleRouteError(err, set);
     }
-  )
+  })
 
   // POST /v1/billing/portal
   .post(
@@ -191,7 +186,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
           return { error: 'Active organization required' };
         }
         return await getCustomerPortalUrl(user.organizationId, (body as any)?.returnUrl);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -227,9 +222,10 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
 
         // Alert sales desk via email
         const emailFromStr = env.EMAIL_FROM || '';
-        const targetEmail = emailFromStr.includes('<') && emailFromStr.includes('>')
-          ? emailFromStr.split('<')[1]?.replace('>', '') || 'sales@boardly.app'
-          : emailFromStr || 'sales@boardly.app';
+        const targetEmail =
+          emailFromStr.includes('<') && emailFromStr.includes('>')
+            ? emailFromStr.split('<')[1]?.replace('>', '') || 'sales@boardly.app'
+            : emailFromStr || 'sales@boardly.app';
 
         sendEmail({
           to: targetEmail,
@@ -246,9 +242,10 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
 
         return {
           success: true,
-          message: 'Thank you! Our enterprise sales engineering team will reach out within 1 business day.',
+          message:
+            'Thank you! Our enterprise sales engineering team will reach out within 1 business day.',
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

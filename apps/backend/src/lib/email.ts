@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
+import { logger } from './logger';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface SendEmailOptions {
@@ -21,7 +22,10 @@ const HAS_SES =
   !!process.env.AWS_SES_REGION;
 
 const HAS_SMTP =
-  !!process.env.SMTP_HOST && !!process.env.SMTP_PORT && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
+  !!process.env.SMTP_HOST &&
+  !!process.env.SMTP_PORT &&
+  !!process.env.SMTP_USER &&
+  !!process.env.SMTP_PASS;
 
 // ─── Client / Transport Singletons ────────────────────────────────────────────
 let _resendClient: Resend | null = null;
@@ -45,8 +49,8 @@ function getSESTransport(): nodemailer.Transporter | null {
       SES: { ses: sesClient, aws: awsSes },
     } as any);
     return _sesTransport;
-  } catch (err) {
-    console.warn('[email] AWS SES transport init failed:', err);
+  } catch (err: unknown) {
+    logger.warn({ err }, 'AWS SES transport init failed');
     return null;
   }
 }
@@ -86,7 +90,7 @@ async function sendViaResend(opts: SendEmailOptions): Promise<boolean> {
     throw new Error(`Resend Error: ${result.error.message}`);
   }
 
-  console.log(`[email] Successfully sent via Resend (id: ${result.data?.id}) to ${opts.to}`);
+  logger.info({ provider: 'resend', id: result.data?.id, to: opts.to }, 'Email sent');
   return true;
 }
 
@@ -102,7 +106,7 @@ async function sendViaSES(opts: SendEmailOptions): Promise<boolean> {
     text: opts.text,
   });
 
-  console.log(`[email] Successfully sent via Amazon SES (messageId: ${info.messageId}) to ${opts.to}`);
+  logger.info({ provider: 'ses', messageId: info.messageId, to: opts.to }, 'Email sent');
   return true;
 }
 
@@ -118,19 +122,21 @@ async function sendViaSMTP(opts: SendEmailOptions): Promise<boolean> {
     text: opts.text,
   });
 
-  console.log(`[email] Successfully sent via Personal SMTP (messageId: ${info.messageId}) to ${opts.to}`);
+  logger.info({ provider: 'smtp', messageId: info.messageId, to: opts.to }, 'Email sent');
   return true;
 }
 
 function printDevModeEmail(opts: SendEmailOptions): void {
-  console.log('\n────────────────────────────────────────────────────────────');
-  console.log('[email] DEV MODE — Would have sent email (no provider configured or all failed):');
-  console.log(`  To:      ${opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to}`);
-  console.log(`  From:    ${FROM_EMAIL}`);
-  console.log(`  Subject: ${opts.subject}`);
-  console.log('[email] HTML body:');
-  console.log(opts.html.substring(0, 800) + (opts.html.length > 800 ? '\n... (truncated)' : ''));
-  console.log('────────────────────────────────────────────────────────────\n');
+  // Dev-only preview (logger.debug is a no-op outside development).
+  logger.debug(
+    {
+      to: opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to,
+      from: FROM_EMAIL,
+      subject: opts.subject,
+      htmlPreview: opts.html.substring(0, 800),
+    },
+    'DEV MODE email preview (no provider configured)'
+  );
 }
 
 // ─── sendEmail (Tier 1: Resend -> Tier 2: AWS SES -> Tier 3: SMTP -> Dev Console) ───
@@ -140,8 +146,8 @@ export async function sendEmail(opts: SendEmailOptions): Promise<void> {
     try {
       const sent = await sendViaResend(opts);
       if (sent) return;
-    } catch (err: any) {
-      console.warn(`[email] Resend delivery failed: ${err?.message || err}. Falling back to AWS SES...`);
+    } catch (err: unknown) {
+      logger.warn({ err }, 'Resend delivery failed, falling back to AWS SES');
     }
   }
 
@@ -150,8 +156,8 @@ export async function sendEmail(opts: SendEmailOptions): Promise<void> {
     try {
       const sent = await sendViaSES(opts);
       if (sent) return;
-    } catch (err: any) {
-      console.warn(`[email] AWS SES delivery failed: ${err?.message || err}. Falling back to Personal SMTP...`);
+    } catch (err: unknown) {
+      logger.warn({ err }, 'AWS SES delivery failed, falling back to Personal SMTP');
     }
   }
 
@@ -160,8 +166,8 @@ export async function sendEmail(opts: SendEmailOptions): Promise<void> {
     try {
       const sent = await sendViaSMTP(opts);
       if (sent) return;
-    } catch (err: any) {
-      console.warn(`[email] Personal SMTP delivery failed: ${err?.message || err}. Falling back to dev console...`);
+    } catch (err: unknown) {
+      logger.warn({ err }, 'Personal SMTP delivery failed, falling back to dev console');
     }
   }
 

@@ -29,7 +29,7 @@ export const inviteRoutes = new Elysia({ prefix: '/invite', tags: ['Invitations'
   .get('/preview/:token', async ({ params, set }) => {
     try {
       return await previewInvitation(db, params.token);
-    } catch (err: any) {
+    } catch (err: unknown) {
       return handleRouteError(err, set);
     }
   })
@@ -40,7 +40,7 @@ export const inviteRoutes = new Elysia({ prefix: '/invite', tags: ['Invitations'
     async ({ body, set }) => {
       try {
         return await acceptInvitation(db, body.token, body.name, body.password);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -63,7 +63,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, set }) => {
       try {
         return await getOrg(db, params.orgId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -78,7 +78,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, body, set }) => {
       try {
         return await updateOrg(db, params.orgId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -124,7 +124,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
         }
 
         return members;
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -157,7 +157,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
           body.name,
           body.workspaceIds
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -178,7 +178,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, body, user, set }) => {
       try {
         return await bulkInviteMembers(db, params.orgId, body.invites, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -203,7 +203,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, set }) => {
       try {
         return await listPendingInvitations(db, params.orgId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -218,7 +218,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, user, set }) => {
       try {
         return await resendInvitation(db, params.orgId, params.invitationId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -233,7 +233,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, user, set }) => {
       try {
         return await revokeInvitation(db, params.orgId, params.invitationId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -248,7 +248,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, body, user, set }) => {
       try {
         return await updateMemberRole(db, params.orgId, params.memberId, body.role, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -264,7 +264,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, body, user, set }) => {
       try {
         return await deactivateMember(db, params.orgId, params.memberId, user.userId, body?.reason);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -284,7 +284,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, user, set }) => {
       try {
         return await reactivateMember(db, params.orgId, params.memberId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -299,7 +299,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, user, set }) => {
       try {
         return await forceLogoutUser(db, params.orgId, params.memberId, user.userId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -314,7 +314,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     async ({ params, set }) => {
       try {
         return await getMemberActivitySummary(db, params.orgId, params.memberId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -330,7 +330,7 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
       try {
         await removeMember(db, params.orgId, params.memberId, user.userId);
         return { success: true };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

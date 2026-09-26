@@ -15,7 +15,7 @@ export const listRoutes = new Elysia({ prefix: '/lists', tags: ['Lists'] })
       try {
         if (!query.boardId) throw new Error('boardId query parameter is required');
         return await listLists(db, query.boardId, user.organizationId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -35,7 +35,7 @@ export const listRoutes = new Elysia({ prefix: '/lists', tags: ['Lists'] })
           name: body.name,
           position: body.position,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -55,13 +55,17 @@ export const listRoutes = new Elysia({ prefix: '/lists', tags: ['Lists'] })
     async ({ params, body, user, set }) => {
       try {
         return await updateList(db, params.id, user.organizationId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
       beforeHandle: requirePermission('list.update'),
-      body: t.Object({ name: t.Optional(t.String()), position: t.Optional(t.Number()), isArchived: t.Optional(t.Boolean()) }),
+      body: t.Object({
+        name: t.Optional(t.String()),
+        position: t.Optional(t.Number()),
+        isArchived: t.Optional(t.Boolean()),
+      }),
     }
   )
 
@@ -72,7 +76,7 @@ export const listRoutes = new Elysia({ prefix: '/lists', tags: ['Lists'] })
       try {
         await deleteList(db, params.id, user.organizationId);
         return { success: true };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

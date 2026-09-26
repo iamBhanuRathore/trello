@@ -6,6 +6,7 @@ import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Dialog, DialogContent, DialogTitle } from '@boardly/ui/dialog';
 import { DatePicker } from '@boardly/ui';
+import { toast } from 'sonner';
 import { Sparkles, CornerDownRight, Tag, Users, Eye, ListChecks, Check, X } from 'lucide-react';
 import { MemberSearchableSelect, ListSearchableSelect } from '../ui/SearchableSelect';
 import { AsyncMemberSearchableSelect, AsyncMemberChipPicker } from '../ui/AsyncMemberSelect';
@@ -243,8 +244,8 @@ export function CreateTaskModal({
 
       const res = await api.post('/cards', payload);
       onTaskCreated(res.data);
-    } catch (err) {
-      console.error('Failed to create task', err);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to create task');
     } finally {
       setIsSubmitting(false);
     }

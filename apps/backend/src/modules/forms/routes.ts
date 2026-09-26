@@ -18,7 +18,7 @@ export const formRoutes = new Elysia({ prefix: '/forms', tags: ['Forms'] })
     async ({ params: { slug }, set }) => {
       try {
         return await getPublicFormBySlug(db, slug);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -32,7 +32,7 @@ export const formRoutes = new Elysia({ prefix: '/forms', tags: ['Forms'] })
     async ({ params: { slug }, body, set }) => {
       try {
         return await submitIntakeForm(db, slug, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -55,7 +55,7 @@ export const formRoutes = new Elysia({ prefix: '/forms', tags: ['Forms'] })
     async ({ params: { boardId }, user, set }) => {
       try {
         return await getFormsByBoard(db, user.organizationId, boardId);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -71,7 +71,7 @@ export const formRoutes = new Elysia({ prefix: '/forms', tags: ['Forms'] })
     async ({ body, user, set }) => {
       try {
         return await createIntakeForm(db, user.organizationId, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -96,7 +96,7 @@ export const formRoutes = new Elysia({ prefix: '/forms', tags: ['Forms'] })
     async ({ params: { id }, body, user, set }) => {
       try {
         return await updateIntakeForm(db, user.organizationId, id, body);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
@@ -121,7 +121,7 @@ export const formRoutes = new Elysia({ prefix: '/forms', tags: ['Forms'] })
     async ({ params: { id }, user, set }) => {
       try {
         return await deleteIntakeForm(db, user.organizationId, id);
-      } catch (err: any) {
+      } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },

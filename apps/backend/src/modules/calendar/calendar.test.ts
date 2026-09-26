@@ -74,8 +74,8 @@ describe('Calendar OAuth state & token crypto', () => {
       expect(url).toContain('https://accounts.google.com/o/oauth2/v2/auth');
       expect(url).toContain('calendar.events');
       expect(url).toContain('state=');
-    } catch (err: any) {
-      expect(err.message).toContain('not configured');
+    } catch (err: unknown) {
+      expect(String((err as { message?: unknown }).message)).toContain('not configured');
     }
   });
 });
