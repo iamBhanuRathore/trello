@@ -470,10 +470,7 @@ export function MyTasks() {
           </div>
         )}
 
-        <div
-          className={`transition-opacity duration-200 ${isSwitching ? 'opacity-60 saturate-50' : 'opacity-100'}`}
-          aria-busy={isSwitching}
-        >
+        <div aria-busy={isSwitching}>
           {isLoading && pages.length === 0 ? (
             viewMode === 'list' ? (
               <div
