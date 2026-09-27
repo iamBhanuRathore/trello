@@ -14,7 +14,8 @@ export interface ChatSocketMessage {
 
 export async function handleChatSocketAction(ws: any, message: ChatSocketMessage, db: Database) {
   const userId = ws.data.userId;
-  if (!userId || !message.action) return;
+  const organizationId = ws.data.organizationId;
+  if (!userId || !organizationId || !message.action) return;
 
   const channelId = message.channelId;
   if (!channelId) return;
@@ -46,7 +47,7 @@ export async function handleChatSocketAction(ws: any, message: ChatSocketMessage
     }
 
     case 'chat:read': {
-      await markChannelRead(db, channelId, userId);
+      await markChannelRead(db, channelId, organizationId, userId);
       break;
     }
 

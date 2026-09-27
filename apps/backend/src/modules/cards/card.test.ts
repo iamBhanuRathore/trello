@@ -17,6 +17,11 @@ import {
   unwatchCard,
   getCardWatchers,
   listComments,
+  createComment,
+  listAttachments,
+  getCardParticipants,
+  getCardChecklists,
+  assignUserToCard,
 } from './service';
 
 const TEST_DB_URL =
@@ -199,7 +204,7 @@ describe('Cards Service', () => {
     });
 
     // Initially 0 watchers
-    const initialWatchers = await getCardWatchers(db, card!.id);
+    const initialWatchers = await getCardWatchers(db, card!.id, organization.id);
     expect(initialWatchers.length).toBe(0);
 
     // Watch card (as actor → writes task history)
@@ -208,7 +213,7 @@ describe('Cards Service', () => {
     expect(watchRes.watched).toBe(true);
 
     // Fetch card watchers
-    const watchers = await getCardWatchers(db, card!.id);
+    const watchers = await getCardWatchers(db, card!.id, organization.id);
     expect(watchers.length).toBe(1);
     expect(watchers[0]?.id).toBe(user.id);
     expect(watchers[0]?.name).toBe('Watcher User');
@@ -223,13 +228,62 @@ describe('Cards Service', () => {
     expect(unwatchRes.success).toBe(true);
     expect(unwatchRes.watched).toBe(false);
 
-    const remainingWatchers = await getCardWatchers(db, card!.id);
+    const remainingWatchers = await getCardWatchers(db, card!.id, organization.id);
     expect(remainingWatchers.length).toBe(0);
 
     // Task history must contain both the watch and the unwatch events
-    const history = await listComments(db, card!.id);
+    const history = await listComments(db, card!.id, organization.id);
     const bodies = history.map((c: any) => c.body);
     expect(bodies.some((b: string) => b.includes('Started watching'))).toBe(true);
     expect(bodies.some((b: string) => b.includes('Stopped watching'))).toBe(true);
+  });
+
+  it('should isolate card sub-resources by organization (IDOR guard)', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const mkOrg = (tag: string) =>
+      signUp(db, {
+        name: `${tag} Owner`,
+        email: `${tag}_${id}@card.com`,
+        password: 'pass',
+        orgName: `${tag} Org ${id}`,
+        orgSlug: `${tag}-org-${id}`,
+      });
+    const { user: userA, organization: orgA } = await mkOrg('alpha');
+    const { user: userB, organization: orgB } = await mkOrg('beta');
+
+    const ws = await createWorkspace(db, { organizationId: orgA.id, name: 'WS' });
+    const proj = await createProject(db, {
+      organizationId: orgA.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: orgA.id,
+      projectId: proj!.id,
+      name: 'Board',
+    });
+    const list = await createList(db, orgA.id, { boardId: board!.id, name: 'To Do' });
+    const card = await createCard(db, orgA.id, { listId: list!.id, title: 'Secret' });
+    await createComment(db, card!.id, orgA.id, userA.id, 'secret note');
+
+    // Cross-org reads fail closed (404, not 403 — no existence oracle)
+    await expect(listComments(db, card!.id, orgB.id)).rejects.toMatchObject({ status: 404 });
+    await expect(listAttachments(db, card!.id, orgB.id)).rejects.toMatchObject({ status: 404 });
+    await expect(getCardParticipants(db, card!.id, orgB.id)).rejects.toMatchObject({ status: 404 });
+    await expect(getCardChecklists(db, card!.id, orgB.id)).rejects.toMatchObject({ status: 404 });
+    await expect(getCardWatchers(db, card!.id, orgB.id)).rejects.toMatchObject({ status: 404 });
+
+    // Cross-org writes fail closed too
+    await expect(createComment(db, card!.id, orgB.id, userB.id, 'hijack')).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(assignUserToCard(db, card!.id, orgB.id, userB.id, userB.id)).rejects.toMatchObject(
+      { status: 404 }
+    );
+
+    // Same-org non-member cannot be force-assigned
+    await expect(assignUserToCard(db, card!.id, orgA.id, userB.id, userA.id)).rejects.toMatchObject(
+      { status: 403 }
+    );
   });
 });

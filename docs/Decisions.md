@@ -24,6 +24,21 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-28 — Tenant Enforcement: App-Layer Org Predicates + 404 Fail-Closed + Org-Prefixed Cache Keys
+
+**Context:** Audit found card sub-resource routes (comments, attachments, participants, watchers, checklists, labels) and most chat ops taking bare IDs with no `organizationId` check — any authenticated user with a UUID could read/write cross-org (IDOR). Cache hits could also serve one org's board/card payload to another (`rest` had no org). `toggleReaction` had no membership check at all.
+
+**Decision:**
+
+1. Every tenant-scoped service function takes `organizationId` and verifies it first (`verifyCardAccess`, `verifyChecklistAccess`, `verifyLabelAccess`, `requireChannelMembership` with org match); cross-org fails with 404 (not 403) to avoid an existence oracle.
+2. Added-user invariant: assignees/participants/channel invitees must be org members; group creation silently drops cross-org invitees; mentions only notify org members.
+3. Coarse RBAC on all card sub-routes (`card.read` GETs, `card.update` mutations, `card.assign` for assignees); message list capped at 50, my-tasks at 100; card uploads capped at 25 MB matching chat; local-upload/file endpoints 404 outside dev/test.
+4. Cache `rest` must start with `{orgId}:` (documented in `lib/cache.ts`); version keys stay bare IDs.
+
+**Alternatives considered:** Postgres RLS as the fix (rejected as sole fix — `withOrgContext` is currently dead code; app-layer predicates stay canonical, RLS later as defense-in-depth); 403 on cross-org (rejected — confirms resource existence).
+
+**Consequences:** ~30 service signatures changed; routes/gateway/tests updated; new IDOR regression tests in `card.test.ts` + `chat.test.ts`. Next: same treatment verified for remaining modules, then roles/assignment-rules (Phase 1b) and OCC ordering (Phase 2).
+
 ### 2026-09-25 — Calendar Write UX: Popovers over Modals, Scoped Google Writes
 
 **Context:** The calendar needed detail views, quick-create, and rescheduling of Google meetings. Two choices: full modals vs anchored popovers, and how far Google-write permissions should reach.

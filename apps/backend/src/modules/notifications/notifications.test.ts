@@ -218,7 +218,7 @@ describe('Notifications Engine', () => {
       .from(schema.notifications)
       .where(eq(schema.notifications.userId, userId));
     const channel = await createDirectMessage(db, orgId, user2!.id, userId);
-    await sendMessage(db, channel.id, user2!.id, {
+    await sendMessage(db, channel.id, orgId, user2!.id, {
       body: `hey @[Notif Admin](${userId}), look at this`,
     });
     await new Promise((r) => setTimeout(r, 150));

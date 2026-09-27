@@ -173,7 +173,7 @@ export async function getBoardFull(
   boardId: string,
   organizationId: string
 ): Promise<BoardFull> {
-  const { data } = await cachedBoardRead(boardId, 'full', 'boardfull', () =>
+  const { data } = await cachedBoardRead(boardId, `${organizationId}:full`, 'boardfull', () =>
     loadBoardFull(db, boardId, organizationId)
   );
   return data;

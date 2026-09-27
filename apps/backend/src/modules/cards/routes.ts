@@ -44,11 +44,19 @@ import {
 } from './service';
 import path from 'path';
 import { generatePresignedUploadUrl, LOCAL_UPLOADS_DIR } from '../../lib/s3';
+import { env } from '../../lib/env';
+
+/** Local-dev upload buffer — disabled outside development/test (open write + world-readable). */
+const localUploadsEnabled = env.NODE_ENV !== 'production';
 
 /** Public card routes (e.g. uploaded file serving and local upload buffer) */
 export const cardPublicRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   .put('/attachments/local-upload', async ({ query, request, set }) => {
     try {
+      if (!localUploadsEnabled) {
+        set.status = 404;
+        return { error: 'Not found' };
+      }
       const key = (query as any)?.key;
       if (!key) {
         set.status = 400;
@@ -57,6 +65,10 @@ export const cardPublicRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] }
       const safeKey = path.basename(key);
       const filePath = path.join(LOCAL_UPLOADS_DIR, safeKey);
       const arrayBuffer = await request.arrayBuffer();
+      if (arrayBuffer.byteLength > 25 * 1024 * 1024) {
+        set.status = 400;
+        return { error: 'File exceeds the 25 MB limit' };
+      }
       await Bun.write(filePath, arrayBuffer);
       return { success: true };
     } catch (err: unknown) {
@@ -65,6 +77,10 @@ export const cardPublicRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] }
   })
   .get('/attachments/file/:key', async ({ params, set }) => {
     try {
+      if (!localUploadsEnabled) {
+        set.status = 404;
+        return { error: 'Not found' };
+      }
       const safeKey = path.basename(params.key);
       const filePath = path.join(LOCAL_UPLOADS_DIR, safeKey);
       const file = Bun.file(filePath);
@@ -94,8 +110,8 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           projectId: query?.projectId,
           status: query?.status,
           priority: query?.priority,
-          limit: query?.limit ? parseInt(query.limit, 10) : 50,
-          offset: query?.offset ? parseInt(query.offset, 10) : 0,
+          limit: query?.limit ? Math.min(Math.max(parseInt(query.limit, 10) || 50, 1), 100) : 50,
+          offset: query?.offset ? Math.max(parseInt(query.offset, 10) || 0, 0) : 0,
         });
       } catch (err: unknown) {
         return handleRouteError(err, set);
@@ -322,70 +338,114 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/:id/assignees',
     async ({ params, body, user, set }) => {
       try {
-        return await assignUserToCard(db, params.id, body.userId, user.userId);
+        return await assignUserToCard(db, params.id, user.organizationId, body.userId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.assign'),
       body: t.Object({ userId: t.String({ format: 'uuid' }) }),
     }
   )
-  .delete('/:id/assignees/:userId', async ({ params, user, set }) => {
-    try {
-      return await removeUserFromCard(db, params.id, params.userId, user.userId);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .delete(
+    '/:id/assignees/:userId',
+    async ({ params, user, set }) => {
+      try {
+        return await removeUserFromCard(
+          db,
+          params.id,
+          user.organizationId,
+          params.userId,
+          user.userId
+        );
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.assign') }
+  )
 
   // Participants (Multiple Collaborators)
-  .get('/:id/participants', async ({ params, set }) => {
-    try {
-      return await getCardParticipants(db, params.id);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .get(
+    '/:id/participants',
+    async ({ params, user, set }) => {
+      try {
+        return await getCardParticipants(db, params.id, user.organizationId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.read') }
+  )
   .post(
     '/:id/participants',
     async ({ params, body, user, set }) => {
       try {
-        return await addParticipantToCard(db, params.id, body.userId, user.userId);
+        return await addParticipantToCard(
+          db,
+          params.id,
+          user.organizationId,
+          body.userId,
+          user.userId
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       body: t.Object({ userId: t.String({ format: 'uuid' }) }),
     }
   )
-  .delete('/:id/participants/:userId', async ({ params, user, set }) => {
-    try {
-      return await removeParticipantFromCard(db, params.id, params.userId, user.userId);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .delete(
+    '/:id/participants/:userId',
+    async ({ params, user, set }) => {
+      try {
+        return await removeParticipantFromCard(
+          db,
+          params.id,
+          user.organizationId,
+          params.userId,
+          user.userId
+        );
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.update') }
+  )
 
   // Comments
-  .get('/:id/comments', async ({ params, set }) => {
-    try {
-      return await listComments(db, params.id);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .get(
+    '/:id/comments',
+    async ({ params, user, set }) => {
+      try {
+        return await listComments(db, params.id, user.organizationId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.read') }
+  )
   .post(
     '/:id/comments',
     async ({ params, body, user, set }) => {
       try {
-        return await createComment(db, params.id, user.userId, body.body, body.mentionedUserIds);
+        return await createComment(
+          db,
+          params.id,
+          user.organizationId,
+          user.userId,
+          body.body,
+          body.mentionedUserIds
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       body: t.Object({
         body: t.String(),
         mentionedUserIds: t.Optional(t.Array(t.String())),
@@ -433,18 +493,26 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     }
   )
 
-  // Attachments
-  .get('/:id/attachments', async ({ params, set }) => {
-    try {
-      return await listAttachments(db, params.id);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  // Attachments (25 MB cap mirrors chat staging)
+  .get(
+    '/:id/attachments',
+    async ({ params, user, set }) => {
+      try {
+        return await listAttachments(db, params.id, user.organizationId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.read') }
+  )
   .post(
     '/:id/attachments',
     async ({ params, body, user, set }) => {
       try {
+        if (body.sizeBytes != null && body.sizeBytes > 25 * 1024 * 1024) {
+          set.status = 400;
+          return { error: 'File exceeds the 25 MB limit' };
+        }
         const { uploadUrl, publicUrl } = await generatePresignedUploadUrl(
           user.organizationId,
           params.id,
@@ -454,6 +522,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
         const attachment = await createAttachmentRecord(
           db,
           params.id,
+          user.organizationId,
           user.userId,
           publicUrl,
           body.fileName,
@@ -466,6 +535,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       body: t.Object({
         fileName: t.String(),
         fileType: t.Optional(t.String()),
@@ -473,20 +543,24 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }),
     }
   )
-  .delete('/:id/attachments/:attachmentId', async ({ params, user, set }) => {
-    try {
-      return await deleteAttachment(db, params.attachmentId, user.userId);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .delete(
+    '/:id/attachments/:attachmentId',
+    async ({ params, user, set }) => {
+      try {
+        return await deleteAttachment(db, params.attachmentId, user.organizationId, user.userId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.update') }
+  )
 
   // Labels
   .get(
     '/:id/labels',
-    async ({ params, set }) => {
+    async ({ params, user, set }) => {
       try {
-        return await getCardLabels(db, params.id);
+        return await getCardLabels(db, params.id, user.organizationId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -500,7 +574,13 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/:id/labels',
     async ({ params, body, user, set }) => {
       try {
-        return await attachLabelToCard(db, params.id, body.labelId, user.userId);
+        return await attachLabelToCard(
+          db,
+          params.id,
+          user.organizationId,
+          body.labelId,
+          user.userId
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -515,7 +595,13 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/:id/labels/:labelId',
     async ({ params, user, set }) => {
       try {
-        return await removeLabelFromCard(db, params.id, params.labelId, user.userId);
+        return await removeLabelFromCard(
+          db,
+          params.id,
+          user.organizationId,
+          params.labelId,
+          user.userId
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -527,13 +613,17 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   )
 
   // Checklists
-  .get('/:id/checklists', async ({ params, set }) => {
-    try {
-      return await getCardChecklists(db, params.id);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .get(
+    '/:id/checklists',
+    async ({ params, user, set }) => {
+      try {
+        return await getCardChecklists(db, params.id, user.organizationId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.read') }
+  )
   .post(
     '/:id/checklists',
     async ({ params, body, user, set }) => {
@@ -541,6 +631,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
         return await createChecklist(
           db,
           params.id,
+          user.organizationId,
           body.title,
           body.position,
           user.userId,
@@ -551,6 +642,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       body: t.Object({
         title: t.String(),
         position: t.Number(),
@@ -562,12 +654,19 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/checklists/:checklistId/bulk-items',
     async ({ params, body, user, set }) => {
       try {
-        return await createBulkChecklistItems(db, params.checklistId, body.items, user.userId);
+        return await createBulkChecklistItems(
+          db,
+          params.checklistId,
+          user.organizationId,
+          body.items,
+          user.userId
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       params: t.Object({ checklistId: t.String() }),
       body: t.Object({
         items: t.Array(t.String()),
@@ -581,6 +680,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
         return await createChecklistItem(
           db,
           params.checklistId,
+          user.organizationId,
           body.text,
           body.position,
           body.assignedTo,
@@ -592,6 +692,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       body: t.Object({
         text: t.String(),
         position: t.Number(),
@@ -604,12 +705,13 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/checklist-items/:itemId',
     async ({ params, body, user, set }) => {
       try {
-        return await updateChecklistItem(db, params.itemId, body, user.userId);
+        return await updateChecklistItem(db, params.itemId, user.organizationId, body, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       params: t.Object({ itemId: t.String() }),
       body: t.Object({
         text: t.Optional(t.String()),
@@ -622,7 +724,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/checklist-items/:itemId',
     async ({ params, user, set }) => {
       try {
-        return await deleteChecklistItem(db, params.itemId, user.userId);
+        return await deleteChecklistItem(db, params.itemId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -636,12 +738,19 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/checklists/:checklistId',
     async ({ params, body, user, set }) => {
       try {
-        return await updateChecklist(db, params.checklistId, body.title, user.userId);
+        return await updateChecklist(
+          db,
+          params.checklistId,
+          user.organizationId,
+          body.title,
+          user.userId
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       params: t.Object({ checklistId: t.String() }),
       body: t.Object({ title: t.String() }),
     }
@@ -650,24 +759,29 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/checklists/:checklistId',
     async ({ params, user, set }) => {
       try {
-        return await deleteChecklist(db, params.checklistId, user.userId);
+        return await deleteChecklist(db, params.checklistId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       params: t.Object({ checklistId: t.String() }),
     }
   )
 
   // Watchers
-  .get('/:id/watchers', async ({ params, set }) => {
-    try {
-      return await getCardWatchers(db, params.id);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .get(
+    '/:id/watchers',
+    async ({ params, user, set }) => {
+      try {
+        return await getCardWatchers(db, params.id, user.organizationId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.read') }
+  )
   .post(
     '/:id/watch',
     async ({ params, user, body, set }) => {
@@ -679,6 +793,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     {
+      beforeHandle: requirePermission('card.read'),
       body: t.Optional(t.Object({ userId: t.Optional(t.String({ format: 'uuid' })) })),
     }
   )
@@ -693,16 +808,21 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     {
+      beforeHandle: requirePermission('card.read'),
       body: t.Optional(t.Object({ userId: t.Optional(t.String({ format: 'uuid' })) })),
     }
   )
-  .delete('/:id/watch/:userId', async ({ params, user, set }) => {
-    try {
-      return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .delete(
+    '/:id/watch/:userId',
+    async ({ params, user, set }) => {
+      try {
+        return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.read') }
+  )
   .post(
     '/:id/unwatch',
     async ({ params, user, body, set }) => {
@@ -714,6 +834,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     {
+      beforeHandle: requirePermission('card.read'),
       body: t.Optional(t.Object({ userId: t.Optional(t.String({ format: 'uuid' })) })),
     }
   )
@@ -728,16 +849,21 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     {
+      beforeHandle: requirePermission('card.read'),
       body: t.Optional(t.Object({ userId: t.Optional(t.String({ format: 'uuid' })) })),
     }
   )
-  .delete('/:id/unwatch/:userId', async ({ params, user, set }) => {
-    try {
-      return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .delete(
+    '/:id/unwatch/:userId',
+    async ({ params, user, set }) => {
+      try {
+        return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.read') }
+  )
 
   // Subtasks
   .get('/:id/subtasks', async ({ params, user, set }) => {

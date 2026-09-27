@@ -2109,3 +2109,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **User request:** close-twice/reopen bugs keep recurring per dialog — build the fix once, reuse everywhere.
 - **What:** new `useDialogClose` hook — X/backdrop/Esc funnel through idempotent `requestClose` (one close per open session), capture-phase Esc, automatic invoker focus restore, dirty-editor routing. Migrated: CardModal/TaskDetailView (dirty lifts via `onDirtyChange`, TaskDetailView's duplicate Esc listener removed in favor of the Radix shell), New DM/channel, Working Hours, task-mention picker, translate/forward/seen. Enshrined as AGENTS.md §10 + Decisions entry so new dialogs follow it.
 - Tests & Validation: dashboard `tsc` + `oxlint` clean.
+
+### 2026-09-28 --- Phase 1 Tenant Hardening: IDOR Guards on Cards + Chat
+
+- **What:** Org-scoped every card sub-resource (comments, attachments, labels, assignees, participants, watchers, checklists incl. item-level) and all chat channel/message ops; `card.assign` now enforced on assignee routes; added-member must be org member; cross-org fails 404 (no oracle). Capped message pages (50), my-tasks (100), card uploads (25 MB); local-upload endpoints 404 in production; cache payload keys namespaced `{orgId}:...`.
+- **Tests added:** cross-org IDOR matrix in `card.test.ts` (reads+writes+force-assign), channel isolation + invite-poisoning in `chat.test.ts`; updated call sites in git/automations/notifications/chat tests.
+- Tests & Validation: cards 6/6, chat+git+automations+notifications 35/35 green; backend `tsc` clean. Full-suite failures (auth/boards/stages/...) reproduce on clean tree — pre-existing, unrelated.
+- What's next: Phase 1b org roles + assignment_rules + components; Phase 2 OCC ordering + WS reconcile.

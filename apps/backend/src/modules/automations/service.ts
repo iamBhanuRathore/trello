@@ -78,7 +78,7 @@ export function setupAutomationEngine(db: Database) {
     'internal',
     async (data: { event: string; payload: unknown; actorId: string; organizationId: string }) => {
       try {
-        const { event, actorId } = data;
+        const { event, actorId, organizationId } = data;
         const payload = data.payload as AutomationEventPayload;
 
         // We only support board-level automations. If event doesn't have boardId, skip.
@@ -113,6 +113,7 @@ export function setupAutomationEngine(db: Database) {
                 await attachLabelToCard(
                   db,
                   payload.cardId as string,
+                  organizationId,
                   action.labelId as string,
                   actorId
                 );
@@ -128,6 +129,7 @@ export function setupAutomationEngine(db: Database) {
                 await assignUserToCard(
                   db,
                   payload.cardId as string,
+                  organizationId,
                   action.userId as string,
                   actorId
                 );

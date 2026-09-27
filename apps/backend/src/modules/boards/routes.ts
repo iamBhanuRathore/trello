@@ -145,9 +145,9 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
   // GET /v1/boards/:id/labels
   .get(
     '/:id/labels',
-    async ({ params, set }) => {
+    async ({ params, user, set }) => {
       try {
-        return await getBoardLabels(db, params.id);
+        return await getBoardLabels(db, params.id, user.organizationId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -160,9 +160,9 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
   // POST /v1/boards/:id/labels
   .post(
     '/:id/labels',
-    async ({ params, body, set }) => {
+    async ({ params, body, user, set }) => {
       try {
-        return await createBoardLabel(db, params.id, body.name, body.color);
+        return await createBoardLabel(db, params.id, user.organizationId, body.name, body.color);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -176,9 +176,15 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
   // PATCH /v1/boards/:id/labels/:labelId
   .patch(
     '/:id/labels/:labelId',
-    async ({ params, body, set }) => {
+    async ({ params, body, user, set }) => {
       try {
-        return await updateBoardLabel(db, params.labelId, body.name, body.color);
+        return await updateBoardLabel(
+          db,
+          params.labelId,
+          user.organizationId,
+          body.name,
+          body.color
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -192,9 +198,9 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
   // DELETE /v1/boards/:id/labels/:labelId
   .delete(
     '/:id/labels/:labelId',
-    async ({ params, set }) => {
+    async ({ params, user, set }) => {
       try {
-        await deleteBoardLabel(db, params.labelId);
+        await deleteBoardLabel(db, params.labelId, user.organizationId);
         return { success: true };
       } catch (err: unknown) {
         return handleRouteError(err, set);

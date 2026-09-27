@@ -17,6 +17,7 @@ import {
   unlinkChannelProject,
   getChannelDetails,
   listMessages,
+  toggleReaction,
   postSystemMessage,
   notifyProjectChannels,
   createChatAttachment,
@@ -80,7 +81,7 @@ describe('Chat Service Validation & Rules', () => {
 
   it('rejects sending empty message bodies even with replyToMessageId', async () => {
     expect(
-      sendMessage(dummyDb, 'channel-1', 'user-1', {
+      sendMessage(dummyDb, 'channel-1', 'org-1', 'user-1', {
         body: '    ',
         replyToMessageId: 'msg-123',
       })
@@ -97,11 +98,11 @@ describe('Channel ↔ Project Linking & Activity Feed', () => {
     expect(linked.projectId).toBe(proj.id);
     expect(linked.project?.name).toBe('Proj');
 
-    const details = await getChannelDetails(db, channel.id, user.id);
+    const details = await getChannelDetails(db, channel.id, organization.id, user.id);
     expect(details.project?.id).toBe(proj.id);
 
     // Linking posts an activity message to the feed
-    const feed = await listMessages(db, channel.id, user.id);
+    const feed = await listMessages(db, channel.id, organization.id, user.id);
     expect(feed.some((m) => m.isSystem && m.body.includes('Linked project'))).toBe(true);
   });
 
@@ -119,7 +120,7 @@ describe('Channel ↔ Project Linking & Activity Feed', () => {
       .where(eq(schema.organizationMembers.userId, bob!.id));
 
     const channel = await createGroupChannel(db, organization.id, user.id, { name: 'eng' });
-    await addChannelMember(db, channel.id, user.id, bob!.id, 'member');
+    await addChannelMember(db, channel.id, organization.id, user.id, bob!.id, 'member');
     expect(linkChannelProject(db, channel.id, bob!.id, organization.id, proj.id)).rejects.toThrow(
       'Channel Owner or Admin'
     );
@@ -159,10 +160,10 @@ describe('Channel ↔ Project Linking & Activity Feed', () => {
     const channel = await createGroupChannel(db, organization.id, user.id, { name: 'eng' });
     await linkChannelProject(db, channel.id, user.id, organization.id, proj.id);
 
-    const unlinked = await unlinkChannelProject(db, channel.id, user.id);
+    const unlinked = await unlinkChannelProject(db, channel.id, organization.id, user.id);
     expect(unlinked!.projectId).toBeNull();
 
-    const details = await getChannelDetails(db, channel.id, user.id);
+    const details = await getChannelDetails(db, channel.id, organization.id, user.id);
     expect(details.project).toBeNull();
   });
 
@@ -173,7 +174,7 @@ describe('Channel ↔ Project Linking & Activity Feed', () => {
     const msg = await postSystemMessage(db, channel.id, user.id, '🆕 **T-1** Hello created');
     expect(msg.isSystem).toBe(true);
 
-    const feed = await listMessages(db, channel.id, user.id);
+    const feed = await listMessages(db, channel.id, organization.id, user.id);
     expect(feed.some((m) => m.id === msg.id && m.isSystem)).toBe(true);
   });
 
@@ -185,8 +186,8 @@ describe('Channel ↔ Project Linking & Activity Feed', () => {
 
     await notifyProjectChannels(db, organization.id, proj.id, user.id, '🔀 **T-9** moved');
 
-    const linkedFeed = await listMessages(db, linked.id, user.id);
-    const plainFeed = await listMessages(db, plain.id, user.id);
+    const linkedFeed = await listMessages(db, linked.id, organization.id, user.id);
+    const plainFeed = await listMessages(db, plain.id, organization.id, user.id);
     expect(linkedFeed.some((m) => m.body.includes('moved'))).toBe(true);
     // plain channel has no system traffic (only its own link/unlink have none either)
     expect(plainFeed.filter((m) => m.isSystem).length).toBe(0);
@@ -241,11 +242,11 @@ describe('Chat File Attachments', () => {
     expect(attachment.channelId).toBe(channel.id);
     expect(attachment.messageId).toBeNull();
 
-    const sent = await sendMessage(db, channel.id, user.id, {
+    const sent = await sendMessage(db, channel.id, organization.id, user.id, {
       body: 'see attached',
       attachmentIds: [attachment.id],
     });
-    const feed = await listMessages(db, channel.id, user.id);
+    const feed = await listMessages(db, channel.id, organization.id, user.id);
     const found = feed.find((m) => m.id === sent.id);
     expect(found?.attachments?.some((a: any) => a.id === attachment.id)).toBe(true);
   });
@@ -255,54 +256,58 @@ describe('Telegram Parity: Pin / Forward / Seen', () => {
   it('pins and unpins a group message, surfaced by listPinnedMessages', async () => {
     const { user, organization } = await setupOrgWithProject('pinok');
     const channel = await createGroupChannel(db, organization.id, user.id, { name: 'eng' });
-    const sent = await sendMessage(db, channel.id, user.id, { body: 'pin me' });
+    const sent = await sendMessage(db, channel.id, organization.id, user.id, { body: 'pin me' });
 
-    const pinned = await pinMessage(db, sent.id, user.id, true);
+    const pinned = await pinMessage(db, sent.id, organization.id, user.id, true);
     expect(pinned?.isPinned).toBe(true);
 
-    const listed = await listPinnedMessages(db, channel.id, user.id);
+    const listed = await listPinnedMessages(db, channel.id, organization.id, user.id);
     expect(listed.some((m: any) => m.id === sent.id)).toBe(true);
 
-    const unpinned = await pinMessage(db, sent.id, user.id, false);
+    const unpinned = await pinMessage(db, sent.id, organization.id, user.id, false);
     expect(unpinned?.isPinned).toBe(false);
-    const relisted = await listPinnedMessages(db, channel.id, user.id);
+    const relisted = await listPinnedMessages(db, channel.id, organization.id, user.id);
     expect(relisted.some((m: any) => m.id === sent.id)).toBe(false);
   });
 
   it('rejects pinning thread replies and system messages', async () => {
     const { user, organization } = await setupOrgWithProject('pin400');
     const channel = await createGroupChannel(db, organization.id, user.id, { name: 'eng' });
-    const parent = await sendMessage(db, channel.id, user.id, { body: 'parent' });
-    const reply = await sendMessage(db, channel.id, user.id, {
+    const parent = await sendMessage(db, channel.id, organization.id, user.id, { body: 'parent' });
+    const reply = await sendMessage(db, channel.id, organization.id, user.id, {
       body: 'reply',
       parentMessageId: parent.id,
     });
-    expect(pinMessage(db, reply.id, user.id, true)).rejects.toThrow('Thread replies');
+    expect(pinMessage(db, reply.id, organization.id, user.id, true)).rejects.toThrow(
+      'Thread replies'
+    );
     const sys = await postSystemMessage(db, channel.id, user.id, 'activity');
-    expect(pinMessage(db, sys.id, user.id, true)).rejects.toThrow('System messages');
+    expect(pinMessage(db, sys.id, organization.id, user.id, true)).rejects.toThrow(
+      'System messages'
+    );
   });
 
   it('forwards a message copy into another channel with provenance', async () => {
     const { user, organization } = await setupOrgWithProject('fwdok');
     const a = await createGroupChannel(db, organization.id, user.id, { name: 'a' });
     const b = await createGroupChannel(db, organization.id, user.id, { name: 'b' });
-    const src = await sendMessage(db, a.id, user.id, { body: 'forward me' });
+    const src = await sendMessage(db, a.id, organization.id, user.id, { body: 'forward me' });
 
-    const copy = await forwardMessage(db, src.id, b.id, user.id);
+    const copy = await forwardMessage(db, src.id, b.id, organization.id, user.id);
     expect(copy.channelId).toBe(b.id);
     expect(copy.body).toBe('forward me');
     expect(copy.forwardedFromId).toBe(src.id);
 
-    const feed = await listMessages(db, b.id, user.id);
+    const feed = await listMessages(db, b.id, organization.id, user.id);
     expect(feed.some((m) => m.id === copy.id)).toBe(true);
   });
 
   it('reports seen-by readers based on lastReadAt', async () => {
     const { user, organization } = await setupOrgWithProject('seenok');
     const channel = await createGroupChannel(db, organization.id, user.id, { name: 'eng' });
-    const sent = await sendMessage(db, channel.id, user.id, { body: 'seen?' });
+    const sent = await sendMessage(db, channel.id, organization.id, user.id, { body: 'seen?' });
     // Author-only channel: no other readers yet
-    const seen = await getMessageSeenBy(db, sent.id, user.id);
+    const seen = await getMessageSeenBy(db, sent.id, organization.id, user.id);
     expect(seen.messageId).toBe(sent.id);
     expect(seen.count).toBe(0);
     expect(seen.readers).toEqual([]);
@@ -312,7 +317,43 @@ describe('Telegram Parity: Pin / Forward / Seen', () => {
     const a = await setupOrgWithProject('seenA');
     const b = await setupOrgWithProject('seenB');
     const channel = await createGroupChannel(db, a.organization.id, a.user.id, { name: 'eng' });
-    const sent = await sendMessage(db, channel.id, a.user.id, { body: 'hi' });
-    expect(getMessageSeenBy(db, sent.id, b.user.id)).rejects.toThrow('not a member');
+    const sent = await sendMessage(db, channel.id, a.organization.id, a.user.id, { body: 'hi' });
+    // Cross-org callers fail closed without an existence oracle
+    expect(getMessageSeenBy(db, sent.id, b.organization.id, b.user.id)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it('isolates channels by organization (cross-org IDOR guard)', async () => {
+    const a = await setupOrgWithProject('xorgA');
+    const b = await setupOrgWithProject('xorgB');
+    const channel = await createGroupChannel(db, a.organization.id, a.user.id, { name: 'secret' });
+    const sent = await sendMessage(db, channel.id, a.organization.id, a.user.id, {
+      body: 'secret',
+    });
+
+    // Every channel/message read with the wrong org fails closed
+    await expect(
+      getChannelDetails(db, channel.id, b.organization.id, b.user.id)
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(listMessages(db, channel.id, b.organization.id, b.user.id)).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(
+      sendMessage(db, channel.id, b.organization.id, b.user.id, { body: 'hijack' })
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      toggleReaction(db, sent.id, b.organization.id, b.user.id, '👍')
+    ).rejects.toMatchObject({ status: 404 });
+
+    // Group creation silently drops cross-org invitees instead of leaking the channel
+    const poisoned = await createGroupChannel(db, a.organization.id, a.user.id, {
+      name: 'poison',
+      memberUserIds: [b.user.id],
+    });
+    expect(poisoned.members.some((m: any) => m.userId === b.user.id)).toBe(false);
+    await expect(
+      getChannelDetails(db, poisoned.id, b.organization.id, b.user.id)
+    ).rejects.toMatchObject({ status: 404 });
   });
 });

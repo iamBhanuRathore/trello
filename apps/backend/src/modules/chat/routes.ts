@@ -86,7 +86,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId',
     async ({ params: { channelId }, user, set }) => {
       try {
-        return await getChannelDetails(db, channelId, user.userId);
+        return await getChannelDetails(db, channelId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -101,7 +101,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId',
     async ({ params: { channelId }, body, user, set }) => {
       try {
-        return await updateChannel(db, channelId, user.userId, body);
+        return await updateChannel(db, channelId, user.organizationId, user.userId, body);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -123,7 +123,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId/pin',
     async ({ params: { channelId }, user, set }) => {
       try {
-        return await togglePinChannel(db, channelId, user.userId);
+        return await togglePinChannel(db, channelId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -138,7 +138,14 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId/members',
     async ({ params: { channelId }, body, user, set }) => {
       try {
-        return await addChannelMember(db, channelId, user.userId, body.userId, body.role as any);
+        return await addChannelMember(
+          db,
+          channelId,
+          user.organizationId,
+          user.userId,
+          body.userId,
+          body.role as any
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -157,7 +164,14 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId/members/:targetUserId',
     async ({ params: { channelId, targetUserId }, body, user, set }) => {
       try {
-        return await updateMemberRole(db, channelId, user.userId, targetUserId, body.role as any);
+        return await updateMemberRole(
+          db,
+          channelId,
+          user.organizationId,
+          user.userId,
+          targetUserId,
+          body.role as any
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -178,7 +192,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId/members/:targetUserId',
     async ({ params: { channelId, targetUserId }, user, set }) => {
       try {
-        return await removeMember(db, channelId, user.userId, targetUserId);
+        return await removeMember(db, channelId, user.organizationId, user.userId, targetUserId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -212,13 +226,20 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     }
   )
 
-  // GET /v1/chat/channels/:channelId/messages - List messages (chronological)
+  // GET /v1/chat/channels/:channelId/messages - List messages (chronological, max 50/page)
   .get(
     '/channels/:channelId/messages',
     async ({ params: { channelId }, query, user, set }) => {
       try {
-        const limit = query.limit ? Number(query.limit) : 50;
-        return await listMessages(db, channelId, user.userId, query.cursor, limit);
+        const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 50);
+        return await listMessages(
+          db,
+          channelId,
+          user.organizationId,
+          user.userId,
+          query.cursor,
+          limit
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -237,7 +258,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId/messages',
     async ({ params: { channelId }, body, user, set }) => {
       try {
-        return await sendMessage(db, channelId, user.userId, body);
+        return await sendMessage(db, channelId, user.organizationId, user.userId, body);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -259,7 +280,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/messages/:messageId',
     async ({ params: { messageId }, body, user, set }) => {
       try {
-        return await editMessage(db, messageId, user.userId, body.body);
+        return await editMessage(db, messageId, user.organizationId, user.userId, body.body);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -277,7 +298,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/messages/:messageId',
     async ({ params: { messageId }, user, set }) => {
       try {
-        return await deleteMessage(db, messageId, user.userId);
+        return await deleteMessage(db, messageId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -292,7 +313,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/messages/:messageId/reactions',
     async ({ params: { messageId }, body, user, set }) => {
       try {
-        return await toggleReaction(db, messageId, user.userId, body.emoji);
+        return await toggleReaction(db, messageId, user.organizationId, user.userId, body.emoji);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -310,7 +331,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/messages/:messageId/replies',
     async ({ params: { messageId }, user, set }) => {
       try {
-        return await listThreadReplies(db, messageId, user.userId);
+        return await listThreadReplies(db, messageId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -325,7 +346,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/messages/:messageId/pin',
     async ({ params: { messageId }, body, user, set }) => {
       try {
-        return await pinMessage(db, messageId, user.userId, body.pinned);
+        return await pinMessage(db, messageId, user.organizationId, user.userId, body.pinned);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -341,7 +362,13 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/messages/:messageId/forward',
     async ({ params: { messageId }, body, user, set }) => {
       try {
-        return await forwardMessage(db, messageId, body.targetChannelId, user.userId);
+        return await forwardMessage(
+          db,
+          messageId,
+          body.targetChannelId,
+          user.organizationId,
+          user.userId
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -357,7 +384,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/messages/:messageId/seen',
     async ({ params: { messageId }, user, set }) => {
       try {
-        return await getMessageSeenBy(db, messageId, user.userId);
+        return await getMessageSeenBy(db, messageId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -372,7 +399,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId/pinned',
     async ({ params: { channelId }, user, set }) => {
       try {
-        return await listPinnedMessages(db, channelId, user.userId);
+        return await listPinnedMessages(db, channelId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -387,7 +414,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId/read',
     async ({ params: { channelId }, user, set }) => {
       try {
-        return await markChannelRead(db, channelId, user.userId);
+        return await markChannelRead(db, channelId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -424,7 +451,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId/project',
     async ({ params: { channelId }, user, set }) => {
       try {
-        return await unlinkChannelProject(db, channelId, user.userId);
+        return await unlinkChannelProject(db, channelId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }

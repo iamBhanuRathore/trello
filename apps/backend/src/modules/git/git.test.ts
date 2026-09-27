@@ -171,7 +171,7 @@ describe('Repository management & webhook automation', () => {
     const links = await listCardLinks(db, organization.id, card.id);
     expect(links.some((l) => l.kind === 'commit' && l.state === 'pushed')).toBe(true);
 
-    const commentsList = await listComments(db, card.id);
+    const commentsList = await listComments(db, card.id, organization.id);
     expect(commentsList.some((c: any) => c.body.includes('abc1234'))).toBe(true);
   });
 
@@ -202,7 +202,7 @@ describe('Repository management & webhook automation', () => {
     links = await listCardLinks(db, organization.id, card.id);
     expect(links.some((l) => l.kind === 'pr' && l.state === 'merged')).toBe(true);
 
-    const commentsList = await listComments(db, card.id);
+    const commentsList = await listComments(db, card.id, organization.id);
     expect(commentsList.some((c: any) => c.body.includes('merged'))).toBe(true);
   });
 

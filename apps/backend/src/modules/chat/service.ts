@@ -65,7 +65,7 @@ export async function createDirectMessage(
     .limit(1);
 
   if (existingDm.length > 0 && existingDm[0]?.channelId) {
-    return getChannelDetails(db, existingDm[0].channelId, currentUserId);
+    return getChannelDetails(db, existingDm[0].channelId, organizationId, currentUserId);
   }
 
   // Create new DM channel
@@ -100,7 +100,7 @@ export async function createDirectMessage(
     type: 'direct',
   });
 
-  return getChannelDetails(db, channel.id, currentUserId);
+  return getChannelDetails(db, channel.id, organizationId, currentUserId);
 }
 
 export async function createGroupChannel(
@@ -153,12 +153,28 @@ export async function createGroupChannel(
       },
     ];
 
-  // Add initial members if supplied
+  // Add initial members if supplied — restricted to org members so a
+  // creator cannot force-add (and leak the channel to) cross-org users.
   const distinctOtherIds = Array.from(new Set(input.memberUserIds || [])).filter(
     (id) => id !== creatorId
   );
+  let orgMemberIds = new Set<string>();
+  if (distinctOtherIds.length > 0) {
+    const rows = await db
+      .select({ userId: organizationMembers.userId })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          inArray(organizationMembers.userId, distinctOtherIds),
+          isNull(organizationMembers.deletedAt)
+        )
+      );
+    orgMemberIds = new Set(rows.map((r) => r.userId));
+  }
 
   for (const uid of distinctOtherIds) {
+    if (!orgMemberIds.has(uid)) continue;
     membersToAdd.push({
       channelId: channel.id,
       userId: uid,
@@ -170,6 +186,7 @@ export async function createGroupChannel(
 
   // Notify added members
   for (const uid of distinctOtherIds) {
+    if (!orgMemberIds.has(uid)) continue;
     await eventBus.broadcast(`user:inbox:${uid}`, 'chat:channel_created', {
       channelId: channel.id,
       name: channel.name,
@@ -177,7 +194,7 @@ export async function createGroupChannel(
     });
   }
 
-  return getChannelDetails(db, channel.id, creatorId);
+  return getChannelDetails(db, channel.id, organizationId, creatorId);
 }
 
 export async function listUserChannels(db: Database, organizationId: string, userId: string) {
@@ -282,7 +299,12 @@ export async function listUserChannels(db: Database, organizationId: string, use
   });
 }
 
-export async function getChannelDetails(db: Database, channelId: string, currentUserId: string) {
+export async function getChannelDetails(
+  db: Database,
+  channelId: string,
+  organizationId: string,
+  currentUserId: string
+) {
   const [channel] = await db
     .select()
     .from(chatChannels)
@@ -290,6 +312,7 @@ export async function getChannelDetails(db: Database, channelId: string, current
     .limit(1);
 
   if (!channel) throw httpError(404, 'Channel not found');
+  if (channel.organizationId !== organizationId) throw httpError(404, 'Channel not found');
 
   // Verify current user membership or public channel
   const [membership] = await db
@@ -412,6 +435,7 @@ export async function getSharedChannels(
 export async function updateChannel(
   db: Database,
   channelId: string,
+  organizationId: string,
   actorId: string,
   input: {
     name?: string;
@@ -421,6 +445,14 @@ export async function updateChannel(
     isArchived?: boolean;
   }
 ) {
+  const [channel] = await db
+    .select({ organizationId: chatChannels.organizationId })
+    .from(chatChannels)
+    .where(eq(chatChannels.id, channelId))
+    .limit(1);
+  if (!channel) throw httpError(404, 'Channel not found');
+  if (channel.organizationId !== organizationId) throw httpError(404, 'Channel not found');
+
   const [member] = await db
     .select()
     .from(chatChannelMembers)
@@ -452,6 +484,7 @@ export async function updateChannel(
 export async function addChannelMember(
   db: Database,
   channelId: string,
+  organizationId: string,
   actorId: string,
   targetUserId: string,
   role: 'admin' | 'member' = 'member'
@@ -462,6 +495,21 @@ export async function addChannelMember(
     .where(eq(chatChannels.id, channelId))
     .limit(1);
   if (!channel) throw httpError(404, 'Channel not found');
+  if (channel.organizationId !== organizationId) throw httpError(404, 'Channel not found');
+
+  // Invited users must belong to the organization — no cross-org force-adds.
+  const [targetMember] = await db
+    .select({ userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.userId, targetUserId),
+        isNull(organizationMembers.deletedAt)
+      )
+    )
+    .limit(1);
+  if (!targetMember) throw httpError(403, 'User is not a member of this organization');
 
   const [actorMember] = await db
     .select()
@@ -505,10 +553,12 @@ export async function addChannelMember(
 export async function updateMemberRole(
   db: Database,
   channelId: string,
+  organizationId: string,
   actorId: string,
   targetUserId: string,
   newRole: 'owner' | 'admin' | 'member'
 ) {
+  await requireChannelMembership(db, channelId, organizationId, actorId);
   const [actorMember] = await db
     .select()
     .from(chatChannelMembers)
@@ -562,9 +612,11 @@ export async function updateMemberRole(
 export async function removeMember(
   db: Database,
   channelId: string,
+  organizationId: string,
   actorId: string,
   targetUserId: string
 ) {
+  await requireChannelMembership(db, channelId, organizationId, actorId);
   const [actorMember] = await db
     .select()
     .from(chatChannelMembers)
@@ -622,6 +674,7 @@ export async function removeMember(
 export async function sendMessage(
   db: Database,
   channelId: string,
+  organizationId: string,
   userId: string,
   input: {
     body: string;
@@ -641,6 +694,7 @@ export async function sendMessage(
     .where(eq(chatChannels.id, channelId))
     .limit(1);
   if (!channel) throw httpError(404, 'Channel not found');
+  if (channel.organizationId !== organizationId) throw httpError(404, 'Channel not found');
 
   // Verify membership
   const [membership] = await db
@@ -792,6 +846,7 @@ export async function sendMessage(
 export async function editMessage(
   db: Database,
   messageId: string,
+  organizationId: string,
   userId: string,
   newBody: string
 ) {
@@ -809,6 +864,8 @@ export async function editMessage(
   if (message.userId !== userId) {
     throw httpError(403, 'Permission denied: only author can edit message');
   }
+  // Removed members cannot keep editing history — membership is re-checked.
+  await requireChannelMembership(db, message.channelId, organizationId, userId);
 
   const [updated] = await db
     .update(chatMessages)
@@ -825,7 +882,12 @@ export async function editMessage(
   return updated;
 }
 
-export async function deleteMessage(db: Database, messageId: string, actorId: string) {
+export async function deleteMessage(
+  db: Database,
+  messageId: string,
+  organizationId: string,
+  actorId: string
+) {
   const [message] = await db
     .select()
     .from(chatMessages)
@@ -833,6 +895,15 @@ export async function deleteMessage(db: Database, messageId: string, actorId: st
     .limit(1);
 
   if (!message) throw httpError(404, 'Message not found');
+
+  // Tenant check before any permission branch (author path previously skipped it).
+  const [channel] = await db
+    .select({ organizationId: chatChannels.organizationId })
+    .from(chatChannels)
+    .where(eq(chatChannels.id, message.channelId))
+    .limit(1);
+  if (!channel || channel.organizationId !== organizationId)
+    throw httpError(404, 'Message not found');
 
   // Check permissions: author OR channel owner/admin
   const isAuthor = message.userId === actorId;
@@ -879,18 +950,13 @@ export async function deleteMessage(db: Database, messageId: string, actorId: st
 export async function listMessages(
   db: Database,
   channelId: string,
+  organizationId: string,
   userId: string,
   cursor?: string,
   limit = 50
 ) {
-  // Verify user has channel access
-  const [membership] = await db
-    .select()
-    .from(chatChannelMembers)
-    .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, userId)))
-    .limit(1);
-
-  if (!membership) throw httpError(403, 'Access denied: not a member of this channel');
+  // Verify user has channel access (org check inside)
+  await requireChannelMembership(db, channelId, organizationId, userId);
 
   const conditions = [
     eq(chatMessages.channelId, channelId),
@@ -995,9 +1061,21 @@ export async function listMessages(
 export async function toggleReaction(
   db: Database,
   messageId: string,
+  organizationId: string,
   userId: string,
   emoji: string
 ) {
+  const [message] = await db
+    .select({ channelId: chatMessages.channelId })
+    .from(chatMessages)
+    .where(eq(chatMessages.id, messageId))
+    .limit(1);
+
+  if (!message) throw httpError(404, 'Message not found');
+
+  // Reactions require membership — any authenticated UUID could react before.
+  await requireChannelMembership(db, message.channelId, organizationId, userId);
+
   const [existing] = await db
     .select()
     .from(chatReactions)
@@ -1009,14 +1087,6 @@ export async function toggleReaction(
       )
     )
     .limit(1);
-
-  const [message] = await db
-    .select({ channelId: chatMessages.channelId })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, messageId))
-    .limit(1);
-
-  if (!message) throw httpError(404, 'Message not found');
 
   if (existing) {
     await db.delete(chatReactions).where(eq(chatReactions.id, existing.id));
@@ -1046,7 +1116,12 @@ export async function toggleReaction(
   }
 }
 
-export async function listThreadReplies(db: Database, parentMessageId: string, userId: string) {
+export async function listThreadReplies(
+  db: Database,
+  parentMessageId: string,
+  organizationId: string,
+  userId: string
+) {
   const [parent] = await db
     .select()
     .from(chatMessages)
@@ -1055,16 +1130,8 @@ export async function listThreadReplies(db: Database, parentMessageId: string, u
 
   if (!parent) throw httpError(404, 'Parent message not found');
 
-  // Verify membership
-  const [membership] = await db
-    .select()
-    .from(chatChannelMembers)
-    .where(
-      and(eq(chatChannelMembers.channelId, parent.channelId), eq(chatChannelMembers.userId, userId))
-    )
-    .limit(1);
-
-  if (!membership) throw httpError(403, 'Access denied: not a member of this channel');
+  // Verify membership (org check inside)
+  await requireChannelMembership(db, parent.channelId, organizationId, userId);
 
   const replies = await db
     .select({
@@ -1110,7 +1177,13 @@ export async function listThreadReplies(db: Database, parentMessageId: string, u
   );
 }
 
-export async function markChannelRead(db: Database, channelId: string, userId: string) {
+export async function markChannelRead(
+  db: Database,
+  channelId: string,
+  organizationId: string,
+  userId: string
+) {
+  await requireChannelMembership(db, channelId, organizationId, userId);
   await db
     .update(chatChannelMembers)
     .set({ lastReadAt: new Date() })
@@ -1125,7 +1198,13 @@ export async function markChannelRead(db: Database, channelId: string, userId: s
   return { success: true };
 }
 
-export async function togglePinChannel(db: Database, channelId: string, userId: string) {
+export async function togglePinChannel(
+  db: Database,
+  channelId: string,
+  organizationId: string,
+  userId: string
+) {
+  await requireChannelMembership(db, channelId, organizationId, userId);
   const [membership] = await db
     .select()
     .from(chatChannelMembers)
@@ -1145,13 +1224,19 @@ export async function togglePinChannel(db: Database, channelId: string, userId: 
 
 // ─── Channel ↔ Project Linking & Activity Feed ───────────────────────────────
 
-async function requireChannelAdmin(db: Database, channelId: string, actorId: string) {
+async function requireChannelAdmin(
+  db: Database,
+  channelId: string,
+  actorId: string,
+  organizationId: string
+) {
   const [channel] = await db
     .select()
     .from(chatChannels)
     .where(eq(chatChannels.id, channelId))
     .limit(1);
   if (!channel) throw httpError(404, 'Channel not found');
+  if (channel.organizationId !== organizationId) throw httpError(404, 'Channel not found');
 
   const [member] = await db
     .select()
@@ -1181,7 +1266,7 @@ export async function linkChannelProject(
   organizationId: string,
   projectId: string
 ) {
-  await requireChannelAdmin(db, channelId, actorId);
+  await requireChannelAdmin(db, channelId, actorId, organizationId);
 
   const [project] = await db
     .select({ id: projects.id, name: projects.name, key: projects.key })
@@ -1208,8 +1293,13 @@ export async function linkChannelProject(
   return { ...updated, project };
 }
 
-export async function unlinkChannelProject(db: Database, channelId: string, actorId: string) {
-  await requireChannelAdmin(db, channelId, actorId);
+export async function unlinkChannelProject(
+  db: Database,
+  channelId: string,
+  organizationId: string,
+  actorId: string
+) {
+  await requireChannelAdmin(db, channelId, actorId, organizationId);
 
   const [updated] = await db
     .update(chatChannels)
@@ -1391,7 +1481,19 @@ export async function createChatAttachment(
 
 // ─── Telegram Parity: Pin / Forward / Seen ────────────────────────────────────
 
-async function requireChannelMembership(db: Database, channelId: string, userId: string) {
+async function requireChannelMembership(
+  db: Database,
+  channelId: string,
+  organizationId: string,
+  userId: string
+) {
+  const [channel] = await db
+    .select({ id: chatChannels.id, organizationId: chatChannels.organizationId })
+    .from(chatChannels)
+    .where(eq(chatChannels.id, channelId))
+    .limit(1);
+  if (!channel) throw httpError(404, 'Channel not found');
+  if (channel.organizationId !== organizationId) throw httpError(404, 'Channel not found');
   const [membership] = await db
     .select()
     .from(chatChannelMembers)
@@ -1404,6 +1506,7 @@ async function requireChannelMembership(db: Database, channelId: string, userId:
 export async function pinMessage(
   db: Database,
   messageId: string,
+  organizationId: string,
   actorId: string,
   pinned: boolean
 ) {
@@ -1416,7 +1519,7 @@ export async function pinMessage(
   if (message.parentMessageId) throw httpError(400, 'Thread replies cannot be pinned');
   if (message.isSystem) throw httpError(400, 'System messages cannot be pinned');
 
-  const membership = await requireChannelMembership(db, message.channelId, actorId);
+  const membership = await requireChannelMembership(db, message.channelId, organizationId, actorId);
   // DMs + groups: any member can pin (Telegram behavior). Announcement-only
   // channels stay admin-gated.
   const [channel] = await db
@@ -1448,8 +1551,13 @@ export async function pinMessage(
   return updated;
 }
 
-export async function listPinnedMessages(db: Database, channelId: string, userId: string) {
-  await requireChannelMembership(db, channelId, userId);
+export async function listPinnedMessages(
+  db: Database,
+  channelId: string,
+  organizationId: string,
+  userId: string
+) {
+  await requireChannelMembership(db, channelId, organizationId, userId);
   const rows = await db
     .select({
       message: chatMessages,
@@ -1478,6 +1586,7 @@ export async function forwardMessage(
   db: Database,
   sourceMessageId: string,
   targetChannelId: string,
+  organizationId: string,
   actorId: string
 ) {
   const [source] = await db
@@ -1488,7 +1597,7 @@ export async function forwardMessage(
   if (!source) throw httpError(404, 'Source message not found');
   if (source.isSystem) throw httpError(400, 'System messages cannot be forwarded');
 
-  await requireChannelMembership(db, source.channelId, actorId);
+  await requireChannelMembership(db, source.channelId, organizationId, actorId);
 
   const [target] = await db
     .select()
@@ -1496,7 +1605,13 @@ export async function forwardMessage(
     .where(eq(chatChannels.id, targetChannelId))
     .limit(1);
   if (!target) throw httpError(404, 'Target channel not found');
-  const targetMembership = await requireChannelMembership(db, targetChannelId, actorId);
+  if (target.organizationId !== organizationId) throw httpError(404, 'Target channel not found');
+  const targetMembership = await requireChannelMembership(
+    db,
+    targetChannelId,
+    organizationId,
+    actorId
+  );
   if (target.isAnnouncementOnly && targetMembership.role === 'member') {
     throw httpError(403, 'Only channel admins can post in this announcement channel');
   }
@@ -1557,14 +1672,19 @@ export async function forwardMessage(
  * Seen-by detail (Telegram "2 Seen"): members whose lastReadAt >= message.createdAt.
  * Excludes the author. Returns readers + total eligible so UI can render "N Seen".
  */
-export async function getMessageSeenBy(db: Database, messageId: string, requesterId: string) {
+export async function getMessageSeenBy(
+  db: Database,
+  messageId: string,
+  organizationId: string,
+  requesterId: string
+) {
   const [message] = await db
     .select()
     .from(chatMessages)
     .where(eq(chatMessages.id, messageId))
     .limit(1);
   if (!message) throw httpError(404, 'Message not found');
-  await requireChannelMembership(db, message.channelId, requesterId);
+  await requireChannelMembership(db, message.channelId, organizationId, requesterId);
 
   const members = await db
     .select({

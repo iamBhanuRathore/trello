@@ -16,6 +16,7 @@ import { recordUserHeartbeat } from '../presence/presenceService';
 export interface RealtimeWsData {
   query?: { token?: string };
   userId?: string;
+  organizationId?: string;
   subscribedBoards?: Set<string>;
 }
 
@@ -48,6 +49,7 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
     try {
       const payload = await verifyAccessToken(token);
       wsData.userId = payload.userId;
+      wsData.organizationId = (payload as { organizationId?: string }).organizationId;
       wsData.subscribedBoards = new Set<string>();
 
       // Subscribe user to personal inbox & organization presence feed

@@ -20,6 +20,10 @@ import { logger } from './logger';
  *   r:v1:{scope}:{ver}:{rest} cached JSON payload, TTL 300 (or shorter per-call)
  *   perm:{org}:{user}:{perm}  RBAC allow marker '1', TTL 60
  *   u:{userId} / n:{user}:{org} / q:{org}:{hash} / misc TTL-only keys (see below)
+ *
+ * Tenant-isolation rule: every board/card `rest` MUST start with `{orgId}:`
+ * (e.g. `${orgId}:full`). Version keys are bare IDs, so an unprefixed rest
+ * would serve one org's payload to another org on a cache hit.
  */
 
 const DATA_PREFIX = 'r:v1';

@@ -73,6 +73,34 @@ async function verifyListAccess(db: Database, listId: string, organizationId: st
   return list;
 }
 
+/** Tenant gate for every card sub-resource: single indexed PK lookup + org match. */
+async function verifyCardAccess(db: Database, cardId: string, organizationId: string) {
+  const [card] = await db
+    .select({ id: cards.id })
+    .from(cards)
+    .where(and(eq(cards.id, cardId), eq(cards.organizationId, organizationId)))
+    .limit(1);
+  if (!card) throw httpError(404, 'Card not found or access denied');
+  return card;
+}
+
+/** Assignees/participants/watchers must be members of the card's organization. */
+async function requireOrgMember(db: Database, organizationId: string, userId: string) {
+  const [m] = await db
+    .select({ userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.userId, userId),
+        isNull(organizationMembers.deletedAt)
+      )
+    )
+    .limit(1);
+  if (!m) throw httpError(403, 'User is not a member of this organization');
+  return m;
+}
+
 export async function getBoardIdForCard(db: Database, cardId: string) {
   const [result] = await db
     .select({ boardId: lists.boardId })
@@ -290,6 +318,7 @@ export async function createCard(db: Database, organizationId: string, input: Cr
       await createChecklist(
         db,
         card.id,
+        organizationId,
         input.checklist?.title?.trim() || 'Checklist #1',
         0,
         input.actorId,
@@ -328,164 +357,171 @@ export async function createCard(db: Database, organizationId: string, input: Cr
 export async function listCards(db: Database, listId: string, organizationId: string) {
   const { boardId } = await verifyListAccess(db, listId, organizationId);
   // Hot board-loop read: 1 Redis RTT on hit, zero Neon queries.
-  const { data } = await cachedBoardRead(boardId, `cards:${listId}`, 'cards', async () => {
-    const cardRows = await db
-      .select()
-      .from(cards)
-      .where(and(eq(cards.listId, listId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
-      .orderBy(cards.position);
+  const { data } = await cachedBoardRead(
+    boardId,
+    `${organizationId}:cards:${listId}`,
+    'cards',
+    async () => {
+      const cardRows = await db
+        .select()
+        .from(cards)
+        .where(and(eq(cards.listId, listId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
+        .orderBy(cards.position);
 
-    const cardIds = cardRows.map((c) => c.id);
-    if (cardIds.length === 0) return [];
+      const cardIds = cardRows.map((c) => c.id);
+      if (cardIds.length === 0) return [];
 
-    // Enrichment queries are independent — fan out concurrently (was 6 sequential
-    // round-trips; pool + Docker RTT made each list ~1s).
-    const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
-    const priorityIds = [...new Set(cardRows.map((c) => c.priorityId).filter(Boolean))] as string[];
-    const [
-      assigneeRows,
-      labelRows,
-      stageRows,
-      checklistItemsRows,
-      commentRows,
-      attachmentRows,
-      priorityRows,
-    ] = await Promise.all([
-      // 1. Assignees
-      db
-        .select({
-          cardId: cardAssignees.cardId,
-          id: users.id,
-          name: users.name,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
-        })
-        .from(cardAssignees)
-        .innerJoin(users, eq(users.id, cardAssignees.userId))
-        .where(inArray(cardAssignees.cardId, cardIds)),
-      // 2. Labels
-      db
-        .select({
-          cardId: cardLabels.cardId,
-          id: labels.id,
-          name: labels.name,
-          color: labels.color,
-        })
-        .from(cardLabels)
-        .innerJoin(labels, eq(labels.id, cardLabels.labelId))
-        .where(inArray(cardLabels.cardId, cardIds)),
-      // 3. Stages
-      stageIds.length > 0
-        ? db
-            .select({
-              id: stages.id,
-              name: stages.name,
-              color: stages.color,
-              category: stages.category,
-            })
-            .from(stages)
-            .where(inArray(stages.id, stageIds))
-        : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
-      // 4. Checklist counts
-      db
-        .select({
-          cardId: checklists.cardId,
-          itemId: checklistItems.id,
-          isDone: checklistItems.isDone,
-        })
-        .from(checklists)
-        .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
-        .where(inArray(checklists.cardId, cardIds)),
-      // 5. Comments counts
-      db
-        .select({
-          cardId: comments.cardId,
-          id: comments.id,
-        })
-        .from(comments)
-        .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
-      // 6. Attachments counts
-      db
-        .select({
-          cardId: attachments.cardId,
-          id: attachments.id,
-        })
-        .from(attachments)
-        .where(inArray(attachments.cardId, cardIds)),
-      // 7. Priorities (org-configured w/ colors)
-      priorityIds.length > 0
-        ? db
-            .select({
-              id: priorities.id,
-              name: priorities.name,
-              color: priorities.color,
-            })
-            .from(priorities)
-            .where(inArray(priorities.id, priorityIds))
-        : Promise.resolve([] as { id: string; name: string; color: string }[]),
-    ]);
+      // Enrichment queries are independent — fan out concurrently (was 6 sequential
+      // round-trips; pool + Docker RTT made each list ~1s).
+      const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
+      const priorityIds = [
+        ...new Set(cardRows.map((c) => c.priorityId).filter(Boolean)),
+      ] as string[];
+      const [
+        assigneeRows,
+        labelRows,
+        stageRows,
+        checklistItemsRows,
+        commentRows,
+        attachmentRows,
+        priorityRows,
+      ] = await Promise.all([
+        // 1. Assignees
+        db
+          .select({
+            cardId: cardAssignees.cardId,
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            avatarUrl: users.avatarUrl,
+          })
+          .from(cardAssignees)
+          .innerJoin(users, eq(users.id, cardAssignees.userId))
+          .where(inArray(cardAssignees.cardId, cardIds)),
+        // 2. Labels
+        db
+          .select({
+            cardId: cardLabels.cardId,
+            id: labels.id,
+            name: labels.name,
+            color: labels.color,
+          })
+          .from(cardLabels)
+          .innerJoin(labels, eq(labels.id, cardLabels.labelId))
+          .where(inArray(cardLabels.cardId, cardIds)),
+        // 3. Stages
+        stageIds.length > 0
+          ? db
+              .select({
+                id: stages.id,
+                name: stages.name,
+                color: stages.color,
+                category: stages.category,
+              })
+              .from(stages)
+              .where(inArray(stages.id, stageIds))
+          : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
+        // 4. Checklist counts
+        db
+          .select({
+            cardId: checklists.cardId,
+            itemId: checklistItems.id,
+            isDone: checklistItems.isDone,
+          })
+          .from(checklists)
+          .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
+          .where(inArray(checklists.cardId, cardIds)),
+        // 5. Comments counts
+        db
+          .select({
+            cardId: comments.cardId,
+            id: comments.id,
+          })
+          .from(comments)
+          .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
+        // 6. Attachments counts
+        db
+          .select({
+            cardId: attachments.cardId,
+            id: attachments.id,
+          })
+          .from(attachments)
+          .where(inArray(attachments.cardId, cardIds)),
+        // 7. Priorities (org-configured w/ colors)
+        priorityIds.length > 0
+          ? db
+              .select({
+                id: priorities.id,
+                name: priorities.name,
+                color: priorities.color,
+              })
+              .from(priorities)
+              .where(inArray(priorities.id, priorityIds))
+          : Promise.resolve([] as { id: string; name: string; color: string }[]),
+      ]);
 
-    const assigneesByCard = new Map<string, any>();
-    assigneeRows.forEach((a) => {
-      assigneesByCard.set(a.cardId, {
-        id: a.id,
-        name: a.name,
-        email: a.email,
-        avatarUrl: a.avatarUrl,
+      const assigneesByCard = new Map<string, any>();
+      assigneeRows.forEach((a) => {
+        assigneesByCard.set(a.cardId, {
+          id: a.id,
+          name: a.name,
+          email: a.email,
+          avatarUrl: a.avatarUrl,
+        });
       });
-    });
 
-    const labelsByCard = new Map<string, any[]>();
-    labelRows.forEach((l) => {
-      if (!labelsByCard.has(l.cardId)) labelsByCard.set(l.cardId, []);
-      labelsByCard.get(l.cardId)!.push({ id: l.id, name: l.name, color: l.color });
-    });
+      const labelsByCard = new Map<string, any[]>();
+      labelRows.forEach((l) => {
+        if (!labelsByCard.has(l.cardId)) labelsByCard.set(l.cardId, []);
+        labelsByCard.get(l.cardId)!.push({ id: l.id, name: l.name, color: l.color });
+      });
 
-    const stagesByStageId = new Map<string, any>();
-    stageRows.forEach((s) => stagesByStageId.set(s.id, s));
+      const stagesByStageId = new Map<string, any>();
+      stageRows.forEach((s) => stagesByStageId.set(s.id, s));
 
-    const prioritiesById = new Map<string, any>();
-    priorityRows.forEach((p) => prioritiesById.set(p.id, p));
+      const prioritiesById = new Map<string, any>();
+      priorityRows.forEach((p) => prioritiesById.set(p.id, p));
 
-    const checklistStatsByCard = new Map<string, { total: number; done: number }>();
-    checklistItemsRows.forEach((row) => {
-      if (!checklistStatsByCard.has(row.cardId)) {
-        checklistStatsByCard.set(row.cardId, { total: 0, done: 0 });
-      }
-      if (row.itemId) {
-        const stats = checklistStatsByCard.get(row.cardId)!;
-        stats.total += 1;
-        if (row.isDone) stats.done += 1;
-      }
-    });
+      const checklistStatsByCard = new Map<string, { total: number; done: number }>();
+      checklistItemsRows.forEach((row) => {
+        if (!checklistStatsByCard.has(row.cardId)) {
+          checklistStatsByCard.set(row.cardId, { total: 0, done: 0 });
+        }
+        if (row.itemId) {
+          const stats = checklistStatsByCard.get(row.cardId)!;
+          stats.total += 1;
+          if (row.isDone) stats.done += 1;
+        }
+      });
 
-    const commentsCountByCard = new Map<string, number>();
-    commentRows.forEach((c) => {
-      commentsCountByCard.set(c.cardId, (commentsCountByCard.get(c.cardId) || 0) + 1);
-    });
+      const commentsCountByCard = new Map<string, number>();
+      commentRows.forEach((c) => {
+        commentsCountByCard.set(c.cardId, (commentsCountByCard.get(c.cardId) || 0) + 1);
+      });
 
-    const attachmentsCountByCard = new Map<string, number>();
-    attachmentRows.forEach((a) => {
-      attachmentsCountByCard.set(a.cardId, (attachmentsCountByCard.get(a.cardId) || 0) + 1);
-    });
+      const attachmentsCountByCard = new Map<string, number>();
+      attachmentRows.forEach((a) => {
+        attachmentsCountByCard.set(a.cardId, (attachmentsCountByCard.get(a.cardId) || 0) + 1);
+      });
 
-    return cardRows.map((card) => {
-      const clStats = checklistStatsByCard.get(card.id) || { total: 0, done: 0 };
-      const assignee = assigneesByCard.get(card.id) || null;
-      return {
-        ...card,
-        assignee,
-        assignees: assignee ? [assignee] : [],
-        labels: labelsByCard.get(card.id) || [],
-        stage: card.stageId ? stagesByStageId.get(card.stageId) || null : null,
-        priority: card.priorityId ? prioritiesById.get(card.priorityId) || null : null,
-        checklistTotal: clStats.total,
-        checklistDone: clStats.done,
-        commentsCount: commentsCountByCard.get(card.id) || 0,
-        attachmentsCount: attachmentsCountByCard.get(card.id) || 0,
-      };
-    });
-  });
+      return cardRows.map((card) => {
+        const clStats = checklistStatsByCard.get(card.id) || { total: 0, done: 0 };
+        const assignee = assigneesByCard.get(card.id) || null;
+        return {
+          ...card,
+          assignee,
+          assignees: assignee ? [assignee] : [],
+          labels: labelsByCard.get(card.id) || [],
+          stage: card.stageId ? stagesByStageId.get(card.stageId) || null : null,
+          priority: card.priorityId ? prioritiesById.get(card.priorityId) || null : null,
+          checklistTotal: clStats.total,
+          checklistDone: clStats.done,
+          commentsCount: commentsCountByCard.get(card.id) || 0,
+          attachmentsCount: attachmentsCountByCard.get(card.id) || 0,
+        };
+      });
+    }
+  );
   return data;
 }
 
@@ -547,7 +583,7 @@ export async function getCard(
 ) {
   // Hot modal read: 1 Redis RTT on hit, zero Neon queries.
   // 404s thrown by the loader are never cached (store happens only on success).
-  const { data, hit } = await cachedCardRead(id, 'full', 'card', async () => {
+  const { data, hit } = await cachedCardRead(id, `${organizationId}:full`, 'card', async () => {
     const [card] = await db
       .select({
         id: cards.id,
@@ -874,14 +910,45 @@ export async function deleteCard(db: Database, id: string, organizationId: strin
   return { success: true, id };
 }
 
-export async function getBoardLabels(db: Database, boardId: string) {
-  const { data } = await cachedBoardRead(boardId, 'labels', 'labels', () =>
+/** Tenant gate for board-scoped label reads/writes. */
+async function verifyBoardOrg(db: Database, boardId: string, organizationId: string) {
+  const [board] = await db
+    .select({ id: boards.id })
+    .from(boards)
+    .where(and(eq(boards.id, boardId), eq(boards.organizationId, organizationId)))
+    .limit(1);
+  if (!board) throw httpError(404, 'Board not found or access denied');
+  return board;
+}
+
+/** Tenant gate for labelId-keyed routes (labels → board → org join). */
+async function verifyLabelAccess(db: Database, labelId: string, organizationId: string) {
+  const [row] = await db
+    .select({ boardId: labels.boardId })
+    .from(labels)
+    .innerJoin(boards, eq(boards.id, labels.boardId))
+    .where(and(eq(labels.id, labelId), eq(boards.organizationId, organizationId)))
+    .limit(1);
+  if (!row) throw httpError(404, 'Label not found or access denied');
+  return row;
+}
+
+export async function getBoardLabels(db: Database, boardId: string, organizationId: string) {
+  await verifyBoardOrg(db, boardId, organizationId);
+  const { data } = await cachedBoardRead(boardId, `${organizationId}:labels`, 'labels', () =>
     db.select().from(labels).where(eq(labels.boardId, boardId)).orderBy(labels.name)
   );
   return data;
 }
 
-export async function createBoardLabel(db: Database, boardId: string, name: string, color: string) {
+export async function createBoardLabel(
+  db: Database,
+  boardId: string,
+  organizationId: string,
+  name: string,
+  color: string
+) {
+  await verifyBoardOrg(db, boardId, organizationId);
   const [newLabel] = await db.insert(labels).values({ boardId, name, color }).returning();
   await bumpBoardCache(boardId);
   return newLabel;
@@ -890,9 +957,11 @@ export async function createBoardLabel(db: Database, boardId: string, name: stri
 export async function updateBoardLabel(
   db: Database,
   labelId: string,
+  organizationId: string,
   name?: string,
   color?: string
 ) {
+  await verifyLabelAccess(db, labelId, organizationId);
   const updateData: Record<string, any> = {};
   if (name !== undefined) updateData.name = name.trim();
   if (color !== undefined) updateData.color = color;
@@ -913,7 +982,8 @@ export async function updateBoardLabel(
   return updated;
 }
 
-export async function deleteBoardLabel(db: Database, labelId: string) {
+export async function deleteBoardLabel(db: Database, labelId: string, organizationId: string) {
+  await verifyLabelAccess(db, labelId, organizationId);
   const [existing] = await db.select().from(labels).where(eq(labels.id, labelId)).limit(1);
   const attached = await db
     .select({ cardId: cardLabels.cardId })
@@ -1039,7 +1109,8 @@ export async function archiveCard(
 }
 
 // ─── Comments ─────────────────────────────────────────────────────────────────
-export async function listComments(db: Database, cardId: string) {
+export async function listComments(db: Database, cardId: string, organizationId: string) {
+  await verifyCardAccess(db, cardId, organizationId);
   return db
     .select({
       id: comments.id,
@@ -1062,22 +1133,17 @@ export async function listComments(db: Database, cardId: string) {
 export async function createComment(
   db: Database,
   cardId: string,
+  organizationId: string,
   userId: string,
   body: string,
   mentionedUserIds?: string[]
 ) {
+  await verifyCardAccess(db, cardId, organizationId);
   const [comment] = await db.insert(comments).values({ cardId, userId, body }).returning();
 
-  // Find board and org
+  // Find board (org comes from the verified tenant scope, not the card graph)
   const boardId = await getBoardIdForCard(db, cardId);
-  let orgId = '';
-  if (boardId) {
-    const [board] = await db
-      .select({ organizationId: boards.organizationId })
-      .from(boards)
-      .where(eq(boards.id, boardId));
-    orgId = board?.organizationId || '';
-  }
+  const orgId = organizationId;
 
   // Handle mentioned users
   const targetMentionIds = new Set<string>(mentionedUserIds || []);
@@ -1093,9 +1159,22 @@ export async function createComment(
     }
   }
 
-  // Auto-add mentioned users as observers / watchers if not already watching
+  // Auto-add mentioned users as observers / watchers if not already watching.
+  // Only organization members can be pulled in — guessed cross-org UUIDs are ignored.
   for (const mentionedId of targetMentionIds) {
     if (mentionedId && mentionedId !== userId) {
+      const [isMember] = await db
+        .select({ userId: organizationMembers.userId })
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.organizationId, orgId),
+            eq(organizationMembers.userId, mentionedId),
+            isNull(organizationMembers.deletedAt)
+          )
+        )
+        .limit(1);
+      if (!isMember) continue;
       // 1. Add as card watcher
       await db.insert(cardWatchers).values({ cardId, userId: mentionedId }).onConflictDoNothing();
 
@@ -1289,7 +1368,8 @@ export async function deleteComment(
 }
 
 // ─── Attachments ──────────────────────────────────────────────────────────────
-export async function listAttachments(db: Database, cardId: string) {
+export async function listAttachments(db: Database, cardId: string, organizationId: string) {
+  await verifyCardAccess(db, cardId, organizationId);
   return db
     .select()
     .from(attachments)
@@ -1300,12 +1380,14 @@ export async function listAttachments(db: Database, cardId: string) {
 export async function createAttachmentRecord(
   db: Database,
   cardId: string,
+  organizationId: string,
   userId: string,
   url: string,
   fileName: string,
   fileType?: string,
   sizeBytes?: number
 ) {
+  await verifyCardAccess(db, cardId, organizationId);
   const [attachment] = await db
     .insert(attachments)
     .values({ cardId, uploadedBy: userId, url, fileName, fileType, sizeBytes })
@@ -1314,13 +1396,20 @@ export async function createAttachmentRecord(
   return attachment;
 }
 
-export async function deleteAttachment(db: Database, attachmentId: string, userId: string) {
+export async function deleteAttachment(
+  db: Database,
+  attachmentId: string,
+  organizationId: string,
+  userId: string
+) {
   const [attachment] = await db
     .update(attachments)
     .set({ deletedAt: new Date() })
     .where(and(eq(attachments.id, attachmentId), eq(attachments.uploadedBy, userId)))
     .returning();
   if (!attachment) throw httpError(404, 'Attachment not found or not authorized to delete');
+  // Tenant check on the owning card (uploader match alone is not enough).
+  await verifyCardAccess(db, attachment.cardId, organizationId);
   await bumpForCard(db, attachment.cardId);
   return attachment;
 }
@@ -1333,8 +1422,9 @@ export function isValidUuid(id?: string | null): boolean {
 }
 
 // ─── Labels ───────────────────────────────────────────────────────────────────
-export async function getCardLabels(db: Database, cardId: string) {
+export async function getCardLabels(db: Database, cardId: string, organizationId: string) {
   if (!isValidUuid(cardId)) return [];
+  await verifyCardAccess(db, cardId, organizationId);
   return db
     .select({ label: labels })
     .from(cardLabels)
@@ -1345,12 +1435,14 @@ export async function getCardLabels(db: Database, cardId: string) {
 export async function attachLabelToCard(
   db: Database,
   cardId: string,
+  organizationId: string,
   labelId: string,
   actorId?: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(labelId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
   }
+  await verifyCardAccess(db, cardId, organizationId);
   await db.insert(cardLabels).values({ cardId, labelId }).onConflictDoNothing();
   const boardId = await getBoardIdForCard(db, cardId);
   if (actorId) {
@@ -1382,12 +1474,14 @@ export async function attachLabelToCard(
 export async function removeLabelFromCard(
   db: Database,
   cardId: string,
+  organizationId: string,
   labelId: string,
   actorId?: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(labelId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
   }
+  await verifyCardAccess(db, cardId, organizationId);
   const [label] = actorId
     ? await db.select({ name: labels.name }).from(labels).where(eq(labels.id, labelId)).limit(1)
     : [];
@@ -1405,12 +1499,15 @@ export async function removeLabelFromCard(
 export async function assignUserToCard(
   db: Database,
   cardId: string,
+  organizationId: string,
   userId: string,
   actorId: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
+  await verifyCardAccess(db, cardId, organizationId);
+  await requireOrgMember(db, organizationId, userId);
   // Enforce single primary assignee: clear previous assignees first
   await db.delete(cardAssignees).where(eq(cardAssignees.cardId, cardId));
   await db
@@ -1446,12 +1543,14 @@ export async function assignUserToCard(
 export async function removeUserFromCard(
   db: Database,
   cardId: string,
+  organizationId: string,
   userId: string,
   actorId?: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
+  await verifyCardAccess(db, cardId, organizationId);
   const name = actorId ? await getUserDisplayName(db, userId) : null;
   await db
     .delete(cardAssignees)
@@ -1471,12 +1570,15 @@ export async function removeUserFromCard(
 export async function addParticipantToCard(
   db: Database,
   cardId: string,
+  organizationId: string,
   userId: string,
   actorId: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
+  await verifyCardAccess(db, cardId, organizationId);
+  await requireOrgMember(db, organizationId, userId);
   await db
     .insert(cardParticipants)
     .values({ cardId, userId, addedBy: actorId, addedAt: new Date() })
@@ -1513,12 +1615,14 @@ export async function addParticipantToCard(
 export async function removeParticipantFromCard(
   db: Database,
   cardId: string,
+  organizationId: string,
   userId: string,
   actorId?: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
     return { success: false, error: 'Invalid UUID provided for cardId or userId' };
   }
+  await verifyCardAccess(db, cardId, organizationId);
   const name = actorId ? await getUserDisplayName(db, userId) : null;
   await db
     .delete(cardParticipants)
@@ -1534,8 +1638,9 @@ export async function removeParticipantFromCard(
   return { success: true };
 }
 
-export async function getCardParticipants(db: Database, cardId: string) {
+export async function getCardParticipants(db: Database, cardId: string, organizationId: string) {
   if (!isValidUuid(cardId)) return [];
+  await verifyCardAccess(db, cardId, organizationId);
   return await db
     .select({
       id: users.id,
@@ -1635,7 +1740,8 @@ export async function unwatchCard(
   return { success: true, watched: false };
 }
 
-export async function getCardWatchers(db: Database, cardId: string) {
+export async function getCardWatchers(db: Database, cardId: string, organizationId: string) {
+  await verifyCardAccess(db, cardId, organizationId);
   return db
     .select({
       id: users.id,
@@ -1651,7 +1757,8 @@ export async function getCardWatchers(db: Database, cardId: string) {
 }
 
 // ─── Checklists ───────────────────────────────────────────────────────────────
-export async function getCardChecklists(db: Database, cardId: string) {
+export async function getCardChecklists(db: Database, cardId: string, organizationId: string) {
+  await verifyCardAccess(db, cardId, organizationId);
   // Independent queries (items re-derive cardId via join) — run concurrently.
   const [allChecklists, allItems] = await Promise.all([
     db
@@ -1684,11 +1791,13 @@ export async function getCardChecklists(db: Database, cardId: string) {
 export async function createChecklist(
   db: Database,
   cardId: string,
+  organizationId: string,
   title: string,
   position: number,
   actorUserId?: string,
   items?: string[]
 ) {
+  await verifyCardAccess(db, cardId, organizationId);
   const [checklist] = await db.insert(checklists).values({ cardId, title, position }).returning();
   if (!checklist) throw httpError(500, 'Failed to create checklist');
 
@@ -1725,16 +1834,43 @@ export async function createChecklist(
   return { ...checklist, items: insertedItems };
 }
 
+/** Tenant gate for checklist-keyed routes: resolves the owning card + verifies org. */
+async function verifyChecklistAccess(db: Database, checklistId: string, organizationId: string) {
+  const [row] = await db
+    .select({ cardId: checklists.cardId })
+    .from(checklists)
+    .innerJoin(cards, eq(cards.id, checklists.cardId))
+    .where(and(eq(checklists.id, checklistId), eq(cards.organizationId, organizationId)))
+    .limit(1);
+  if (!row) throw httpError(404, 'Checklist not found or access denied');
+  return row.cardId;
+}
+
+/** Tenant gate for checklist-item-keyed routes. */
+async function verifyChecklistItemAccess(db: Database, itemId: string, organizationId: string) {
+  const [row] = await db
+    .select({ cardId: checklists.cardId })
+    .from(checklistItems)
+    .innerJoin(checklists, eq(checklists.id, checklistItems.checklistId))
+    .innerJoin(cards, eq(cards.id, checklists.cardId))
+    .where(and(eq(checklistItems.id, itemId), eq(cards.organizationId, organizationId)))
+    .limit(1);
+  if (!row) throw httpError(404, 'Checklist item not found or access denied');
+  return row.cardId;
+}
+
 export async function createBulkChecklistItems(
   db: Database,
   checklistId: string,
+  organizationId: string,
   items: string[],
   actorUserId?: string
 ) {
   const [cl] = await db
     .select({ cardId: checklists.cardId, title: checklists.title })
     .from(checklists)
-    .where(eq(checklists.id, checklistId));
+    .innerJoin(cards, eq(cards.id, checklists.cardId))
+    .where(and(eq(checklists.id, checklistId), eq(cards.organizationId, organizationId)));
   if (!cl) throw httpError(404, 'Checklist not found');
 
   const validItems = items.map((t) => t.trim()).filter(Boolean);
@@ -1784,19 +1920,27 @@ export async function createBulkChecklistItems(
 export async function createChecklistItem(
   db: Database,
   checklistId: string,
+  organizationId: string,
   text: string,
   position: number,
   assignedTo?: string,
   dueDate?: Date,
   actorUserId?: string
 ) {
+  await verifyChecklistAccess(db, checklistId, organizationId);
   if (text.includes('\n')) {
     const lines = text
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
     if (lines.length > 1) {
-      const items = await createBulkChecklistItems(db, checklistId, lines, actorUserId);
+      const items = await createBulkChecklistItems(
+        db,
+        checklistId,
+        organizationId,
+        lines,
+        actorUserId
+      );
       return items[0] || null;
     }
     text = lines[0] || text.trim();
@@ -1831,9 +1975,11 @@ export async function createChecklistItem(
 export async function updateChecklistItem(
   db: Database,
   itemId: string,
+  organizationId: string,
   input: any,
   actorUserId?: string
 ) {
+  await verifyChecklistItemAccess(db, itemId, organizationId);
   const [existing] = await db
     .select({
       id: checklistItems.id,
@@ -1877,7 +2023,13 @@ export async function updateChecklistItem(
   return item;
 }
 
-export async function deleteChecklistItem(db: Database, itemId: string, actorUserId?: string) {
+export async function deleteChecklistItem(
+  db: Database,
+  itemId: string,
+  organizationId: string,
+  actorUserId?: string
+) {
+  await verifyChecklistItemAccess(db, itemId, organizationId);
   const [existing] = await db
     .select({
       text: checklistItems.text,
@@ -1913,9 +2065,11 @@ export async function deleteChecklistItem(db: Database, itemId: string, actorUse
 export async function updateChecklist(
   db: Database,
   checklistId: string,
+  organizationId: string,
   title: string,
   actorUserId?: string
 ) {
+  await verifyChecklistAccess(db, checklistId, organizationId);
   const [existing] = await db
     .select({ cardId: checklists.cardId, title: checklists.title })
     .from(checklists)
@@ -1943,7 +2097,13 @@ export async function updateChecklist(
   return updated;
 }
 
-export async function deleteChecklist(db: Database, checklistId: string, actorUserId?: string) {
+export async function deleteChecklist(
+  db: Database,
+  checklistId: string,
+  organizationId: string,
+  actorUserId?: string
+) {
+  await verifyChecklistAccess(db, checklistId, organizationId);
   const [existing] = await db
     .select({ cardId: checklists.cardId, title: checklists.title })
     .from(checklists)

@@ -71,7 +71,7 @@ export async function createList(db: Database, organizationId: string, input: Cr
 export async function listLists(db: Database, boardId: string, organizationId: string) {
   await verifyBoardAccess(db, boardId, organizationId);
 
-  const { data } = await cachedBoardRead(boardId, 'lists', 'lists', () =>
+  const { data } = await cachedBoardRead(boardId, `${organizationId}:lists`, 'lists', () =>
     db
       .select()
       .from(lists)
