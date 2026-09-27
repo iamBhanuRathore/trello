@@ -821,7 +821,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
         {isAddMemberOpen &&
           createPortal(
             <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-              <div className="bg-card border border-border shadow-2xl rounded-2xl w-full max-w-md p-5 space-y-4">
+              <div className="bg-card border border-border shadow-2xl rounded-2xl w-full max-w-lg p-6 space-y-5">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                     <UserPlus className="w-4 h-4 text-primary" />
@@ -862,7 +862,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
                     </div>
 
                     {/* Candidates List */}
-                    <div className="max-h-44 overflow-y-auto rounded-xl border border-border divide-y divide-border/60 bg-muted/10">
+                    <div className="max-h-72 overflow-y-auto rounded-xl border border-border divide-y divide-border/60 bg-muted/10">
                       {filteredCandidates.length === 0 ? (
                         <div className="p-5 text-center text-xs text-muted-foreground">
                           {candidateSearch
