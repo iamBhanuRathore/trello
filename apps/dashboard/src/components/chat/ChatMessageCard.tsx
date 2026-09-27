@@ -481,7 +481,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
               isSelected
                 ? 'bg-primary border-primary text-primary-foreground'
                 : 'border-border bg-background text-transparent hover:border-primary'
-            }`}
+            } ${isAuthor ? 'mr-auto' : ''}`}
           >
             <Check className="w-3.5 h-3.5" />
           </button>
