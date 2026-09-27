@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Loader2, Languages, Forward, CheckCheck, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDialogClose } from '../../hooks/useDialogClose';
 import { chatService, type ChatChannel, type SeenByResult } from '../../lib/chatService';
 import { getInitials } from '../../utils/avatar';
 
@@ -20,6 +21,8 @@ export const MessageTranslateModal: React.FC<{
   text: string;
   onClose: () => void;
 }> = ({ text, onClose }) => {
+  // One sanctioned close path (X / backdrop / Esc, idempotent).
+  const { requestClose, handleOverlayClick } = useDialogClose({ isOpen: true, onClose });
   const browserLang = (typeof navigator !== 'undefined' ? navigator.language : 'en')
     .slice(0, 2)
     .toLowerCase();
@@ -56,7 +59,7 @@ export const MessageTranslateModal: React.FC<{
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-      onClick={onClose}
+      onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-label="Translate message"
@@ -72,7 +75,7 @@ export const MessageTranslateModal: React.FC<{
           </h3>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close translate"
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
           >
@@ -122,6 +125,8 @@ export const MessageForwardModal: React.FC<{
   onForward: (targetChannelId: string) => void;
   isPending?: boolean;
 }> = ({ messagePreview, onClose, onForward, isPending }) => {
+  // One sanctioned close path (X / backdrop / Esc, idempotent).
+  const { requestClose, handleOverlayClick } = useDialogClose({ isOpen: true, onClose });
   const { data: channels = [], isLoading } = useQuery({
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
@@ -135,7 +140,7 @@ export const MessageForwardModal: React.FC<{
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-      onClick={onClose}
+      onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-label="Forward message"
@@ -151,7 +156,7 @@ export const MessageForwardModal: React.FC<{
           </h3>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close forward"
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
           >
@@ -215,6 +220,8 @@ export const MessageSeenPopover: React.FC<{
   messageId: string;
   onClose: () => void;
 }> = ({ messageId, onClose }) => {
+  // One sanctioned close path (X / backdrop / Esc, idempotent).
+  const { requestClose, handleOverlayClick } = useDialogClose({ isOpen: true, onClose });
   const { data, isLoading } = useQuery<SeenByResult>({
     queryKey: ['chat', 'seen', messageId],
     queryFn: () => chatService.getSeenBy(messageId),
@@ -223,7 +230,7 @@ export const MessageSeenPopover: React.FC<{
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
-      onClick={onClose}
+      onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-label="Seen by"
@@ -239,7 +246,7 @@ export const MessageSeenPopover: React.FC<{
           </h3>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close seen list"
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
           >

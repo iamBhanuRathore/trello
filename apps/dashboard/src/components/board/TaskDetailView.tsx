@@ -838,15 +838,8 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       handleAttemptAction(() => onClose?.());
     }, [handleAttemptAction, onClose]);
 
-    // ESC key closes the dialog (modal mode only)
-    useEffect(() => {
-      if (mode !== 'modal') return;
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') handleAttemptClose();
-      };
-      document.addEventListener('keydown', handleKeyDown);
-      return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [mode, handleAttemptClose]);
+    // Esc is handled once by the Radix dialog shell (routes through
+    // requestClose via CardModal) — no local listener, no double-close.
 
     useImperativeHandle(
       ref,

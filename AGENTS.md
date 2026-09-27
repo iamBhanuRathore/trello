@@ -61,3 +61,9 @@ Every page in `apps/dashboard` (and `apps/super-admin`) MUST be usable at all of
 - **Touch targets**: interactive controls ≥ 36px on coarse pointers; hover-only actions must have a touch/click equivalent (context menu, long-press, visible button).
 - **Dialogs/sheets**: `w-full` with `max-w-*`, `max-h-[90vh]` scrollable bodies; side panes become overlays (`fixed inset-y-0 right-0`) below `2xl:` where the layout already does so.
 - **Verify by resizing**: before committing UI work, resize to 390px and 820px widths and confirm no horizontal overflow (`overflow-x` on `document.body`), no clipped primary actions, no wrapped-blob badges.
+
+## 10. Dialog Close Contract (STRICT — NO EXCEPTIONS)
+
+- **One close path**: every dialog (Radix or hand-rolled portal) MUST close exclusively through `useDialogClose({ isOpen, onClose, ... })` (`apps/dashboard/src/hooks/useDialogClose.ts`) — X button → `requestClose`, backdrop → `handleOverlayClick`, Radix → `handleOpenChange`. Never wire `onClose`, `useEscapeKey`, or inline overlay checks directly.
+- **Why**: duplicate close gestures (double Esc listeners, overlay+button both firing, focus-strand shortcut refires) caused the recurring "close twice / reopens" bug class. `requestClose` is idempotent per open session; Esc is capture-phase so it can't double-fire with inner handlers; invoker focus restores automatically.
+- **Dirty editors**: pass `isDirty` + `onDirtyRequest` (open the unsaved-changes prompt) instead of branching close logic inside the dialog.

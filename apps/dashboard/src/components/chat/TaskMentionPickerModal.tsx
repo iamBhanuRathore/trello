@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, X, CheckSquare, Loader2, ArrowRight } from 'lucide-react';
 import { searchService } from '../../lib/searchService';
-import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 interface TaskMentionPickerModalProps {
   isOpen: boolean;
@@ -16,7 +16,8 @@ export const TaskMentionPickerModal: React.FC<TaskMentionPickerModalProps> = ({
   onClose,
   onSelectTask,
 }) => {
-  useEscapeKey(onClose, isOpen);
+  // One sanctioned close path (X / backdrop / Esc, idempotent).
+  const { requestClose, handleOverlayClick } = useDialogClose({ isOpen, onClose });
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -36,9 +37,7 @@ export const TaskMentionPickerModal: React.FC<TaskMentionPickerModalProps> = ({
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={handleOverlayClick}
     >
       <div
         className="bg-card w-full max-w-md rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
@@ -58,7 +57,7 @@ export const TaskMentionPickerModal: React.FC<TaskMentionPickerModalProps> = ({
           />
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />

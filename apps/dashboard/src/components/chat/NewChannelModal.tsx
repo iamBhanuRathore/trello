@@ -10,8 +10,7 @@ import { presenceService } from '../../lib/presenceService';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
-import { useEscapeKey } from '../../hooks/useEscapeKey';
-import { useRestoreFocusOnClose } from '../../hooks/useFocusReturn';
+import { useDialogClose } from '../../hooks/useDialogClose';
 import { getInitials } from '../../utils/avatar';
 
 interface NewChannelModalProps {
@@ -20,7 +19,8 @@ interface NewChannelModalProps {
 }
 
 export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClose }) => {
-  useEscapeKey(onClose, isOpen);
+  // One sanctioned close path (X / backdrop / Esc, idempotent).
+  const { requestClose, handleOverlayClick } = useDialogClose({ isOpen, onClose });
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -35,9 +35,6 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
   const [allowMemberInvites, setAllowMemberInvites] = useState(true);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
-
-  // Return focus to the invoking control on close (see hook note).
-  useRestoreFocusOnClose(isOpen);
 
   // Fetch org members for selection
   const { data: members = [] } = useQuery({
@@ -96,7 +93,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
       } else {
         openGlobalDock(channel.id);
       }
-      onClose();
+      requestClose();
       // Reset form
       setName('');
       setTopic('');
@@ -119,9 +116,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={handleOverlayClick}
     >
       <div
         className="bg-card w-full max-w-4xl max-h-[90vh] rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
@@ -148,7 +143,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="p-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -488,7 +483,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
           <div className="flex items-center gap-2.5 ml-auto">
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               className="px-4 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
             >
               Cancel

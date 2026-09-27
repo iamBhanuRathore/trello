@@ -2103,3 +2103,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **User request:** jump into a DM directly from the task chat screen.
 - **Frontend only:** author avatars + names in `TaskChatPane` are now buttons (own messages and bot/system rows stay static) opening the GlobalChatDock on the 1-on-1 channel; `createDirectMessage` is idempotent so repeats reuse the channel. Failure-only toast; pending state blocks double-clicks.
 - Tests & Validation: dashboard `tsc` + `oxlint` clean.
+
+### 2026-09-28 --- Dialog Close Contract (shared useDialogClose)
+
+- **User request:** close-twice/reopen bugs keep recurring per dialog — build the fix once, reuse everywhere.
+- **What:** new `useDialogClose` hook — X/backdrop/Esc funnel through idempotent `requestClose` (one close per open session), capture-phase Esc, automatic invoker focus restore, dirty-editor routing. Migrated: CardModal/TaskDetailView (dirty lifts via `onDirtyChange`, TaskDetailView's duplicate Esc listener removed in favor of the Radix shell), New DM/channel, Working Hours, task-mention picker, translate/forward/seen. Enshrined as AGENTS.md §10 + Decisions entry so new dialogs follow it.
+- Tests & Validation: dashboard `tsc` + `oxlint` clean.

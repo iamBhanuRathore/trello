@@ -10,8 +10,7 @@ import { presenceService } from '../../lib/presenceService';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
-import { useEscapeKey } from '../../hooks/useEscapeKey';
-import { useRestoreFocusOnClose } from '../../hooks/useFocusReturn';
+import { useDialogClose } from '../../hooks/useDialogClose';
 import { getInitials } from '../../utils/avatar';
 
 interface NewDirectMessageModalProps {
@@ -23,7 +22,8 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  useEscapeKey(onClose, isOpen);
+  // One sanctioned close path (X / backdrop / Esc, idempotent).
+  const { requestClose, handleOverlayClick } = useDialogClose({ isOpen, onClose });
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -31,9 +31,6 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
   const { setActiveChannelId, openGlobalDock } = useChatStore();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-
-  // Return focus to the invoking control on close (see hook note).
-  useRestoreFocusOnClose(isOpen);
 
   // Fetch org members
   const { data: members = [], isLoading: isMembersLoading } = useQuery({
@@ -84,7 +81,7 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
       } else {
         openGlobalDock(channel.id);
       }
-      onClose();
+      requestClose();
       setSearch('');
     },
     onError: (err: any) => {
@@ -97,9 +94,7 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={handleOverlayClick}
     >
       <div
         className="bg-card w-full max-w-xl rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
@@ -121,7 +116,7 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />

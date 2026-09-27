@@ -741,3 +741,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** Postgres enum (rejected — adding a level needs a migration, no per-org variance, no colors); reusing board labels (rejected — board-scoped, multi-assign, wrong semantics); free-text column (rejected — no color mapping, typo-prone filtering).
 
 **Decision:** `priorities` table per org (unique name, hex color validated `^#[0-9a-fA-F]{3,6}$`, rank order, single default), lazy-seeded Urgent/High/Medium(default)/Low; `cards.priority_id` set-null; delete reassigns to default (never orphans, last level protected); `org.update` gates mutations. Frontend renders colors exclusively from the API. Benchmark: Jira (org-level priority schemes with icons/colors) over Trello (fixed labels).
+
+## 2026-09-28 — Dialog Close Contract: One Hook for Every Dialog
+
+**Context:** "Close twice" bugs recurred per dialog (task modal reopen races, focus-strand shortcut refires, duplicate Esc listeners). Each dialog hand-rolled X/backdrop/Esc/focus-return wiring.
+
+**Alternatives considered:** fixing each dialog in place (rejected — the class keeps recurring); a wrapper component forcing markup changes on 20+ dialogs (rejected — too invasive; Radix and portal dialogs differ structurally).
+
+**Decision:** `useDialogClose({ isOpen, onClose, isDirty?, onDirtyRequest? })` is the single close path — X, backdrop (target-guarded), and Esc (capture-phase, wins over inner handlers) all funnel through an idempotent `requestClose` (one close per open session); invoker focus restores via the existing tracker. Dirty editors keep their prompt via `onDirtyRequest`. Migrated: CardModal/TaskDetailView (dirty lifts via `onDirtyChange`), New DM/channel, Working Hours, task-mention picker, translate/forward/seen. Radix-direct `setState` dialogs are already single-close; new dialogs MUST use the hook (AGENTS.md §9-adjacent rule).

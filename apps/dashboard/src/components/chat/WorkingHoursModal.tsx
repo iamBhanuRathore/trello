@@ -5,7 +5,7 @@ import { Clock, Globe, X, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { presenceService } from '../../lib/presenceService';
 import { PresenceBadge } from './PresenceBadge';
-import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 interface WorkingHoursModalProps {
   isOpen: boolean;
@@ -29,7 +29,8 @@ const COMMON_TIMEZONES = [
 ];
 
 export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, onClose }) => {
-  useEscapeKey(onClose, isOpen);
+  // One sanctioned close path (X / backdrop / Esc, idempotent).
+  const { requestClose, handleOverlayClick } = useDialogClose({ isOpen, onClose });
 
   const queryClient = useQueryClient();
 
@@ -92,7 +93,7 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['presence', 'me'] });
-      onClose();
+      requestClose();
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to update status');
@@ -103,7 +104,7 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
     mutationFn: () => presenceService.clearMyPresence(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['presence', 'me'] });
-      onClose();
+      requestClose();
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to clear status');
@@ -119,7 +120,7 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['presence', 'working-hours'] });
       queryClient.invalidateQueries({ queryKey: ['presence', 'me'] });
-      onClose();
+      requestClose();
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to update working hours');
@@ -141,9 +142,7 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={handleOverlayClick}
     >
       <div
         className="bg-card w-full max-w-lg rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
@@ -165,7 +164,7 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -366,7 +365,7 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
         <div className="p-4 bg-muted/20 border-t border-border flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="px-4 py-2 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
           >
             Cancel
