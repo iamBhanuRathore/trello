@@ -258,6 +258,9 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   // Delete message mutation
   const deleteMutation = useMutation({
     mutationFn: (messageId: string) => chatService.deleteMessage(messageId),
+    onError: (err: any) => {
+      toast.error(serverErrorMessage(err, 'Failed to delete message'));
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['chat', 'messages', channel.id] });
     },
@@ -292,30 +295,64 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     },
   });
 
+  // Optimistic outbox rows (temp-*) exist only locally — the server 404s on
+  // forward/delete for them, so they can never enter selection.
+  const isPersistedMessage = (m: Pick<ChatMessageItem, 'id' | 'status'>) =>
+    !m.id.startsWith('temp-') && m.status !== 'sending' && m.status !== 'queued';
+
+  const serverErrorMessage = (err: any, fallback: string) =>
+    err.response?.data?.message || err.message || fallback;
+
   const handleForward = async (targetChannelId: string) => {
-    const sources = forwardSource
+    const candidates = forwardSource
       ? [forwardSource]
       : mergedMessages.filter((m) => selectedIds.has(m.id));
-    if (sources.length === 0) return;
+    const sources = candidates.filter(isPersistedMessage);
+    if (sources.length === 0) {
+      toast.error('These messages are still sending — try again in a moment.');
+      return;
+    }
     setIsForwardPending(true);
     try {
-      for (const src of sources) {
-        await chatService.forwardMessage(src.id, targetChannelId);
-      }
+      const results = await Promise.allSettled(
+        sources.map((src) => chatService.forwardMessage(src.id, targetChannelId))
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
       queryClient.invalidateQueries({ queryKey: ['chat', 'messages', targetChannelId] });
       queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
       setForwardSource(null);
       setIsBulkForwardOpen(false);
       setSelectedIds(new Set());
       setSelectMode(false);
+      if (failed === 0) {
+        toast.success(
+          sources.length === 1 ? 'Message forwarded' : `${sources.length} messages forwarded`
+        );
+      } else if (failed < sources.length) {
+        toast.warning(
+          `${sources.length - failed} of ${sources.length} messages forwarded — ${failed} failed.`
+        );
+      } else {
+        const first = results.find((r) => r.status === 'rejected');
+        toast.error(
+          serverErrorMessage(
+            first && 'reason' in first ? first.reason : undefined,
+            'Failed to forward'
+          )
+        );
+      }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || err.message || 'Failed to forward');
+      toast.error(serverErrorMessage(err, 'Failed to forward'));
     } finally {
       setIsForwardPending(false);
     }
   };
 
   const toggleSelectMessage = (msg: ChatMessageItem) => {
+    if (!isPersistedMessage(msg)) {
+      toast.error('This message is still sending — try again in a moment.');
+      return;
+    }
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(msg.id)) next.delete(msg.id);
@@ -325,6 +362,10 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   };
 
   const enterSelectMode = (msg: ChatMessageItem) => {
+    if (!isPersistedMessage(msg)) {
+      toast.error('This message is still sending — try again in a moment.');
+      return;
+    }
     setSelectMode(true);
     setSelectedIds(new Set([msg.id]));
   };
@@ -334,12 +375,50 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     setSelectedIds(new Set());
   };
 
+  // Esc clears multi-selection first, then any open message dialog.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (selectMode) {
+        e.preventDefault();
+        exitSelectMode();
+        return;
+      }
+      if (forwardSource || isBulkForwardOpen || translateSource || seenSource) {
+        setForwardSource(null);
+        setIsBulkForwardOpen(false);
+        setTranslateSource(null);
+        setSeenSource(null);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selectMode, forwardSource, isBulkForwardOpen, translateSource, seenSource]);
+
   const handleBulkDelete = () => {
-    if (selectedIds.size === 0) return;
-    const ids = [...selectedIds];
-    Promise.all(ids.map((id) => chatService.deleteMessage(id)))
-      .catch((err: any) => {
-        toast.error(err.response?.data?.message || err.message || 'Bulk delete failed');
+    const ids = [...selectedIds].filter((id) => !id.startsWith('temp-'));
+    if (ids.length === 0) {
+      toast.error('These messages are still sending — try again in a moment.');
+      return;
+    }
+    Promise.allSettled(ids.map((id) => chatService.deleteMessage(id)))
+      .then((results) => {
+        const failed = results.filter((r) => r.status === 'rejected').length;
+        if (failed === 0) {
+          toast.success(ids.length === 1 ? 'Message deleted' : `${ids.length} messages deleted`);
+        } else if (failed < ids.length) {
+          toast.warning(
+            `${ids.length - failed} of ${ids.length} messages deleted — ${failed} failed.`
+          );
+        } else {
+          const first = results.find((r) => r.status === 'rejected');
+          toast.error(
+            serverErrorMessage(
+              first && 'reason' in first ? first.reason : undefined,
+              'Delete failed'
+            )
+          );
+        }
       })
       .finally(() => {
         queryClient.invalidateQueries({ queryKey: ['chat', 'messages', channel.id] });

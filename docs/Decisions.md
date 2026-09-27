@@ -717,3 +717,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** solid-color outgoing bubbles like real WhatsApp (#005c4b) (rejected — `MarkdownRenderer` emits theme-colored spans like `text-primary` that break on saturated backgrounds, and `bg-primary` shifts across 6 accent themes); per-message read-receipt table (rejected — `lastReadAt` watermark + live `chat:read_receipt` already drive sent/delivered/read at zero write cost); backend-persisted layout preference (rejected — pure view preference, no cross-device need; localStorage via chatStore is enough).
 
 **Decision:** tinted outgoing bubbles (`bg-primary/15`, right) + muted incoming (`bg-muted/50`, left) so all theme/markdown colors stay readable; shared tick component (Clock sending / single-grey sent / double-grey delivered / double-blue read / red failed) moved into the bubble footer in bubbles mode, unchanged in classic header; `messageLayout` in chatStore persisted as `boardly_chat_layout` (default `bubbles`), toggled from the ChatFeed header. Benchmark: WhatsApp (bubbles + ticks gold standard) over Slack (left-aligned) and Teams (tinted own-messages).
+
+## 2026-09-27 — Chat Gestures: WhatsApp Mapping, Menu Kept on Right-Click
+
+**Context:** User asked for WhatsApp gestures (swipe reply/forward, long-press select) on top of the Telegram-style context menu added earlier. The two conflict on long-press: Telegram opens a menu, WhatsApp enters selection.
+
+**Alternatives considered:** long-press opens menu with Select inside (rejected — user explicitly asked long-press to select, and swipe already covers mobile reply/forward); mouse-drag swipe on desktop (rejected — breaks text selection; double-click + hover buttons cover desktop); per-message receipts for bulk ops (rejected — same watermark logic, `allSettled` per batch).
+
+**Decision:** touch long-press enters select mode (WhatsApp benchmark); right-click keeps the full Telegram menu on desktop. Esc hierarchy: selection first, then dialogs. Optimistic `temp-*` rows are unselectable — the server 404s on forward/delete for unsynced ids, which caused the user-reported "status code 404" toast during multi-forward.

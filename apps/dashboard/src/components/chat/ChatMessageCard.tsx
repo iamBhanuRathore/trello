@@ -10,6 +10,7 @@ import {
   CheckCheck,
   Clock,
   AlertCircle,
+  Forward,
 } from 'lucide-react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { TaskPreviewCard } from './TaskPreviewCard';
@@ -89,14 +90,27 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   const [editBody, setEditBody] = useState(message.body);
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
 
-  // Telegram-style context menu (right-click / long-press). Disabled for
-  // system pills and unsynced optimistic/failed messages (actions would 404).
+  // WhatsApp-style gestures: swipe right = reply, swipe left = forward,
+  // long-press / double-tap / double-click = select, right-click = menu.
+  // Disabled for system pills and unsynced optimistic/failed messages (actions would 404).
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const menuAvailable =
     !message.isSystem && !message.id.startsWith('temp-') && message.status !== 'failed';
+  const [swipeX, setSwipeX] = useState(0);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressTouch = useRef<{ x: number; y: number } | null>(null);
+  const gestureOrigin = useRef<{ x: number; y: number } | null>(null);
+  const lastTapAt = useRef(0);
+  const longPressFired = useRef(false);
   const suppressNextContextMenu = useRef(false);
+
+  const SWIPE_TRIGGER = 64;
+  const SWIPE_CLAMP = 88;
+  const canSwipe = menuAvailable && (!!onReply || !!onForward);
+
+  const toggleSelectGesture = () => {
+    if (selectMode) onToggleSelect?.(message);
+    else onSelect?.(message);
+  };
 
   const openMenu = (x: number, y: number) => {
     if (!menuAvailable) return;
@@ -112,34 +126,93 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
     openMenu(e.clientX, e.clientY);
   };
 
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (!menuAvailable) return;
+    e.preventDefault();
+    toggleSelectGesture();
+  };
+
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     if (!touch) return;
-    longPressTouch.current = { x: touch.clientX, y: touch.clientY };
+    gestureOrigin.current = { x: touch.clientX, y: touch.clientY };
+    longPressFired.current = false;
+    setSwipeX(0);
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    if (!menuAvailable) return;
     longPressTimer.current = setTimeout(() => {
-      const origin = longPressTouch.current;
+      const origin = gestureOrigin.current;
       if (!origin) return;
+      longPressFired.current = true;
       suppressNextContextMenu.current = true;
       // Swallow the synthetic click some browsers fire after long-press.
-      openMenu(origin.x, origin.y);
+      setSwipeX(0);
+      onSelect?.(message);
     }, 550);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     const touch = e.touches[0];
-    const origin = longPressTouch.current;
+    const origin = gestureOrigin.current;
     if (!touch || !origin) return;
-    if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 10) {
+    const dx = touch.clientX - origin.x;
+    const dy = touch.clientY - origin.y;
+    const isHorizontal = Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2;
+    if (isHorizontal && canSwipe) {
       if (longPressTimer.current) clearTimeout(longPressTimer.current);
-      longPressTouch.current = null;
+      setSwipeX(Math.max(-SWIPE_CLAMP, Math.min(SWIPE_CLAMP, dx)));
+      return;
+    }
+    if (Math.hypot(dx, dy) > 10) {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+      gestureOrigin.current = null;
+      setSwipeX(0);
     }
   };
 
   const handleTouchEnd = () => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    longPressTouch.current = null;
+    const origin = gestureOrigin.current;
+    gestureOrigin.current = null;
+    if (longPressFired.current) {
+      longPressFired.current = false;
+      setSwipeX(0);
+      return;
+    }
+    if (canSwipe && Math.abs(swipeX) >= SWIPE_TRIGGER) {
+      const action = swipeX > 0 ? onReply : onForward;
+      setSwipeX(0);
+      if (action) action(message);
+      return;
+    }
+    setSwipeX(0);
+    // Double-tap to select.
+    if (menuAvailable && origin) {
+      const now = Date.now();
+      if (now - lastTapAt.current < 300) {
+        lastTapAt.current = 0;
+        toggleSelectGesture();
+      } else {
+        lastTapAt.current = now;
+      }
+    }
   };
+
+  // Swipe hint icons (reply on the left, forward on the right).
+  const swipeHints = (
+    <>
+      {swipeX > 0 && (
+        <div className="absolute left-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center pointer-events-none">
+          <CornerUpLeft className="w-4 h-4" />
+        </div>
+      )}
+      {swipeX < 0 && (
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center pointer-events-none">
+          <Forward className="w-4 h-4" />
+        </div>
+      )}
+    </>
+  );
 
   const handleCopyText = () => {
     const text = message.body;
@@ -381,16 +454,19 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
     return (
       <div
         id={`msg-${message.id}`}
-        className={`group relative flex ${isAuthor ? 'justify-end' : 'justify-start'} gap-2 px-1 py-0.5 rounded-xl transition-all duration-300 ${
+        className={`group relative flex ${isAuthor ? 'justify-end' : 'justify-start'} gap-2 px-1 py-0.5 rounded-xl touch-pan-y transition-all duration-300 ${
           isSelected ? 'bg-primary/10 ring-1 ring-primary/40' : ''
         }`}
+        style={swipeX ? { transform: `translateX(${swipeX}px)` } : undefined}
         onContextMenu={handleContextMenu}
+        onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
         onClick={selectMode ? () => onToggleSelect?.(message) : undefined}
       >
+        {swipeHints}
         {selectMode && (
           <button
             type="button"
@@ -689,16 +765,19 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   return (
     <div
       id={`msg-${message.id}`}
-      className={`group relative flex items-start gap-3 p-2.5 -mx-2 rounded-xl hover:bg-muted/30 transition-all duration-300 ${
+      className={`group relative flex items-start gap-3 p-2.5 -mx-2 rounded-xl hover:bg-muted/30 touch-pan-y transition-all duration-300 ${
         isSelected ? 'bg-primary/10 ring-1 ring-primary/40' : ''
       }`}
+      style={swipeX ? { transform: `translateX(${swipeX}px)` } : undefined}
       onContextMenu={handleContextMenu}
+      onDoubleClick={handleDoubleClick}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
       onClick={selectMode ? () => onToggleSelect?.(message) : undefined}
     >
+      {swipeHints}
       {selectMode && (
         <button
           type="button"

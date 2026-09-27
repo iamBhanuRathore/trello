@@ -2049,3 +2049,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **User request (screenshot):** WhatsApp-like messaging — own messages right, others left, single/double/blue ticks — with a personal-touch setting, defaulting to left/right.
 - **Frontend:** `ChatMessageCard` gains a `bubbles` layout (early return; system pills stay centered): own messages right-aligned in `bg-primary/15` tint, others left in `bg-muted/50` with group author names, avatar only on incoming; time + shared tick indicator (Clock sending / single-grey sent / double-grey delivered / double-blue read / red failed) move into the bubble footer. Classic Slack-style path unchanged except reusing the shared tick. `chatStore` gains persisted `messageLayout` (`boardly_chat_layout`, default `bubbles`); `ChatFeed` header gets a bubbles/classic toggle. Tint (not solid) keeps markdown/theme colors readable across all 6 accent themes.
 - Tests & Validation: dashboard `tsc -b --noEmit` clean.
+
+### 2026-09-27 — WhatsApp Gestures: Swipe Reply/Forward, Tap Select, Esc
+
+- **User request:** swipe right = reply, swipe left = forward, double-click/long-press = select, multi forward/delete, Esc clears selection.
+- **Frontend:** `ChatMessageCard` tracks horizontal touch drags (`touch-pan-y` keeps vertical scroll native; 64px trigger, 88px clamp, reply/forward hint icons); long-press now enters select mode (right-click keeps the action menu); double-click/double-tap toggles selection. `ChatFeed`: Esc exits select mode first, then closes forward/translate/seen dialogs; bulk forward/delete use `allSettled` with per-batch success/partial/failure toasts (no more raw axios 404s); optimistic `temp-*` messages are blocked from select/forward/delete with a "still sending" toast since the server 404s on them; single delete surfaces server errors too.
+- Tests & Validation: dashboard `tsc` + `oxlint` clean.
