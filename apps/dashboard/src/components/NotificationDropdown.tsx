@@ -93,7 +93,9 @@ export function NotificationDropdown() {
 
     // 2. Navigate to relevant context
     setOpen(false);
-    if (notif.payload?.boardId) {
+    if (notif.payload?.channelId) {
+      navigate(`/chat/${notif.payload.channelId}`);
+    } else if (notif.payload?.boardId) {
       if (notif.payload?.cardId) {
         navigate(`/b/${notif.payload.boardId}?card=${notif.payload.cardId}`);
       } else {
@@ -115,6 +117,17 @@ export function NotificationDropdown() {
           payload.commentSnippet ||
           payload.commentText ||
           'You were mentioned in a task discussion.',
+        icon: <AtSign className="h-4 w-4 text-indigo-500" />,
+        bg: 'bg-indigo-500/10',
+      };
+    }
+
+    if (eventType === 'chat.mentioned') {
+      return {
+        title: 'Mentioned in Chat',
+        body: payload.messagePreview
+          ? `"${payload.messagePreview}"`
+          : 'A teammate mentioned you in chat.',
         icon: <AtSign className="h-4 w-4 text-indigo-500" />,
         bg: 'bg-indigo-500/10',
       };

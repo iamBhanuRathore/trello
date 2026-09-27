@@ -128,7 +128,7 @@ export function setupNotificationListeners(db: Database) {
         assigneeId?: string;
       };
       try {
-        if (event === 'card.commented' || event === 'card.assigned') {
+        if (event === 'card.commented' || event === 'card.assigned' || event === 'chat.mentioned') {
           const { cardId, commentText } = payload;
 
           // For card.assigned, only notify the assignee — not the entire org
@@ -136,6 +136,10 @@ export function setupNotificationListeners(db: Database) {
           if (event === 'card.assigned') {
             usersToNotify =
               payload.assigneeId && payload.assigneeId !== actorId ? [payload.assigneeId] : [];
+          } else if (event === 'chat.mentioned') {
+            // Chat @mentions: only the tagged members — never the author
+            const ids = (payload as any).mentionedUserIds;
+            usersToNotify = Array.isArray(ids) ? ids.filter((id) => id !== actorId) : [];
           } else {
             // card.commented: notify all org members except actor
             const members = await db
@@ -211,7 +215,14 @@ export function setupNotificationListeners(db: Database) {
               userId,
               organizationId,
               eventType: event,
-              payload: { cardId, commentText, actorId },
+              payload: {
+                cardId,
+                commentText,
+                actorId,
+                channelId: (payload as any).channelId,
+                messageId: (payload as any).messageId,
+                messagePreview: (payload as any).messagePreview,
+              },
               isDispatched,
             });
           }

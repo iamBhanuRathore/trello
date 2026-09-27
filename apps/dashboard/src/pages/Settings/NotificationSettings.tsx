@@ -10,6 +10,7 @@ import { QueryError } from '../../components/common/QueryError';
 const EVENTS = [
   { id: 'card.assigned', label: 'Card Assigned' },
   { id: 'card.commented', label: 'Card Commented' },
+  { id: 'chat.mentioned', label: 'Mentioned in Chat' },
 ];
 
 const CHANNELS = [

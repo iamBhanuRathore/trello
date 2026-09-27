@@ -2092,6 +2092,12 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Frontend only:** new shared `MentionAutocomplete.tsx` (detection hook + popup with presence-colored rings, server member search, self excluded) wired into the `ChatFeed` composer — `@` opens, arrows navigate, `Enter`/`Tab` completes a structured `@[Name](id)` tag (already highlighted by `MarkdownRenderer`), `Esc` dismisses. Task pane keeps its own working version (plain tags + comment notifications); unifying both onto structured tags is tracked follow-up.
 - Tests & Validation: dashboard `tsc` + `oxlint` clean.
 
+### 2026-09-28 --- Chat @Mention Notifications (Phase 1 backend)
+
+- **What:** `sendMessage` extracts `@[Name](uuid)` tags, intersects with channel members (never the author), and emits `chat.mentioned`; the notification listener notifies tagged members only (prefs-aware, DND/digest honored). Bell entries render "Mentioned in Chat" with the message preview and deep-link to the channel; the event is configurable in Notification Settings.
+- **Hygiene fixed on the way:** `notifications.test.ts` `afterAll` never cleaned `subscriptions` (and the second org block skipped them) nor chat rows, so the suite passed once then polluted every rerun — now repeatable green.
+- Tests & Validation: chat 19/19 + notifications 6/6 green (incl. 2 new mention tests: listener targeting + full sendMessage extraction); backend + dashboard `tsc`, dashboard `oxlint` clean.
+
 ### 2026-09-28 --- Click-to-DM from Task Chat Authors
 
 - **User request:** jump into a DM directly from the task chat screen.

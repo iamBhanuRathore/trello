@@ -763,6 +763,29 @@ export async function sendMessage(
     });
   }
 
+  // @[Name](userId) mentions → notify mentioned members only (never the author).
+  try {
+    const memberIds = new Set(members.map((m) => m.userId));
+    const mentionedUserIds = [
+      ...new Set(
+        [...input.body.matchAll(/@\[([^\]]+)\]\(([0-9a-fA-F-]{36})\)/g)].map((m) => m[2] as string)
+      ),
+    ].filter((id) => id !== userId && memberIds.has(id));
+    if (mentionedUserIds.length > 0) {
+      eventBus.emit('internal', {
+        event: 'chat.mentioned',
+        payload: {
+          channelId,
+          messageId: message.id,
+          mentionedUserIds,
+          messagePreview: input.body.trim().slice(0, 140),
+        },
+        actorId: userId,
+        organizationId: channel.organizationId as string,
+      });
+    }
+  } catch {}
+
   return fullMessage;
 }
 
