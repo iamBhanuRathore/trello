@@ -2091,3 +2091,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **User request (screenshots):** the Bitrix-style mention popup (presence-ring avatars) in the chat composer.
 - **Frontend only:** new shared `MentionAutocomplete.tsx` (detection hook + popup with presence-colored rings, server member search, self excluded) wired into the `ChatFeed` composer — `@` opens, arrows navigate, `Enter`/`Tab` completes a structured `@[Name](id)` tag (already highlighted by `MarkdownRenderer`), `Esc` dismisses. Task pane keeps its own working version (plain tags + comment notifications); unifying both onto structured tags is tracked follow-up.
 - Tests & Validation: dashboard `tsc` + `oxlint` clean.
+
+### 2026-09-28 --- Click-to-DM from Task Chat Authors
+
+- **User request:** jump into a DM directly from the task chat screen.
+- **Frontend only:** author avatars + names in `TaskChatPane` are now buttons (own messages and bot/system rows stay static) opening the GlobalChatDock on the 1-on-1 channel; `createDirectMessage` is idempotent so repeats reuse the channel. Failure-only toast; pending state blocks double-clicks.
+- Tests & Validation: dashboard `tsc` + `oxlint` clean.

@@ -8,7 +8,7 @@ import {
   type ClipboardEvent,
   type DragEvent,
 } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MessageSquare,
   Video,
@@ -36,6 +36,7 @@ import {
 import { format, isToday, isYesterday } from 'date-fns';
 import { toast } from 'sonner';
 import { orgService } from '../../lib/orgService';
+import { chatService } from '../../lib/chatService';
 import { useAuthStore } from '../../store/authStore';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { CreateTaskFromMessageModal } from './CreateTaskFromMessageModal';
@@ -200,6 +201,26 @@ export function TaskChatPane({
   const { user } = useAuthStore();
   const orgId = user?.organizationId;
   const { openGlobalDock } = useChatStore();
+  const queryClient = useQueryClient();
+  const [dmPendingUserId, setDmPendingUserId] = useState<string | null>(null);
+
+  // Jump straight into a 1-on-1 DM with a message author (idempotent —
+  // reuses the existing DM channel when there is one).
+  const openDirectChat = async (targetUserId?: string, displayName?: string) => {
+    if (!targetUserId || targetUserId === user?.id || dmPendingUserId) return;
+    setDmPendingUserId(targetUserId);
+    try {
+      const channel = await chatService.createDirectMessage(targetUserId);
+      queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+      openGlobalDock(channel.id);
+    } catch (err: any) {
+      toast.error(
+        err?.response?.data?.message || `Couldn't open chat with ${displayName || 'teammate'}`
+      );
+    } finally {
+      setDmPendingUserId(null);
+    }
+  };
 
   const [showMemberPicker, setShowMemberPicker] = useState(false);
   const lastMemberPickerClosedRef = useRef(0);
@@ -869,8 +890,30 @@ export function TaskChatPane({
                     id={item.id}
                     className="flex items-start gap-2.5 group relative transition-colors duration-200 rounded-xl p-1"
                   >
-                    {/* User Avatar */}
-                    {comment.authorAvatarUrl ? (
+                    {/* User Avatar (click → DM) */}
+                    {comment.userId && !isCurrentUser ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openDirectChat(comment.userId, comment.authorName || comment.authorEmail)
+                        }
+                        disabled={dmPendingUserId === comment.userId}
+                        title={`Message ${comment.authorName || comment.authorEmail || 'teammate'}`}
+                        className="shrink-0 mt-0.5 rounded-full cursor-pointer hover:ring-2 hover:ring-primary/50 transition-shadow disabled:cursor-wait"
+                      >
+                        {comment.authorAvatarUrl ? (
+                          <img
+                            src={comment.authorAvatarUrl}
+                            alt={comment.authorName || 'Avatar'}
+                            className="w-7 h-7 rounded-full object-cover ring-1 ring-border"
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-sky-500/20 text-sky-600 dark:text-sky-400 flex items-center justify-center text-[10px] font-bold">
+                            {authorInitial}
+                          </div>
+                        )}
+                      </button>
+                    ) : comment.authorAvatarUrl ? (
                       <img
                         src={comment.authorAvatarUrl}
                         alt={comment.authorName || 'Avatar'}
@@ -886,9 +929,26 @@ export function TaskChatPane({
                     <div className="flex-1 min-w-0 max-w-[92%] relative">
                       {/* Author Header */}
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer truncate">
-                          {comment.authorName || comment.authorEmail || 'Teammate'}
-                        </span>
+                        {comment.userId && !isCurrentUser ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openDirectChat(
+                                comment.userId,
+                                comment.authorName || comment.authorEmail
+                              )
+                            }
+                            disabled={dmPendingUserId === comment.userId}
+                            title={`Message ${comment.authorName || comment.authorEmail || 'teammate'}`}
+                            className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer truncate disabled:cursor-wait"
+                          >
+                            {comment.authorName || comment.authorEmail || 'Teammate'}
+                          </button>
+                        ) : (
+                          <span className="text-xs font-bold text-sky-600 dark:text-sky-400 truncate">
+                            {comment.authorName || comment.authorEmail || 'Teammate'}
+                          </span>
+                        )}
                         {isCurrentUser && (
                           <span className="text-[9px] px-1 rounded bg-sky-500/15 text-sky-600 font-semibold">
                             You
