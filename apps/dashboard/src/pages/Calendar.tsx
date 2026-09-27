@@ -183,7 +183,7 @@ export function Calendar() {
       queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || err.message || 'Failed to schedule task');
+      toast.error(describeCalendarError(err, 'Failed to schedule task'));
     },
   });
 
@@ -279,7 +279,7 @@ export function Calendar() {
       invalidateFeed();
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.message || err.message || 'Failed to remove block');
+      toast.error(describeCalendarError(err, 'Failed to remove block'));
     },
   });
 
