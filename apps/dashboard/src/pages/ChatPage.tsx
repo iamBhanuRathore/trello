@@ -60,8 +60,12 @@ export const ChatPage: React.FC = () => {
   // id and must NOT re-arm it.
   const didAutoSelect = useRef(false);
   useEffect(() => {
-    if (routeChannelId && routeChannelId !== activeChannelId) {
-      setActiveChannelId(routeChannelId);
+    if (routeChannelId) {
+      // A linked channel counts as an explicit selection — Back must not re-arm auto-select.
+      didAutoSelect.current = true;
+      if (routeChannelId !== activeChannelId) {
+        setActiveChannelId(routeChannelId);
+      }
     } else if (
       !routeChannelId &&
       channels.length > 0 &&
