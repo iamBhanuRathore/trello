@@ -258,13 +258,13 @@ describe('Telegram Parity: Pin / Forward / Seen', () => {
     const sent = await sendMessage(db, channel.id, user.id, { body: 'pin me' });
 
     const pinned = await pinMessage(db, sent.id, user.id, true);
-    expect(pinned.isPinned).toBe(true);
+    expect(pinned?.isPinned).toBe(true);
 
     const listed = await listPinnedMessages(db, channel.id, user.id);
     expect(listed.some((m: any) => m.id === sent.id)).toBe(true);
 
     const unpinned = await pinMessage(db, sent.id, user.id, false);
-    expect(unpinned.isPinned).toBe(false);
+    expect(unpinned?.isPinned).toBe(false);
     const relisted = await listPinnedMessages(db, channel.id, user.id);
     expect(relisted.some((m: any) => m.id === sent.id)).toBe(false);
   });

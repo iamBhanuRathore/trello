@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   X,
@@ -39,7 +40,8 @@ interface ChatDetailsPaneProps {
 
 export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClose }) => {
   const { user } = useAuthStore();
-  const { setActiveChannelId, presenceMap } = useChatStore();
+  const navigate = useNavigate();
+  const { activeChannelId, setActiveChannelId, presenceMap } = useChatStore();
   const queryClient = useQueryClient();
 
   const [memberSearch, setMemberSearch] = useState('');
@@ -387,7 +389,11 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
                       <button
                         key={ch.id}
                         type="button"
-                        onClick={() => setActiveChannelId(ch.id)}
+                        onClick={() => {
+                          if (ch.id === activeChannelId) return;
+                          setActiveChannelId(ch.id);
+                          navigate(`/chat/${ch.id}`);
+                        }}
                         className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-muted/50 border border-border/50 hover:border-border transition-all text-left cursor-pointer group"
                       >
                         <div className="flex items-center gap-2 min-w-0">

@@ -701,3 +701,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** per-item backend tables for forwards (rejected — clone-with-`forwarded_from_id` preserves audit without join cost); translation via paid API/LLM (rejected — MyMemory free tier needs no key and matches Telegram's inline-translate UX); seen state via per-message receipts table (rejected — `lastReadAt` watermark already gives N-Seen at zero write cost on send).
 
 **Consequences:** pin/forward/seen are group + DM capable; thread replies excluded from pin (Telegram parity); bulk forward reuses the single-forward path sequentially.
+
+## 2026-09-27 — Chat: Route-Owned Selection, WS-Primary Freshness
+
+**Context:** Two coupled symptoms — channel selection bouncing (URL flipping) and a `channels`/`read` request storm. Polling + per-event invalidation overlapped slow (5s+) responses; a store↔URL mirror made selection fightable from any writer.
+
+**Alternatives considered:** longer poll intervals alone (rejected — treats volume, not the per-event invalidation loop, and keeps redundant traffic while live); full socket-driven with no HTTP fallback (rejected — socket drops must not freeze the list; fallback polls stay).
+
+**Decision:** route param owns selection (one-way sync into the store); socket is the primary freshness source with an 8s-coalesced channels refresh and in-place patching for the open channel; HTTP polling is disconnected-fallback only. Read receipts/reactions patch or scope instead of invalidating broad keys.

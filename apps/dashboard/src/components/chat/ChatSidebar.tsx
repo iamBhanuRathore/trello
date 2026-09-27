@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search,
@@ -27,6 +28,7 @@ interface ChatSidebarProps {
 }
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => {
+  const navigate = useNavigate();
   const { activeChannelId, setActiveChannelId, presenceMap, setBatchPresence } = useChatStore();
 
   const [search, setSearch] = useState('');
@@ -45,11 +47,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
     queryFn: () => chatService.listChannels(),
   });
 
-  // Collect other user IDs for batch presence query
+  // Collect other user IDs for batch presence query.
+  // Sorted so list reordering (last-message bumps) doesn't mint a new key
+  // per channels refetch (each new key = another request + store churn).
   const dmUserIds = useMemo(() => {
     return channels
       .filter((c) => c.type === 'direct' && c.otherUser?.id)
-      .map((c) => c.otherUser!.id);
+      .map((c) => c.otherUser!.id)
+      .sort();
   }, [channels]);
 
   // Batch query presence
@@ -122,7 +127,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
   );
 
   const handleChannelClick = (channelId: string) => {
+    // Route is the source of truth for selection (ChatPage syncs the store
+    // from the param). Navigating — not just writing the store — is what
+    // makes a switch stick; store-only writes used to get yanked back.
+    if (channelId === activeChannelId) return;
     setActiveChannelId(channelId);
+    navigate(`/chat/${channelId}`);
     if (onSelectChannel) onSelectChannel(channelId);
   };
 

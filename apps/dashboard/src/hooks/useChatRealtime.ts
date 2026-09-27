@@ -2,11 +2,16 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
-import type { ChatMessageItem } from '../lib/chatService';
+import { chatService, type ChatChannel, type ChatMessageItem } from '../lib/chatService';
 
 const WS_URL = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws')
   : 'ws://localhost:3001';
+
+/** Minimum gap between full ['chat','channels'] refetches. Bursts coalesce. */
+const CHANNELS_REFRESH_MIN_GAP_MS = 8000;
+/** Trailing debounce for advancing our own read pointer on the open channel. */
+const ACTIVE_READ_DEBOUNCE_MS = 1500;
 
 export function useChatRealtime(passedChannelId?: string | null) {
   const queryClient = useQueryClient();
@@ -20,6 +25,7 @@ export function useChatRealtime(passedChannelId?: string | null) {
     setTyping,
     clearExpiredTyping,
     setUserPresence,
+    setWsConnected,
     activeChannelId: storeChannelId,
   } = useChatStore();
 
@@ -29,6 +35,94 @@ export function useChatRealtime(passedChannelId?: string | null) {
   // reconnect when the channel changes (hence a ref, not a dep).
   const activeChannelIdRef = useRef(activeChannelId);
   activeChannelIdRef.current = activeChannelId;
+
+  // --- Coalesced ['chat','channels'] refresh --------------------------------
+  // WS bursts (message_created + unread_bump per message, read_receipts,
+  // E2E/test traffic) used to invalidate this heavy key per event. Slow
+  // responses then stacked behind each other (129 requests observed).
+  const lastChannelsRefreshRef = useRef(0);
+  const pendingRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const requestChannelsRefresh = useCallback(() => {
+    const now = Date.now();
+    const elapsed = now - lastChannelsRefreshRef.current;
+    if (elapsed >= CHANNELS_REFRESH_MIN_GAP_MS) {
+      lastChannelsRefreshRef.current = now;
+      queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+      return;
+    }
+    if (pendingRefreshTimer.current) return; // trailing refresh already scheduled
+    pendingRefreshTimer.current = setTimeout(() => {
+      pendingRefreshTimer.current = null;
+      lastChannelsRefreshRef.current = Date.now();
+      queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+    }, CHANNELS_REFRESH_MIN_GAP_MS - elapsed);
+  }, [queryClient]);
+
+  useEffect(
+    () => () => {
+      if (pendingRefreshTimer.current) clearTimeout(pendingRefreshTimer.current);
+    },
+    []
+  );
+
+  // --- Debounced read-pointer advance for the open channel -------------------
+  // The open channel never bumps its own unread count, so ChatFeed's
+  // unread-gated effect won't fire for live arrivals. Advance the server
+  // pointer here (trailing) instead of refetching the channel list.
+  const activeReadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeReadInFlight = useRef(false);
+
+  const scheduleActiveChannelRead = useCallback(
+    (channelId: string) => {
+      if (activeReadTimer.current) clearTimeout(activeReadTimer.current);
+      activeReadTimer.current = setTimeout(() => {
+        activeReadTimer.current = null;
+        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+        if (activeReadInFlight.current) return;
+        activeReadInFlight.current = true;
+        chatService
+          .markChannelRead(channelId)
+          .then(() => {
+            queryClient.setQueryData<ChatChannel[]>(['chat', 'channels'], (old) =>
+              old?.map((c) => (c.id === channelId ? { ...c, unreadCount: 0 } : c))
+            );
+          })
+          .catch(() => {})
+          .finally(() => {
+            activeReadInFlight.current = false;
+          });
+      }, ACTIVE_READ_DEBOUNCE_MS);
+    },
+    [queryClient]
+  );
+
+  useEffect(
+    () => () => {
+      if (activeReadTimer.current) clearTimeout(activeReadTimer.current);
+    },
+    []
+  );
+
+  const patchChannelPreview = useCallback(
+    (channelId: string, preview: string) => {
+      queryClient.setQueryData<ChatChannel[]>(['chat', 'channels'], (old) => {
+        if (!old) return old;
+        let changed = false;
+        const next = old.map((c) => {
+          if (c.id !== channelId) return c;
+          changed = true;
+          return {
+            ...c,
+            lastMessagePreview: preview.slice(0, 120),
+            lastMessageAt: new Date().toISOString(),
+          };
+        });
+        return changed ? next : old;
+      });
+    },
+    [queryClient]
+  );
 
   // Periodic sweeper for expired typing states
   useEffect(() => {
@@ -55,6 +149,7 @@ export function useChatRealtime(passedChannelId?: string | null) {
 
     ws.onopen = () => {
       if (!isMounted) return;
+      setWsConnected(true);
 
       // Heartbeat loop every 25 seconds
       heartbeatTimer = setInterval(() => {
@@ -73,6 +168,12 @@ export function useChatRealtime(passedChannelId?: string | null) {
       // Flush offline outbox queue on socket reconnection
       useChatStore.getState().processOutbox();
     };
+
+    const markDisconnected = () => {
+      if (isMounted) setWsConnected(false);
+    };
+    ws.onclose = markDisconnected;
+    ws.onerror = markDisconnected;
 
     ws.onmessage = (event) => {
       if (!isMounted) return;
@@ -101,8 +202,15 @@ export function useChatRealtime(passedChannelId?: string | null) {
             );
           }
 
-          // Invalidate channels list to update preview and order
-          queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+          const openChannelId = useChatStore.getState().activeChannelId;
+          if (msg.channelId === openChannelId && !msg.parentMessageId) {
+            // Viewing this channel: patch preview in place, advance our read
+            // pointer debounced. No channels refetch (the storm source).
+            patchChannelPreview(msg.channelId, msg.body);
+            scheduleActiveChannelRead(msg.channelId);
+          } else {
+            requestChannelsRefresh();
+          }
         }
 
         // 2. Message Updated / Edited
@@ -124,10 +232,15 @@ export function useChatRealtime(passedChannelId?: string | null) {
           );
         }
 
-        // 4. Reaction Toggled
+        // 4. Reaction Toggled (scoped to the message's channel)
         else if (type === 'chat:reaction_toggled') {
-          const { messageId } = payload;
-          queryClient.invalidateQueries({ queryKey: ['chat', 'messages'] });
+          const { messageId, channelId } = payload;
+          if (channelId) {
+            queryClient.invalidateQueries({ queryKey: ['chat', 'messages', channelId] });
+          } else {
+            // Backward compat with pre-payload servers.
+            queryClient.invalidateQueries({ queryKey: ['chat', 'messages'] });
+          }
           queryClient.invalidateQueries({ queryKey: ['chat', 'thread', messageId] });
         }
 
@@ -144,34 +257,48 @@ export function useChatRealtime(passedChannelId?: string | null) {
           setUserPresence(payload);
         }
 
-        // 7. Unread Bump on Background Channel
+        // 7. Unread Bump on Background Channel (the active channel is
+        // already handled by message_created — skip to avoid double refresh)
         else if (type === 'chat:unread_bump') {
-          queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+          const openChannelId = useChatStore.getState().activeChannelId;
+          if (payload?.channelId && payload.channelId === openChannelId) return;
+          requestChannelsRefresh();
         }
 
         // 8. New Channel Created / Added to Channel
         else if (type === 'chat:channel_created') {
-          queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+          requestChannelsRefresh();
         }
 
-        // 9. Read Receipt Received (for double blue tick updates)
+        // 9. Read Receipt Received (ticks come from the store; no refetch —
+        // the old channel-details invalidation re-fired a fetch per receipt)
         else if (type === 'chat:read_receipt') {
           const { channelId, userId: readerId, readAt } = payload;
           useChatStore.getState().setReadReceipt(channelId, readerId, readAt);
-          queryClient.invalidateQueries({ queryKey: ['chat', 'channel-details', channelId] });
         }
       } catch {}
     };
 
     return () => {
       isMounted = false;
+      setWsConnected(false);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }
       wsRef.current = null;
     };
-  }, [token, userId, queryClient, setTyping, setUserPresence]);
+  }, [
+    token,
+    userId,
+    queryClient,
+    setTyping,
+    setUserPresence,
+    setWsConnected,
+    patchChannelPreview,
+    requestChannelsRefresh,
+    scheduleActiveChannelRead,
+  ]);
 
   // Handle channel switching subscriptions
   useEffect(() => {

@@ -36,6 +36,8 @@ interface ChatStoreState {
   dockedChannelId: string | null;
   isDockMinimized: boolean;
   drafts: Record<string, string>;
+  /** True while the realtime socket is open. Pollers use this to stand down. */
+  wsConnected: boolean;
 
   setActiveChannelId: (id: string | null) => void;
   setActiveThreadMessage: (message: ChatMessageItem | null) => void;
@@ -55,6 +57,7 @@ interface ChatStoreState {
   closeGlobalDock: () => void;
   toggleMinimizeDock: () => void;
   setDraft: (channelId: string, text: string) => void;
+  setWsConnected: (connected: boolean) => void;
 }
 
 const OUTBOX_STORAGE_KEY = 'boardly_chat_outbox';
@@ -89,6 +92,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
   dockedChannelId: null,
   isDockMinimized: false,
   drafts: {},
+  wsConnected: false,
 
   setActiveChannelId: (id) =>
     set({
@@ -180,6 +184,9 @@ export const useChatStore = create<ChatStoreState>((set) => ({
         [channelId]: text,
       },
     })),
+
+  setWsConnected: (connected) =>
+    set((state) => (state.wsConnected === connected ? state : { wsConnected: connected })),
 
   setReadReceipt: (channelId, userId, readAt) =>
     set((state) => ({

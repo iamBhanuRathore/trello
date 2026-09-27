@@ -30,7 +30,6 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
 
   const {
     activeChannelId,
-    setActiveChannelId,
     isDetailsPaneOpen,
     setDetailsPaneOpen,
     activeThreadMessage,
@@ -88,8 +87,8 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
               nextIndex = currentIndex < channelList.length - 1 ? currentIndex + 1 : 0;
             }
             const nextChannel = channelList[nextIndex];
-            if (nextChannel) {
-              setActiveChannelId(nextChannel.id);
+            if (nextChannel && nextChannel.id !== activeChannelId) {
+              // Route is the source of truth — ChatPage syncs the store.
               navigate(`/chat/${nextChannel.id}`);
             }
           }
@@ -185,7 +184,6 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
     isChat,
     options,
     activeChannelId,
-    setActiveChannelId,
     isDetailsPaneOpen,
     setDetailsPaneOpen,
     activeThreadMessage,

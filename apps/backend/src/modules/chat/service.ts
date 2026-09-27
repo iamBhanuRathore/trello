@@ -999,6 +999,7 @@ export async function toggleReaction(
     await db.delete(chatReactions).where(eq(chatReactions.id, existing.id));
     await eventBus.broadcast(`chat:channel:${message.channelId}`, 'chat:reaction_toggled', {
       messageId,
+      channelId: message.channelId,
       userId,
       emoji,
       action: 'removed',
@@ -1013,6 +1014,7 @@ export async function toggleReaction(
 
     await eventBus.broadcast(`chat:channel:${message.channelId}`, 'chat:reaction_toggled', {
       messageId,
+      channelId: message.channelId,
       userId,
       emoji,
       action: 'added',

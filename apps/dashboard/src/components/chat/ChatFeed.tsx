@@ -58,6 +58,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     enqueueOutbox,
     removeFromOutbox,
     processOutbox,
+    wsConnected,
   } = useChatStore();
   const queryClient = useQueryClient();
 
@@ -141,11 +142,12 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     setDraft(channel.id, val);
   };
 
-  // Fetch messages query
+  // Fetch messages query. While the socket is live, message_created events
+  // append to this cache — polling is a disconnected fallback only.
   const { data: messages = [], isLoading: isMessagesLoading } = useQuery({
     queryKey: ['chat', 'messages', channel.id],
     queryFn: () => chatService.listMessages(channel.id, undefined, 50),
-    refetchInterval: 6000,
+    refetchInterval: wsConnected ? false : 10000,
   });
 
   // Fetch channel details (for members, roles, and read receipts)
@@ -188,14 +190,20 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     return [...messages, ...channelOutbox];
   }, [messages, outbox, channel.id]);
 
-  // Mark channel read when entering or messages update.
-  // Guarded + cache-patched (not invalidated): the old invalidateQueries on the
-  // heavy ['chat','channels'] key re-fired a full refetch per read, which fed
-  // the poll pile-up (read → refetch → re-render → read …).
+  // Mark channel read on open / unread arrival. Debounced trailing (bursts of
+  // unread bumps collapse to one POST) and cache-patched, never invalidated:
+  // the old invalidateQueries on ['chat','channels'] re-fired a full refetch
+  // per read (read → refetch → re-render → read …). Deps are id + unread only —
+  // NOT messages.length, which re-armed the check on every live arrival.
   const markingReadRef = useRef(false);
+  const markReadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (channel.unreadCount > 0 && !markingReadRef.current) {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    if (markReadTimer.current) clearTimeout(markReadTimer.current);
+    if (channel.unreadCount <= 0 || markingReadRef.current) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    markReadTimer.current = setTimeout(() => {
+      markReadTimer.current = null;
+      if (markingReadRef.current) return;
       markingReadRef.current = true;
       chatService
         .markChannelRead(channel.id)
@@ -208,8 +216,11 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
         .finally(() => {
           markingReadRef.current = false;
         });
-    }
-  }, [channel.id, channel.unreadCount, messages.length, queryClient]);
+    }, 1200);
+    return () => {
+      if (markReadTimer.current) clearTimeout(markReadTimer.current);
+    };
+  }, [channel.id, channel.unreadCount, queryClient]);
 
   // Scroll to bottom on initial load and message count change
   useEffect(() => {

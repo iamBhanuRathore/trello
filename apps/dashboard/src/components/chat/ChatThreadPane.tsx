@@ -22,7 +22,7 @@ const COMMON_EMOJIS = ['👍', '❤️', '🔥', '🚀', '👀', '🎉'];
 
 export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, onClose }) => {
   const { user } = useAuthStore();
-  const { presenceMap } = useChatStore();
+  const { presenceMap, wsConnected } = useChatStore();
   const queryClient = useQueryClient();
 
   const [replyText, setReplyText] = useState('');
@@ -39,11 +39,11 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
   const repliesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch thread replies
+  // Fetch thread replies (WS appends live; poll only when disconnected)
   const { data: replies = [], isLoading } = useQuery({
     queryKey: ['chat', 'thread', parentMessage.id],
     queryFn: () => chatService.listThreadReplies(parentMessage.id),
-    refetchInterval: 8000,
+    refetchInterval: wsConnected ? false : 12000,
   });
 
   // Auto-scroll to bottom on replies update

@@ -28,17 +28,20 @@ export const ChatPage: React.FC = () => {
     setActiveThreadMessage,
     isDetailsPaneOpen,
     setDetailsPaneOpen,
+    wsConnected,
   } = useChatStore();
 
   const [isNewDmOpen, setIsNewDmOpen] = useState(false);
   const [isNewChannelOpen, setIsNewChannelOpen] = useState(false);
   const [isWorkingHoursOpen, setIsWorkingHoursOpen] = useState(false);
 
-  // Fetch channels
+  // Fetch channels. While the realtime socket is open, WS events drive cache
+  // updates (see useChatRealtime) — polling is a disconnected fallback only.
+  // An always-on interval stacked slow refetches behind each other.
   const { data: channels = [] } = useQuery({
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
-    refetchInterval: 10000,
+    refetchInterval: wsConnected ? false : 15000,
   });
 
   // Enable chat-specific keyboard shortcuts (Alt+Up/Down, Cmd+I, Cmd+Shift+C, C, etc.)
@@ -49,7 +52,10 @@ export const ChatPage: React.FC = () => {
     onOpenWorkingHours: () => setIsWorkingHoursOpen(true),
   });
 
-  // Sync route param with store
+  // The route param is the single source of truth for the selected channel.
+  // The store mirrors it for components outside the router context. There is
+  // deliberately NO store→URL sync: the old two-effect mirror let any stray
+  // store write yank the URL (channel bouncing back and forth on switch).
   useEffect(() => {
     if (routeChannelId && routeChannelId !== activeChannelId) {
       setActiveChannelId(routeChannelId);
@@ -62,13 +68,6 @@ export const ChatPage: React.FC = () => {
       }
     }
   }, [routeChannelId, activeChannelId, channels, navigate, setActiveChannelId]);
-
-  // When activeChannelId changes from sidebar, sync URL
-  useEffect(() => {
-    if (activeChannelId && activeChannelId !== routeChannelId) {
-      navigate(`/chat/${activeChannelId}`);
-    }
-  }, [activeChannelId, routeChannelId, navigate]);
 
   // Find active channel object
   const activeChannel = useMemo(
@@ -84,7 +83,7 @@ export const ChatPage: React.FC = () => {
       {/* Center Feed Area */}
       <div className="flex-1 flex flex-col h-full min-w-0">
         {activeChannel ? (
-          <ChatFeed channel={activeChannel} />
+          <ChatFeed key={activeChannel.id} channel={activeChannel} />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shadow-inner">
