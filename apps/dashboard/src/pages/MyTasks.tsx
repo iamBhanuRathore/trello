@@ -143,7 +143,7 @@ export function MyTasks() {
               <CheckSquare className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
+              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">
                 My Tasks &amp; Work Items
               </h1>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -281,7 +281,7 @@ export function MyTasks() {
             <button
               type="button"
               onClick={() => setActiveTab('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                 activeTab === 'all'
                   ? 'bg-primary text-primary-foreground shadow-xs'
                   : 'bg-muted/40 hover:bg-muted/80 text-muted-foreground hover:text-foreground'
@@ -298,7 +298,7 @@ export function MyTasks() {
             <button
               type="button"
               onClick={() => setActiveTab('assigned')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                 activeTab === 'assigned'
                   ? 'bg-primary text-primary-foreground shadow-xs'
                   : 'bg-muted/40 hover:bg-muted/80 text-muted-foreground hover:text-foreground'
@@ -313,7 +313,7 @@ export function MyTasks() {
             <button
               type="button"
               onClick={() => setActiveTab('observing')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                 activeTab === 'observing'
                   ? 'bg-primary text-primary-foreground shadow-xs'
                   : 'bg-muted/40 hover:bg-muted/80 text-muted-foreground hover:text-foreground'
@@ -328,7 +328,7 @@ export function MyTasks() {
             <button
               type="button"
               onClick={() => setActiveTab('participating')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                 activeTab === 'participating'
                   ? 'bg-primary text-primary-foreground shadow-xs'
                   : 'bg-muted/40 hover:bg-muted/80 text-muted-foreground hover:text-foreground'
@@ -343,7 +343,7 @@ export function MyTasks() {
             <button
               type="button"
               onClick={() => setActiveTab('created')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                 activeTab === 'created'
                   ? 'bg-primary text-primary-foreground shadow-xs'
                   : 'bg-muted/40 hover:bg-muted/80 text-muted-foreground hover:text-foreground'
