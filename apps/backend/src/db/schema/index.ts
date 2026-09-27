@@ -922,6 +922,24 @@ export const rolePermissions = pgTable(
   ]
 );
 
+// ─── Card Views ("Viewed by") ───────────────────────────────────────────────
+export const cardViews = pgTable(
+  'card_views',
+  {
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    viewedAt: timestamp('viewed_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.cardId, t.userId] }),
+    index('card_views_card_idx').on(t.cardId, t.viewedAt),
+  ]
+);
+
 // ─── Card Priorities (org-scoped, configurable w/ colors) ────────────────────
 export const priorities = pgTable(
   'priorities',

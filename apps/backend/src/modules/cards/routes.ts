@@ -39,6 +39,8 @@ import {
   unwatchCard,
   getCardWatchers,
   getMyTasks,
+  recordCardView,
+  getCardViewers,
 } from './service';
 import path from 'path';
 import { generatePresignedUploadUrl, LOCAL_UPLOADS_DIR } from '../../lib/s3';
@@ -192,7 +194,25 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/:id',
     async ({ params, user, set }) => {
       try {
-        return await getCard(db, params.id, user.organizationId);
+        const card = await getCard(db, params.id, user.organizationId);
+        // Fire-and-forget view ledger — never blocks the read.
+        recordCardView(db, params.id, user.userId);
+        return card;
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('card.read'),
+    }
+  )
+
+  // GET /v1/cards/:id/viewers - "Viewed by" ledger
+  .get(
+    '/:id/viewers',
+    async ({ params, user, set }) => {
+      try {
+        return await getCardViewers(db, params.id, user.organizationId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }

@@ -8,7 +8,14 @@ import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
 import { createList } from '../lists/service';
-import { createCard, getCard, getMyTasks, updateCard } from '../cards/service';
+import {
+  createCard,
+  getCard,
+  getMyTasks,
+  updateCard,
+  recordCardView,
+  getCardViewers,
+} from '../cards/service';
 import {
   listPriorities,
   createPriority,
@@ -161,5 +168,35 @@ describe('Priorities Service', () => {
       priority: 'low',
     });
     expect(byName.tasks.some((t) => t.id === plain!.id)).toBe(true);
+  });
+
+  it('records views and lists viewers newest-first', async () => {
+    const { organization, user } = await setupOrg();
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board',
+    });
+    const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
+    const card = await createCard(db, organization.id, { listId: list!.id, title: 'Seen?' });
+
+    const empty = await getCardViewers(db, card!.id, organization.id);
+    expect(empty.count).toBe(0);
+
+    await recordCardView(db, card!.id, user.id);
+    await recordCardView(db, card!.id, user.id); // idempotent re-view
+    const seen = await getCardViewers(db, card!.id, organization.id);
+    expect(seen.count).toBe(1);
+    expect(seen.viewers[0]!.userId).toBe(user.id);
+
+    await expect(
+      getCardViewers(db, '00000000-0000-0000-0000-000000000000', organization.id)
+    ).rejects.toThrow('Card not found');
   });
 });

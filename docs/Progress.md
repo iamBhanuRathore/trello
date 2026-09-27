@@ -2078,3 +2078,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Backend:** new org-scoped `priorities` table (name unique per org, hex color, rank, single default) + migration `0023_card_priorities` (+ journal); lazy-seeds Urgent `#ef4444` / High `#f59e0b` / Medium `#3b82f6` (default) / Low `#10b981` per org. CRUD at `/v1/priorities` (`org.read`/`org.update`); delete reassigns cards to the default and promotes it; FK cascades on org delete. `cards.priority_id` (set-null) flows through create (defaults), update (validated), `getCard`/`listCards`/`getBoardFull`/`getMyTasks` payloads; the My Tasks filter is now real (id match, legacy names still resolve).
 - **Frontend:** `PriorityBadge` (backend color, never hardcoded); task detail gets a Priority editor row + header badge; board cards, My Tasks grid + list rows show the badge; My Tasks filter options come from the API; new Admin → Task Priorities page (add/rename/recolor/reorder/default/delete with two-click confirm).
 - Tests & Validation: new `priorities.test.ts` 4/4; cards suite green; live API round-trip verified (seed → assign → getCard → filter → revert). Pre-existing `board.test.ts` org-cleanup FK failure reproduces on clean tree — unrelated, left open.
+
+### 2026-09-28 — "Viewed by" Ledger for Task Cards (Bitrix parity)
+
+- **User question:** Bitrix shows "Viewed by X" + eye counts on tasks; ours showed only a member count.
+- **Backend:** new `card_views` table (composite PK, cascades) + migration `0024_card_views`; `GET /v1/cards/:id` records the view fire-and-forget (outside the card cache so reads stay hot); `GET /v1/cards/:id/viewers` returns newest-first viewers + count.
+- **Frontend:** the task footer eye is now a real Viewed-by button opening a viewer popover (avatar, name, relative time), replacing the misleading member count.
+- Tests & Validation: views test added (5/5 file green); dashboard + backend `tsc`, dashboard `oxlint` clean.

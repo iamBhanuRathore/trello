@@ -87,6 +87,7 @@ import { TaskActionRibbon } from './TaskActionRibbon';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { SearchableSelect, ListSearchableSelect } from '../ui/SearchableSelect';
 import { PriorityBadge } from './PriorityBadge';
+import { CardViewers } from './CardViewers';
 import { priorityService } from '../../lib/priorityService';
 import { ShareTaskModal } from './ShareTaskModal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -3011,9 +3012,8 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               <span>{userRating > 0 ? `${userRating} Stars` : 'Rate task'}</span>
             </button>
 
-            <div className="flex items-center gap-1" title="Active viewers on card">
-              <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>{uniqueMemberCount}</span>
+            <div className="flex items-center gap-1" title="Viewed by whom">
+              <CardViewers cardId={cardId} />
             </div>
           </div>
         </div>

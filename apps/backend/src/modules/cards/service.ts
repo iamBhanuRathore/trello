@@ -21,6 +21,7 @@ import {
   organizationMembers,
   timeLogs,
   priorities,
+  cardViews,
 } from '../../db/schema/index';
 import { resolvePriorityId, getDefaultPriorityId } from '../priorities/service';
 import { httpError } from '../organizations/service';
@@ -1941,6 +1942,43 @@ export async function deleteChecklist(db: Database, checklistId: string, actorUs
 
   await bumpForChecklist(db, checklistId, existing?.cardId ?? null);
   return { success: true, deletedId: checklistId };
+}
+
+// ─── Card Views ("Viewed by") ───────────────────────────────────────────────
+// One row per (card, user); opening a card upserts viewedAt. Recorded at the
+// route level (never inside cached getCard) so reads stay cache-hot.
+export async function recordCardView(db: Database, cardId: string, userId: string) {
+  await db
+    .insert(cardViews)
+    .values({ cardId, userId, viewedAt: new Date() })
+    .onConflictDoUpdate({
+      target: [cardViews.cardId, cardViews.userId],
+      set: { viewedAt: new Date() },
+    })
+    .catch(() => {});
+}
+
+export async function getCardViewers(db: Database, cardId: string, organizationId: string) {
+  const [card] = await db
+    .select({ id: cards.id })
+    .from(cards)
+    .where(and(eq(cards.id, cardId), eq(cards.organizationId, organizationId)))
+    .limit(1);
+  if (!card) throw httpError(404, 'Card not found');
+
+  const rows = await db
+    .select({
+      userId: users.id,
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+      viewedAt: cardViews.viewedAt,
+    })
+    .from(cardViews)
+    .innerJoin(users, eq(users.id, cardViews.userId))
+    .where(eq(cardViews.cardId, cardId))
+    .orderBy(desc(cardViews.viewedAt))
+    .limit(50);
+  return { count: rows.length, viewers: rows };
 }
 
 // ─── My Tasks Hub ─────────────────────────────────────────────────────────────
