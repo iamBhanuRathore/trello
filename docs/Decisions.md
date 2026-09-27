@@ -709,3 +709,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** longer poll intervals alone (rejected — treats volume, not the per-event invalidation loop, and keeps redundant traffic while live); full socket-driven with no HTTP fallback (rejected — socket drops must not freeze the list; fallback polls stay).
 
 **Decision:** route param owns selection (one-way sync into the store); socket is the primary freshness source with an 8s-coalesced channels refresh and in-place patching for the open channel; HTTP polling is disconnected-fallback only. Read receipts/reactions patch or scope instead of invalidating broad keys.
+
+## 2026-09-27 — WhatsApp-Style Chat Bubbles: Benchmark and Scope Choices
+
+**Context:** Chat rendered Slack-style (all messages left-aligned, ticks only in the author header). User asked for WhatsApp-style left/right bubbles with single/double/blue ticks, user-configurable with left/right as default.
+
+**Alternatives considered:** solid-color outgoing bubbles like real WhatsApp (#005c4b) (rejected — `MarkdownRenderer` emits theme-colored spans like `text-primary` that break on saturated backgrounds, and `bg-primary` shifts across 6 accent themes); per-message read-receipt table (rejected — `lastReadAt` watermark + live `chat:read_receipt` already drive sent/delivered/read at zero write cost); backend-persisted layout preference (rejected — pure view preference, no cross-device need; localStorage via chatStore is enough).
+
+**Decision:** tinted outgoing bubbles (`bg-primary/15`, right) + muted incoming (`bg-muted/50`, left) so all theme/markdown colors stay readable; shared tick component (Clock sending / single-grey sent / double-grey delivered / double-blue read / red failed) moved into the bubble footer in bubbles mode, unchanged in classic header; `messageLayout` in chatStore persisted as `boardly_chat_layout` (default `bubbles`), toggled from the ChatFeed header. Benchmark: WhatsApp (bubbles + ticks gold standard) over Slack (left-aligned) and Teams (tinted own-messages).

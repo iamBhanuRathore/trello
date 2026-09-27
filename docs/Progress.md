@@ -2043,3 +2043,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Bounce:** ChatPage had a route↔store two-effect mirror, so any stray store write yanked the URL. Route param is now the single source of truth: sidebar / details-pane mutual groups / Alt+Up-Down navigate, ChatPage only syncs route→store. Sidebar ignores re-clicks; ChatFeed remounts per channel (`key`) so no stale-channel flash.
 - **Mark-read:** debounced 1.2s trailing, deps `[channel.id, channel.unreadCount]` only (was re-armed by every `messages.length` change).
 - Tests & Validation: dashboard + backend `tsc` + dashboard `oxlint` clean; backend chat suite 19/19. Existing `e2e/full/chat-polls.spec.ts` bounds (≤5 channels, ≤2 reads / 26s) still hold — WS-connected clients now poll ~0.
+
+### 2026-09-27 — WhatsApp-Style Chat Bubbles + Ticks (user-configurable)
+
+- **User request (screenshot):** WhatsApp-like messaging — own messages right, others left, single/double/blue ticks — with a personal-touch setting, defaulting to left/right.
+- **Frontend:** `ChatMessageCard` gains a `bubbles` layout (early return; system pills stay centered): own messages right-aligned in `bg-primary/15` tint, others left in `bg-muted/50` with group author names, avatar only on incoming; time + shared tick indicator (Clock sending / single-grey sent / double-grey delivered / double-blue read / red failed) move into the bubble footer. Classic Slack-style path unchanged except reusing the shared tick. `chatStore` gains persisted `messageLayout` (`boardly_chat_layout`, default `bubbles`); `ChatFeed` header gets a bubbles/classic toggle. Tint (not solid) keeps markdown/theme colors readable across all 6 accent themes.
+- Tests & Validation: dashboard `tsc -b --noEmit` clean.

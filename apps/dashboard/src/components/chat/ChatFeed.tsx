@@ -19,6 +19,8 @@ import {
   FileText,
   Plus,
   Forward,
+  MessagesSquare,
+  AlignLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -59,6 +61,8 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     removeFromOutbox,
     processOutbox,
     wsConnected,
+    messageLayout,
+    setMessageLayout,
   } = useChatStore();
   const queryClient = useQueryClient();
 
@@ -666,6 +670,33 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5">
+          {/* WhatsApp bubbles / classic layout toggle (persisted per user) */}
+          <button
+            type="button"
+            onClick={() => setMessageLayout(messageLayout === 'bubbles' ? 'classic' : 'bubbles')}
+            aria-label={
+              messageLayout === 'bubbles'
+                ? 'Switch to classic message layout'
+                : 'Switch to bubble message layout'
+            }
+            title={
+              messageLayout === 'bubbles'
+                ? 'Bubble layout (WhatsApp style) — switch to classic'
+                : 'Classic layout — switch to bubbles (WhatsApp style)'
+            }
+            className={`p-2 rounded-lg transition-colors cursor-pointer ${
+              messageLayout === 'bubbles'
+                ? 'bg-primary/10 text-primary font-bold'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
+            }`}
+          >
+            {messageLayout === 'bubbles' ? (
+              <MessagesSquare className="w-4 h-4" />
+            ) : (
+              <AlignLeft className="w-4 h-4" />
+            )}
+          </button>
+
           {/* Search bar toggle */}
           {isSearching ? (
             <div className="flex items-center gap-1 bg-muted/50 rounded-lg px-2 py-1 border border-border">
@@ -831,7 +862,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
               </div>
 
               {/* Message Cards */}
-              <div className="space-y-1">
+              <div className={messageLayout === 'bubbles' ? 'space-y-1 px-1' : 'space-y-1'}>
                 {group.items.map((msg) => (
                   <ChatMessageCard
                     key={msg.id}

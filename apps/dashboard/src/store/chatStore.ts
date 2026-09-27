@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { chatService, type ChatMessageItem } from '../lib/chatService';
 import type { UserPresence } from '../lib/presenceService';
 
+/** WhatsApp-style left/right bubbles vs classic Slack-style left-aligned list. */
+export type ChatMessageLayout = 'bubbles' | 'classic';
+
 export interface QueuedMessage {
   tempId: string;
   channelId: string;
@@ -38,6 +41,8 @@ interface ChatStoreState {
   drafts: Record<string, string>;
   /** True while the realtime socket is open. Pollers use this to stand down. */
   wsConnected: boolean;
+  /** User-configurable message layout (persisted to localStorage). Defaults to bubbles. */
+  messageLayout: ChatMessageLayout;
 
   setActiveChannelId: (id: string | null) => void;
   setActiveThreadMessage: (message: ChatMessageItem | null) => void;
@@ -58,9 +63,20 @@ interface ChatStoreState {
   toggleMinimizeDock: () => void;
   setDraft: (channelId: string, text: string) => void;
   setWsConnected: (connected: boolean) => void;
+  setMessageLayout: (layout: ChatMessageLayout) => void;
 }
 
 const OUTBOX_STORAGE_KEY = 'boardly_chat_outbox';
+const LAYOUT_STORAGE_KEY = 'boardly_chat_layout';
+
+function loadMessageLayout(): ChatMessageLayout {
+  if (typeof window === 'undefined') return 'bubbles';
+  try {
+    return localStorage.getItem(LAYOUT_STORAGE_KEY) === 'classic' ? 'classic' : 'bubbles';
+  } catch {
+    return 'bubbles';
+  }
+}
 
 function loadOutboxFromStorage(): QueuedMessage[] {
   if (typeof window === 'undefined') return [];
@@ -93,6 +109,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
   isDockMinimized: false,
   drafts: {},
   wsConnected: false,
+  messageLayout: loadMessageLayout(),
 
   setActiveChannelId: (id) =>
     set({
@@ -187,6 +204,13 @@ export const useChatStore = create<ChatStoreState>((set) => ({
 
   setWsConnected: (connected) =>
     set((state) => (state.wsConnected === connected ? state : { wsConnected: connected })),
+
+  setMessageLayout: (layout) => {
+    try {
+      localStorage.setItem(LAYOUT_STORAGE_KEY, layout);
+    } catch {}
+    set({ messageLayout: layout });
+  },
 
   setReadReceipt: (channelId, userId, readAt) =>
     set((state) => ({
