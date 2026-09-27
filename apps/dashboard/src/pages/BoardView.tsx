@@ -82,6 +82,7 @@ const CreateTaskModal = lazy(() =>
 );
 import { RouteFallback } from '../components/common/RouteFallback';
 import { PresenceAvatars } from '../components/board/PresenceAvatars';
+import { PriorityBadge } from '../components/board/PriorityBadge';
 import { useRealtimeBoard } from '../hooks/useRealtimeBoard';
 import { useAuthStore } from '../store/authStore';
 import { AsyncMemberSearchableSelect } from '../components/ui/AsyncMemberSelect';
@@ -99,6 +100,8 @@ interface KanbanCard {
   storyPoints?: number | null;
   estimateMinutes?: number | null;
   stage?: { id: string; name: string; color: string; category: string } | null;
+  priorityId?: string | null;
+  priority?: { id: string; name: string; color: string } | null;
   labels?: { id: string; name: string; color: string }[];
   assignee?: { id: string; name: string; email: string; avatarUrl?: string } | null;
   assignees?: { id: string; name: string; email: string; avatarUrl?: string }[];
@@ -1618,9 +1621,10 @@ function KanbanCardView({
             </span>
           </div>
 
-          {/* Stage Badge if assigned */}
-          {card.stage && (
-            <div className="flex items-center gap-1">
+          {/* Stage + Priority Badges if assigned */}
+          <div className="flex items-center gap-1 flex-wrap">
+            {card.priority && <PriorityBadge priority={card.priority} />}
+            {card.stage && (
               <span
                 className="px-1.5 py-0.2 rounded text-[10px] font-medium border"
                 style={{
@@ -1631,8 +1635,8 @@ function KanbanCardView({
               >
                 {card.stage.name}
               </span>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Bottom Row: Metadata Badges & Assignee Avatar */}
           <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[11px] text-muted-foreground gap-2">

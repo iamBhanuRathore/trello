@@ -162,6 +162,13 @@
       "when": 1790514000000,
       "tag": "0022_chat_telegram_parity",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790726400000,
+      "tag": "0023_card_priorities",
+      "breakpoints": true
     }
   ]
 }

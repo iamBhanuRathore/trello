@@ -2071,3 +2071,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Fix:** `/v1/realtime/ws` added to `PUBLIC_PATH_PREFIXES` (query-token validation in `open()` already closes bad tokens, so security is unchanged); frontend `useChatRealtime` auto-reconnects with backoff (1s→15s) since any backend restart previously killed realtime until full reload. Backend restarted to load the fix.
 - **Note:** outside working hours a live user correctly shows "away", not "available" — by design.
 - Tests & Validation: dashboard + backend `tsc`, dashboard `oxlint` clean.
+
+### 2026-09-28 — Configurable Task Priorities (backend-driven + colors)
+
+- **User questions:** no priority on the task screen; My Tasks "Urgent" filter is a dead control (sent `?priority=` that the backend accepted and ignored); cards table had an ad-hoc `priority` varchar outside drizzle, invisible to every query.
+- **Backend:** new org-scoped `priorities` table (name unique per org, hex color, rank, single default) + migration `0023_card_priorities` (+ journal); lazy-seeds Urgent `#ef4444` / High `#f59e0b` / Medium `#3b82f6` (default) / Low `#10b981` per org. CRUD at `/v1/priorities` (`org.read`/`org.update`); delete reassigns cards to the default and promotes it; FK cascades on org delete. `cards.priority_id` (set-null) flows through create (defaults), update (validated), `getCard`/`listCards`/`getBoardFull`/`getMyTasks` payloads; the My Tasks filter is now real (id match, legacy names still resolve).
+- **Frontend:** `PriorityBadge` (backend color, never hardcoded); task detail gets a Priority editor row + header badge; board cards, My Tasks grid + list rows show the badge; My Tasks filter options come from the API; new Admin → Task Priorities page (add/rename/recolor/reorder/default/delete with two-click confirm).
+- Tests & Validation: new `priorities.test.ts` 4/4; cards suite green; live API round-trip verified (seed → assign → getCard → filter → revert). Pre-existing `board.test.ts` org-cleanup FK failure reproduces on clean tree — unrelated, left open.

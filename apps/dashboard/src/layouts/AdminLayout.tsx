@@ -42,6 +42,7 @@ import {
   KeyRound,
   Code,
   Tag,
+  Flag,
 } from 'lucide-react';
 
 interface NavItem {
@@ -60,6 +61,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { name: 'Branding', path: `/admin/branding`, icon: Palette },
   { name: 'Stage Templates', path: `/admin/stages`, icon: Workflow },
   { name: 'Labels & Tags', path: `/admin/labels`, icon: Tag },
+  { name: 'Task Priorities', path: `/admin/priorities`, icon: Flag },
   { name: 'Webhooks', path: `/admin/webhooks`, icon: Webhook },
   { name: 'Integrations', path: `/admin/integrations`, icon: Layers },
 ];

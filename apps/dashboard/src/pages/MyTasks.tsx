@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckSquare,
   Eye,
@@ -21,6 +21,8 @@ import { api } from '../lib/api';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { QueryError } from '../components/common/QueryError';
 import { CardModal } from '../components/board/CardModal';
+import { PriorityBadge } from '../components/board/PriorityBadge';
+import { priorityService } from '../lib/priorityService';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { format } from 'date-fns';
 
@@ -41,6 +43,13 @@ export function MyTasks() {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
 
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
+
+  // Org-configured priorities (backend-driven colors; lazy-seeds defaults).
+  const { data: priorities = [] } = useQuery({
+    queryKey: ['priorities'],
+    queryFn: () => priorityService.list(),
+    staleTime: 5 * 60_000,
+  });
 
   // Paginated tasks — each tab/filter combo caches independently so revisits
   // are instant, while tab switches show skeletons on first load.
@@ -430,26 +439,16 @@ export function MyTasks() {
           <SearchableSelect
             options={[
               { value: 'all', label: 'All Priorities' },
-              {
-                value: 'urgent',
-                label: 'Urgent',
-                badge: <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />,
-              },
-              {
-                value: 'high',
-                label: 'High',
-                badge: <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />,
-              },
-              {
-                value: 'medium',
-                label: 'Medium',
-                badge: <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />,
-              },
-              {
-                value: 'low',
-                label: 'Low',
-                badge: <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />,
-              },
+              ...priorities.map((p) => ({
+                value: p.id,
+                label: `${p.name}${p.isDefault ? ' (default)' : ''}`,
+                badge: (
+                  <span
+                    className="w-2 h-2 rounded-full inline-block"
+                    style={{ backgroundColor: p.color }}
+                  />
+                ),
+              })),
             ]}
             value={selectedPriority}
             onChange={setSelectedPriority}
@@ -599,6 +598,7 @@ export function MyTasks() {
 
                       {/* Relationship Badges (Assignee, Observer, etc.) */}
                       <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                        {task.priority && <PriorityBadge priority={task.priority} />}
                         {task.isAssignee && (
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
                             <CheckSquare className="w-2.5 h-2.5" /> Assigned
@@ -738,6 +738,7 @@ export function MyTasks() {
                       <th className="px-4 py-3">Task Title</th>
                       <th className="px-4 py-3">Project</th>
                       <th className="px-4 py-3">Stage</th>
+                      <th className="px-4 py-3">Priority</th>
                       <th className="px-4 py-3">Role</th>
                       <th className="px-4 py-3">Due Date</th>
                       <th className="px-4 py-3 text-right">Assignees</th>
@@ -779,6 +780,9 @@ export function MyTasks() {
                                 {task.stageName}
                               </span>
                             )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <PriorityBadge priority={task.priority} />
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">

@@ -481,6 +481,7 @@ export const cards = pgTable(
     scheduledStart: timestamp('scheduled_start'),
     scheduledEnd: timestamp('scheduled_end'),
     stageId: uuid('stage_id').references(() => stages.id),
+    priorityId: uuid('priority_id').references(() => priorities.id, { onDelete: 'set null' }),
     coverImage: varchar('cover_image', { length: 2048 }),
     storyPoints: integer('story_points'),
     estimateMinutes: integer('estimate_minutes'),
@@ -495,6 +496,7 @@ export const cards = pgTable(
     index('cards_org_idx').on(t.organizationId),
     index('cards_parent_idx').on(t.parentCardId),
     index('cards_stage_idx').on(t.stageId),
+    index('cards_priority_idx').on(t.priorityId),
     index('cards_scheduled_idx').on(t.scheduledStart, t.scheduledEnd),
   ]
 );
@@ -917,6 +919,26 @@ export const rolePermissions = pgTable(
     primaryKey({ columns: [t.roleId, t.permissionId] }),
     // RBAC check joins permission_id — PK leads with role_id.
     index('role_permissions_permission_idx').on(t.permissionId),
+  ]
+);
+
+// ─── Card Priorities (org-scoped, configurable w/ colors) ────────────────────
+export const priorities = pgTable(
+  'priorities',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 60 }).notNull(),
+    color: varchar('color', { length: 16 }).notNull().default('#64748b'),
+    rank: integer('rank').notNull().default(0),
+    isDefault: boolean('is_default').notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('org_priority_name_idx').on(t.organizationId, t.name),
+    index('priorities_org_idx').on(t.organizationId),
   ]
 );
 

@@ -86,6 +86,8 @@ const CreateTaskModal = lazy(() =>
 import { TaskActionRibbon } from './TaskActionRibbon';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { SearchableSelect, ListSearchableSelect } from '../ui/SearchableSelect';
+import { PriorityBadge } from './PriorityBadge';
+import { priorityService } from '../../lib/priorityService';
 import { ShareTaskModal } from './ShareTaskModal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Kbd } from '../ui/Kbd';
@@ -308,6 +310,13 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       queryKey: ['phases', card?.projectId],
       queryFn: () => phasesService.getPhases(card!.projectId),
       enabled: !!card?.projectId,
+      staleTime: 5 * 60_000,
+    });
+
+    // Org-configured priorities (backend-driven colors).
+    const { data: priorities = [] } = useQuery({
+      queryKey: ['priorities'],
+      queryFn: () => priorityService.list(),
       staleTime: 5 * 60_000,
     });
 
@@ -1272,6 +1281,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
 
             {/* Task Title Header (Large, Crisp with inline editing) */}
             <div className="flex items-center gap-2">
+              <PriorityBadge priority={card.priority} />
               <input
                 type="text"
                 className="w-full text-xl sm:text-2xl font-bold bg-transparent border-b border-transparent hover:border-border focus:border-ring focus:bg-muted/20 rounded-lg px-1.5 py-1 outline-none transition-colors text-foreground tracking-tight"
@@ -1706,6 +1716,30 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     ) : (
                       <span className="text-muted-foreground italic">Default Stage</span>
                     )}
+                  </div>
+                </div>
+
+                {/* Priority (org-configured levels + colors) */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="w-24 text-muted-foreground font-medium shrink-0">Priority:</span>
+                  <div className="flex-1 max-w-[200px] min-w-0">
+                    <SearchableSelect
+                      options={priorities.map((p: any) => ({
+                        value: p.id,
+                        label: `${p.name}${p.isDefault ? ' (default)' : ''}`,
+                        badge: (
+                          <span
+                            className="w-2 h-2 rounded-full inline-block"
+                            style={{ backgroundColor: p.color }}
+                          />
+                        ),
+                      }))}
+                      value={card.priority?.id || card.priorityId || ''}
+                      onChange={(val) => updateCardMutation.mutate({ priorityId: val || null })}
+                      placeholder="Select priority..."
+                      size="sm"
+                      triggerClassName="h-7 bg-muted/40 text-xs font-semibold"
+                    />
                   </div>
                 </div>
 

@@ -20,7 +20,9 @@ import {
   notifications,
   organizationMembers,
   timeLogs,
+  priorities,
 } from '../../db/schema/index';
+import { resolvePriorityId, getDefaultPriorityId } from '../priorities/service';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
 import { notifyProjectChannels } from '../chat/service';
@@ -45,6 +47,7 @@ export interface CreateCardInput {
   parentCardId?: string;
   dueDate?: string;
   stageId?: string;
+  priorityId?: string | null;
   storyPoints?: number;
   estimateMinutes?: number;
   assigneeId?: string;
@@ -227,6 +230,12 @@ export async function createCard(db: Database, organizationId: string, input: Cr
       parentCardId: input.parentCardId,
       dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
       stageId: input.stageId,
+      priorityId:
+        (await resolvePriorityId(
+          db,
+          boardInfo?.organizationId || organizationId,
+          input.priorityId ?? null
+        )) ?? (await getDefaultPriorityId(db, boardInfo?.organizationId || organizationId)),
       storyPoints: input.storyPoints,
       estimateMinutes: input.estimateMinutes,
     })
@@ -329,70 +338,89 @@ export async function listCards(db: Database, listId: string, organizationId: st
     // Enrichment queries are independent — fan out concurrently (was 6 sequential
     // round-trips; pool + Docker RTT made each list ~1s).
     const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
-    const [assigneeRows, labelRows, stageRows, checklistItemsRows, commentRows, attachmentRows] =
-      await Promise.all([
-        // 1. Assignees
-        db
-          .select({
-            cardId: cardAssignees.cardId,
-            id: users.id,
-            name: users.name,
-            email: users.email,
-            avatarUrl: users.avatarUrl,
-          })
-          .from(cardAssignees)
-          .innerJoin(users, eq(users.id, cardAssignees.userId))
-          .where(inArray(cardAssignees.cardId, cardIds)),
-        // 2. Labels
-        db
-          .select({
-            cardId: cardLabels.cardId,
-            id: labels.id,
-            name: labels.name,
-            color: labels.color,
-          })
-          .from(cardLabels)
-          .innerJoin(labels, eq(labels.id, cardLabels.labelId))
-          .where(inArray(cardLabels.cardId, cardIds)),
-        // 3. Stages
-        stageIds.length > 0
-          ? db
-              .select({
-                id: stages.id,
-                name: stages.name,
-                color: stages.color,
-                category: stages.category,
-              })
-              .from(stages)
-              .where(inArray(stages.id, stageIds))
-          : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
-        // 4. Checklist counts
-        db
-          .select({
-            cardId: checklists.cardId,
-            itemId: checklistItems.id,
-            isDone: checklistItems.isDone,
-          })
-          .from(checklists)
-          .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
-          .where(inArray(checklists.cardId, cardIds)),
-        // 5. Comments counts
-        db
-          .select({
-            cardId: comments.cardId,
-            id: comments.id,
-          })
-          .from(comments)
-          .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
-        // 6. Attachments counts
-        db
-          .select({
-            cardId: attachments.cardId,
-            id: attachments.id,
-          })
-          .from(attachments)
-          .where(inArray(attachments.cardId, cardIds)),
-      ]);
+    const priorityIds = [...new Set(cardRows.map((c) => c.priorityId).filter(Boolean))] as string[];
+    const [
+      assigneeRows,
+      labelRows,
+      stageRows,
+      checklistItemsRows,
+      commentRows,
+      attachmentRows,
+      priorityRows,
+    ] = await Promise.all([
+      // 1. Assignees
+      db
+        .select({
+          cardId: cardAssignees.cardId,
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+        })
+        .from(cardAssignees)
+        .innerJoin(users, eq(users.id, cardAssignees.userId))
+        .where(inArray(cardAssignees.cardId, cardIds)),
+      // 2. Labels
+      db
+        .select({
+          cardId: cardLabels.cardId,
+          id: labels.id,
+          name: labels.name,
+          color: labels.color,
+        })
+        .from(cardLabels)
+        .innerJoin(labels, eq(labels.id, cardLabels.labelId))
+        .where(inArray(cardLabels.cardId, cardIds)),
+      // 3. Stages
+      stageIds.length > 0
+        ? db
+            .select({
+              id: stages.id,
+              name: stages.name,
+              color: stages.color,
+              category: stages.category,
+            })
+            .from(stages)
+            .where(inArray(stages.id, stageIds))
+        : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
+      // 4. Checklist counts
+      db
+        .select({
+          cardId: checklists.cardId,
+          itemId: checklistItems.id,
+          isDone: checklistItems.isDone,
+        })
+        .from(checklists)
+        .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
+        .where(inArray(checklists.cardId, cardIds)),
+      // 5. Comments counts
+      db
+        .select({
+          cardId: comments.cardId,
+          id: comments.id,
+        })
+        .from(comments)
+        .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
+      // 6. Attachments counts
+      db
+        .select({
+          cardId: attachments.cardId,
+          id: attachments.id,
+        })
+        .from(attachments)
+        .where(inArray(attachments.cardId, cardIds)),
+      // 7. Priorities (org-configured w/ colors)
+      priorityIds.length > 0
+        ? db
+            .select({
+              id: priorities.id,
+              name: priorities.name,
+              color: priorities.color,
+            })
+            .from(priorities)
+            .where(inArray(priorities.id, priorityIds))
+        : Promise.resolve([] as { id: string; name: string; color: string }[]),
+    ]);
 
     const assigneesByCard = new Map<string, any>();
     assigneeRows.forEach((a) => {
@@ -412,6 +440,9 @@ export async function listCards(db: Database, listId: string, organizationId: st
 
     const stagesByStageId = new Map<string, any>();
     stageRows.forEach((s) => stagesByStageId.set(s.id, s));
+
+    const prioritiesById = new Map<string, any>();
+    priorityRows.forEach((p) => prioritiesById.set(p.id, p));
 
     const checklistStatsByCard = new Map<string, { total: number; done: number }>();
     checklistItemsRows.forEach((row) => {
@@ -444,6 +475,7 @@ export async function listCards(db: Database, listId: string, organizationId: st
         assignees: assignee ? [assignee] : [],
         labels: labelsByCard.get(card.id) || [],
         stage: card.stageId ? stagesByStageId.get(card.stageId) || null : null,
+        priority: card.priorityId ? prioritiesById.get(card.priorityId) || null : null,
         checklistTotal: clStats.total,
         checklistDone: clStats.done,
         commentsCount: commentsCountByCard.get(card.id) || 0,
@@ -527,6 +559,9 @@ export async function getCard(db: Database, id: string, organizationId: string) 
         position: cards.position,
         dueDate: cards.dueDate,
         stageId: cards.stageId,
+        priorityId: cards.priorityId,
+        priorityName: priorities.name,
+        priorityColor: priorities.color,
         coverImage: cards.coverImage,
         storyPoints: cards.storyPoints,
         estimateMinutes: cards.estimateMinutes,
@@ -540,6 +575,7 @@ export async function getCard(db: Database, id: string, organizationId: string) 
       .innerJoin(lists, eq(lists.id, cards.listId))
       .innerJoin(boards, eq(boards.id, lists.boardId))
       .leftJoin(projects, eq(projects.id, boards.projectId))
+      .leftJoin(priorities, eq(priorities.id, cards.priorityId))
       .where(
         and(eq(cards.id, id), eq(cards.organizationId, organizationId), isNull(cards.deletedAt))
       )
@@ -774,6 +810,9 @@ export async function getCard(db: Database, id: string, organizationId: string) 
       watchers,
       labels: cardLabelsList,
       stage,
+      priority: card.priorityId
+        ? { id: card.priorityId, name: card.priorityName, color: card.priorityColor }
+        : null,
       parentCard,
       comments: commentRows,
       checklists: checklistsWithItems,
@@ -863,9 +902,13 @@ export async function deleteBoardLabel(db: Database, labelId: string) {
 }
 
 export async function updateCard(db: Database, id: string, organizationId: string, input: any) {
+  const { priorityId, ...rest } = input ?? {};
+  const patch: any = { ...rest, updatedAt: new Date() };
+  const resolvedPriority = await resolvePriorityId(db, organizationId, priorityId);
+  if (resolvedPriority !== undefined) patch.priorityId = resolvedPriority;
   const [card] = await db
     .update(cards)
-    .set({ ...input, updatedAt: new Date() })
+    .set(patch)
     .where(and(eq(cards.id, id), eq(cards.organizationId, organizationId)))
     .returning();
 
@@ -2021,6 +2064,15 @@ export async function getMyTasks(
     );
   }
 
+  if (options?.priority && options.priority !== 'all') {
+    const p = options.priority.trim();
+    // New clients send the priority id; legacy hardcoded names still resolve.
+    const isUuid = /^[0-9a-fA-F-]{36}$/.test(p);
+    conditions.push(
+      isUuid ? eq(cards.priorityId, p) : eq(sql`lower(${priorities.name})`, p.toLowerCase())
+    );
+  }
+
   const rawTasks = await db
     .select({
       id: cards.id,
@@ -2046,6 +2098,9 @@ export async function getMyTasks(
       stageName: stages.name,
       stageColor: stages.color,
       stageCategory: stages.category,
+      priorityId: cards.priorityId,
+      priorityName: priorities.name,
+      priorityColor: priorities.color,
     })
     .from(cards)
     .innerJoin(lists, eq(lists.id, cards.listId))
@@ -2053,6 +2108,7 @@ export async function getMyTasks(
     .innerJoin(projects, eq(projects.id, boards.projectId))
     .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
     .leftJoin(stages, eq(stages.id, cards.stageId))
+    .leftJoin(priorities, eq(priorities.id, cards.priorityId))
     .where(and(...conditions))
     .orderBy(desc(cards.updatedAt))
     .limit(limit)
@@ -2071,6 +2127,7 @@ export async function getMyTasks(
     .innerJoin(projects, eq(projects.id, boards.projectId))
     .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
     .leftJoin(stages, eq(stages.id, cards.stageId))
+    .leftJoin(priorities, eq(priorities.id, cards.priorityId))
     .where(and(...conditions));
 
   const cardIds = rawTasks.map((t) => t.id);
@@ -2167,6 +2224,9 @@ export async function getMyTasks(
       watchersCount: watchersCountByCard.get(t.id) || 0,
       commentsCount: commentsCountByCard.get(t.id) || 0,
       checklistsProgress: checklistsProgressByCard.get(t.id) || { total: 0, completed: 0 },
+      priority: t.priorityId
+        ? { id: t.priorityId, name: t.priorityName, color: t.priorityColor }
+        : null,
       isAssignee,
       isObserver,
       isParticipant,

@@ -733,3 +733,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** custom `Sec-WebSocket-Protocol` token header (rejected — needs frontend + backend changes and non-standard client handling); per-message auth only (rejected — open() already validates `?token=` and closes on failure, so exemption loses nothing).
 
 **Decision:** `/v1/realtime/ws` joins `PUBLIC_PATH_PREFIXES`; handshake auth stays in `open()`. Frontend adds reconnect-with-backoff so backend restarts don't silently end realtime. Any future WS route must follow the same validate-in-`open()` pattern.
+
+## 2026-09-28 — Priorities as Org-Scoped Config Table (not enum/labels)
+
+**Context:** Priority existed only as an ad-hoc DB column plus hardcoded frontend strings; the My Tasks priority filter was dead (param accepted, ignored).
+
+**Alternatives considered:** Postgres enum (rejected — adding a level needs a migration, no per-org variance, no colors); reusing board labels (rejected — board-scoped, multi-assign, wrong semantics); free-text column (rejected — no color mapping, typo-prone filtering).
+
+**Decision:** `priorities` table per org (unique name, hex color validated `^#[0-9a-fA-F]{3,6}$`, rank order, single default), lazy-seeded Urgent/High/Medium(default)/Low; `cards.priority_id` set-null; delete reassigns to default (never orphans, last level protected); `org.update` gates mutations. Frontend renders colors exclusively from the API. Benchmark: Jira (org-level priority schemes with icons/colors) over Trello (fixed labels).

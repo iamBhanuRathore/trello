@@ -21,6 +21,7 @@ import {
   intakeForms,
   users,
   stages,
+  priorities,
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import {
@@ -219,58 +220,72 @@ async function loadBoardFull(
   }
 
   const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
-  const [assigneeRows, labelRows, stageRows, checklistItemsRows, commentRows, attachmentRows] =
-    await Promise.all([
-      db
-        .select({
-          cardId: cardAssignees.cardId,
-          id: users.id,
-          name: users.name,
-          email: users.email,
-          avatarUrl: users.avatarUrl,
-        })
-        .from(cardAssignees)
-        .innerJoin(users, eq(users.id, cardAssignees.userId))
-        .where(inArray(cardAssignees.cardId, cardIds)),
-      db
-        .select({
-          cardId: cardLabels.cardId,
-          id: labels.id,
-          name: labels.name,
-          color: labels.color,
-        })
-        .from(cardLabels)
-        .innerJoin(labels, eq(labels.id, cardLabels.labelId))
-        .where(inArray(cardLabels.cardId, cardIds)),
-      stageIds.length > 0
-        ? db
-            .select({
-              id: stages.id,
-              name: stages.name,
-              color: stages.color,
-              category: stages.category,
-            })
-            .from(stages)
-            .where(inArray(stages.id, stageIds))
-        : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
-      db
-        .select({
-          cardId: checklists.cardId,
-          itemId: checklistItems.id,
-          isDone: checklistItems.isDone,
-        })
-        .from(checklists)
-        .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
-        .where(inArray(checklists.cardId, cardIds)),
-      db
-        .select({ cardId: comments.cardId, id: comments.id })
-        .from(comments)
-        .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
-      db
-        .select({ cardId: attachments.cardId, id: attachments.id })
-        .from(attachments)
-        .where(inArray(attachments.cardId, cardIds)),
-    ]);
+  const priorityIds = [...new Set(cardRows.map((c) => c.priorityId).filter(Boolean))] as string[];
+  const [
+    assigneeRows,
+    labelRows,
+    stageRows,
+    checklistItemsRows,
+    commentRows,
+    attachmentRows,
+    priorityRows,
+  ] = await Promise.all([
+    db
+      .select({
+        cardId: cardAssignees.cardId,
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(cardAssignees)
+      .innerJoin(users, eq(users.id, cardAssignees.userId))
+      .where(inArray(cardAssignees.cardId, cardIds)),
+    db
+      .select({
+        cardId: cardLabels.cardId,
+        id: labels.id,
+        name: labels.name,
+        color: labels.color,
+      })
+      .from(cardLabels)
+      .innerJoin(labels, eq(labels.id, cardLabels.labelId))
+      .where(inArray(cardLabels.cardId, cardIds)),
+    stageIds.length > 0
+      ? db
+          .select({
+            id: stages.id,
+            name: stages.name,
+            color: stages.color,
+            category: stages.category,
+          })
+          .from(stages)
+          .where(inArray(stages.id, stageIds))
+      : Promise.resolve([] as { id: string; name: string; color: string; category: unknown }[]),
+    db
+      .select({
+        cardId: checklists.cardId,
+        itemId: checklistItems.id,
+        isDone: checklistItems.isDone,
+      })
+      .from(checklists)
+      .leftJoin(checklistItems, eq(checklistItems.checklistId, checklists.id))
+      .where(inArray(checklists.cardId, cardIds)),
+    db
+      .select({ cardId: comments.cardId, id: comments.id })
+      .from(comments)
+      .where(and(inArray(comments.cardId, cardIds), isNull(comments.deletedAt))),
+    db
+      .select({ cardId: attachments.cardId, id: attachments.id })
+      .from(attachments)
+      .where(inArray(attachments.cardId, cardIds)),
+    priorityIds.length > 0
+      ? db
+          .select({ id: priorities.id, name: priorities.name, color: priorities.color })
+          .from(priorities)
+          .where(inArray(priorities.id, priorityIds))
+      : Promise.resolve([] as { id: string; name: string; color: string }[]),
+  ]);
 
   const assigneesByCard = new Map<string, any>();
   assigneeRows.forEach((a) => {
@@ -288,6 +303,8 @@ async function loadBoardFull(
   });
   const stagesById = new Map<string, any>();
   stageRows.forEach((s) => stagesById.set(s.id, s));
+  const prioritiesById = new Map<string, any>();
+  priorityRows.forEach((p) => prioritiesById.set(p.id, p));
   const checklistStats = new Map<string, { total: number; done: number }>();
   checklistItemsRows.forEach((row) => {
     if (!checklistStats.has(row.cardId)) checklistStats.set(row.cardId, { total: 0, done: 0 });
@@ -314,6 +331,7 @@ async function loadBoardFull(
       assignees: assignee ? [assignee] : [],
       labels: labelsByCard.get(card.id) || [],
       stage: card.stageId ? stagesById.get(card.stageId) || null : null,
+      priority: card.priorityId ? prioritiesById.get(card.priorityId) || null : null,
       checklistTotal: stats.total,
       checklistDone: stats.done,
       commentsCount: commentsCount.get(card.id) || 0,

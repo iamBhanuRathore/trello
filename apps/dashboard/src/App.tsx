@@ -75,6 +75,9 @@ const Users = lazy(() => import('./pages/admin/Users').then((m) => ({ default: m
 const CustomRoles = lazy(() =>
   import('./pages/admin/CustomRoles').then((m) => ({ default: m.CustomRoles }))
 );
+const Priorities = lazy(() =>
+  import('./pages/admin/Priorities').then((m) => ({ default: m.Priorities }))
+);
 const SSOSettings = lazy(() =>
   import('./pages/admin/SSOSettings').then((m) => ({ default: m.SSOSettings }))
 );
@@ -172,6 +175,7 @@ export function App() {
               <Route index element={<Navigate to="users" replace />} />
               <Route path="users" element={<Users />} />
               <Route path="roles" element={<CustomRoles />} />
+              <Route path="priorities" element={<Priorities />} />
               <Route path="sso" element={<SSOSettings />} />
               <Route path="developer" element={<DeveloperSettings />} />
               <Route path="audit-logs" element={<AuditLogs />} />
