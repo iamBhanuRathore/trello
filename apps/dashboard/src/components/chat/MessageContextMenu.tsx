@@ -1,46 +1,80 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CornerUpLeft, Pencil, Trash2, Copy, Check } from 'lucide-react';
+import {
+  CornerUpLeft,
+  Pencil,
+  Trash2,
+  Copy,
+  Check,
+  Languages,
+  ImageDown,
+  Save,
+  Pin,
+  PinOff,
+  Forward,
+  CheckSquare,
+  CheckCheck,
+  ChevronDown,
+} from 'lucide-react';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 export const QUICK_REACTION_EMOJIS = ['👍', '😂', '❤️', '😮', '👎', '🔥', '🥰'];
+const EXTRA_EMOJIS = ['🎉', '👀', '🚀', '👏', '😢', '😡', '🤔', '🙏', '💯', '⚡', '✅', '❌'];
 
 export interface MessageMenuAction {
   onReply: () => void;
+  onTranslate: () => void;
   onCopy: () => void;
+  onCopyMedia?: () => void;
+  onSaveAs?: () => void;
   onEdit: () => void;
+  onPin: () => void;
+  onForward: () => void;
+  onSelect: () => void;
+  onShowSeen: () => void;
   onDelete: () => void;
   onToggleReaction: (emoji: string) => void;
 }
 
 interface MessageContextMenuProps {
-  /** Viewport coordinates where the menu was invoked. */
   anchor: { x: number; y: number };
   canEdit: boolean;
   canDelete: boolean;
+  canPin: boolean;
+  isPinned: boolean;
+  hasMedia: boolean;
+  hasAttachments: boolean;
+  seenCount: number;
+  seenAvatars?: { avatarUrl?: string | null; name: string }[];
   onClose: () => void;
   actions: MessageMenuAction;
 }
 
 /**
- * Telegram-style message context menu: quick reactions row + Reply / Copy /
- * Edit / Delete. Opens on right-click (desktop) or long-press (touch),
- * clamped to the viewport, dismissed by outside press / Escape / scroll.
+ * Telegram-style message context menu for group + DM channels:
+ * quick reactions (+ expandable picker) then Reply / Translate / Copy /
+ * Media / Pin / Forward / Select / Seen / Delete — same order as Telegram.
  */
 export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   anchor,
   canEdit,
   canDelete,
+  canPin,
+  isPinned,
+  hasMedia,
+  hasAttachments,
+  seenCount,
+  seenAvatars = [],
   onClose,
   actions,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: anchor.x, y: anchor.y });
   const [copied, setCopied] = useState(false);
+  const [emojiExpanded, setEmojiExpanded] = useState(false);
 
   useEscapeKey(onClose, true);
 
-  // Dismiss on outside press, scroll, or resize.
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
@@ -56,7 +90,6 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
     };
   }, [onClose]);
 
-  // Clamp to viewport once the menu size is known.
   useLayoutEffect(() => {
     const el = menuRef.current;
     if (!el) return;
@@ -65,7 +98,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       x: Math.max(8, Math.min(anchor.x, window.innerWidth - rect.width - 8)),
       y: Math.max(8, Math.min(anchor.y, window.innerHeight - rect.height - 8)),
     });
-  }, [anchor.x, anchor.y]);
+  }, [anchor.x, anchor.y, emojiExpanded]);
 
   const run = (fn: () => void) => {
     fn();
@@ -74,10 +107,13 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
 
   const handleCopy = () => {
     actions.onCopy();
-    // Inline confirmation (no toast noise) then dismiss.
     setCopied(true);
     window.setTimeout(onClose, 550);
   };
+
+  const itemCls =
+    'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-medium text-foreground hover:bg-muted transition-colors cursor-pointer';
+  const iconCls = 'w-3.5 h-3.5 text-muted-foreground shrink-0';
 
   return createPortal(
     <div
@@ -88,59 +124,174 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
       style={{ left: position.x, top: position.y }}
     >
       {/* Quick reactions */}
-      <div
-        className="flex items-center gap-0.5 px-2.5 py-2 bg-muted/30"
-        role="group"
-        aria-label="Quick reactions"
-      >
-        {QUICK_REACTION_EMOJIS.map((emoji) => (
+      <div className="px-2.5 py-2 bg-muted/30" role="group" aria-label="Quick reactions">
+        <div className="flex items-center gap-0.5">
+          {QUICK_REACTION_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              role="menuitem"
+              aria-label={`React with ${emoji}`}
+              onClick={() => run(() => actions.onToggleReaction(emoji))}
+              className="flex-1 py-1 text-base rounded-lg hover:bg-muted hover:scale-125 transition-all cursor-pointer"
+            >
+              {emoji}
+            </button>
+          ))}
           <button
-            key={emoji}
             type="button"
-            role="menuitem"
-            aria-label={`React with ${emoji}`}
-            onClick={() => run(() => actions.onToggleReaction(emoji))}
-            className="flex-1 py-1 text-base rounded-lg hover:bg-muted hover:scale-125 transition-all cursor-pointer"
+            aria-label={emojiExpanded ? 'Show fewer emojis' : 'Show more emojis'}
+            aria-expanded={emojiExpanded}
+            onClick={() => setEmojiExpanded((v) => !v)}
+            className="p-1 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
           >
-            {emoji}
+            <ChevronDown
+              className={`w-4 h-4 transition-transform ${emojiExpanded ? 'rotate-180' : ''}`}
+            />
           </button>
-        ))}
+        </div>
+        {emojiExpanded && (
+          <div className="grid grid-cols-6 gap-0.5 pt-1.5">
+            {EXTRA_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                aria-label={`React with ${emoji}`}
+                onClick={() => run(() => actions.onToggleReaction(emoji))}
+                className="py-1 text-base rounded-lg hover:bg-muted hover:scale-125 transition-all cursor-pointer"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="p-1.5 space-y-0.5">
+      <div className="p-1.5 space-y-0.5 max-h-[50vh] overflow-y-auto">
         <button
           type="button"
           role="menuitem"
           onClick={() => run(actions.onReply)}
-          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-medium text-foreground hover:bg-muted transition-colors cursor-pointer"
+          className={itemCls}
         >
-          <CornerUpLeft className="w-3.5 h-3.5 text-muted-foreground" />
+          <CornerUpLeft className={iconCls} />
           Reply
         </button>
         <button
           type="button"
           role="menuitem"
-          onClick={handleCopy}
-          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-medium text-foreground hover:bg-muted transition-colors cursor-pointer"
+          onClick={() => run(actions.onTranslate)}
+          className={itemCls}
         >
+          <Languages className={iconCls} />
+          Translate
+        </button>
+        <button type="button" role="menuitem" onClick={handleCopy} className={itemCls}>
           {copied ? (
-            <Check className="w-3.5 h-3.5 text-emerald-500" />
+            <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
           ) : (
-            <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+            <Copy className={iconCls} />
           )}
           {copied ? 'Copied!' : 'Copy Text'}
         </button>
+        {hasMedia && actions.onCopyMedia && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => run(actions.onCopyMedia!)}
+            className={itemCls}
+          >
+            <ImageDown className={iconCls} />
+            Copy Media
+          </button>
+        )}
+        {hasAttachments && actions.onSaveAs && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => run(actions.onSaveAs!)}
+            className={itemCls}
+          >
+            <Save className={iconCls} />
+            Save As…
+          </button>
+        )}
         {canEdit && (
           <button
             type="button"
             role="menuitem"
             onClick={() => run(actions.onEdit)}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-medium text-foreground hover:bg-muted transition-colors cursor-pointer"
+            className={itemCls}
           >
-            <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+            <Pencil className={iconCls} />
             Edit
           </button>
         )}
+        {canPin && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => run(actions.onPin)}
+            className={itemCls}
+          >
+            {isPinned ? <PinOff className={iconCls} /> : <Pin className={iconCls} />}
+            {isPinned ? 'Unpin' : 'Pin'}
+          </button>
+        )}
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run(actions.onForward)}
+          className={`${itemCls} justify-between`}
+        >
+          <span className="flex items-center gap-2.5">
+            <Forward className={iconCls} />
+            Forward
+          </span>
+          <span className="text-muted-foreground">›</span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run(actions.onSelect)}
+          className={itemCls}
+        >
+          <CheckSquare className={iconCls} />
+          Select
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run(actions.onShowSeen)}
+          className={`${itemCls} justify-between`}
+        >
+          <span className="flex items-center gap-2.5">
+            <CheckCheck className={iconCls} />
+            {seenCount > 0 ? `${seenCount} Seen` : 'Seen'}
+          </span>
+          {seenAvatars.length > 0 && (
+            <span className="flex -space-x-1.5">
+              {seenAvatars.slice(0, 2).map((s, i) =>
+                s.avatarUrl ? (
+                  <img
+                    key={i}
+                    src={s.avatarUrl}
+                    alt=""
+                    className="w-5 h-5 rounded-full object-cover border border-card"
+                  />
+                ) : (
+                  <span
+                    key={i}
+                    className="w-5 h-5 rounded-full bg-primary/15 text-primary text-[8px] font-bold flex items-center justify-center border border-card"
+                  >
+                    {(s.name || '?').slice(0, 1).toUpperCase()}
+                  </span>
+                )
+              )}
+              <span className="text-muted-foreground text-xs pl-1">›</span>
+            </span>
+          )}
+        </button>
         {canDelete && (
           <button
             type="button"
@@ -148,7 +299,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
             onClick={() => run(actions.onDelete)}
             className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-3.5 h-3.5 shrink-0" />
             Delete
           </button>
         )}

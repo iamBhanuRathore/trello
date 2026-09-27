@@ -81,6 +81,7 @@ Checkable version of the Build Order from `trello-clone-architecture.md` §12. A
 - [x] Message threads, reactions, file attachments, and rich markdown formatting
 - [x] Channel-to-Project linking with automated activity feed
 - [x] Real-time typing indicators and online presence across channels
+- [x] Telegram-parity group message menu (Reply/Translate/Copy/Copy Media/Save/Pin/Forward/Select/Seen + expandable reactions)
 
 ### 4.3 Bi-Directional Git & Developer Automations (Linear / GitHub Engine)
 

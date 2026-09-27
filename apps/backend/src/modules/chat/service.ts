@@ -1363,3 +1363,200 @@ export async function createChatAttachment(
 
   return { uploadUrl, attachment };
 }
+
+// ─── Telegram Parity: Pin / Forward / Seen ────────────────────────────────────
+
+async function requireChannelMembership(db: Database, channelId: string, userId: string) {
+  const [membership] = await db
+    .select()
+    .from(chatChannelMembers)
+    .where(and(eq(chatChannelMembers.channelId, channelId), eq(chatChannelMembers.userId, userId)))
+    .limit(1);
+  if (!membership) throw httpError(403, 'Access denied: not a member of this channel');
+  return membership;
+}
+
+export async function pinMessage(
+  db: Database,
+  messageId: string,
+  actorId: string,
+  pinned: boolean
+) {
+  const [message] = await db
+    .select()
+    .from(chatMessages)
+    .where(and(eq(chatMessages.id, messageId), isNull(chatMessages.deletedAt)))
+    .limit(1);
+  if (!message) throw httpError(404, 'Message not found');
+  if (message.parentMessageId) throw httpError(400, 'Thread replies cannot be pinned');
+  if (message.isSystem) throw httpError(400, 'System messages cannot be pinned');
+
+  const membership = await requireChannelMembership(db, message.channelId, actorId);
+  // DMs + groups: any member can pin (Telegram behavior). Announcement-only
+  // channels stay admin-gated.
+  const [channel] = await db
+    .select()
+    .from(chatChannels)
+    .where(eq(chatChannels.id, message.channelId))
+    .limit(1);
+  if (channel?.isAnnouncementOnly && membership.role === 'member') {
+    throw httpError(403, 'Only channel admins can pin in this channel');
+  }
+
+  const [updated] = await db
+    .update(chatMessages)
+    .set({
+      isPinned: pinned,
+      pinnedAt: pinned ? new Date() : null,
+      pinnedBy: pinned ? actorId : null,
+    })
+    .where(eq(chatMessages.id, messageId))
+    .returning();
+
+  await eventBus.broadcast(`chat:channel:${message.channelId}`, 'chat:message_pinned', {
+    messageId,
+    channelId: message.channelId,
+    isPinned: pinned,
+    pinnedBy: actorId,
+  });
+
+  return updated;
+}
+
+export async function listPinnedMessages(db: Database, channelId: string, userId: string) {
+  await requireChannelMembership(db, channelId, userId);
+  const rows = await db
+    .select({
+      message: chatMessages,
+      author: {
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        timezone: users.timezone,
+      },
+    })
+    .from(chatMessages)
+    .innerJoin(users, eq(chatMessages.userId, users.id))
+    .where(
+      and(
+        eq(chatMessages.channelId, channelId),
+        eq(chatMessages.isPinned, true),
+        isNull(chatMessages.deletedAt)
+      )
+    )
+    .orderBy(desc(chatMessages.pinnedAt));
+  return rows.map(({ message, author }) => ({ ...message, author }));
+}
+
+export async function forwardMessage(
+  db: Database,
+  sourceMessageId: string,
+  targetChannelId: string,
+  actorId: string
+) {
+  const [source] = await db
+    .select()
+    .from(chatMessages)
+    .where(and(eq(chatMessages.id, sourceMessageId), isNull(chatMessages.deletedAt)))
+    .limit(1);
+  if (!source) throw httpError(404, 'Source message not found');
+  if (source.isSystem) throw httpError(400, 'System messages cannot be forwarded');
+
+  await requireChannelMembership(db, source.channelId, actorId);
+
+  const [target] = await db
+    .select()
+    .from(chatChannels)
+    .where(eq(chatChannels.id, targetChannelId))
+    .limit(1);
+  if (!target) throw httpError(404, 'Target channel not found');
+  const targetMembership = await requireChannelMembership(db, targetChannelId, actorId);
+  if (target.isAnnouncementOnly && targetMembership.role === 'member') {
+    throw httpError(403, 'Only channel admins can post in this announcement channel');
+  }
+
+  const [copy] = await db
+    .insert(chatMessages)
+    .values({
+      channelId: targetChannelId,
+      userId: actorId,
+      body: source.body,
+      forwardedFromId: source.id,
+    })
+    .returning();
+  if (!copy) throw httpError(500, 'Failed to forward message');
+
+  // Clone attachments (new rows pointing at the copy, same file URLs)
+  const sourceAttachments = await db
+    .select()
+    .from(chatAttachments)
+    .where(eq(chatAttachments.messageId, source.id));
+  for (const att of sourceAttachments) {
+    await db.insert(chatAttachments).values({
+      messageId: copy.id,
+      channelId: targetChannelId,
+      uploadedBy: actorId,
+      fileName: att.fileName,
+      fileUrl: att.fileUrl,
+      fileSize: att.fileSize,
+      fileType: att.fileType,
+    });
+  }
+
+  const preview = source.body.trim().slice(0, 120);
+  await db
+    .update(chatChannels)
+    .set({ lastMessageAt: new Date(), lastMessagePreview: preview })
+    .where(eq(chatChannels.id, targetChannelId));
+
+  const [author] = await db
+    .select({ id: users.id, name: users.name, email: users.email, avatarUrl: users.avatarUrl })
+    .from(users)
+    .where(eq(users.id, actorId))
+    .limit(1);
+
+  const fullMessage = {
+    ...copy,
+    author,
+    replyTo: null,
+    attachments: [],
+    reactions: [],
+    replyCount: 0,
+  };
+  await eventBus.broadcast(`chat:channel:${targetChannelId}`, 'chat:message_created', fullMessage);
+  return fullMessage;
+}
+
+/**
+ * Seen-by detail (Telegram "2 Seen"): members whose lastReadAt >= message.createdAt.
+ * Excludes the author. Returns readers + total eligible so UI can render "N Seen".
+ */
+export async function getMessageSeenBy(db: Database, messageId: string, requesterId: string) {
+  const [message] = await db
+    .select()
+    .from(chatMessages)
+    .where(eq(chatMessages.id, messageId))
+    .limit(1);
+  if (!message) throw httpError(404, 'Message not found');
+  await requireChannelMembership(db, message.channelId, requesterId);
+
+  const members = await db
+    .select({
+      userId: users.id,
+      name: users.name,
+      avatarUrl: users.avatarUrl,
+      lastReadAt: chatChannelMembers.lastReadAt,
+    })
+    .from(chatChannelMembers)
+    .innerJoin(users, eq(chatChannelMembers.userId, users.id))
+    .where(eq(chatChannelMembers.channelId, message.channelId));
+
+  const msgTime = new Date(message.createdAt).getTime();
+  const readers = members
+    .filter((m) => m.userId !== message.userId)
+    .filter((m) => m.lastReadAt && new Date(m.lastReadAt).getTime() >= msgTime)
+    .map(({ lastReadAt, ...rest }) => rest);
+
+  return { count: readers.length, readers, messageId, channelId: message.channelId };
+}

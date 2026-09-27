@@ -74,6 +74,10 @@ export interface ChatMessageItem {
   isEdited: boolean;
   isSystem?: boolean;
   isAnnouncement: boolean;
+  isPinned?: boolean;
+  pinnedAt?: string | null;
+  pinnedBy?: string | null;
+  forwardedFromId?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -87,6 +91,13 @@ export interface ChatMessageItem {
   attachments: ChatAttachment[];
   reactions: ChatReaction[];
   replyCount: number;
+}
+
+export interface SeenByResult {
+  count: number;
+  readers: { userId: string; name: string; avatarUrl?: string | null }[];
+  messageId: string;
+  channelId: string;
 }
 
 export const chatService = {
@@ -208,6 +219,26 @@ export const chatService = {
 
   async markChannelRead(channelId: string): Promise<any> {
     const res = await api.post(`/chat/channels/${channelId}/read`);
+    return res.data;
+  },
+
+  async pinMessage(messageId: string, pinned: boolean): Promise<any> {
+    const res = await api.post(`/chat/messages/${messageId}/pin`, { pinned });
+    return res.data;
+  },
+
+  async listPinned(channelId: string): Promise<ChatMessageItem[]> {
+    const res = await api.get(`/chat/channels/${channelId}/pinned`);
+    return res.data;
+  },
+
+  async forwardMessage(messageId: string, targetChannelId: string): Promise<ChatMessageItem> {
+    const res = await api.post(`/chat/messages/${messageId}/forward`, { targetChannelId });
+    return res.data;
+  },
+
+  async getSeenBy(messageId: string): Promise<SeenByResult> {
+    const res = await api.get(`/chat/messages/${messageId}/seen`);
     return res.data;
   },
 

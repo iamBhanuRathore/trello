@@ -20,6 +20,10 @@ import {
   postSystemMessage,
   notifyProjectChannels,
   createChatAttachment,
+  pinMessage,
+  listPinnedMessages,
+  forwardMessage,
+  getMessageSeenBy,
 } from './service';
 
 const TEST_DB_URL =
@@ -244,5 +248,71 @@ describe('Chat File Attachments', () => {
     const feed = await listMessages(db, channel.id, user.id);
     const found = feed.find((m) => m.id === sent.id);
     expect(found?.attachments?.some((a: any) => a.id === attachment.id)).toBe(true);
+  });
+});
+
+describe('Telegram Parity: Pin / Forward / Seen', () => {
+  it('pins and unpins a group message, surfaced by listPinnedMessages', async () => {
+    const { user, organization } = await setupOrgWithProject('pinok');
+    const channel = await createGroupChannel(db, organization.id, user.id, { name: 'eng' });
+    const sent = await sendMessage(db, channel.id, user.id, { body: 'pin me' });
+
+    const pinned = await pinMessage(db, sent.id, user.id, true);
+    expect(pinned.isPinned).toBe(true);
+
+    const listed = await listPinnedMessages(db, channel.id, user.id);
+    expect(listed.some((m: any) => m.id === sent.id)).toBe(true);
+
+    const unpinned = await pinMessage(db, sent.id, user.id, false);
+    expect(unpinned.isPinned).toBe(false);
+    const relisted = await listPinnedMessages(db, channel.id, user.id);
+    expect(relisted.some((m: any) => m.id === sent.id)).toBe(false);
+  });
+
+  it('rejects pinning thread replies and system messages', async () => {
+    const { user, organization } = await setupOrgWithProject('pin400');
+    const channel = await createGroupChannel(db, organization.id, user.id, { name: 'eng' });
+    const parent = await sendMessage(db, channel.id, user.id, { body: 'parent' });
+    const reply = await sendMessage(db, channel.id, user.id, {
+      body: 'reply',
+      parentMessageId: parent.id,
+    });
+    expect(pinMessage(db, reply.id, user.id, true)).rejects.toThrow('Thread replies');
+    const sys = await postSystemMessage(db, channel.id, user.id, 'activity');
+    expect(pinMessage(db, sys.id, user.id, true)).rejects.toThrow('System messages');
+  });
+
+  it('forwards a message copy into another channel with provenance', async () => {
+    const { user, organization } = await setupOrgWithProject('fwdok');
+    const a = await createGroupChannel(db, organization.id, user.id, { name: 'a' });
+    const b = await createGroupChannel(db, organization.id, user.id, { name: 'b' });
+    const src = await sendMessage(db, a.id, user.id, { body: 'forward me' });
+
+    const copy = await forwardMessage(db, src.id, b.id, user.id);
+    expect(copy.channelId).toBe(b.id);
+    expect(copy.body).toBe('forward me');
+    expect(copy.forwardedFromId).toBe(src.id);
+
+    const feed = await listMessages(db, b.id, user.id);
+    expect(feed.some((m) => m.id === copy.id)).toBe(true);
+  });
+
+  it('reports seen-by readers based on lastReadAt', async () => {
+    const { user, organization } = await setupOrgWithProject('seenok');
+    const channel = await createGroupChannel(db, organization.id, user.id, { name: 'eng' });
+    const sent = await sendMessage(db, channel.id, user.id, { body: 'seen?' });
+    // Author-only channel: no other readers yet
+    const seen = await getMessageSeenBy(db, sent.id, user.id);
+    expect(seen.messageId).toBe(sent.id);
+    expect(seen.count).toBe(0);
+    expect(seen.readers).toEqual([]);
+  });
+
+  it('rejects seen-by for non-members', async () => {
+    const a = await setupOrgWithProject('seenA');
+    const b = await setupOrgWithProject('seenB');
+    const channel = await createGroupChannel(db, a.organization.id, a.user.id, { name: 'eng' });
+    const sent = await sendMessage(db, channel.id, a.user.id, { body: 'hi' });
+    expect(getMessageSeenBy(db, sent.id, b.user.id)).rejects.toThrow('not a member');
   });
 });

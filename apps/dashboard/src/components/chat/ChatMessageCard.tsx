@@ -24,16 +24,26 @@ import { MessageContextMenu } from './MessageContextMenu';
 interface ChatMessageCardProps {
   message: ChatMessageItem;
   canModerate?: boolean;
+  canPin?: boolean;
   isEditingExternal?: boolean;
   channelType?: 'direct' | 'group_private' | 'group_public' | 'task_thread';
   otherUserId?: string | null;
   channelMembers?: { userId: string; lastReadAt?: string }[];
+  seenCount?: number;
+  selectMode?: boolean;
+  isSelected?: boolean;
   onCancelEdit?: () => void;
   onEdit?: (messageId: string, newBody: string) => void;
   onDelete?: (messageId: string) => void;
   onToggleReaction?: (messageId: string, emoji: string) => void;
+  onTogglePin?: (message: ChatMessageItem) => void;
   onOpenThread?: (message: ChatMessageItem) => void;
   onReply?: (message: ChatMessageItem) => void;
+  onForward?: (message: ChatMessageItem) => void;
+  onSelect?: (message: ChatMessageItem) => void;
+  onToggleSelect?: (message: ChatMessageItem) => void;
+  onTranslate?: (message: ChatMessageItem) => void;
+  onShowSeen?: (message: ChatMessageItem) => void;
   onJumpToMessage?: (messageId: string) => void;
 }
 
@@ -42,16 +52,26 @@ const COMMON_EMOJIS = ['👍', '❤️', '🔥', '🚀', '👀', '🎉'];
 export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   message,
   canModerate = false,
+  canPin = true,
   isEditingExternal = false,
   channelType = 'group_public',
   otherUserId = null,
   channelMembers = [],
+  seenCount = 0,
+  selectMode = false,
+  isSelected = false,
   onCancelEdit,
   onEdit,
   onDelete,
   onToggleReaction,
+  onTogglePin,
   onOpenThread,
   onReply,
+  onForward,
+  onSelect,
+  onToggleSelect,
+  onTranslate,
+  onShowSeen,
   onJumpToMessage,
 }) => {
   const { user } = useAuthStore();
@@ -125,6 +145,57 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
       fallbackCopy(text);
     }
   };
+
+  const imageAttachments = (message.attachments || []).filter((a) =>
+    (a.fileType || '').startsWith('image/')
+  );
+  const hasMedia = imageAttachments.length > 0;
+  const hasAttachments = (message.attachments || []).length > 0;
+
+  const handleCopyMedia = async () => {
+    const img = imageAttachments[0];
+    if (!img) return;
+    try {
+      const res = await fetch(img.fileUrl);
+      const blob = await res.blob();
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+        return;
+      }
+      window.open(img.fileUrl, '_blank', 'noopener');
+    } catch {
+      window.open(img.fileUrl, '_blank', 'noopener');
+    }
+  };
+
+  const handleSaveAs = () => {
+    for (const att of message.attachments || []) {
+      const a = document.createElement('a');
+      a.href = att.fileUrl;
+      a.download = att.fileName || 'attachment';
+      a.target = '_blank';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
+  // Seen count fallback: derive from channel lastReadAt when feed didn't supply one
+  // (Telegram "N Seen" parity for groups).
+  const derivedSeenCount = React.useMemo(() => {
+    if (seenCount > 0) return seenCount;
+    if (channelType === 'direct' || isAuthor) {
+      const msgTime = new Date(message.createdAt).getTime();
+      const others =
+        channelType === 'direct' && otherUserId
+          ? channelMembers.filter((m) => m.userId === otherUserId)
+          : (channelMembers || []).filter((m) => m.userId !== user?.id);
+      return others.filter((m) => m.lastReadAt && new Date(m.lastReadAt).getTime() >= msgTime)
+        .length;
+    }
+    return 0;
+  }, [seenCount, channelType, channelMembers, message.createdAt, isAuthor, otherUserId, user?.id]);
 
   const fallbackCopy = (text: string) => {
     try {
@@ -280,23 +351,57 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   return (
     <div
       id={`msg-${message.id}`}
-      className="group relative flex items-start gap-3 p-2.5 -mx-2 rounded-xl hover:bg-muted/30 transition-all duration-300"
+      className={`group relative flex items-start gap-3 p-2.5 -mx-2 rounded-xl hover:bg-muted/30 transition-all duration-300 ${
+        isSelected ? 'bg-primary/10 ring-1 ring-primary/40' : ''
+      }`}
       onContextMenu={handleContextMenu}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
+      onClick={selectMode ? () => onToggleSelect?.(message) : undefined}
     >
+      {selectMode && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={isSelected}
+          aria-label={isSelected ? 'Deselect message' : 'Select message'}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect?.(message);
+          }}
+          className={`mt-1 w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+            isSelected
+              ? 'bg-primary border-primary text-primary-foreground'
+              : 'border-border bg-background text-transparent hover:border-primary'
+          }`}
+        >
+          <Check className="w-3.5 h-3.5" />
+        </button>
+      )}
       {menuAnchor && (
         <MessageContextMenu
           anchor={menuAnchor}
           canEdit={isAuthor}
           canDelete={canDelete}
+          canPin={canPin && !message.parentMessageId}
+          isPinned={!!message.isPinned}
+          hasMedia={hasMedia}
+          hasAttachments={hasAttachments}
+          seenCount={derivedSeenCount}
           onClose={() => setMenuAnchor(null)}
           actions={{
             onReply: () => onReply && onReply(message),
+            onTranslate: () => onTranslate && onTranslate(message),
             onCopy: handleCopyText,
+            onCopyMedia: hasMedia ? handleCopyMedia : undefined,
+            onSaveAs: hasAttachments ? handleSaveAs : undefined,
             onEdit: () => setIsEditingInternal(true),
+            onPin: () => onTogglePin && onTogglePin(message),
+            onForward: () => onForward && onForward(message),
+            onSelect: () => onSelect && onSelect(message),
+            onShowSeen: () => onShowSeen && onShowSeen(message),
             onDelete: () => onDelete && onDelete(message.id),
             onToggleReaction: (emoji) => onToggleReaction && onToggleReaction(message.id, emoji),
           }}
@@ -349,6 +454,14 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
                 <span className="px-1.5 py-0.2 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[9px] border border-amber-500/20">
                   ANNOUNCEMENT
                 </span>
+              )}
+              {message.isPinned && (
+                <span className="px-1.5 py-0.2 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold text-[9px] border border-blue-500/20">
+                  PINNED
+                </span>
+              )}
+              {message.forwardedFromId && (
+                <span className="text-[10px] text-muted-foreground italic">forwarded</span>
               )}
 
               {/* Delivery Status Indicator for current user's sent messages */}

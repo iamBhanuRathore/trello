@@ -23,6 +23,10 @@ import {
   linkChannelProject,
   unlinkChannelProject,
   createChatAttachment,
+  pinMessage,
+  listPinnedMessages,
+  forwardMessage,
+  getMessageSeenBy,
 } from './service';
 
 export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
@@ -313,6 +317,68 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     },
     {
       params: t.Object({ messageId: t.String() }),
+    }
+  )
+
+  // POST /v1/chat/messages/:messageId/pin - Pin or unpin a message (Telegram parity)
+  .post(
+    '/messages/:messageId/pin',
+    async ({ params: { messageId }, body, user, set }) => {
+      try {
+        return await pinMessage(db, messageId, user.userId, body.pinned);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ messageId: t.String() }),
+      body: t.Object({ pinned: t.Boolean() }),
+    }
+  )
+
+  // POST /v1/chat/messages/:messageId/forward - Forward to another channel/DM
+  .post(
+    '/messages/:messageId/forward',
+    async ({ params: { messageId }, body, user, set }) => {
+      try {
+        return await forwardMessage(db, messageId, body.targetChannelId, user.userId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ messageId: t.String() }),
+      body: t.Object({ targetChannelId: t.String() }),
+    }
+  )
+
+  // GET /v1/chat/messages/:messageId/seen - Who has seen this message
+  .get(
+    '/messages/:messageId/seen',
+    async ({ params: { messageId }, user, set }) => {
+      try {
+        return await getMessageSeenBy(db, messageId, user.userId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ messageId: t.String() }),
+    }
+  )
+
+  // GET /v1/chat/channels/:channelId/pinned - List pinned messages
+  .get(
+    '/channels/:channelId/pinned',
+    async ({ params: { channelId }, user, set }) => {
+      try {
+        return await listPinnedMessages(db, channelId, user.userId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      params: t.Object({ channelId: t.String() }),
     }
   )
 

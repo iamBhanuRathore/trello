@@ -18,6 +18,7 @@ import {
   Paperclip,
   FileText,
   Plus,
+  Forward,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -33,6 +34,7 @@ import { PresenceBadge } from './PresenceBadge';
 import { ChatMessageCard } from './ChatMessageCard';
 import { TimezoneComposerBanner } from './TimezoneComposerBanner';
 import { TaskMentionPickerModal } from './TaskMentionPickerModal';
+import { MessageTranslateModal, MessageForwardModal, MessageSeenPopover } from './MessageExtras';
 import { getInitials } from '../../utils/avatar';
 
 interface ChatFeedProps {
@@ -88,6 +90,15 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   const [isUploading, setIsUploading] = useState(false);
   const [isPlusOpen, setIsPlusOpen] = useState(false);
 
+  // Telegram parity: select mode + forward / translate / seen dialogs
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [forwardSource, setForwardSource] = useState<ChatMessageItem | null>(null);
+  const [isForwardPending, setIsForwardPending] = useState(false);
+  const [translateSource, setTranslateSource] = useState<ChatMessageItem | null>(null);
+  const [seenSource, setSeenSource] = useState<ChatMessageItem | null>(null);
+  const [isBulkForwardOpen, setIsBulkForwardOpen] = useState(false);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -115,6 +126,12 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   useEffect(() => {
     setMessageText(drafts[channel.id] || '');
     setPendingAttachments([]);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setForwardSource(null);
+    setIsBulkForwardOpen(false);
+    setTranslateSource(null);
+    setSeenSource(null);
   }, [channel.id, drafts]);
 
   // Persist draft on text change
@@ -239,6 +256,81 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
       queryClient.invalidateQueries({ queryKey: ['chat', 'messages', channel.id] });
     },
   });
+
+  // Pinned messages (Telegram parity)
+  const { data: pinnedMessages = [] } = useQuery({
+    queryKey: ['chat', 'pinned', channel.id],
+    queryFn: () => chatService.listPinned(channel.id),
+    staleTime: 15000,
+  });
+  const latestPinned = pinnedMessages[0];
+
+  const pinMutation = useMutation({
+    mutationFn: ({ messageId, pinned }: { messageId: string; pinned: boolean }) =>
+      chatService.pinMessage(messageId, pinned),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat', 'messages', channel.id] });
+      queryClient.invalidateQueries({ queryKey: ['chat', 'pinned', channel.id] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || err.message || 'Failed to update pin');
+    },
+  });
+
+  const handleForward = async (targetChannelId: string) => {
+    const sources = forwardSource
+      ? [forwardSource]
+      : mergedMessages.filter((m) => selectedIds.has(m.id));
+    if (sources.length === 0) return;
+    setIsForwardPending(true);
+    try {
+      for (const src of sources) {
+        await chatService.forwardMessage(src.id, targetChannelId);
+      }
+      queryClient.invalidateQueries({ queryKey: ['chat', 'messages', targetChannelId] });
+      queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
+      setForwardSource(null);
+      setIsBulkForwardOpen(false);
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || 'Failed to forward');
+    } finally {
+      setIsForwardPending(false);
+    }
+  };
+
+  const toggleSelectMessage = (msg: ChatMessageItem) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msg.id)) next.delete(msg.id);
+      else next.add(msg.id);
+      return next;
+    });
+  };
+
+  const enterSelectMode = (msg: ChatMessageItem) => {
+    setSelectMode(true);
+    setSelectedIds(new Set([msg.id]));
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    Promise.all(ids.map((id) => chatService.deleteMessage(id)))
+      .catch((err: any) => {
+        toast.error(err.response?.data?.message || err.message || 'Bulk delete failed');
+      })
+      .finally(() => {
+        queryClient.invalidateQueries({ queryKey: ['chat', 'messages', channel.id] });
+        exitSelectMode();
+      });
+  };
 
   const scrollToMessage = (targetId: string) => {
     const el = document.getElementById(`msg-${targetId}`);
@@ -613,6 +705,79 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
         </div>
       </div>
 
+      {/* Pinned message banner (Telegram parity) */}
+      {latestPinned && !selectMode && (
+        <button
+          type="button"
+          onClick={() => scrollToMessage(latestPinned.id)}
+          className="mx-4 mt-2 flex items-center gap-2.5 px-3 py-2 rounded-xl bg-blue-500/8 border border-blue-500/20 text-left hover:bg-blue-500/15 transition-colors cursor-pointer shrink-0"
+          title="Jump to pinned message"
+        >
+          <Pin className="w-3.5 h-3.5 text-blue-500 shrink-0 fill-blue-500/20" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">
+              Pinned{pinnedMessages.length > 1 ? ` • ${pinnedMessages.length}` : ''}
+            </span>
+            <span className="block text-xs text-foreground/80 truncate">{latestPinned.body}</span>
+          </span>
+          {(canModerate || channel.role === 'owner' || channel.role === 'admin') && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Unpin message"
+              onClick={(e) => {
+                e.stopPropagation();
+                pinMutation.mutate({ messageId: latestPinned.id, pinned: false });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  pinMutation.mutate({ messageId: latestPinned.id, pinned: false });
+                }
+              }}
+              className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* Select-mode toolbar */}
+      {selectMode && (
+        <div className="mx-4 mt-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/8 border border-primary/25 shrink-0">
+          <CheckSquare className="w-4 h-4 text-primary shrink-0" />
+          <span className="text-xs font-semibold">{selectedIds.size} selected</span>
+          <span className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              disabled={selectedIds.size === 0}
+              onClick={() => setIsBulkForwardOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium hover:bg-muted disabled:opacity-40 cursor-pointer"
+              title="Forward selected"
+            >
+              <Forward className="w-3.5 h-3.5" />
+              Forward
+            </button>
+            <button
+              type="button"
+              disabled={selectedIds.size === 0}
+              onClick={handleBulkDelete}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40 cursor-pointer"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={exitSelectMode}
+              className="px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+            >
+              Cancel
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* Messages Stream */}
       <div
         ref={scrollContainerRef}
@@ -664,6 +829,8 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                     channelType={channel.type}
                     otherUserId={channel.otherUser?.id}
                     channelMembers={channelMembers}
+                    selectMode={selectMode}
+                    isSelected={selectedIds.has(msg.id)}
                     onCancelEdit={() => setEditingMessageId(null)}
                     canModerate={
                       canModerate || channel.role === 'owner' || channel.role === 'admin'
@@ -676,11 +843,19 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                     onToggleReaction={(id, emoji) =>
                       reactionMutation.mutate({ messageId: id, emoji })
                     }
+                    onTogglePin={(target) =>
+                      pinMutation.mutate({ messageId: target.id, pinned: !target.isPinned })
+                    }
                     onOpenThread={(parent) => setActiveThreadMessage(parent)}
                     onReply={(targetMsg) => {
                       setReplyingToMessage(targetMsg);
                       textareaRef.current?.focus();
                     }}
+                    onForward={(targetMsg) => setForwardSource(targetMsg)}
+                    onSelect={(targetMsg) => enterSelectMode(targetMsg)}
+                    onToggleSelect={(targetMsg) => toggleSelectMessage(targetMsg)}
+                    onTranslate={(targetMsg) => setTranslateSource(targetMsg)}
+                    onShowSeen={(targetMsg) => setSeenSource(targetMsg)}
                     onJumpToMessage={scrollToMessage}
                   />
                 ))}
@@ -932,6 +1107,30 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
         onClose={() => setIsTaskPickerOpen(false)}
         onSelectTask={handleSelectTask}
       />
+
+      {/* Telegram parity dialogs */}
+      {translateSource && (
+        <MessageTranslateModal
+          text={translateSource.body}
+          onClose={() => setTranslateSource(null)}
+        />
+      )}
+      {(forwardSource || isBulkForwardOpen) && (
+        <MessageForwardModal
+          messagePreview={
+            forwardSource ? forwardSource.body : `${selectedIds.size} selected messages`
+          }
+          isPending={isForwardPending}
+          onClose={() => {
+            setForwardSource(null);
+            setIsBulkForwardOpen(false);
+          }}
+          onForward={handleForward}
+        />
+      )}
+      {seenSource && (
+        <MessageSeenPopover messageId={seenSource.id} onClose={() => setSeenSource(null)} />
+      )}
     </div>
   );
 };

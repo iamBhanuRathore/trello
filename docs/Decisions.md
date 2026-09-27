@@ -693,3 +693,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** removing/gating the shortcut on interactive focus (rejected — deviates from Linear/Gmail vim-style standard and the in-app cheatsheet documents `C`); background-only fix (insufficient — any focus loss re-arms the loop).
 
 **Decision:** keep bare-letter shortcuts; add `useFocusReturn` (module-level focusin tracker that ignores in-dialog focus so autoFocus can't overwrite the invoker record, layout-effect restore with freshness/containment guards) to DM + channel modals. Same hook pattern to reuse for future dialogs.
+
+## 2026-09-27 — Telegram-Parity Chat Menu: Benchmark and Scope Choices
+
+**Context:** User asked for the Telegram message menu (Reply/Translate/Copy/Pin/Forward/Select/Seen/Delete + reactions) in group channels. Benchmarked Telegram (message menu gold standard) vs Slack (threads/emoji-first, no translate/forward) vs Discord (copy-ID developer slant): matched Telegram's item order and Seen-viewer pattern, kept our Slack-style thread + task-from-message hover actions untouched.
+
+**Alternatives considered:** per-item backend tables for forwards (rejected — clone-with-`forwarded_from_id` preserves audit without join cost); translation via paid API/LLM (rejected — MyMemory free tier needs no key and matches Telegram's inline-translate UX); seen state via per-message receipts table (rejected — `lastReadAt` watermark already gives N-Seen at zero write cost on send).
+
+**Consequences:** pin/forward/seen are group + DM capable; thread replies excluded from pin (Telegram parity); bulk forward reuses the single-forward path sequentially.

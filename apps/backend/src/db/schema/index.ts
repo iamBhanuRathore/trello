@@ -1167,6 +1167,11 @@ export const chatMessages = pgTable(
     isEdited: boolean('is_edited').notNull().default(false),
     isSystem: boolean('is_system').notNull().default(false),
     isAnnouncement: boolean('is_announcement').notNull().default(false),
+    // Telegram parity: pinned messages + forwarded provenance
+    isPinned: boolean('is_pinned').notNull().default(false),
+    pinnedAt: timestamp('pinned_at'),
+    pinnedBy: uuid('pinned_by').references(() => users.id),
+    forwardedFromId: uuid('forwarded_from_id'),
     deletedBy: uuid('deleted_by').references(() => users.id),
     ...timestamps,
   },
@@ -1175,6 +1180,7 @@ export const chatMessages = pgTable(
     index('chat_messages_parent_idx').on(t.parentMessageId),
     index('chat_messages_reply_to_idx').on(t.replyToMessageId),
     index('chat_messages_created_idx').on(t.createdAt),
+    index('chat_messages_pinned_idx').on(t.channelId, t.isPinned),
   ]
 );
 
