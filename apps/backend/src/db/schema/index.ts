@@ -488,6 +488,8 @@ export const cards = pgTable(
     subtasksTotal: integer('subtasks_total').notNull().default(0),
     subtasksDone: integer('subtasks_done').notNull().default(0),
     isArchived: boolean('is_archived').notNull().default(false),
+    isPrivate: boolean('is_private').notNull().default(false),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     ...timestamps,
   },
   (t) => [
@@ -938,6 +940,24 @@ export const cardViews = pgTable(
     primaryKey({ columns: [t.cardId, t.userId] }),
     index('card_views_card_idx').on(t.cardId, t.viewedAt),
   ]
+);
+
+// ─── Card Access Requests (private-task join flow) ──────────────────────────
+export const cardAccessRequests = pgTable(
+  'card_access_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: varchar('status', { length: 16 }).notNull().default('pending'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('card_access_request_unique_idx').on(t.cardId, t.userId)]
 );
 
 // ─── Card Priorities (org-scoped, configurable w/ colors) ────────────────────

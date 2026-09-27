@@ -176,6 +176,13 @@
       "when": 1790812800000,
       "tag": "0024_card_views",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790899200000,
+      "tag": "0025_task_privacy",
+      "breakpoints": true
     }
   ]
 }

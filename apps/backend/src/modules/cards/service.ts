@@ -24,6 +24,7 @@ import {
   cardViews,
 } from '../../db/schema/index';
 import { resolvePriorityId, getDefaultPriorityId } from '../priorities/service';
+import { requireCardAccess } from './access';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
 import { notifyProjectChannels } from '../chat/service';
@@ -229,6 +230,7 @@ export async function createCard(db: Database, organizationId: string, input: Cr
       description: input.description,
       position,
       parentCardId: input.parentCardId,
+      createdBy: input.actorId,
       dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
       stageId: input.stageId,
       priorityId:
@@ -537,7 +539,12 @@ export async function listSubtasks(db: Database, parentCardId: string, organizat
   }));
 }
 
-export async function getCard(db: Database, id: string, organizationId: string) {
+export async function getCard(
+  db: Database,
+  id: string,
+  organizationId: string,
+  actor?: { userId: string; isPlatformAdmin?: boolean }
+) {
   // Hot modal read: 1 Redis RTT on hit, zero Neon queries.
   // 404s thrown by the loader are never cached (store happens only on success).
   const { data, hit } = await cachedCardRead(id, 'full', 'card', async () => {
@@ -560,6 +567,8 @@ export async function getCard(db: Database, id: string, organizationId: string) 
         position: cards.position,
         dueDate: cards.dueDate,
         stageId: cards.stageId,
+        isPrivate: cards.isPrivate,
+        createdBy: cards.createdBy,
         priorityId: cards.priorityId,
         priorityName: priorities.name,
         priorityColor: priorities.color,
@@ -583,6 +592,21 @@ export async function getCard(db: Database, id: string, organizationId: string) 
       .limit(1);
 
     if (!card) throw httpError(404, 'Card not found');
+
+    // Private tasks gate here — list paths filter instead (bulk-friendly).
+    if (actor) {
+      await requireCardAccess(
+        db,
+        {
+          id: card.id,
+          organizationId: card.organizationId,
+          isPrivate: (card as any).isPrivate ?? false,
+          createdBy: (card as any).createdBy ?? null,
+        },
+        actor.userId,
+        actor.isPlatformAdmin
+      );
+    }
 
     // Independent sub-fetches — fan out concurrently (was 6 sequential round-trips).
     // Comments / checklists / attachments / subtasks / time-logs ride along so
