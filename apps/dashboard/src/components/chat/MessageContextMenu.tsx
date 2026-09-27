@@ -13,6 +13,7 @@ import {
   PinOff,
   Forward,
   CheckSquare,
+  ListPlus,
   CheckCheck,
   ChevronDown,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ export interface MessageMenuAction {
   onPin: () => void;
   onForward: () => void;
   onSelect: () => void;
+  onCreateTask: () => void;
   onShowSeen: () => void;
   onDelete: () => void;
   onToggleReaction: (emoji: string) => void;
@@ -53,7 +55,7 @@ interface MessageContextMenuProps {
 /**
  * Telegram-style message context menu for group + DM channels:
  * quick reactions (+ expandable picker) then Reply / Translate / Copy /
- * Media / Pin / Forward / Select / Seen / Delete — same order as Telegram.
+ * Media / Pin / Forward / Select / Create Task / Seen / Delete — same order as Telegram.
  */
 export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   anchor,
@@ -258,6 +260,15 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
         >
           <CheckSquare className={iconCls} />
           Select
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run(actions.onCreateTask)}
+          className={itemCls}
+        >
+          <ListPlus className={iconCls} />
+          Create Task
         </button>
         <button
           type="button"

@@ -4,7 +4,6 @@ import {
   MessageSquare,
   Pencil,
   Trash2,
-  CheckSquare,
   CornerUpLeft,
   Check,
   CheckCheck,
@@ -506,6 +505,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
               onEdit: () => setIsEditingInternal(true),
               onPin: () => onTogglePin && onTogglePin(message),
               onForward: () => onForward && onForward(message),
+              onCreateTask: () => setIsCreateTaskOpen(true),
               onSelect: () => onSelect && onSelect(message),
               onShowSeen: () => onShowSeen && onShowSeen(message),
               onDelete: () => onDelete && onDelete(message.id),
@@ -712,14 +712,6 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
             >
               <MessageSquare className="w-3.5 h-3.5" />
             </button>
-            <button
-              type="button"
-              onClick={() => setIsCreateTaskOpen(true)}
-              title="Create task from message"
-              className="p-1.5 hover:bg-muted text-muted-foreground hover:text-primary rounded-lg transition-colors cursor-pointer"
-            >
-              <CheckSquare className="w-3.5 h-3.5" />
-            </button>
             {isAuthor && (
               <button
                 type="button"
@@ -817,6 +809,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
             onEdit: () => setIsEditingInternal(true),
             onPin: () => onTogglePin && onTogglePin(message),
             onForward: () => onForward && onForward(message),
+            onCreateTask: () => setIsCreateTaskOpen(true),
             onSelect: () => onSelect && onSelect(message),
             onShowSeen: () => onShowSeen && onShowSeen(message),
             onDelete: () => onDelete && onDelete(message.id),
@@ -1051,16 +1044,6 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
                 className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-colors cursor-pointer"
               >
                 <MessageSquare className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Create Task From Message */}
-              <button
-                type="button"
-                onClick={() => setIsCreateTaskOpen(true)}
-                title="Create task from message"
-                className="p-1.5 hover:bg-muted text-muted-foreground hover:text-primary rounded-lg transition-colors cursor-pointer"
-              >
-                <CheckSquare className="w-3.5 h-3.5" />
               </button>
 
               {/* Edit Message (Author only) */}
