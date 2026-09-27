@@ -11,6 +11,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useRestoreFocusOnClose } from '../../hooks/useFocusReturn';
 import { getInitials } from '../../utils/avatar';
 
 interface NewChannelModalProps {
@@ -34,6 +35,9 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
   const [allowMemberInvites, setAllowMemberInvites] = useState(true);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
+
+  // Return focus to the invoking control on close (see hook note).
+  useRestoreFocusOnClose(isOpen);
 
   // Fetch org members for selection
   const { data: members = [] } = useQuery({

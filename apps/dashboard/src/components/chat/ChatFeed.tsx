@@ -171,12 +171,26 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     return [...messages, ...channelOutbox];
   }, [messages, outbox, channel.id]);
 
-  // Mark channel read when entering or messages update
+  // Mark channel read when entering or messages update.
+  // Guarded + cache-patched (not invalidated): the old invalidateQueries on the
+  // heavy ['chat','channels'] key re-fired a full refetch per read, which fed
+  // the poll pile-up (read → refetch → re-render → read …).
+  const markingReadRef = useRef(false);
   useEffect(() => {
-    if (channel.unreadCount > 0) {
-      chatService.markChannelRead(channel.id).then(() => {
-        queryClient.invalidateQueries({ queryKey: ['chat', 'channels'] });
-      });
+    if (channel.unreadCount > 0 && !markingReadRef.current) {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      markingReadRef.current = true;
+      chatService
+        .markChannelRead(channel.id)
+        .then(() => {
+          queryClient.setQueryData<ChatChannel[]>(['chat', 'channels'], (old) =>
+            old?.map((c) => (c.id === channel.id ? { ...c, unreadCount: 0 } : c))
+          );
+        })
+        .catch(() => {})
+        .finally(() => {
+          markingReadRef.current = false;
+        });
     }
   }, [channel.id, channel.unreadCount, messages.length, queryClient]);
 

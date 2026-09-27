@@ -55,11 +55,15 @@ export const GlobalChatDock: React.FC = () => {
     isGlobalDockOpen && !isDockMinimized && !isChatRoute
   );
 
-  // Fetch channels list
+  // Fetch channels list.
+  // Disabled on the full /chat workspace: the dock returns null there, and
+  // ChatPage already polls this key — a second poller doubles request volume
+  // and stacks slow requests behind each other (see chat poll pile-up fix).
   const { data: channels = [] } = useQuery({
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
     refetchInterval: 10000,
+    enabled: !isChatRoute,
   });
 
   // Calculate total unread count
@@ -79,7 +83,7 @@ export const GlobalChatDock: React.FC = () => {
     queryKey: ['chat', 'messages', dockedChannelId],
     queryFn: () =>
       dockedChannelId ? chatService.listMessages(dockedChannelId, undefined, 25) : [],
-    enabled: !!dockedChannelId && isGlobalDockOpen && !isDockMinimized,
+    enabled: !!dockedChannelId && isGlobalDockOpen && !isDockMinimized && !isChatRoute,
     refetchInterval: 5000,
   });
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
 import {
   MessageSquare,
@@ -19,6 +19,7 @@ import type { ChatMessageItem } from '../../lib/chatService';
 import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { getInitials } from '../../utils/avatar';
+import { MessageContextMenu } from './MessageContextMenu';
 
 interface ChatMessageCardProps {
   message: ChatMessageItem;
@@ -63,6 +64,83 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   const isEditing = isEditingInternal || isEditingExternal;
   const [editBody, setEditBody] = useState(message.body);
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
+
+  // Telegram-style context menu (right-click / long-press). Disabled for
+  // system pills and unsynced optimistic/failed messages (actions would 404).
+  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+  const menuAvailable =
+    !message.isSystem && !message.id.startsWith('temp-') && message.status !== 'failed';
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTouch = useRef<{ x: number; y: number } | null>(null);
+  const suppressNextContextMenu = useRef(false);
+
+  const openMenu = (x: number, y: number) => {
+    if (!menuAvailable) return;
+    setMenuAnchor({ x, y });
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (suppressNextContextMenu.current) {
+      suppressNextContextMenu.current = false;
+      return;
+    }
+    e.preventDefault();
+    openMenu(e.clientX, e.clientY);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    longPressTouch.current = { x: touch.clientX, y: touch.clientY };
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      const origin = longPressTouch.current;
+      if (!origin) return;
+      suppressNextContextMenu.current = true;
+      // Swallow the synthetic click some browsers fire after long-press.
+      openMenu(origin.x, origin.y);
+    }, 550);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const origin = longPressTouch.current;
+    if (!touch || !origin) return;
+    if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 10) {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+      longPressTouch.current = null;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTouch.current = null;
+  };
+
+  const handleCopyText = () => {
+    const text = message.body;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  };
+
+  const fallbackCopy = (text: string) => {
+    try {
+      const area = document.createElement('textarea');
+      area.value = text;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.focus();
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+    } catch {
+      // Clipboard unavailable — menu already confirmed optimistically.
+    }
+  };
 
   React.useEffect(() => {
     if (isEditingExternal) {
@@ -203,7 +281,27 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
     <div
       id={`msg-${message.id}`}
       className="group relative flex items-start gap-3 p-2.5 -mx-2 rounded-xl hover:bg-muted/30 transition-all duration-300"
+      onContextMenu={handleContextMenu}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
     >
+      {menuAnchor && (
+        <MessageContextMenu
+          anchor={menuAnchor}
+          canEdit={isAuthor}
+          canDelete={canDelete}
+          onClose={() => setMenuAnchor(null)}
+          actions={{
+            onReply: () => onReply && onReply(message),
+            onCopy: handleCopyText,
+            onEdit: () => setIsEditingInternal(true),
+            onDelete: () => onDelete && onDelete(message.id),
+            onToggleReaction: (emoji) => onToggleReaction && onToggleReaction(message.id, emoji),
+          }}
+        />
+      )}
       {message.isSystem ? (
         <div className="w-full flex justify-center py-0.5">
           <span className="inline-flex items-center gap-1.5 max-w-full px-3 py-1 rounded-full bg-muted/60 border border-border/60 text-[11px] text-muted-foreground text-center">

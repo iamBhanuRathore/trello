@@ -37,11 +37,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
   const [isWorkingHoursOpen, setIsWorkingHoursOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
-  // Fetch channels list
+  // Fetch channels list.
+  // No local interval: ChatPage polls this same key every 10s. A second
+  // interval here interleaves refetches and stacks slow requests.
   const { data: channels = [], isLoading } = useQuery({
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
-    refetchInterval: 15000,
   });
 
   // Collect other user IDs for batch presence query

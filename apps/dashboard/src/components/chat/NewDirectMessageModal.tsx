@@ -11,6 +11,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useRestoreFocusOnClose } from '../../hooks/useFocusReturn';
 import { getInitials } from '../../utils/avatar';
 
 interface NewDirectMessageModalProps {
@@ -30,6 +31,9 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
   const { setActiveChannelId, openGlobalDock } = useChatStore();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+
+  // Return focus to the invoking control on close (see hook note).
+  useRestoreFocusOnClose(isOpen);
 
   // Fetch org members
   const { data: members = [], isLoading: isMembersLoading } = useQuery({

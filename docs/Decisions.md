@@ -685,3 +685,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 3. **`no-console: error` with narrow exceptions (FIND-07).** Gated in all three apps; backend exempts `db/*` CLI scripts, `lib/logger.ts` (the implementation), and `lib/env.ts` (boot validation; can't import logger — circular dep via `logger → env`). Dashboard/super-admin gate is blanket; the gate immediately caught 8 more live `console.*` sites (incl. 3 silent-failure catches converted to toasts). Residual `any` at external-SDK/test/drizzle-builder boundaries left as tracked debt rather than cosmetic-cast.
 
 **Consequences:** Elysia `parse` (not `type`) is now the documented pattern for raw-body routes; bulk-write is the pattern for webhook fan-out; `errorMessage/errorStatus/errorCode/errorResponseStatus` are the standard `unknown`-catch narrowers.
+
+## 2026-09-27 — Bare-Letter Chat Shortcuts Kept; Focus Restoration Instead
+
+**Context:** The New DM dialog appeared to open "by itself" after every close. Investigation found no auto-open path (local state, no persistence, no effects): the documented bare-`C` shortcut fires on any keypress outside text fields, and modal close stranded focus on `<body>`, so continued typing re-triggered it.
+
+**Alternatives considered:** removing/gating the shortcut on interactive focus (rejected — deviates from Linear/Gmail vim-style standard and the in-app cheatsheet documents `C`); background-only fix (insufficient — any focus loss re-arms the loop).
+
+**Decision:** keep bare-letter shortcuts; add `useFocusReturn` (module-level focusin tracker that ignores in-dialog focus so autoFocus can't overwrite the invoker record, layout-effect restore with freshness/containment guards) to DM + channel modals. Same hook pattern to reuse for future dialogs.
