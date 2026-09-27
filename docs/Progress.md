@@ -2085,3 +2085,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Backend:** new `card_views` table (composite PK, cascades) + migration `0024_card_views`; `GET /v1/cards/:id` records the view fire-and-forget (outside the card cache so reads stay hot); `GET /v1/cards/:id/viewers` returns newest-first viewers + count.
 - **Frontend:** the task footer eye is now a real Viewed-by button opening a viewer popover (avatar, name, relative time), replacing the misleading member count.
 - Tests & Validation: views test added (5/5 file green); dashboard + backend `tsc`, dashboard `oxlint` clean.
+
+### 2026-09-28 — @Mention Autocomplete in Main Chat (Bitrix parity)
+
+- **User request (screenshots):** the Bitrix-style mention popup (presence-ring avatars) in the chat composer.
+- **Frontend only:** new shared `MentionAutocomplete.tsx` (detection hook + popup with presence-colored rings, server member search, self excluded) wired into the `ChatFeed` composer — `@` opens, arrows navigate, `Enter`/`Tab` completes a structured `@[Name](id)` tag (already highlighted by `MarkdownRenderer`), `Esc` dismisses. Task pane keeps its own working version (plain tags + comment notifications); unifying both onto structured tags is tracked follow-up.
+- Tests & Validation: dashboard `tsc` + `oxlint` clean.

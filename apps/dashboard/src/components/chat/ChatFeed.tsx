@@ -34,6 +34,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
 import { ChatMessageCard } from './ChatMessageCard';
+import { MentionAutocompletePopup, useMentionAutocomplete } from './MentionAutocomplete';
 import { TimezoneComposerBanner } from './TimezoneComposerBanner';
 import { TaskMentionPickerModal } from './TaskMentionPickerModal';
 import { MessageTranslateModal, MessageForwardModal, MessageSeenPopover } from './MessageExtras';
@@ -146,7 +147,20 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     const val = e.target.value;
     setMessageText(val);
     setDraft(channel.id, val);
+    mention.detect(val, e.target.selectionStart ?? val.length);
   };
+
+  const setComposerText = (val: string) => {
+    setMessageText(val);
+    setDraft(channel.id, val);
+  };
+
+  // @mention autocomplete (Bitrix-style popup, structured @[Name](id) tags)
+  const mention = useMentionAutocomplete({
+    textareaRef,
+    text: messageText,
+    setText: setComposerText,
+  });
 
   // Fetch messages query. While the socket is live, message_created events
   // append to this cache — polling is a disconnected fallback only.
@@ -568,6 +582,8 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // @mention popup takes precedence (Enter/Tab completes, Esc dismisses).
+    if (mention.handleKey(e)) return;
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === 'b') {
       e.preventDefault();
@@ -1045,7 +1061,17 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
             📢 This channel is in announcement-only mode. Only channel admins can post messages.
           </div>
         ) : (
-          <div className="rounded-2xl border border-border bg-background focus-within:border-primary shadow-xs transition-colors">
+          <div className="relative rounded-2xl border border-border bg-background focus-within:border-primary shadow-xs transition-colors">
+            {/* @mention autocomplete */}
+            {mention.open && (
+              <MentionAutocompletePopup
+                members={mention.members}
+                activeIndex={mention.activeIndex}
+                query={mention.query}
+                onSelect={mention.insert}
+                onHover={(idx) => mention.setActiveIndex(idx)}
+              />
+            )}
             {/* Announcement active indicator */}
             {isAnnouncement && (
               <div className="flex items-center justify-between px-3 py-1 border-b border-amber-500/25 bg-amber-500/10 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
