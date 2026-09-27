@@ -357,12 +357,12 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
           render={
             <button
               type="button"
-              className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-border/80 bg-background/60 hover:bg-muted text-muted-foreground hover:text-foreground shadow-2xs w-[180px] sm:w-[220px] lg:w-[280px] justify-between relative h-8 px-3 text-xs font-medium transition-colors cursor-pointer"
+              aria-label="Search boards, cards and commands"
+              className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-border/80 bg-background/60 hover:bg-muted text-muted-foreground hover:text-foreground shadow-2xs h-8 w-8 justify-center px-0 sm:w-[220px] sm:justify-between sm:px-3 lg:w-[280px] text-xs font-medium transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2 truncate">
                 <SearchIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="hidden sm:inline-flex truncate">Search boards, cards...</span>
-                <span className="inline-flex sm:hidden">Search...</span>
               </div>
               <Kbd
                 shortcut="mod+k"

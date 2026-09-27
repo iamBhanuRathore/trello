@@ -88,7 +88,7 @@ export function DashboardLayout() {
       {/* Main Content Area */}
       <SidebarInset className="flex flex-1 flex-col overflow-hidden min-h-0 bg-background">
         {/* Top Inset Bar */}
-        <header className="shrink-0 z-30 flex h-14 items-center justify-between gap-3 border-b bg-background/85 backdrop-blur-md px-4 sm:px-6 shadow-2xs transition-colors">
+        <header className="shrink-0 z-30 flex h-14 items-center justify-between gap-2 sm:gap-3 border-b bg-background/85 backdrop-blur-md px-3 sm:px-6 shadow-2xs transition-colors">
           {/* Left: Sidebar Trigger + Breadcrumbs */}
           <div className="flex items-center gap-2.5 min-w-0">
             <SidebarTrigger className="h-8 w-8 shrink-0" />
@@ -106,7 +106,12 @@ export function DashboardLayout() {
               {breadcrumbs.map((crumb, idx) => {
                 const isLast = idx === breadcrumbs.length - 1;
                 return (
-                  <div key={idx} className="flex items-center gap-1.5 truncate">
+                  <div
+                    key={idx}
+                    className={`items-center gap-1.5 truncate ${
+                      isLast ? 'flex' : 'hidden md:flex'
+                    }`}
+                  >
                     <ChevronRight className="w-3 h-3 text-muted-foreground/60 shrink-0" />
                     {isLast || !crumb.to ? (
                       <span className="font-semibold text-foreground truncate">{crumb.label}</span>
