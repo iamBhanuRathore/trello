@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { MessageSquare, Plus, Clock, Hash } from 'lucide-react';
@@ -56,10 +56,19 @@ export const ChatPage: React.FC = () => {
   // The store mirrors it for components outside the router context. There is
   // deliberately NO store→URL sync: the old two-effect mirror let any stray
   // store write yank the URL (channel bouncing back and forth on switch).
+  // Auto-select runs once on mount only — Back navigation clears the store
+  // id and must NOT re-arm it.
+  const didAutoSelect = useRef(false);
   useEffect(() => {
     if (routeChannelId && routeChannelId !== activeChannelId) {
       setActiveChannelId(routeChannelId);
-    } else if (!routeChannelId && channels.length > 0 && !activeChannelId) {
+    } else if (
+      !routeChannelId &&
+      channels.length > 0 &&
+      !activeChannelId &&
+      !didAutoSelect.current
+    ) {
+      didAutoSelect.current = true;
       // Auto-select first channel or pinned channel
       const firstChannel = channels.find((c) => c.isPinned) || channels[0];
       if (firstChannel) {
@@ -69,6 +78,12 @@ export const ChatPage: React.FC = () => {
     }
   }, [routeChannelId, activeChannelId, channels, navigate, setActiveChannelId]);
 
+  // Mobile/tablet Back: list becomes visible again (feed hides below lg:).
+  const handleBackToList = () => {
+    setActiveChannelId(null);
+    navigate('/chat');
+  };
+
   // Find active channel object
   const activeChannel = useMemo(
     () => channels.find((c) => c.id === activeChannelId),
@@ -77,13 +92,21 @@ export const ChatPage: React.FC = () => {
 
   return (
     <div className="flex-1 flex h-full overflow-hidden bg-background">
-      {/* Left Navigation Rail (Teams Sidebar) */}
-      <ChatSidebar />
+      {/* Conversation list — full-width takeover below lg: when a channel is open (Slack pattern) */}
+      <div
+        className={`h-full shrink-0 sm:shrink-0 ${
+          activeChannelId ? 'hidden lg:block' : 'block w-full sm:w-auto'
+        }`}
+      >
+        <ChatSidebar />
+      </div>
 
-      {/* Center Feed Area */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
+      {/* Center Feed Area — hidden below lg: until a channel is picked */}
+      <div
+        className={`flex-1 flex-col h-full min-w-0 ${activeChannelId ? 'flex' : 'hidden lg:flex'}`}
+      >
         {activeChannel ? (
-          <ChatFeed key={activeChannel.id} channel={activeChannel} />
+          <ChatFeed key={activeChannel.id} channel={activeChannel} onBack={handleBackToList} />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shadow-inner">

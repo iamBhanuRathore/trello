@@ -167,7 +167,7 @@ export function Workspaces() {
       </div>
 
       {/* Quick KPI Overview Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         <div className="p-4 rounded-xl border border-border/80 bg-card/60 backdrop-blur-xs flex items-center gap-3">
           <div className="p-2.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
             <Briefcase className="w-5 h-5" />
@@ -261,22 +261,24 @@ export function Workspaces() {
             className="flex flex-col gap-4 p-5 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-sm shadow-xs"
           >
             {/* Workspace Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-border/60">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-border/60">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold text-sm shadow-2xs shrink-0">
                   {ws.name.charAt(0).toUpperCase()}
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold text-foreground flex items-center gap-2 truncate">
                     {ws.name}
                   </h2>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <Link to={`/workspaces/${ws.id}/portfolio`}>
                   <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 font-medium">
-                    <Briefcase className="w-3.5 h-3.5 text-blue-500" /> Portfolio Health
+                    <Briefcase className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="hidden sm:inline">Portfolio Health</span>
+                    <span className="sm:hidden">Health</span>
                   </Button>
                 </Link>
                 <CreateProjectDialog workspaceId={ws.id} />

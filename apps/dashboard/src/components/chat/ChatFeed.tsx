@@ -42,9 +42,11 @@ import { getInitials } from '../../utils/avatar';
 interface ChatFeedProps {
   channel: ChatChannel;
   canModerate?: boolean;
+  /** Below lg: the list hides while a channel is open — back returns to it. */
+  onBack?: () => void;
 }
 
-export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false }) => {
+export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false, onBack }) => {
   const { user } = useAuthStore();
   const {
     setActiveThreadMessage,
@@ -681,7 +683,18 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     <div className="flex-1 flex flex-col h-full bg-background min-w-0 relative">
       {/* Header */}
       <div className="h-14 px-4 border-b border-border flex items-center justify-between shrink-0 bg-card/60 backdrop-blur-sm z-10">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Back to conversations"
+              title="Back to conversations"
+              className="lg:hidden p-2 -ml-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors cursor-pointer shrink-0"
+            >
+              <ArrowDown className="w-4 h-4 rotate-90" />
+            </button>
+          )}
           {channel.type === 'direct' && channel.otherUser ? (
             <div className="relative shrink-0">
               {channel.otherUser.avatarUrl ? (

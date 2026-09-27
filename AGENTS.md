@@ -51,3 +51,13 @@
 - **Commit when done**: after completing all requested changes, create a checkpoint commit (`git add` only intended files, inspect `git status`/`git diff` first, concise message matching repo style). Commit the pre-change state first if the tree is dirty.
 - **Never push**: do NOT run `git push`, do NOT create PRs, do NOT force-push — CI/CD pipelines own deployment. Leave commits local for the user to push.
 - **Never amend a failed commit**: fix and create a new commit instead.
+
+## 9. Responsive Design Standard (STRICT — NO EXCEPTIONS)
+
+Every page in `apps/dashboard` (and `apps/super-admin`) MUST be usable at all of these widths — mobile (360–480px), tablet (768px), laptop (1280px), desktop monitor (1536px+), ultrawide (2560px). Tailwind v4 breakpoints: `sm:640` `md:768` `lg:1024` `xl:1280` `2xl:1536`.
+
+- **No fixed-width pile-ups**: sidebars/panes use `w-full` + `sm:`/`md:` widths, never bare `w-72`/`w-80` in a multi-pane row. Multi-pane surfaces (Chat: list/feed/details) collapse to list-OR-detail below `lg:` (Slack pattern) with an in-flow back affordance — never three squeezed columns.
+- **Grids scale up AND down**: stat/card grids start at 1–2 cols and add columns per breakpoint (`grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`); never 4-across below `xl:` in narrow viewports. Button/pill rows `flex-wrap` instead of overflowing; long titles `truncate` inside `min-w-0` containers.
+- **Touch targets**: interactive controls ≥ 36px on coarse pointers; hover-only actions must have a touch/click equivalent (context menu, long-press, visible button).
+- **Dialogs/sheets**: `w-full` with `max-w-*`, `max-h-[90vh]` scrollable bodies; side panes become overlays (`fixed inset-y-0 right-0`) below `2xl:` where the layout already does so.
+- **Verify by resizing**: before committing UI work, resize to 390px and 820px widths and confirm no horizontal overflow (`overflow-x` on `document.body`), no clipped primary actions, no wrapped-blob badges.

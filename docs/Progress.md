@@ -2055,3 +2055,11 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **User request:** swipe right = reply, swipe left = forward, double-click/long-press = select, multi forward/delete, Esc clears selection.
 - **Frontend:** `ChatMessageCard` tracks horizontal touch drags (`touch-pan-y` keeps vertical scroll native; 64px trigger, 88px clamp, reply/forward hint icons); long-press now enters select mode (right-click keeps the action menu); double-click/double-tap toggles selection. `ChatFeed`: Esc exits select mode first, then closes forward/translate/seen dialogs; bulk forward/delete use `allSettled` with per-batch success/partial/failure toasts (no more raw axios 404s); optimistic `temp-*` messages are blocked from select/forward/delete with a "still sending" toast since the server 404s on them; single delete surfaces server errors too.
 - Tests & Validation: dashboard `tsc` + `oxlint` clean.
+
+### 2026-09-28 — Responsive Standard + Chat/Workspaces Collapse
+
+- **User request (screenshots):** app crowds at tablet/half-window widths; make every page responsive (mobile → ultrawide) and record the rule in docs.
+- **Standard:** new `AGENTS.md` §9 (breakpoints mobile 360 / tablet 768 / laptop 1280 / monitor 1536 / ultrawide 2560; no fixed-width pile-ups; list-OR-detail below `lg:`; grids scale per breakpoint; ≥36px touch targets; dialogs `max-w-*` + scrollable). Benchmark: Slack (chat collapse) / Linear (grids).
+- **Chat:** below `lg:`, conversation list and feed are mutually exclusive — list is full-width when no channel is open, feed takes over with a back button (`ChatFeed onBack`) when one is; `ChatSidebar` root `w-full sm:w-72`; channel auto-select runs once so Back doesn't bounce. Thread/details panes were already `fixed` overlays below `2xl:`.
+- **Workspaces:** KPI stats `grid-cols-2 xl:grid-cols-4` (no more 4-across squeeze at ~700px); workspace header wraps with truncating title; Portfolio button shortens to "Health" on xs.
+- Tests & Validation: dashboard `tsc` + `oxlint` clean. Remaining pages already use responsive grids; full audit follow-up per page as needed.
