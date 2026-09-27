@@ -725,3 +725,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** long-press opens menu with Select inside (rejected — user explicitly asked long-press to select, and swipe already covers mobile reply/forward); mouse-drag swipe on desktop (rejected — breaks text selection; double-click + hover buttons cover desktop); per-message receipts for bulk ops (rejected — same watermark logic, `allSettled` per batch).
 
 **Decision:** touch long-press enters select mode (WhatsApp benchmark); right-click keeps the full Telegram menu on desktop. Esc hierarchy: selection first, then dialogs. Optimistic `temp-*` rows are unselectable — the server 404s on forward/delete for unsynced ids, which caused the user-reported "status code 404" toast during multi-forward.
+
+## 2026-09-28 — WS Auth via Query Token: Public-Prefix Exemption
+
+**Context:** Global `authPlugin` derive rejected the realtime upgrade (no Bearer header on WS handshakes), killing all sockets with 401 and freezing presence offline.
+
+**Alternatives considered:** custom `Sec-WebSocket-Protocol` token header (rejected — needs frontend + backend changes and non-standard client handling); per-message auth only (rejected — open() already validates `?token=` and closes on failure, so exemption loses nothing).
+
+**Decision:** `/v1/realtime/ws` joins `PUBLIC_PATH_PREFIXES`; handshake auth stays in `open()`. Frontend adds reconnect-with-backoff so backend restarts don't silently end realtime. Any future WS route must follow the same validate-in-`open()` pattern.

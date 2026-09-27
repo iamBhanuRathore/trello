@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
@@ -132,7 +132,13 @@ export function useChatRealtime(passedChannelId?: string | null) {
     return () => clearInterval(timer);
   }, [clearExpiredTyping]);
 
-  // Connect and maintain WebSocket connection
+  // Connect and maintain WebSocket connection (auto-reconnects with backoff —
+  // without this a backend restart/deploy silently kills presence, typing and
+  // live messages until the next full page reload).
+  const [reconnectTick, setReconnectTick] = useState(0);
+  const reconnectDelayRef = useRef(1000);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (!token || !userId) return;
 
@@ -147,9 +153,20 @@ export function useChatRealtime(passedChannelId?: string | null) {
       return;
     }
 
+    const scheduleReconnect = () => {
+      if (!isMounted || reconnectTimer.current) return;
+      const delay = reconnectDelayRef.current;
+      reconnectDelayRef.current = Math.min(delay * 2, 15000);
+      reconnectTimer.current = setTimeout(() => {
+        reconnectTimer.current = null;
+        if (isMounted) setReconnectTick((t) => t + 1);
+      }, delay);
+    };
+
     ws.onopen = () => {
       if (!isMounted) return;
       setWsConnected(true);
+      reconnectDelayRef.current = 1000;
 
       // Heartbeat loop every 25 seconds
       heartbeatTimer = setInterval(() => {
@@ -170,7 +187,10 @@ export function useChatRealtime(passedChannelId?: string | null) {
     };
 
     const markDisconnected = () => {
-      if (isMounted) setWsConnected(false);
+      if (isMounted) {
+        setWsConnected(false);
+        scheduleReconnect();
+      }
     };
     ws.onclose = markDisconnected;
     ws.onerror = markDisconnected;
@@ -282,7 +302,9 @@ export function useChatRealtime(passedChannelId?: string | null) {
     return () => {
       isMounted = false;
       setWsConnected(false);
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (heartbeatTimer) clearTimeout(heartbeatTimer);
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = null;
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }
@@ -291,6 +313,7 @@ export function useChatRealtime(passedChannelId?: string | null) {
   }, [
     token,
     userId,
+    reconnectTick,
     queryClient,
     setTyping,
     setUserPresence,

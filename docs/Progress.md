@@ -2063,3 +2063,11 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Chat:** below `lg:`, conversation list and feed are mutually exclusive — list is full-width when no channel is open, feed takes over with a back button (`ChatFeed onBack`) when one is; `ChatSidebar` root `w-full sm:w-72`; channel auto-select runs once so Back doesn't bounce. Thread/details panes were already `fixed` overlays below `2xl:`.
 - **Workspaces:** KPI stats `grid-cols-2 xl:grid-cols-4` (no more 4-across squeeze at ~700px); workspace header wraps with truncating title; Portfolio button shortens to "Health" on xs.
 - Tests & Validation: dashboard `tsc` + `oxlint` clean. Remaining pages already use responsive grids; full audit follow-up per page as needed.
+
+### 2026-09-28 — Presence Always Offline: WS Upgrade Killed by Global Auth Derive
+
+- **User report (screenshots):** DM headers showed "Offline" for live users in both directions.
+- **Root cause:** `authPlugin`'s global derive demands an `Authorization: Bearer` header on every route — including the `GET /v1/realtime/ws` upgrade, which carries its token in `?token=` instead. Every socket died with 401 before `open()`; no heartbeats → `isUserOnline` always false → Offline. Polling fallbacks masked it (messages still arrived). Verified with raw handshake: 401 pre-fix, `presence:heartbeat:ack` post-fix, REST presence flips to online.
+- **Fix:** `/v1/realtime/ws` added to `PUBLIC_PATH_PREFIXES` (query-token validation in `open()` already closes bad tokens, so security is unchanged); frontend `useChatRealtime` auto-reconnects with backoff (1s→15s) since any backend restart previously killed realtime until full reload. Backend restarted to load the fix.
+- **Note:** outside working hours a live user correctly shows "away", not "available" — by design.
+- Tests & Validation: dashboard + backend `tsc`, dashboard `oxlint` clean.

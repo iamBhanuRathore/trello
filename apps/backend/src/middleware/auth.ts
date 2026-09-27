@@ -101,7 +101,16 @@ export async function verifyAccessToken(token: string): Promise<AuthContext> {
  * Genuinely public paths (browser OAuth redirects, share links) must be
  * listed in PUBLIC_PATH_PREFIXES to bypass the Bearer check.
  */
-const PUBLIC_PATH_PREFIXES = ['/v1/invite/', '/v1/calendar/google/callback', '/v1/git/webhooks/'];
+const PUBLIC_PATH_PREFIXES = [
+  '/v1/invite/',
+  '/v1/calendar/google/callback',
+  '/v1/git/webhooks/',
+  // Realtime WebSocket: browsers can't send Authorization headers on the
+  // upgrade handshake, so the token travels in ?token= and open() validates
+  // it via verifyAccessToken (closing on failure). Rejecting here would kill
+  // every socket (presence heartbeats, typing, live messages) with a 401.
+  '/v1/realtime/ws',
+];
 
 export const authPlugin = new Elysia({ name: 'auth' })
   .use(bearer())
