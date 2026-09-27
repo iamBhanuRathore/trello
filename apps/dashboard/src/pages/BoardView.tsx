@@ -158,6 +158,10 @@ export function BoardView() {
   );
   const [activeCard, setActiveCard] = useState<KanbanCard | null>(null);
   const [clonedLists, setClonedLists] = useState<KanbanList[] | null>(null);
+  // Timestamp of the last explicit modal close. Closing unmounts the dialog
+  // mid-gesture, so the same pointer's click can land on the board tile
+  // beneath and instantly reopen it (close → reopen "needs two closes").
+  const lastModalCloseRef = useRef(0);
 
   // Initialize Realtime WebSocket Connection & Presence
   const { presenceUsers, emitCardFocus } = useRealtimeBoard(boardId);
@@ -176,6 +180,9 @@ export function BoardView() {
       // the modal for one 404s ("Task not found"). Ignore the click; the
       // tile is replaced with the real card within a beat.
       if (!cardId || cardId.startsWith('temp-')) return;
+      // Swallow the pass-through click from the gesture that just closed the
+      // modal (backdrop close unmounts mid-click; the click lands on the tile).
+      if (Date.now() - lastModalCloseRef.current < 500) return;
       setSelectedCardId(cardId);
       emitCardFocus(cardId);
       // Replace: dialog state is ephemeral — pushing would make browser-Back
@@ -186,6 +193,7 @@ export function BoardView() {
   );
 
   const handleCloseModal = useCallback(() => {
+    lastModalCloseRef.current = Date.now();
     setSelectedCardId(null);
     emitCardFocus(null);
     const nextParams = new URLSearchParams(searchParams);
