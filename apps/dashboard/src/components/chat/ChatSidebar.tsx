@@ -77,6 +77,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
   });
 
   // Filter channels based on search and active tab
+  const totalUnread = channels.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
   const filteredChannels = useMemo(() => {
     let list = channels;
 
@@ -234,17 +235,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
     <div className="w-72 h-full border-r border-border bg-sidebar flex flex-col shrink-0 select-none">
       {/* ── Top Header & Actions ── */}
       <div className="p-3.5 border-b border-border space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-foreground tracking-tight">Chat & Teams</h2>
-            {channels.reduce((acc, c) => acc + c.unreadCount, 0) > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-blue-600/15 text-blue-600 dark:text-blue-400 text-[10px] font-bold border border-blue-500/20">
-                {channels.reduce((acc, c) => acc + c.unreadCount, 0)} unread
-              </span>
-            )}
-          </div>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-foreground tracking-tight truncate min-w-0 flex-1">
+            Chat & Teams
+          </h2>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             {/* Direct Message trigger */}
             <button
               type="button"
@@ -315,13 +311,24 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
               key={tab.key}
               type="button"
               onClick={() => setFilterTab(tab.key as any)}
-              className={`px-2 py-0.8 rounded-lg font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              className={`px-2 py-0.8 rounded-lg font-medium whitespace-nowrap transition-colors cursor-pointer inline-flex items-center gap-1 ${
                 filterTab === tab.key
                   ? 'bg-primary text-primary-foreground font-semibold shadow-2xs'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }`}
             >
               {tab.label}
+              {tab.key === 'unread' && totalUnread > 0 && (
+                <span
+                  className={`px-1 rounded-full text-[10px] font-bold leading-tight ${
+                    filterTab === 'unread'
+                      ? 'bg-primary-foreground/25 text-primary-foreground'
+                      : 'bg-blue-600/15 text-blue-600 dark:text-blue-400'
+                  }`}
+                >
+                  {totalUnread > 99 ? '99+' : totalUnread}
+                </span>
+              )}
             </button>
           ))}
         </div>
