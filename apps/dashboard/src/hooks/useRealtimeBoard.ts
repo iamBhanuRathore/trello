@@ -11,10 +11,12 @@ const WS_URL = import.meta.env.VITE_API_URL
 const HEARTBEAT_MS = 25_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
-// Overlap window so events landing between the last frame and the drop aren't missed.
-const GAP_OVERLAP_MS = 5_000;
+// Feed pages are pulled in a loop until drained; cap the burst so a huge
+// backlog can't wedge the render thread.
+const MAX_GAP_PAGES = 10;
 
 interface BoardFullShape {
+  changeCursor?: number;
   lists?: Array<{
     id: string;
     name: string;
@@ -41,7 +43,7 @@ export function useRealtimeBoard(boardId: string | undefined) {
   const closedByUsRef = useRef(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attemptRef = useRef(0);
-  const lastEventAtRef = useRef<string | null>(null);
+  const cursorRef = useRef<number | null>(null);
 
   const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([]);
   const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({}); // cardId -> userNames
@@ -131,29 +133,37 @@ export function useRealtimeBoard(boardId: string | undefined) {
 
   const gapFill = useCallback(
     async (boardId: string) => {
-      const since = lastEventAtRef.current;
-      if (!since) {
-        // No baseline — full refetch is the only correct sync.
+      const startCursor = cursorRef.current;
+      if (startCursor === null) {
+        // No cursor — a full refetch is the only correct sync. The response
+        // seeds the cursor, so the next reconnect can resume incrementally.
         await queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
-        lastEventAtRef.current = new Date(Date.now() - GAP_OVERLAP_MS).toISOString();
         return;
       }
+      let cursor = startCursor;
       try {
-        const { data } = await api.get(
-          `/boards/${boardId}/changes?since=${encodeURIComponent(since)}`
-        );
-        const total = (data.lists?.length || 0) + (data.cards?.length || 0);
-        if (total >= 1000) {
-          await queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
-        } else if (total > 0) {
-          const needFull = applyChanges(boardId, data);
-          if (needFull) {
-            await queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
+        for (let page = 0; page < MAX_GAP_PAGES; page++) {
+          const { data } = await api.get(
+            `/boards/${boardId}/changes?since=${encodeURIComponent(String(cursor))}`
+          );
+          const total = (data.lists?.length || 0) + (data.cards?.length || 0);
+          if (total > 0) {
+            const needFull = applyChanges(boardId, data);
+            if (needFull) {
+              // Unknown ids (new cards) need full enrichment — bail out to a
+              // refetch rather than paging further into a partial board.
+              await queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
+              return;
+            }
           }
+          cursor = typeof data.nextCursor === 'number' ? data.nextCursor : cursor;
+          cursorRef.current = cursor;
+          if (!data.hasMore) return;
         }
-        lastEventAtRef.current = data.serverTime || new Date().toISOString();
+        // Still catching up after MAX_GAP_PAGES — a refetch is simpler and
+        // guaranteed consistent.
+        await queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
       } catch {
-        // Gap-fill failed (auth flap, 500) — full refetch as the safe fallback.
         await queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
       }
     },
@@ -166,6 +176,11 @@ export function useRealtimeBoard(boardId: string | undefined) {
     closedByUsRef.current = false;
     let ws: WebSocket | null = null;
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    // Seed the feed cursor from the full-board payload: every row it contains
+    // is already applied, so reconnects resume from there instead of replaying.
+    const cached = queryClient.getQueryData<BoardFullShape>(['board', 'full', boardId]);
+    if (typeof cached?.changeCursor === 'number') cursorRef.current = cached.changeCursor;
 
     const connect = () => {
       if (closedByUsRef.current) return;
@@ -193,8 +208,6 @@ export function useRealtimeBoard(boardId: string | undefined) {
         if (isResume) {
           // Reconnected after a drop — reconcile missed frames, don't refetch blindly.
           void gapFill(boardId);
-        } else if (!lastEventAtRef.current) {
-          lastEventAtRef.current = new Date(Date.now() - GAP_OVERLAP_MS).toISOString();
         }
       };
 
@@ -230,8 +243,12 @@ export function useRealtimeBoard(boardId: string | undefined) {
               data.type.startsWith('list.') ||
               data.type.startsWith('board.'))
           ) {
-            lastEventAtRef.current = new Date().toISOString();
             const payload = data.payload || {};
+            // Live frames advance the cursor so a later reconnect resumes here
+            // instead of replaying what we already applied.
+            if (typeof payload.changeSeq === 'number') {
+              cursorRef.current = Math.max(cursorRef.current ?? 0, payload.changeSeq);
+            }
             const changes = { lists: [] as any[], cards: [] as any[] };
             if (data.type.startsWith('card.') && payload.id) {
               changes.cards.push({
@@ -241,6 +258,7 @@ export function useRealtimeBoard(boardId: string | undefined) {
                 position: payload.position,
                 version: payload.version,
                 isArchived: payload.isArchived,
+                changeSeq: payload.changeSeq,
               });
             } else if (data.type.startsWith('list.') && payload.id) {
               changes.lists.push({
@@ -249,6 +267,7 @@ export function useRealtimeBoard(boardId: string | undefined) {
                 position: payload.position,
                 version: payload.version,
                 isArchived: payload.isArchived,
+                changeSeq: payload.changeSeq,
               });
             }
             const touched = changes.cards.length + changes.lists.length > 0;

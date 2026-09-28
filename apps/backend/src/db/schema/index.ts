@@ -8,6 +8,7 @@ import {
   timestamp,
   integer,
   real,
+  bigint,
   date,
   jsonb,
   uniqueIndex,
@@ -430,10 +431,15 @@ export const lists = pgTable(
     isArchived: boolean('is_archived').notNull().default(false),
     // OCC guard for concurrent reorders — clients send the version they saw.
     version: integer('version').notNull().default(1),
+    // Global monotonic feed cursor (shared sequence w/ cards) — see 0029.
+    changeSeq: bigint('change_seq', { mode: 'number' })
+      .notNull()
+      .default(sql`nextval('board_change_seq')`),
     ...timestamps,
   },
   (t) => [
     index('lists_board_idx').on(t.boardId),
+    index('lists_change_seq_idx').on(t.changeSeq),
     index('lists_board_updated_idx').on(t.boardId, t.updatedAt),
   ]
 );
@@ -505,10 +511,15 @@ export const cards = pgTable(
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     // OCC guard for concurrent moves — clients send the version they saw.
     version: integer('version').notNull().default(1),
+    // Global monotonic feed cursor (shared sequence w/ lists) — see 0029.
+    changeSeq: bigint('change_seq', { mode: 'number' })
+      .notNull()
+      .default(sql`nextval('board_change_seq')`),
     ...timestamps,
   },
   (t) => [
     // listCards WHERE list_id + archived + sort by position (hottest query).
+    index('cards_change_seq_idx').on(t.changeSeq),
     index('cards_list_idx').on(t.listId),
     index('cards_org_idx').on(t.organizationId),
     index('cards_parent_idx').on(t.parentCardId),
@@ -517,6 +528,10 @@ export const cards = pgTable(
     index('cards_scheduled_idx').on(t.scheduledStart, t.scheduledEnd),
     // changes-feed gap-fill: rows touched since a cursor, per list.
     index('cards_list_updated_idx').on(t.listId, t.updatedAt),
+    // Board payload order within an active list (5.3).
+    index('cards_list_position_active_idx')
+      .on(t.listId, t.position)
+      .where(sql`is_archived = false AND deleted_at IS NULL`),
   ]
 );
 
@@ -792,33 +807,53 @@ export const notifications = pgTable(
 );
 
 // ─── Activity & Audit ─────────────────────────────────────────────────────────
-export const activityLog = pgTable('activity_log', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  entityType: varchar('entity_type', { length: 50 }).notNull(),
-  entityId: uuid('entity_id').notNull(),
-  actorId: uuid('actor_id').references(() => users.id),
-  action: varchar('action', { length: 100 }).notNull(),
-  metadata: jsonb('metadata').default('{}'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+export const activityLog = pgTable(
+  'activity_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    entityType: varchar('entity_type', { length: 50 }).notNull(),
+    entityId: uuid('entity_id').notNull(),
+    actorId: uuid('actor_id').references(() => users.id),
+    action: varchar('action', { length: 100 }).notNull(),
+    metadata: jsonb('metadata').default('{}'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('activity_log_org_created_idx').on(t.organizationId, t.createdAt),
+    index('activity_log_entity_idx').on(t.entityType, t.entityId, t.createdAt),
+    index('activity_log_created_idx').on(t.createdAt),
+  ]
+);
 
-export const auditLog = pgTable('audit_log', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  actorId: uuid('actor_id').references(() => users.id),
-  action: varchar('action', { length: 100 }).notNull(),
-  target: varchar('target', { length: 255 }),
-  targetId: uuid('target_id'),
-  metadata: jsonb('metadata').default('{}'),
-  ipAddress: varchar('ip_address', { length: 45 }),
-  userAgent: varchar('user_agent', { length: 500 }),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    actorId: uuid('actor_id').references(() => users.id),
+    action: varchar('action', { length: 100 }).notNull(),
+    target: varchar('target', { length: 255 }),
+    targetId: uuid('target_id'),
+    metadata: jsonb('metadata').default('{}'),
+    ipAddress: varchar('ip_address', { length: 45 }),
+    userAgent: varchar('user_agent', { length: 500 }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    // Every audit page used to seq-scan twice (rows + count) — PK-only table.
+    index('audit_log_org_created_idx').on(t.organizationId, t.createdAt),
+    index('audit_log_org_action_created_idx').on(t.organizationId, t.action, t.createdAt),
+    index('audit_log_org_target_created_idx')
+      .on(t.organizationId, t.target, t.createdAt)
+      .where(sql`"target" IS NOT NULL`),
+    index('audit_log_created_idx').on(t.createdAt),
+  ]
+);
 
 // ─── Automations & Webhooks ───────────────────────────────────────────────────
 export const automations = pgTable(
@@ -1356,6 +1391,9 @@ export const chatMessages = pgTable(
     index('chat_messages_reply_to_idx').on(t.replyToMessageId),
     index('chat_messages_created_idx').on(t.createdAt),
     index('chat_messages_pinned_idx').on(t.channelId, t.isPinned),
+    // Feed: channel + top-level + not-deleted, newest first (5.3).
+    index('chat_messages_channel_created_idx').on(t.channelId, t.createdAt),
+    index('chat_messages_parent_created_idx').on(t.parentMessageId, t.createdAt),
   ]
 );
 

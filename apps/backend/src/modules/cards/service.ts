@@ -28,6 +28,7 @@ import {
 import { resolvePriorityId, getDefaultPriorityId } from '../priorities/service';
 import { requireCardAccess } from './access';
 import { httpError } from '../organizations/service';
+import { clampLimit } from '../../lib/pagination';
 import { eventBus } from '../../lib/event-bus';
 import { notifyProjectChannels } from '../chat/service';
 import {
@@ -421,8 +422,15 @@ export async function createCard(db: Database, organizationId: string, input: Cr
   return card;
 }
 
-export async function listCards(db: Database, listId: string, organizationId: string) {
+export async function listCards(
+  db: Database,
+  listId: string,
+  organizationId: string,
+  options: { limit?: number | string } = {}
+) {
   const { boardId } = await verifyListAccess(db, listId, organizationId);
+  // Safety valve (5.3): a single list can never stream an unbounded row set.
+  const rowLimit = clampLimit(options.limit, { def: 500, max: 500 });
   // Hot board-loop read: 1 Redis RTT on hit, zero Neon queries.
   const { data } = await cachedBoardRead(
     boardId,
@@ -433,7 +441,8 @@ export async function listCards(db: Database, listId: string, organizationId: st
         .select()
         .from(cards)
         .where(and(eq(cards.listId, listId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
-        .orderBy(cards.position);
+        .orderBy(cards.position)
+        .limit(rowLimit);
 
       const cardIds = cardRows.map((c) => c.id);
       if (cardIds.length === 0) return [];
@@ -592,9 +601,15 @@ export async function listCards(db: Database, listId: string, organizationId: st
   return data;
 }
 
-export async function listSubtasks(db: Database, parentCardId: string, organizationId: string) {
+export async function listSubtasks(
+  db: Database,
+  parentCardId: string,
+  organizationId: string,
+  options: { limit?: number | string } = {}
+) {
   // First ensure the parent card belongs to the organization
   await getCard(db, parentCardId, organizationId);
+  const rowLimit = clampLimit(options.limit);
 
   const subtaskCards = await db
     .select({ card: cards, listName: lists.name })
@@ -607,7 +622,8 @@ export async function listSubtasks(db: Database, parentCardId: string, organizat
         isNull(cards.deletedAt)
       )
     )
-    .orderBy(cards.position);
+    .orderBy(cards.position)
+    .limit(rowLimit);
 
   const subtaskIds = subtaskCards.map((s) => s.card.id);
   if (subtaskIds.length === 0) return [];
@@ -1090,25 +1106,26 @@ const MIN_POSITION_GAP = 0.001;
 const REBALANCE_SPACING = 65536;
 
 export async function rebalanceListPositions(db: Database, listId: string): Promise<number> {
-  const rows = await db
-    .select({ id: cards.id })
-    .from(cards)
-    .where(and(eq(cards.listId, listId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
-    .orderBy(cards.position, cards.id);
-  // Single transaction: renumber + bump versions so concurrent movers conflict
-  // loudly (409) instead of interleaving with the rewrite.
+  // Single transaction: snapshot + renumber + bump versions so concurrent
+  // movers conflict loudly (409) instead of interleaving with the rewrite.
   type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
-  await db.transaction(async (tx: Tx) => {
+  return await db.transaction(async (tx: Tx) => {
+    const rows = await (tx as unknown as Database)
+      .select({ id: cards.id })
+      .from(cards)
+      .where(and(eq(cards.listId, listId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
+      .orderBy(cards.position, cards.id);
+    const client = tx as unknown as Database;
     let pos = REBALANCE_SPACING;
     for (const row of rows) {
-      await (tx as unknown as Database)
+      await client
         .update(cards)
         .set({ position: pos, version: sql`${cards.version} + 1`, updatedAt: new Date() })
         .where(eq(cards.id, row.id));
       pos += REBALANCE_SPACING;
     }
+    return rows.length;
   });
-  return rows.length;
 }
 
 async function maybeRebalanceList(db: Database, listId: string): Promise<void> {
@@ -1251,7 +1268,12 @@ export async function archiveCard(
 }
 
 // ─── Comments ─────────────────────────────────────────────────────────────────
-export async function listComments(db: Database, cardId: string, organizationId: string) {
+export async function listComments(
+  db: Database,
+  cardId: string,
+  organizationId: string,
+  options: { limit?: number | string } = {}
+) {
   await verifyCardAccess(db, cardId, organizationId);
   return db
     .select({
@@ -1269,7 +1291,8 @@ export async function listComments(db: Database, cardId: string, organizationId:
     .from(comments)
     .leftJoin(users, eq(users.id, comments.userId))
     .where(and(eq(comments.cardId, cardId), isNull(comments.deletedAt)))
-    .orderBy(desc(comments.createdAt));
+    .orderBy(desc(comments.createdAt))
+    .limit(clampLimit(options.limit));
 }
 
 export async function createComment(
@@ -1510,13 +1533,19 @@ export async function deleteComment(
 }
 
 // ─── Attachments ──────────────────────────────────────────────────────────────
-export async function listAttachments(db: Database, cardId: string, organizationId: string) {
+export async function listAttachments(
+  db: Database,
+  cardId: string,
+  organizationId: string,
+  options: { limit?: number | string } = {}
+) {
   await verifyCardAccess(db, cardId, organizationId);
   return db
     .select()
     .from(attachments)
     .where(and(eq(attachments.cardId, cardId), isNull(attachments.deletedAt)))
-    .orderBy(desc(attachments.createdAt));
+    .orderBy(desc(attachments.createdAt))
+    .limit(clampLimit(options.limit));
 }
 
 export async function createAttachmentRecord(

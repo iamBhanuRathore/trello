@@ -140,14 +140,14 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ query, user, set }) => {
       try {
         if (!query.listId) throw new Error('listId query parameter is required');
-        return await listCards(db, query.listId, user.organizationId);
+        return await listCards(db, query.listId, user.organizationId, { limit: query.limit });
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
       beforeHandle: requirePermission('card.read'),
-      query: t.Object({ listId: t.String() }),
+      query: t.Object({ listId: t.String(), limit: t.Optional(t.String()) }),
     }
   )
 
@@ -433,14 +433,17 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   // Comments
   .get(
     '/:id/comments',
-    async ({ params, user, set }) => {
+    async ({ params, query, user, set }) => {
       try {
-        return await listComments(db, params.id, user.organizationId);
+        return await listComments(db, params.id, user.organizationId, { limit: query.limit });
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
-    { beforeHandle: requirePermission('card.read') }
+    {
+      beforeHandle: requirePermission('card.read'),
+      query: t.Object({ limit: t.Optional(t.String()) }),
+    }
   )
   .post(
     '/:id/comments',
@@ -510,14 +513,17 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   // Attachments (25 MB cap mirrors chat staging)
   .get(
     '/:id/attachments',
-    async ({ params, user, set }) => {
+    async ({ params, query, user, set }) => {
       try {
-        return await listAttachments(db, params.id, user.organizationId);
+        return await listAttachments(db, params.id, user.organizationId, { limit: query.limit });
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
-    { beforeHandle: requirePermission('card.read') }
+    {
+      beforeHandle: requirePermission('card.read'),
+      query: t.Object({ limit: t.Optional(t.String()) }),
+    }
   )
   .post(
     '/:id/attachments',
@@ -880,10 +886,14 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
   )
 
   // Subtasks
-  .get('/:id/subtasks', async ({ params, user, set }) => {
-    try {
-      return await listSubtasks(db, params.id, user.organizationId);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  });
+  .get(
+    '/:id/subtasks',
+    async ({ params, query, user, set }) => {
+      try {
+        return await listSubtasks(db, params.id, user.organizationId, { limit: query.limit });
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { query: t.Object({ limit: t.Optional(t.String()) }) }
+  );

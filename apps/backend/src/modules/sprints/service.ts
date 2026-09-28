@@ -1,4 +1,5 @@
 import { eq, and } from 'drizzle-orm';
+import { clampLimit } from '../../lib/pagination';
 import type { Database } from '../../db/index';
 import { sprints, cardSprints, projects } from '../../db/schema/index';
 
@@ -20,10 +21,7 @@ export async function listSprints(db: Database, projectId: string) {
 }
 
 export async function getSprint(db: Database, sprintId: string) {
-  const [sprint] = await db
-    .select()
-    .from(sprints)
-    .where(eq(sprints.id, sprintId));
+  const [sprint] = await db.select().from(sprints).where(eq(sprints.id, sprintId));
 
   if (!sprint) throw httpError(404, 'Sprint not found');
   return sprint;
@@ -53,7 +51,7 @@ export async function createSprint(
       startDate: input.startDate,
       endDate: input.endDate,
       goal: input.goal,
-      status: 'planned'
+      status: 'planned',
     })
     .returning();
   return sprint;
@@ -96,7 +94,7 @@ export async function addCardToSprint(db: Database, sprintId: string, cardId: st
     .values({ sprintId, cardId, isActive: true })
     .onConflictDoUpdate({
       target: [cardSprints.cardId, cardSprints.sprintId],
-      set: { isActive: true }
+      set: { isActive: true },
     })
     .returning();
   return cs;
@@ -111,10 +109,15 @@ export async function removeCardFromSprint(db: Database, sprintId: string, cardI
   return deleted;
 }
 
-export async function listSprintCards(db: Database, sprintId: string) {
+export async function listSprintCards(
+  db: Database,
+  sprintId: string,
+  options: { limit?: number | string } = {}
+) {
   const items = await db
     .select()
     .from(cardSprints)
-    .where(and(eq(cardSprints.sprintId, sprintId), eq(cardSprints.isActive, true)));
+    .where(and(eq(cardSprints.sprintId, sprintId), eq(cardSprints.isActive, true)))
+    .limit(clampLimit(options.limit, { def: 500, max: 500 }));
   return items;
 }

@@ -16,6 +16,7 @@ import {
   setAssignmentRule,
   resolveDefaultAssignee,
   updateAssignmentPolicy,
+  listAssignmentRules,
 } from './service';
 
 const TEST_DB_URL =
@@ -128,7 +129,7 @@ describe('Team Roles + Assignment Rules', () => {
     });
 
     // Org rule -> Developer, project rule -> Tester, board rule -> Developer
-    await setAssignmentRule(db, organization.id, {}, { defaultRoleId: devRole.id }, user.id);
+    await setAssignmentRule(db, organization.id, {}, { defaultRoleId: devRole!.id }, user.id);
     await setAssignmentRule(
       db,
       organization.id,
@@ -140,7 +141,7 @@ describe('Team Roles + Assignment Rules', () => {
       db,
       organization.id,
       { projectId: proj.id, boardId: board.id },
-      { defaultRoleId: devRole.id },
+      { defaultRoleId: devRole!.id },
       user.id
     );
 
@@ -234,5 +235,42 @@ describe('Team Roles + Assignment Rules', () => {
     await expect(
       addComponentToCard(db, b.organization.id, bCard!.id, comp.id, b.user.id)
     ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('upserts one rule per scope instead of appending duplicates', async () => {
+    const { organization, user, proj, board } = await setup('ruleIdem');
+    await seedOrgTeamRoles(db, organization.id);
+    const [devRole] = await db
+      .select({ id: schema.roles.id })
+      .from(schema.roles)
+      .where(eq_(schema.roles.organizationId, organization.id));
+    expect(devRole).toBeDefined();
+
+    // Same scope repeatedly must update in place, not append. Org scope first,
+    // then project, then board — a NULL-unsafe lookup would fetch the row
+    // inserted by the previous (broader) scope and insert a duplicate.
+    for (let i = 0; i < 3; i++) {
+      await setAssignmentRule(db, organization.id, {}, { defaultRoleId: devRole!.id }, user.id);
+      await setAssignmentRule(
+        db,
+        organization.id,
+        { projectId: proj.id },
+        { defaultRoleId: devRole!.id },
+        user.id
+      );
+      await setAssignmentRule(
+        db,
+        organization.id,
+        { boardId: board.id },
+        { defaultRoleId: devRole!.id },
+        user.id
+      );
+    }
+
+    const rules = await listAssignmentRules(db, organization.id);
+    expect(rules.filter((r) => !r.projectId && !r.boardId && !r.componentId)).toHaveLength(1);
+    expect(rules.filter((r) => r.projectId === proj.id && !r.boardId)).toHaveLength(1);
+    expect(rules.filter((r) => r.boardId === board.id)).toHaveLength(1);
+    expect(rules).toHaveLength(3);
   });
 });

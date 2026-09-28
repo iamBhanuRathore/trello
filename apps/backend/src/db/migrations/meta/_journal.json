@@ -204,6 +204,27 @@
       "when": 1790900200000,
       "tag": "0028_change_feed_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1790900201000,
+      "tag": "0029_board_change_seq",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790900202000,
+      "tag": "0030_rule_scope_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790900203000,
+      "tag": "0031_hot_path_indexes",
+      "breakpoints": true
     }
   ]
 }

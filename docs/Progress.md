@@ -2130,3 +2130,14 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Tests added:** stale-move 409 + rebalance unit tests (`card.test.ts`), changes-feed cursor/org/400 test (`board.test.ts`); also repaired `board.test.ts` teardown (subscriptions + seeded roles) fixing 2 pre-existing failures.
 - Tests & Validation: cards/lists/boards/components 18/18 green; backend + dashboard `tsc` clean, dashboard `oxlint` clean. Dev + test DBs migrated.
 - What's next: 5.3 DB perf batch (enrichment batching, remaining pagination), 5.4 virtualization, 5.5 media pipeline; admin UI for roles/rules.
+
+### 2026-09-28 --- 5.3 DB Perf + Feed Cursor Hardening
+
+- **Correctness:** `updateList` version guard moved into the `UPDATE` predicate (was check-then-write, racy); `rebalanceListPositions` now snapshots rows inside its transaction; assignment-rule upsert was NULL-unsafe (an org-rule lookup matched board rules, so every repeat call appended a duplicate) — now `isNull` per absent dimension + partial unique index (0030) with dedupe.
+- **Feed:** timestamp cursor replaced by a global `board_change_seq` (0029 sequence + triggers on cards/lists). A batched rebalance writes one shared millisecond, so `updated_at > cursor` dropped the tail of the batch; the seq cursor is gapless. `/boards/:id/full` returns `changeCursor`, the feed returns `nextCursor` + `hasMore`, and the dashboard pages until drained (max 10 pages, then refetch). Non-numeric cursors 400.
+- **Perf:** chat message page 153 → 6 queries (attachments/reactions/reply-counts/quotes batched); thread replies too. 0031 adds hot-path indexes (message feed, threads, board payload, audit/activity org+filters, unread/undispatched notifications).
+- **Pagination:** `clampLimit` helper (def 50, max 200; 500 for cards/sprint cards) applied to cards, comments, attachments, subtasks, thread replies, pinned messages; `?limit` accepted on those routes.
+- **Retention:** `modules/audit/retention.ts` prunes audit (730d), activity (365d), read notifications (180d) in batched deletes; boot + 6h loop, cleared on shutdown; unread notifications never pruned.
+- **Tests added:** feed paged-resume + same-millisecond batch coverage (`board.test.ts`), rule upsert idempotency (`components.test.ts`), chat N+1 query-count guard (`chat.test.ts`), retention prune incl. unread-notification exemption (`audit.test.ts`); repaired `audit.test.ts` teardown (seeded roles/notifications FKs).
+- Tests & Validation: 26 fail on a dirty shared DB vs 27 on the clean tree — **zero regressions** (the extra fixed one is the audit teardown). Backend + dashboard `tsc` clean, dashboard `oxlint`/prettier clean. Dev + test DBs migrated (0029-0031).
+- What's next: 5.4 virtualization/memoization, 5.5 media pipeline; admin UI for roles/rules; `requirePermission` union over team-role rows; cursor pagination for cards/comments (caps are in place, `hasMore` metadata still to come).

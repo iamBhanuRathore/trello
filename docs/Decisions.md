@@ -24,6 +24,20 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-28 — Monotonic Change Cursor, Hot-Path Indexes, Log Retention (5.3)
+
+**Context:** (1) The reconnect feed paged on `updated_at`, but a batched rewrite (position rebalance) stamps every row with the same millisecond — `updated_at > cursor` silently dropped the tail of the batch. (2) `audit_log`/`activity_log` were primary-key-only, so each audit page seq-scanned twice (rows + `count(*)`). (3) Chat message enrichment was per-row (~150 queries for a 50-message page). (4) Several list endpoints returned unbounded row sets; append-only logs grew forever.
+
+**Decision:**
+
+1. **Single global `change_seq`** — one `BIGSERIAL` sequence + `BEFORE UPDATE` trigger on both `cards` and `lists` (0029). One monotonic ordering across both tables means the feed cursor is a single integer, `nextCursor` is exact, `hasMore` can't lie, and ties are impossible. `/boards/:id/full` now returns `changeCursor` so the client seeds its position for free. Non-numeric cursors 400 instead of silently returning the whole board.
+2. **Batched chat enrichment** — attachments, reactions, reply counts, and quoted replies are four set-based queries per page (measured 153 → 6 queries for a 50-message page; guarded by a query-count test). Thread replies got the same treatment.
+3. **Hot-path index sweep** (0031, mirrored in the Drizzle schema): `(channel_id, created_at DESC)` message feed, `(parent_message_id, created_at)` threads, partial `cards(list_id, position) WHERE active`, audit/activity org+paging+filters, `notifications(user_id, created_at DESC) WHERE is_read = false` and `WHERE is_dispatched = false`.
+4. **Shared `clampLimit`** (`src/lib/pagination.ts`) — every list endpoint clamps its own page (default 50, hard max 200; `listCards`/`listSprintCards` get a 500 safety valve); `?limit` is now accepted on cards/comments/attachments/subtasks/thread-replies/pinned.
+5. **Retention over partitioning** — `modules/audit/retention.ts` prunes audit (730d), activity (365d), and read notifications (180d) in batched `DELETE … WHERE id IN (SELECT … LIMIT n)` statements, wired into boot + 6h interval and cleared on shutdown. Unread notifications are never pruned. Declared range partitioning was rejected: it complicates every FK and the pooled-connection path, and a batched delete handles a table this size. Revisit when audit rows exceed ~50M.
+
+**Alternatives considered:** composite `(updated_at, id)` cursor per table (two cursors, still lossy on the `cards`+`lists` union); client-side "refetch everything on reconnect" (simple, but O(board) per flap).
+
 ### 2026-09-28 — OCC Ordering + Reconnect Gap-Fill (Phase 2)
 
 **Context:** Simultaneous card moves overwrote each other (last-write-wins blind update); repeated midpoint inserts risk float-precision exhaustion with no compaction; WS drops forced full board refetches with no retry loop.

@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin } from '../../middleware/auth';
 import { handleRouteError } from '../../lib/errors';
+import { clampLimit } from '../../lib/pagination';
 import {
   createDirectMessage,
   createGroupChannel,
@@ -93,6 +94,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     },
     {
       params: t.Object({ channelId: t.String() }),
+      query: t.Object({ limit: t.Optional(t.String()) }),
     }
   )
 
@@ -231,7 +233,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     '/channels/:channelId/messages',
     async ({ params: { channelId }, query, user, set }) => {
       try {
-        const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 50);
+        const limit = clampLimit(query.limit, { def: 50, max: 50 });
         return await listMessages(
           db,
           channelId,
@@ -287,6 +289,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     },
     {
       params: t.Object({ messageId: t.String() }),
+      query: t.Object({ limit: t.Optional(t.String()) }),
       body: t.Object({
         body: t.String(),
       }),
@@ -329,9 +332,11 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
   // GET /v1/chat/messages/:messageId/replies - List thread replies
   .get(
     '/messages/:messageId/replies',
-    async ({ params: { messageId }, user, set }) => {
+    async ({ params: { messageId }, query, user, set }) => {
       try {
-        return await listThreadReplies(db, messageId, user.organizationId, user.userId);
+        return await listThreadReplies(db, messageId, user.organizationId, user.userId, {
+          limit: query.limit,
+        });
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -397,9 +402,11 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
   // GET /v1/chat/channels/:channelId/pinned - List pinned messages
   .get(
     '/channels/:channelId/pinned',
-    async ({ params: { channelId }, user, set }) => {
+    async ({ params: { channelId }, query, user, set }) => {
       try {
-        return await listPinnedMessages(db, channelId, user.organizationId, user.userId);
+        return await listPinnedMessages(db, channelId, user.organizationId, user.userId, {
+          limit: query.limit,
+        });
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }

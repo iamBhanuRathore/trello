@@ -97,21 +97,37 @@ export async function updateList(
 
   if (!existingList) throw httpError(404, 'List not found');
 
-  if (input.expectedVersion !== undefined && existingList.version !== input.expectedVersion) {
-    throw Object.assign(httpError(409, 'List moved by another session — refetch and retry'), {
-      details: {
-        code: 'VERSION_CONFLICT',
-        current: { id, position: undefined, version: existingList.version },
-      },
-    });
-  }
+  const { expectedVersion, ...fields } = input;
+  // Atomic OCC: the version predicate lives in the UPDATE itself, so a
+  // concurrent writer can never slip between the check above and the write.
+  const conditions = [eq(lists.id, id)];
+  if (expectedVersion !== undefined) conditions.push(eq(lists.version, expectedVersion));
 
-  const { expectedVersion: _ignored, ...fields } = input;
   const [updatedList] = await db
     .update(lists)
     .set({ ...fields, version: sql`${lists.version} + 1`, updatedAt: new Date() })
-    .where(eq(lists.id, id))
+    .where(and(...conditions))
     .returning();
+
+  if (!updatedList) {
+    // The guard rejected the write — someone else bumped the row first.
+    const [current] = await db
+      .select({ version: lists.version, name: lists.name, position: lists.position })
+      .from(lists)
+      .where(eq(lists.id, id))
+      .limit(1);
+    throw Object.assign(httpError(409, 'List moved by another session — refetch and retry'), {
+      details: {
+        code: 'VERSION_CONFLICT',
+        current: {
+          id,
+          name: current?.name,
+          position: current?.position,
+          version: current?.version,
+        },
+      },
+    });
+  }
 
   eventBus.broadcast(`board:${existingList.boardId}`, 'list.updated', updatedList);
   await bumpBoardCache(existingList.boardId);

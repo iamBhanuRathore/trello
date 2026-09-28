@@ -106,6 +106,54 @@ describe('Channel ↔ Project Linking & Activity Feed', () => {
     expect(feed.some((m) => m.isSystem && m.body.includes('Linked project'))).toBe(true);
   });
 
+  it('serves a full message page in a fixed number of queries (no N+1)', async () => {
+    // Guard the batched enrichment: a per-row variant cost ~150 round-trips for
+    // a 50-message page. Counted through drizzle's query logger.
+    let queries = 0;
+    const countingClient = postgres(TEST_DB_URL, { max: 1 });
+    const countingDb = drizzle(countingClient, {
+      schema,
+      logger: {
+        logQuery: () => {
+          queries++;
+        },
+      },
+    }) as unknown as Database;
+
+    const { user, organization } = await signUp(countingDb, {
+      name: 'Perf',
+      email: `chat_perf_${Date.now()}@chat.com`,
+      password: 'pass',
+      orgName: `Perf Org ${Date.now()}`,
+      orgSlug: `perf-org-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+    });
+    const channel = await createGroupChannel(countingDb, organization.id, user.id, {
+      name: 'perf',
+    });
+    for (let i = 0; i < 25; i++) {
+      const m = await sendMessage(countingDb, channel.id, organization.id, user.id, {
+        body: `msg ${i}`,
+      });
+      await toggleReaction(countingDb, m.id, organization.id, user.id, '🎉');
+    }
+
+    queries = 0;
+    const page = await listMessages(
+      countingDb,
+      channel.id,
+      organization.id,
+      user.id,
+      undefined,
+      50
+    );
+    expect(page.length).toBeGreaterThan(0);
+    expect(page[0]!.reactions.length).toBe(1);
+    // membership + page + 4 batched enrichment queries. Slack-scale pages must
+    // not scale with row count.
+    expect(queries).toBeLessThanOrEqual(8);
+    await countingClient.end();
+  });
+
   it('rejects linking for non-admin members', async () => {
     const { user, organization, proj } = await setupOrgWithProject('link403');
     const bobEmail = `bob_403_${Date.now()}@chat.com`;

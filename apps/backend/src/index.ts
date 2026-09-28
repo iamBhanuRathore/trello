@@ -33,6 +33,7 @@ import { roleRoutes } from './modules/roles/routes';
 import { componentRoutes } from './modules/components/routes';
 import { priorityRoutes } from './modules/priorities/routes';
 import { auditRoutes } from './modules/audit/routes';
+import { startRetentionJob } from './modules/audit/retention';
 import { docRoutes } from './modules/docs/routes';
 import { formRoutes } from './modules/forms/routes';
 import { ssoRoutes } from './modules/sso/routes';
@@ -254,6 +255,9 @@ if (app.server) {
   setupRealtimeEventBus(app.server);
 }
 
+// Append-only log retention (audit/activity/notifications) — see modules/audit/retention.ts
+const stopRetentionJob = startRetentionJob(db);
+
 logger.info({ host: app.server?.hostname, port: app.server?.port }, '🚀 Boardly API is running');
 
 // ── Graceful Shutdown & Drain Handler ─────────────────────────────────────────
@@ -284,7 +288,8 @@ async function shutdown(signal: string) {
     logger.info({}, 'All in-flight requests drained successfully');
   }
 
-  // 3. Close downstream Redis and Database client pools
+  // 3. Stop housekeeping timers, then close Redis + Database client pools
+  stopRetentionJob();
   await Promise.allSettled([disconnectRedis(), disconnectDb()]);
 
   logger.info({}, 'Clean shutdown completed. Exiting.');

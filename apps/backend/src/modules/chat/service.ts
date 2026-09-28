@@ -11,6 +11,7 @@ import {
   projects,
 } from '../../db/schema/index';
 import { eventBus } from '../../lib/event-bus';
+import { clampLimit } from '../../lib/pagination';
 import { generatePresignedUploadUrl } from '../../lib/s3';
 
 export function httpError(status: number, message: string): Error & { status: number } {
@@ -988,48 +989,40 @@ export async function listMessages(
 
   // Reverse so client receives chronological order
   const messagesChronological = rawMessages.reverse();
+  if (messagesChronological.length === 0) return [];
 
-  // Attach attachments, reactions, and thread reply counts
-  const enriched = await Promise.all(
-    messagesChronological.map(async ({ message, author }) => {
-      const attachmentsList = await db
-        .select()
-        .from(chatAttachments)
-        .where(eq(chatAttachments.messageId, message.id));
+  // Batched enrichment: the per-message variant cost up to 4 queries per row
+  // (attachments, reactions, reply count, quoted reply) — ~200 round-trips for
+  // one 50-message page. Four set-based queries now serve the whole page.
+  const messageIds = messagesChronological.map((m) => m.message.id);
+  const quotedIds = [
+    ...new Set(
+      messagesChronological
+        .map((m) => m.message.replyToMessageId)
+        .filter((id): id is string => !!id)
+    ),
+  ];
 
-      const reactionsList = await db
-        .select({
-          emoji: chatReactions.emoji,
-          userId: chatReactions.userId,
-        })
-        .from(chatReactions)
-        .where(eq(chatReactions.messageId, message.id));
-
-      // Group reactions by emoji
-      const reactionMap: Record<string, string[]> = {};
-      for (const r of reactionsList) {
-        const arr = reactionMap[r.emoji] ?? [];
-        arr.push(r.userId);
-        reactionMap[r.emoji] = arr;
-      }
-
-      const reactionsGrouped = Object.entries(reactionMap).map(([emoji, userIds]) => ({
-        emoji,
-        count: userIds.length,
-        userIds,
-        hasReacted: userIds.includes(userId),
-      }));
-
-      // Reply count
-      const [replyResult] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(chatMessages)
-        .where(and(eq(chatMessages.parentMessageId, message.id), isNull(chatMessages.deletedAt)));
-
-      // Quoted reply lookup
-      let replyTo: { id: string; body: string; authorName: string } | null = null;
-      if (message.replyToMessageId) {
-        const [repliedMsg] = await db
+  const [attachmentRows, reactionRows, replyCountRows, quotedRows] = await Promise.all([
+    db.select().from(chatAttachments).where(inArray(chatAttachments.messageId, messageIds)),
+    db
+      .select({
+        messageId: chatReactions.messageId,
+        emoji: chatReactions.emoji,
+        userId: chatReactions.userId,
+      })
+      .from(chatReactions)
+      .where(inArray(chatReactions.messageId, messageIds)),
+    db
+      .select({
+        parentMessageId: chatMessages.parentMessageId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(chatMessages)
+      .where(and(inArray(chatMessages.parentMessageId, messageIds), isNull(chatMessages.deletedAt)))
+      .groupBy(chatMessages.parentMessageId),
+    quotedIds.length > 0
+      ? db
           .select({
             id: chatMessages.id,
             body: chatMessages.body,
@@ -1037,25 +1030,47 @@ export async function listMessages(
           })
           .from(chatMessages)
           .innerJoin(users, eq(chatMessages.userId, users.id))
-          .where(eq(chatMessages.id, message.replyToMessageId))
-          .limit(1);
-        if (repliedMsg) {
-          replyTo = repliedMsg;
-        }
-      }
+          .where(inArray(chatMessages.id, quotedIds))
+      : Promise.resolve([] as Array<{ id: string; body: string; authorName: string }>),
+  ]);
 
-      return {
-        ...message,
-        author,
-        replyTo,
-        attachments: attachmentsList,
-        reactions: reactionsGrouped,
-        replyCount: Number(replyResult?.count || 0),
-      };
-    })
-  );
+  const attachmentsByMessage = new Map<string, (typeof attachmentRows)[number][]>();
+  for (const row of attachmentRows) {
+    if (!row.messageId) continue;
+    const arr = attachmentsByMessage.get(row.messageId) ?? [];
+    arr.push(row);
+    attachmentsByMessage.set(row.messageId, arr);
+  }
+  const reactionsByMessage = new Map<string, Map<string, string[]>>();
+  for (const row of reactionRows) {
+    const byEmoji = reactionsByMessage.get(row.messageId) ?? new Map<string, string[]>();
+    const users = byEmoji.get(row.emoji) ?? [];
+    users.push(row.userId);
+    byEmoji.set(row.emoji, users);
+    reactionsByMessage.set(row.messageId, byEmoji);
+  }
+  const replyCounts = new Map(replyCountRows.map((r) => [r.parentMessageId, Number(r.count)]));
+  const quotedById = new Map(quotedRows.map((q) => [q.id, q]));
 
-  return enriched;
+  return messagesChronological.map(({ message, author }) => {
+    const byEmoji = reactionsByMessage.get(message.id);
+    const reactions = byEmoji
+      ? [...byEmoji.entries()].map(([emoji, userIds]) => ({
+          emoji,
+          count: userIds.length,
+          userIds,
+          hasReacted: userIds.includes(userId),
+        }))
+      : [];
+    return {
+      ...message,
+      author,
+      replyTo: message.replyToMessageId ? (quotedById.get(message.replyToMessageId) ?? null) : null,
+      attachments: attachmentsByMessage.get(message.id) ?? [],
+      reactions,
+      replyCount: replyCounts.get(message.id) ?? 0,
+    };
+  });
 }
 
 export async function toggleReaction(
@@ -1120,7 +1135,8 @@ export async function listThreadReplies(
   db: Database,
   parentMessageId: string,
   organizationId: string,
-  userId: string
+  userId: string,
+  options: { limit?: number | string } = {}
 ) {
   const [parent] = await db
     .select()
@@ -1147,34 +1163,31 @@ export async function listThreadReplies(
     .from(chatMessages)
     .innerJoin(users, eq(chatMessages.userId, users.id))
     .where(and(eq(chatMessages.parentMessageId, parentMessageId), isNull(chatMessages.deletedAt)))
-    .orderBy(asc(chatMessages.createdAt));
+    .orderBy(asc(chatMessages.createdAt))
+    .limit(clampLimit(options.limit));
 
-  return Promise.all(
-    replies.map(async ({ message, author }) => {
-      let replyTo: { id: string; body: string; authorName: string } | null = null;
-      if (message.replyToMessageId) {
-        const [repliedMsg] = await db
-          .select({
-            id: chatMessages.id,
-            body: chatMessages.body,
-            authorName: users.name,
-          })
-          .from(chatMessages)
-          .innerJoin(users, eq(chatMessages.userId, users.id))
-          .where(eq(chatMessages.id, message.replyToMessageId))
-          .limit(1);
-        if (repliedMsg) {
-          replyTo = repliedMsg;
-        }
-      }
+  // Batched quoted-reply lookup (was one query per reply with a quote).
+  const quotedIds = [
+    ...new Set(replies.map((r) => r.message.replyToMessageId).filter((id): id is string => !!id)),
+  ];
+  const quotedRows = quotedIds.length
+    ? await db
+        .select({
+          id: chatMessages.id,
+          body: chatMessages.body,
+          authorName: users.name,
+        })
+        .from(chatMessages)
+        .innerJoin(users, eq(chatMessages.userId, users.id))
+        .where(inArray(chatMessages.id, quotedIds))
+    : [];
+  const quotedById = new Map(quotedRows.map((q) => [q.id, q]));
 
-      return {
-        ...message,
-        author,
-        replyTo,
-      };
-    })
-  );
+  return replies.map(({ message, author }) => ({
+    ...message,
+    author,
+    replyTo: message.replyToMessageId ? (quotedById.get(message.replyToMessageId) ?? null) : null,
+  }));
 }
 
 export async function markChannelRead(
@@ -1555,7 +1568,8 @@ export async function listPinnedMessages(
   db: Database,
   channelId: string,
   organizationId: string,
-  userId: string
+  userId: string,
+  options: { limit?: number | string } = {}
 ) {
   await requireChannelMembership(db, channelId, organizationId, userId);
   const rows = await db
@@ -1578,7 +1592,8 @@ export async function listPinnedMessages(
         isNull(chatMessages.deletedAt)
       )
     )
-    .orderBy(desc(chatMessages.pinnedAt));
+    .orderBy(desc(chatMessages.pinnedAt))
+    .limit(clampLimit(options.limit, { def: 100 }));
   return rows.map(({ message, author }) => ({ ...message, author }));
 }
 

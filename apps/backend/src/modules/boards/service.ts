@@ -1,4 +1,4 @@
-import { eq, and, isNull, inArray, gt } from 'drizzle-orm';
+import { eq, and, isNull, inArray, gt, sql, max } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   boards,
@@ -159,23 +159,62 @@ export interface BoardFullList {
 export interface BoardFull {
   board: typeof boards.$inferSelect;
   lists: BoardFullList[];
+  /** Highest `change_seq` in this payload — the client's starting feed cursor. */
+  changeCursor: number;
 }
 
 /**
- * Incremental change feed for reconnect gap-fill: rows in this board with
- * updatedAt after `since` (capped). Clients upsert by id instead of
- * refetching the whole board. Never cached — it is per-cursor by definition.
+ * Incremental change feed for reconnect gap-fill.
+ *
+ * Cursor is a single integer from the shared `board_change_seq` sequence
+ * (0029) rather than a timestamp: a batched rewrite stamps every row with the
+ * same millisecond, so `updated_at > cursor` silently dropped the tail of a
+ * rebalance. One monotonic ordering across cards+lists also means `nextCursor`
+ * is exact and `hasMore` cannot lie.
+ *
+ * Never cached — per-cursor by definition.
  */
 const CHANGES_LIMIT = 500;
+
+export interface BoardChanges {
+  lists: Array<{
+    id: string;
+    boardId: string;
+    name: string;
+    position: number;
+    version: number;
+    isArchived: boolean;
+    changeSeq: number;
+  }>;
+  cards: Array<{
+    id: string;
+    listId: string;
+    title: string;
+    position: number;
+    version: number;
+    isArchived: boolean;
+    changeSeq: number;
+  }>;
+  /** Cursor to resume from (max seen change_seq). */
+  nextCursor: number;
+  /** More rows exist past `nextCursor` — keep paging with it. */
+  hasMore: boolean;
+  serverTime: string;
+}
 
 export async function getBoardChanges(
   db: Database,
   boardId: string,
   organizationId: string,
-  since: string
-) {
-  const sinceDate = new Date(since);
-  if (Number.isNaN(sinceDate.getTime())) throw httpError(400, 'Invalid since cursor');
+  sinceRaw: string
+): Promise<BoardChanges> {
+  // Accept `0` as "from the beginning" and reject anything non-numeric so a
+  // stale client sending an ISO timestamp fails loudly instead of silently
+  // returning the whole board.
+  const since = Number(sinceRaw);
+  if (!Number.isInteger(since) || since < 0) {
+    throw httpError(400, 'Invalid since cursor — expected a change_seq integer');
+  }
 
   const [board] = await db
     .select({ id: boards.id })
@@ -190,42 +229,61 @@ export async function getBoardChanges(
     .limit(1);
   if (!board) throw httpError(404, 'Board not found or access denied');
 
-  const changedLists = await db
-    .select({
-      id: lists.id,
-      boardId: lists.boardId,
-      name: lists.name,
-      position: lists.position,
-      version: lists.version,
-      isArchived: lists.isArchived,
-      updatedAt: lists.updatedAt,
-    })
-    .from(lists)
-    .where(and(eq(lists.boardId, boardId), gt(lists.updatedAt, sinceDate)))
-    .limit(CHANGES_LIMIT);
-
-  const changedCards = await db
-    .select({
-      id: cards.id,
-      listId: cards.listId,
-      title: cards.title,
-      position: cards.position,
-      version: cards.version,
-      isArchived: cards.isArchived,
-      updatedAt: cards.updatedAt,
-    })
-    .from(cards)
-    .innerJoin(lists, eq(lists.id, cards.listId))
-    .where(
-      and(
-        eq(lists.boardId, boardId),
-        eq(cards.organizationId, organizationId),
-        gt(cards.updatedAt, sinceDate)
+  // Over-fetch by one to detect truncation without a second count query.
+  const [changedLists, changedCards] = await Promise.all([
+    db
+      .select({
+        id: lists.id,
+        boardId: lists.boardId,
+        name: lists.name,
+        position: lists.position,
+        version: lists.version,
+        isArchived: lists.isArchived,
+        changeSeq: lists.changeSeq,
+      })
+      .from(lists)
+      .where(and(eq(lists.boardId, boardId), gt(lists.changeSeq, since)))
+      .orderBy(lists.changeSeq)
+      .limit(CHANGES_LIMIT + 1),
+    db
+      .select({
+        id: cards.id,
+        listId: cards.listId,
+        title: cards.title,
+        position: cards.position,
+        version: cards.version,
+        isArchived: cards.isArchived,
+        changeSeq: cards.changeSeq,
+      })
+      .from(cards)
+      .innerJoin(lists, eq(lists.id, cards.listId))
+      .where(
+        and(
+          eq(lists.boardId, boardId),
+          eq(cards.organizationId, organizationId),
+          gt(cards.changeSeq, since)
+        )
       )
-    )
-    .limit(CHANGES_LIMIT);
+      .orderBy(cards.changeSeq)
+      .limit(CHANGES_LIMIT + 1),
+  ]);
 
-  return { lists: changedLists, cards: changedCards, serverTime: new Date().toISOString() };
+  const listsPage = changedLists.slice(0, CHANGES_LIMIT);
+  const cardsPage = changedCards.slice(0, CHANGES_LIMIT);
+  const hasMore = changedLists.length > CHANGES_LIMIT || changedCards.length > CHANGES_LIMIT;
+  const nextCursor = Math.max(
+    since,
+    ...listsPage.map((l) => l.changeSeq),
+    ...cardsPage.map((c) => c.changeSeq)
+  );
+
+  return {
+    lists: listsPage,
+    cards: cardsPage,
+    nextCursor,
+    hasMore,
+    serverTime: new Date().toISOString(),
+  };
 }
 
 /**
@@ -270,7 +328,8 @@ async function loadBoardFull(
     .where(and(eq(lists.boardId, boardId), eq(lists.isArchived, false), isNull(lists.deletedAt)))
     .orderBy(lists.position);
 
-  if (listRows.length === 0) return { board, lists: [] };
+  if (listRows.length === 0)
+    return { board, lists: [], changeCursor: await currentChangeCursor(db) };
   const listIds = listRows.map((l) => l.id);
 
   const cardRows = await db
@@ -283,7 +342,11 @@ async function loadBoardFull(
 
   const cardIds = cardRows.map((c) => c.id);
   if (cardIds.length === 0) {
-    return { board, lists: listRows.map((l) => ({ ...l, cards: [] })) };
+    return {
+      board,
+      lists: listRows.map((l) => ({ ...l, cards: [] })),
+      changeCursor: Math.max(0, ...listRows.map((l) => l.changeSeq)),
+    };
   }
 
   const stageIds = cardRows.map((c) => c.stageId).filter(Boolean) as string[];
@@ -412,7 +475,20 @@ async function loadBoardFull(
   return {
     board,
     lists: listRows.map((l) => ({ ...l, cards: enrichedByList.get(l.id) ?? [] })),
+    // The payload already carries every row, so the cursor is free here — no
+    // extra round-trip to seed the client's feed position.
+    changeCursor: Math.max(
+      0,
+      ...listRows.map((l) => l.changeSeq),
+      ...cardRows.map((c) => c.changeSeq)
+    ),
   };
+}
+
+/** Highest sequence value in use — the safe starting cursor for an empty board. */
+async function currentChangeCursor(db: Database): Promise<number> {
+  const [row] = await db.select({ seq: max(sql`${cards.changeSeq}`) }).from(cards);
+  return Number(row?.seq ?? 0);
 }
 
 // Hard delete for permanent purge

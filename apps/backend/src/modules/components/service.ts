@@ -244,22 +244,26 @@ export async function setAssignmentRule(
   }
   if (input.defaultUserId) await requireActiveMember(db, organizationId, input.defaultUserId);
 
-  // Upsert by exact scope (NULL-safe: fetch then update/insert).
-  const conditions = [eq(assignmentRules.organizationId, organizationId)];
-  if (scope.projectId) conditions.push(eq(assignmentRules.projectId, scope.projectId));
-  if (scope.boardId) conditions.push(eq(assignmentRules.boardId, scope.boardId));
-  if (scope.componentId) conditions.push(eq(assignmentRules.componentId, scope.componentId));
+  // Upsert by exact scope. The scope match must be NULL-safe: a plain
+  // `eq()` on the present columns alone also matches deeper rules (an org rule
+  // query would hit a board rule), so repeats of the same call inserted a fresh
+  // duplicate every time. `isNull` for absent dimensions + a partial unique
+  // index (0030) makes this exact and race-proof.
+  const conditions = [
+    eq(assignmentRules.organizationId, organizationId),
+    scope.projectId
+      ? eq(assignmentRules.projectId, scope.projectId)
+      : isNull(assignmentRules.projectId),
+    scope.boardId ? eq(assignmentRules.boardId, scope.boardId) : isNull(assignmentRules.boardId),
+    scope.componentId
+      ? eq(assignmentRules.componentId, scope.componentId)
+      : isNull(assignmentRules.componentId),
+  ];
   const [existing] = await db
     .select()
     .from(assignmentRules)
     .where(and(...conditions))
     .limit(1);
-  // Disambiguate NULL-scope levels: keep only rows matching the exact level.
-  const levelMatch = (r: typeof existing) =>
-    !!r &&
-    (r.projectId || null) === (scope.projectId || null) &&
-    (r.boardId || null) === (scope.boardId || null) &&
-    (r.componentId || null) === (scope.componentId || null);
   const values = {
     organizationId,
     projectId: scope.projectId || null,
@@ -270,11 +274,11 @@ export async function setAssignmentRule(
     updatedBy: actorId,
     updatedAt: new Date(),
   };
-  if (levelMatch(existing)) {
+  if (existing) {
     const [updated] = await db
       .update(assignmentRules)
       .set(values)
-      .where(eq(assignmentRules.id, existing!.id))
+      .where(eq(assignmentRules.id, existing.id))
       .returning();
     return updated;
   }
