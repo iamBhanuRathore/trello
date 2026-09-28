@@ -19,6 +19,7 @@ import {
   getSSOAuthorizationUrl,
   authenticateWithWorkOSCode,
 } from './workos.service';
+import { HttpsUrlSchema } from '../../lib/validators';
 
 /**
  * Auth routes — /v1/auth/*
@@ -227,9 +228,9 @@ export const authRoutes = new Elysia({ prefix: '/auth', tags: ['Auth'] })
     },
     {
       body: t.Object({
-        name: t.Optional(t.String()),
-        avatarUrl: t.Optional(t.Union([t.String(), t.Null()])),
-        timezone: t.Optional(t.Union([t.String(), t.Null()])),
+        name: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
+        avatarUrl: t.Optional(t.Union([HttpsUrlSchema, t.Null()])),
+        timezone: t.Optional(t.Union([t.String({ maxLength: 64 }), t.Null()])),
         email: t.Optional(t.String({ format: 'email' })),
       }),
       detail: { summary: 'Update user profile details' },

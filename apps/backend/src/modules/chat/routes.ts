@@ -481,9 +481,15 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
     {
       params: t.Object({ channelId: t.String() }),
       body: t.Object({
-        fileName: t.String(),
-        fileType: t.Optional(t.String()),
-        fileSize: t.Optional(t.Number()),
+        fileName: t.String({ minLength: 1, maxLength: 255 }),
+        fileType: t.Optional(
+          t.String({
+            minLength: 1,
+            maxLength: 127,
+            pattern: '^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$',
+          })
+        ),
+        fileSize: t.Optional(t.Number({ minimum: 0, maximum: 25 * 1024 * 1024 })),
       }),
     }
   );

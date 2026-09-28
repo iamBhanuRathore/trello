@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { handleRouteError } from '../../lib/errors';
+import { assertBoundedJson } from '../../lib/bounded-json';
 import { importTrelloBoard, importGenericTasks } from './service';
 import { ImportTasksBodySchema, ImportTrelloBodySchema } from './schema';
 
@@ -13,6 +14,13 @@ export const importerRoutes = new Elysia({ prefix: '/import', tags: ['Importers'
     '/projects/:projectId/trello',
     async ({ params: { projectId }, body, user, set }) => {
       try {
+        // Trello exports can be megabytes: bound depth/breadth before insert.
+        assertBoundedJson(body.trelloData, {
+          maxBytes: 5_000_000,
+          maxKeys: 20_000,
+          maxArrayLength: 5000,
+          maxStringLength: 50000,
+        });
         return await importTrelloBoard(db, user.organizationId, projectId, body.trelloData);
       } catch (err: unknown) {
         return handleRouteError(err, set);

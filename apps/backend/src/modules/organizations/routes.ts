@@ -2,6 +2,7 @@ import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
+import { HttpsUrlSchema } from '../../lib/validators';
 import {
   getOrg,
   updateOrg,
@@ -85,9 +86,9 @@ export const orgRoutes = new Elysia({ prefix: '/orgs', tags: ['Organizations'] }
     {
       beforeHandle: requirePermission('org.update'),
       body: t.Object({
-        name: t.Optional(t.String()),
-        logoUrl: t.Optional(t.Nullable(t.String())),
-        primaryColor: t.Optional(t.Nullable(t.String())),
+        name: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
+        logoUrl: t.Optional(t.Nullable(HttpsUrlSchema)),
+        primaryColor: t.Optional(t.Nullable(t.String({ pattern: '^#[0-9a-fA-F]{6}$' }))),
       }),
     }
   )

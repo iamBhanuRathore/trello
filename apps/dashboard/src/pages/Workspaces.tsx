@@ -69,6 +69,11 @@ function resolveBoardGradient(bg?: string, index: number = 0): string {
   if (!bg) {
     return BOARD_GRADIENTS[index % BOARD_GRADIENTS.length].value;
   }
+  // Backend allowlists this shape; double-guard legacy/dirty rows here so a
+  // stored `url(...)`/`javascript:` value can never reach `style={background}`.
+  if (/url\(|javascript:|expression|</i.test(bg)) {
+    return BOARD_GRADIENTS[index % BOARD_GRADIENTS.length].value;
+  }
   // Check if it's one of the legacy pitch-black gradients
   const isDarkLegacy =
     bg.includes('#0f172a') ||

@@ -11,19 +11,20 @@ export const ImportTrelloBodySchema = t.Object({
 export type ImportTrelloBody = Static<typeof ImportTrelloBodySchema>;
 
 export const ImportTasksBodySchema = t.Object({
-  boardName: t.String(),
+  boardName: t.String({ minLength: 1, maxLength: 300 }),
   lists: t.Array(
     t.Object({
-      name: t.String(),
+      name: t.String({ minLength: 1, maxLength: 300 }),
       tasks: t.Array(
         t.Object({
-          title: t.String(),
-          description: t.Optional(t.String()),
-          storyPoints: t.Optional(t.Number()),
-          dueDate: t.Optional(t.String()),
+          title: t.String({ minLength: 1, maxLength: 500 }),
+          description: t.Optional(t.String({ maxLength: 20000 })),
+          storyPoints: t.Optional(t.Number({ minimum: 0, maximum: 1000 })),
+          dueDate: t.Optional(t.String({ maxLength: 64 })),
         })
       ),
-    })
+    }),
+    { maxItems: 500 }
   ),
 });
 export type ImportTasksBody = Static<typeof ImportTasksBodySchema>;

@@ -19,6 +19,8 @@ import {
   deleteBoardLabel,
 } from '../cards/service';
 
+import { BackgroundSchema } from '../../lib/validators';
+
 /** Board routes — /v1/boards/* */
 export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
   .use(authPlugin)
@@ -59,8 +61,8 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
       beforeHandle: requirePermission('board.create'),
       body: t.Object({
         projectId: t.String({ format: 'uuid' }),
-        name: t.String(),
-        background: t.Optional(t.String()),
+        name: t.String({ minLength: 1, maxLength: 200 }),
+        background: t.Optional(BackgroundSchema),
       }),
     }
   )
@@ -125,7 +127,10 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     },
     {
       beforeHandle: requirePermission('board.update'),
-      body: t.Object({ name: t.Optional(t.String()), background: t.Optional(t.String()) }),
+      body: t.Object({
+        name: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
+        background: t.Optional(BackgroundSchema),
+      }),
     }
   )
 
