@@ -4,7 +4,16 @@ import {
   roles,
   permissions,
   rolePermissions,
+  organizationMembers,
+  organizationRoleMembers,
 } from '../../db/schema/index';
+import {
+  ORG_PERMISSIONS,
+  WORKSPACE_PERMISSIONS,
+  PROJECT_PERMISSIONS,
+  BOARD_PERMISSIONS,
+  CARD_PERMISSIONS,
+} from '@boardly/shared-types';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -58,6 +67,21 @@ export async function getAvailablePermissions(db: Database) {
 
 export async function listRoles(db: Database, organizationId: string) {
   await ensurePermissionsSeeded(db);
+
+  // Self-healing backfill: orgs created before team roles existed get
+  // Lead/Developer/Tester on first read (signup seeds new orgs directly).
+  const hasCustom = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(and(eq(roles.organizationId, organizationId), eq(roles.isSystemRole, false)))
+    .limit(1);
+  if (hasCustom.length === 0) {
+    try {
+      await seedOrgTeamRoles(db, organizationId);
+    } catch {
+      // Best-effort; admin can retry via explicit seed call.
+    }
+  }
 
   // Fetch both system roles and custom roles for this organization
   const roleList = await db
@@ -123,6 +147,8 @@ export async function createCustomRole(
   organizationId: string,
   input: {
     name: string;
+    description?: string;
+    isDefault?: boolean;
     permissionIds?: string[];
   }
 ) {
@@ -135,11 +161,21 @@ export async function createCustomRole(
     .values({
       organizationId,
       name: input.name.trim(),
+      description: input.description?.trim() || null,
+      isDefault: !!input.isDefault,
       isSystemRole: false,
     })
     .returning();
 
   if (!newRole) throw httpError(500, 'Failed to create role');
+
+  if (newRole.isDefault) {
+    await db
+      .update(roles)
+      .set({ isDefault: false })
+      .where(and(eq(roles.organizationId, organizationId), eq(roles.isSystemRole, false)));
+    await db.update(roles).set({ isDefault: true }).where(eq(roles.id, newRole.id));
+  }
 
   if (input.permissionIds && input.permissionIds.length > 0) {
     const links = input.permissionIds.map((pid) => ({
@@ -150,10 +186,7 @@ export async function createCustomRole(
   }
 
   const perms = input.permissionIds?.length
-    ? await db
-        .select()
-        .from(permissions)
-        .where(inArray(permissions.id, input.permissionIds))
+    ? await db.select().from(permissions).where(inArray(permissions.id, input.permissionIds))
     : [];
 
   return {
@@ -168,6 +201,8 @@ export async function updateCustomRole(
   roleId: string,
   input: {
     name?: string;
+    description?: string | null;
+    isDefault?: boolean;
     permissionIds?: string[];
   }
 ) {
@@ -185,6 +220,23 @@ export async function updateCustomRole(
       .update(roles)
       .set({ name: input.name.trim(), updatedAt: new Date() })
       .where(eq(roles.id, roleId));
+  }
+
+  if (input.description !== undefined) {
+    await db
+      .update(roles)
+      .set({ description: input.description?.trim() || null, updatedAt: new Date() })
+      .where(eq(roles.id, roleId));
+  }
+
+  if (input.isDefault !== undefined) {
+    if (input.isDefault) {
+      await db
+        .update(roles)
+        .set({ isDefault: false })
+        .where(and(eq(roles.organizationId, organizationId), eq(roles.isSystemRole, false)));
+    }
+    await db.update(roles).set({ isDefault: !!input.isDefault }).where(eq(roles.id, roleId));
   }
 
   if (Array.isArray(input.permissionIds)) {
@@ -228,7 +280,190 @@ export async function deleteCustomRole(db: Database, organizationId: string, rol
   if (role.isSystemRole) throw httpError(403, 'Cannot delete system roles');
 
   await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+  await db.delete(organizationRoleMembers).where(eq(organizationRoleMembers.roleId, roleId));
   const [deleted] = await db.delete(roles).where(eq(roles.id, roleId)).returning();
 
   return deleted;
+}
+
+// ─── Team Roles (company-configurable Lead / Developer / Tester) ─────────────
+
+// Member baseline mirrors db/seed.ts — task collaboration, no structural powers.
+const MEMBER_BASE_KEYS = [
+  ORG_PERMISSIONS.READ,
+  WORKSPACE_PERMISSIONS.READ,
+  PROJECT_PERMISSIONS.READ,
+  BOARD_PERMISSIONS.READ,
+  CARD_PERMISSIONS.READ,
+  CARD_PERMISSIONS.CREATE,
+  CARD_PERMISSIONS.UPDATE,
+  CARD_PERMISSIONS.MOVE,
+  CARD_PERMISSIONS.ASSIGN,
+  CARD_PERMISSIONS.WATCH,
+  CARD_PERMISSIONS.ADD_LABEL,
+  CARD_PERMISSIONS.REMOVE_LABEL,
+  CARD_PERMISSIONS.SET_DUE_DATE,
+  CARD_PERMISSIONS.UPDATE_STAGE,
+  CARD_PERMISSIONS.CREATE_SUBTASK,
+  CARD_PERMISSIONS.CREATE_CHECKLIST,
+  CARD_PERMISSIONS.UPDATE_CHECKLIST,
+  CARD_PERMISSIONS.ADD_ATTACHMENT,
+  CARD_PERMISSIONS.CREATE_COMMENT,
+  CARD_PERMISSIONS.UPDATE_COMMENT,
+  CARD_PERMISSIONS.CREATE_TIME_LOG,
+  CARD_PERMISSIONS.UPDATE_TIME_LOG,
+];
+
+const TEAM_ROLE_DEFS = [
+  {
+    name: 'Lead',
+    description: 'Team lead — full member powers plus board layout and card deletion.',
+    keys: [
+      ...MEMBER_BASE_KEYS,
+      BOARD_PERMISSIONS.UPDATE,
+      CARD_PERMISSIONS.DELETE,
+      CARD_PERMISSIONS.ASSIGN_SPRINT,
+    ],
+  },
+  {
+    name: 'Developer',
+    description: 'Builder — full task collaboration powers.',
+    keys: MEMBER_BASE_KEYS,
+  },
+  {
+    name: 'Tester',
+    description: 'Verifier — read, watch, comment, checklists, and time logs.',
+    keys: [
+      ORG_PERMISSIONS.READ,
+      WORKSPACE_PERMISSIONS.READ,
+      PROJECT_PERMISSIONS.READ,
+      BOARD_PERMISSIONS.READ,
+      CARD_PERMISSIONS.READ,
+      CARD_PERMISSIONS.WATCH,
+      CARD_PERMISSIONS.CREATE_COMMENT,
+      CARD_PERMISSIONS.UPDATE_COMMENT,
+      CARD_PERMISSIONS.CREATE_CHECKLIST,
+      CARD_PERMISSIONS.UPDATE_CHECKLIST,
+      CARD_PERMISSIONS.ADD_ATTACHMENT,
+      CARD_PERMISSIONS.CREATE_TIME_LOG,
+      CARD_PERMISSIONS.UPDATE_TIME_LOG,
+    ],
+  },
+];
+
+/**
+ * Seeds Lead/Developer/Tester custom roles for an organization. Idempotent —
+ * safe to run on signup and as a backfill for existing orgs. Self-sufficient:
+ * inserts any missing permission rows it references.
+ */
+export async function seedOrgTeamRoles(db: Database, organizationId: string) {
+  const allKeys = [...new Set(TEAM_ROLE_DEFS.flatMap((d) => d.keys))];
+  await db
+    .insert(permissions)
+    .values(allKeys.map((key) => ({ key, description: key })))
+    .onConflictDoNothing();
+
+  const permRows = await db
+    .select({ id: permissions.id, key: permissions.key })
+    .from(permissions)
+    .where(inArray(permissions.key, allKeys));
+  const permIdByKey = new Map(permRows.map((p) => [p.key, p.id]));
+
+  for (const def of TEAM_ROLE_DEFS) {
+    const [role] = await db
+      .insert(roles)
+      .values({ organizationId, name: def.name, description: def.description, isSystemRole: false })
+      .onConflictDoNothing()
+      .returning();
+    const roleId =
+      role?.id ??
+      (
+        await db
+          .select({ id: roles.id })
+          .from(roles)
+          .where(and(eq(roles.organizationId, organizationId), eq(roles.name, def.name)))
+          .limit(1)
+      )[0]?.id;
+    if (!roleId) continue;
+    const links = def.keys
+      .map((key) => permIdByKey.get(key))
+      .filter((id): id is string => !!id)
+      .map((permissionId) => ({ roleId, permissionId }));
+    if (links.length > 0) {
+      await db.insert(rolePermissions).values(links).onConflictDoNothing();
+    }
+  }
+}
+
+/** Attach a team role to an org member (company admin only — route-gated). */
+export async function assignTeamRole(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  roleId: string,
+  actorId: string
+) {
+  const [role] = await db
+    .select({ id: roles.id })
+    .from(roles)
+    .where(
+      and(
+        eq(roles.id, roleId),
+        eq(roles.organizationId, organizationId),
+        eq(roles.isSystemRole, false)
+      )
+    )
+    .limit(1);
+  if (!role) throw httpError(404, 'Team role not found in this organization');
+
+  const [member] = await db
+    .select({ userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.userId, userId),
+        isNull(organizationMembers.deletedAt)
+      )
+    )
+    .limit(1);
+  if (!member) throw httpError(404, 'User is not a member of this organization');
+
+  const [row] = await db
+    .insert(organizationRoleMembers)
+    .values({ organizationId, roleId, userId, assignedBy: actorId })
+    .onConflictDoNothing()
+    .returning();
+  return row ?? { organizationId, roleId, userId };
+}
+
+export async function removeTeamRole(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  roleId: string
+) {
+  await db
+    .delete(organizationRoleMembers)
+    .where(
+      and(
+        eq(organizationRoleMembers.organizationId, organizationId),
+        eq(organizationRoleMembers.roleId, roleId),
+        eq(organizationRoleMembers.userId, userId)
+      )
+    );
+  return { success: true };
+}
+
+export async function listMemberTeamRoles(db: Database, organizationId: string, userId: string) {
+  return db
+    .select({ id: roles.id, name: roles.name, description: roles.description })
+    .from(organizationRoleMembers)
+    .innerJoin(roles, eq(roles.id, organizationRoleMembers.roleId))
+    .where(
+      and(
+        eq(organizationRoleMembers.organizationId, organizationId),
+        eq(organizationRoleMembers.userId, userId)
+      )
+    );
 }

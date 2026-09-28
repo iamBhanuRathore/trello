@@ -15,6 +15,8 @@ import {
   cardAssignees,
   cardParticipants,
   cardWatchers,
+  cardComponents,
+  components,
   projects,
   workspaces,
   notifications,
@@ -53,6 +55,8 @@ export interface CreateCardInput {
   storyPoints?: number;
   estimateMinutes?: number;
   assigneeId?: string;
+  /** Board-scoped components to link at creation (resolved to defaults when set). */
+  componentIds?: string[];
   /** Applied at creation so the full composer can set everything in one call. */
   labelIds?: string[];
   participantIds?: string[];
@@ -71,6 +75,35 @@ async function verifyListAccess(db: Database, listId: string, organizationId: st
 
   if (!list) throw httpError(404, 'List not found or access denied');
   return list;
+}
+
+/** Link creation-time components (board+org scoped) — returns the linked ids. */
+async function linkCreateComponents(
+  db: Database,
+  organizationId: string,
+  cardId: string,
+  boardId: string | null | undefined,
+  input: CreateCardInput
+): Promise<string[]> {
+  const ids = (input.componentIds || []).filter((id) => isValidUuid(id));
+  if (ids.length === 0 || !boardId) return [];
+  const valid = await db
+    .select({ id: components.id })
+    .from(components)
+    .where(
+      and(
+        inArray(components.id, ids),
+        eq(components.boardId, boardId),
+        eq(components.organizationId, organizationId)
+      )
+    );
+  if (valid.length === 0) return [];
+  await db
+    .insert(cardComponents)
+    .values(valid.map((c) => ({ cardId, componentId: c.id, addedBy: input.actorId })))
+    .onConflictDoNothing()
+    .catch(() => {});
+  return valid.map((c) => c.id);
 }
 
 /** Tenant gate for every card sub-resource: single indexed PK lookup + org match. */
@@ -273,14 +306,45 @@ export async function createCard(db: Database, organizationId: string, input: Cr
     .returning();
 
   if (input.assigneeId && card) {
+    // Explicit assignee wins over every rule — still must be an org member.
+    await requireOrgMember(db, organizationId, input.assigneeId);
     await db
       .insert(cardAssignees)
       .values({
         cardId: card.id,
         userId: input.assigneeId,
-        assignedBy: input.assigneeId,
+        assignedBy: input.actorId,
       })
       .onConflictDoNothing();
+  } else if (card) {
+    // Static default-assignee resolution (most-specific scope wins).
+    const { resolveDefaultAssignee, getAssignmentPolicy } = await import('../components/service');
+    const linkedComponentIds = await linkCreateComponents(
+      db,
+      organizationId,
+      card.id,
+      boardInfo?.boardId,
+      input
+    );
+    const resolved = await resolveDefaultAssignee(db, organizationId, {
+      projectId: boardInfo?.projectId ?? null,
+      boardId: boardInfo?.boardId ?? null,
+      componentIds: linkedComponentIds,
+    });
+    if (resolved.userId) {
+      await db
+        .insert(cardAssignees)
+        .values({ cardId: card.id, userId: resolved.userId, assignedBy: input.actorId })
+        .onConflictDoNothing();
+    } else {
+      const policy = await getAssignmentPolicy(db, organizationId);
+      if (!policy.allowUnassigned) {
+        throw httpError(
+          422,
+          'An assignee is required by this organization — no default rule resolved one.'
+        );
+      }
+    }
   }
 
   // Full-composer relations: labels, participants, observers + initial checklist.

@@ -46,10 +46,27 @@ describe('Roles Service', () => {
 
   afterAll(async () => {
     if (customRoleId) {
-      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, customRoleId));
+      await db
+        .delete(schema.rolePermissions)
+        .where(eq(schema.rolePermissions.roleId, customRoleId));
       await db.delete(schema.roles).where(eq(schema.roles.id, customRoleId));
     }
-    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
+    // Seeded team roles (Lead/Developer/Tester) reference the org without cascade.
+    const orgRoles = await db
+      .select({ id: schema.roles.id })
+      .from(schema.roles)
+      .where(eq(schema.roles.organizationId, orgId));
+    for (const r of orgRoles) {
+      await db
+        .delete(schema.organizationRoleMembers)
+        .where(eq(schema.organizationRoleMembers.roleId, r.id));
+      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
+    }
+    await db.delete(schema.roles).where(eq(schema.roles.organizationId, orgId));
+    await db
+      .delete(schema.organizationMembers)
+      .where(eq(schema.organizationMembers.organizationId, orgId));
+    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, orgId));
     await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
     await client.end();
   });

@@ -30,6 +30,7 @@ import { reportsRoutes } from './modules/reports/routes';
 import { timeTrackingRoutes } from './modules/timetracking/routes';
 import { importerRoutes } from './modules/importers/routes';
 import { roleRoutes } from './modules/roles/routes';
+import { componentRoutes } from './modules/components/routes';
 import { priorityRoutes } from './modules/priorities/routes';
 import { auditRoutes } from './modules/audit/routes';
 import { docRoutes } from './modules/docs/routes';
@@ -230,6 +231,7 @@ export const app = new Elysia()
       .use(timeTrackingRoutes)
       .use(importerRoutes)
       .use(roleRoutes)
+      .use(componentRoutes)
       .use(priorityRoutes)
       .use(auditRoutes)
       .use(docRoutes)

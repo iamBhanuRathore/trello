@@ -159,6 +159,21 @@ export async function signUp(db: Database, input: SignUpInput) {
     result.user.isPlatformAdmin
   );
 
+  // Best-effort: seed Lead/Developer/Tester team roles. Never fails signup.
+  try {
+    const { seedOrgTeamRoles } = await import('../roles/service');
+    await seedOrgTeamRoles(db, result.organization.id);
+  } catch (err) {
+    const { logger } = await import('../../lib/logger');
+    logger.warn(
+      {
+        err: err instanceof Error ? err.message : String(err),
+        organizationId: result.organization.id,
+      },
+      'Team role seeding failed — roles can be created via API'
+    );
+  }
+
   return {
     ...tokens,
     user: {

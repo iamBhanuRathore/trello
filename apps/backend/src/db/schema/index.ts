@@ -138,6 +138,14 @@ export const organizations = pgTable('organizations', {
   dedicatedDbUrl: varchar('dedicated_db_url', { length: 1024 }),
   logoUrl: varchar('logo_url', { length: 2048 }),
   primaryColor: varchar('primary_color', { length: 7 }),
+  // ── Default-assignee policy (Jira parity, company-configurable) ──
+  allowUnassigned: boolean('allow_unassigned').notNull().default(true),
+  defaultAssigneeStrategy: varchar('default_assignee_strategy', { length: 16 })
+    .notNull()
+    .default('unassigned'),
+  defaultAssigneeId: uuid('default_assignee_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
   ...timestamps,
 });
 
@@ -890,7 +898,9 @@ export const roles = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     organizationId: uuid('organization_id').references(() => organizations.id),
     name: varchar('name', { length: 100 }).notNull(),
+    description: varchar('description', { length: 500 }),
     isSystemRole: boolean('is_system_role').notNull().default(false),
+    isDefault: boolean('is_default').notNull().default(false),
     ...timestamps,
   },
   (t) => [
@@ -921,6 +931,102 @@ export const rolePermissions = pgTable(
     primaryKey({ columns: [t.roleId, t.permissionId] }),
     // RBAC check joins permission_id — PK leads with role_id.
     index('role_permissions_permission_idx').on(t.permissionId),
+  ]
+);
+
+// ─── Team Role Membership (company-configurable roles per member) ────────────
+// A member can hold several team roles (Lead + Developer). Kept additive: the
+// legacy organizationMembers.role enum tier is untouched.
+export const organizationRoleMembers = pgTable(
+  'organization_role_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    roleId: uuid('role_id')
+      .notNull()
+      .references(() => roles.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    assignedBy: uuid('assigned_by').references(() => users.id, { onDelete: 'set null' }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('org_role_member_unique_idx').on(t.organizationId, t.roleId, t.userId),
+    index('org_role_member_role_idx').on(t.roleId),
+    index('org_role_member_user_idx').on(t.organizationId, t.userId),
+  ]
+);
+
+// ─── Components (board-scoped workstreams, Jira parity) ──────────────────────
+// Components group cards (frontend, backend, api) and carry a lead used as the
+// most-specific default-assignee source when no explicit rule exists.
+export const components = pgTable(
+  'components',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    boardId: uuid('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 100 }).notNull(),
+    description: varchar('description', { length: 500 }),
+    leadUserId: uuid('lead_user_id').references(() => users.id, { onDelete: 'set null' }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('component_board_name_idx').on(t.boardId, t.name),
+    index('component_org_idx').on(t.organizationId),
+    index('component_board_idx').on(t.boardId),
+  ]
+);
+
+export const cardComponents = pgTable(
+  'card_components',
+  {
+    cardId: uuid('card_id')
+      .notNull()
+      .references(() => cards.id, { onDelete: 'cascade' }),
+    componentId: uuid('component_id')
+      .notNull()
+      .references(() => components.id, { onDelete: 'cascade' }),
+    addedBy: uuid('added_by').references(() => users.id, { onDelete: 'set null' }),
+    addedAt: timestamp('added_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.cardId, t.componentId] }),
+    index('card_components_component_idx').on(t.componentId),
+  ]
+);
+
+// ─── Assignment Rules (static default-assignee policy) ───────────────────────
+// One optional row per scope level; most-specific scope wins
+// (component > board > project > org). A rule points at either a team role
+// (resolved to that scope's lead holder) or a static user.
+export const assignmentRules = pgTable(
+  'assignment_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    boardId: uuid('board_id').references(() => boards.id, { onDelete: 'cascade' }),
+    componentId: uuid('component_id').references(() => components.id, { onDelete: 'cascade' }),
+    defaultRoleId: uuid('default_role_id').references(() => roles.id, { onDelete: 'set null' }),
+    defaultUserId: uuid('default_user_id').references(() => users.id, { onDelete: 'set null' }),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    ...timestamps,
+  },
+  (t) => [
+    index('assignment_rules_org_idx').on(t.organizationId),
+    index('assignment_rules_project_idx').on(t.projectId),
+    index('assignment_rules_board_idx').on(t.boardId),
+    index('assignment_rules_component_idx').on(t.componentId),
   ]
 );
 

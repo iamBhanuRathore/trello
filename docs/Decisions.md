@@ -24,6 +24,21 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-28 — Team Roles & Static Assignment Rules (Phase 1b backend)
+
+**Context:** No per-company role model (Lead/Developer/Tester) and no default-assignee policy existed — only a single static `intakeForms.defaultAssigneeId`. Needed company-admin configurability with static (non-smart) resolution.
+
+**Decision:**
+
+1. Additive schema (`0026_team_roles_assignment`): `organization_role_members` (multi-role per member, legacy enum tier untouched), board-scoped `components` (+`card_components`), `assignment_rules` (one row per scope level), org policy columns (`allowUnassigned`, `defaultAssigneeStrategy`, `defaultAssigneeId`), role `description`/`isDefault`.
+2. Lead/Developer/Tester seeded per org (signup hook best-effort + `listRoles` self-healing backfill for pre-existing orgs); permission sets derive from `@boardly/shared-types` (Lead = member baseline + board.update/card.delete/sprint.assign; Tester = verify-only subset).
+3. Resolution precedence in `resolveDefaultAssignee`: explicit > component rule > component lead > board rule > project rule > org rule > org default user > unassigned (422 when `allowUnassigned=false`). Role targets resolve to earliest-assigned active holder; stale user targets fall through. `createCard` links board-scoped components and auto-assigns; explicit assignee still validated as org member (also fixes `assignedBy` actor bug).
+4. Migration hygiene: drizzle's migrator only applies journal entries with `when` newer than the last applied — backdated entries are silently skipped (hit during dev). Keep `when` monotonic; hand-write additive migrations in the `0025` style to avoid snapshot-drift diffs.
+
+**Alternatives considered:** Global role catalog (rejected — per user decision, org-scoped); round-robin/smart routing (rejected — static only); RLS-backed enforcement (deferred, app predicates canonical).
+
+**Consequences:** New `/v1/components/*` + `/v1/roles/members/*` APIs; frontend admin UI for roles/rules still to do; `requirePermission` union over team-role rows still to do (coarse enum tier still gates).
+
 ### 2026-09-28 — Tenant Enforcement: App-Layer Org Predicates + 404 Fail-Closed + Org-Prefixed Cache Keys
 
 **Context:** Audit found card sub-resource routes (comments, attachments, participants, watchers, checklists, labels) and most chat ops taking bare IDs with no `organizationId` check — any authenticated user with a UUID could read/write cross-org (IDOR). Cache hits could also serve one org's board/card payload to another (`rest` had no org). `toggleReaction` had no membership check at all.

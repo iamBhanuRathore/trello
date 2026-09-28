@@ -2116,3 +2116,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Tests added:** cross-org IDOR matrix in `card.test.ts` (reads+writes+force-assign), channel isolation + invite-poisoning in `chat.test.ts`; updated call sites in git/automations/notifications/chat tests.
 - Tests & Validation: cards 6/6, chat+git+automations+notifications 35/35 green; backend `tsc` clean. Full-suite failures (auth/boards/stages/...) reproduce on clean tree — pre-existing, unrelated.
 - What's next: Phase 1b org roles + assignment_rules + components; Phase 2 OCC ordering + WS reconcile.
+
+### 2026-09-28 --- Phase 1b Team Roles & Assignment Rules (backend)
+
+- **What:** Migration `0026` (role members, components, card_components, assignment_rules, org policy cols, role description/isDefault). Lead/Developer/Tester seeded on signup + self-healing backfill in `listRoles`. Member attach/detach APIs (`/v1/roles/members/*`), components + rules CRUD (`/v1/components/*`), org assignment-policy endpoints. `createCard` auto-assigns via `resolveDefaultAssignee` (component-rule > component-lead > board > project > org-rule > org-default; 422 when required but unresolvable); explicit assignee member-validated; fixed `assignedBy` actor bug.
+- **Tests added:** `components.test.ts` (seed-on-signup, attach, precedence matrix, allowUnassigned-false, cross-org rule/component guards). Fixed `roles.test.ts` teardown for seeded roles (+ pre-existing subscriptions gap).
+- Tests & Validation: 45/45 green across components/roles/cards/chat/git/automations; backend `tsc` clean. Full suite 225/249 on clean DB — remaining 24 fail identically on clean tree (pre-existing seed-collision/fixture issues). Also repaired dev DB (was missing 0025+0026) and test DB bookkeeping.
+- What's next: admin UI for roles/rules; `requirePermission` union over team-role rows; Phase 2 OCC + WS reconcile.
