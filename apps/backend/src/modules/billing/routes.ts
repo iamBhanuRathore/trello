@@ -1,5 +1,5 @@
 import Elysia, { t } from 'elysia';
-import { authPlugin } from '../../middleware/auth';
+import { authPlugin, requirePermission } from '../../middleware/auth';
 import { handleRouteError, errorMessage } from '../../lib/errors';
 import { constructWebhookEvent } from '../../lib/stripe';
 import {
@@ -44,17 +44,21 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
   .use(authPlugin)
 
   // GET /v1/billing/overview
-  .get('/overview', async ({ user, set }) => {
-    try {
-      if (!user?.organizationId) {
-        set.status = 400;
-        return { error: 'Active organization required' };
+  .get(
+    '/overview',
+    async ({ user, set }) => {
+      try {
+        if (!user?.organizationId) {
+          set.status = 400;
+          return { error: 'Active organization required' };
+        }
+        return await getBillingOverview(user.organizationId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
       }
-      return await getBillingOverview(user.organizationId);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+    },
+    { beforeHandle: requirePermission('billing.read') }
+  )
 
   // POST /v1/billing/checkout
   .post(
@@ -83,6 +87,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
       }
     },
     {
+      beforeHandle: requirePermission('org.update'),
       body: t.Object({
         planTier: t.Union([t.Literal('pro'), t.Literal('business')]),
         billingInterval: t.Union([t.Literal('monthly'), t.Literal('annual')]),
@@ -107,6 +112,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
       }
     },
     {
+      beforeHandle: requirePermission('org.update'),
       body: t.Object({
         additionalSeats: t.Optional(t.Number()),
       }),
@@ -129,6 +135,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
       }
     },
     {
+      beforeHandle: requirePermission('org.update'),
       body: t.Object({
         additionalSeats: t.Number(),
         idempotencyKey: t.Optional(t.String()),
@@ -156,6 +163,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
       }
     },
     {
+      beforeHandle: requirePermission('org.update'),
       body: t.Object({
         targetSeatCount: t.Number(),
         idempotencyKey: t.Optional(t.String()),
@@ -164,17 +172,21 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
   )
 
   // POST /v1/billing/cancel
-  .post('/cancel', async ({ user, set }) => {
-    try {
-      if (!user?.organizationId) {
-        set.status = 400;
-        return { error: 'Active organization required' };
+  .post(
+    '/cancel',
+    async ({ user, set }) => {
+      try {
+        if (!user?.organizationId) {
+          set.status = 400;
+          return { error: 'Active organization required' };
+        }
+        return await requestSubscriptionCancellation(user.organizationId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
       }
-      return await requestSubscriptionCancellation(user.organizationId);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+    },
+    { beforeHandle: requirePermission('org.update') }
+  )
 
   // POST /v1/billing/portal
   .post(
@@ -191,6 +203,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
       }
     },
     {
+      beforeHandle: requirePermission('org.update'),
       body: t.Optional(
         t.Object({
           returnUrl: t.Optional(t.String()),

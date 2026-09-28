@@ -1,4 +1,4 @@
-import { eq, or, ilike, and, desc } from 'drizzle-orm';
+import { eq, or, ilike, and, desc, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { savedSearches, cards, boards, projects, workspaces, lists } from '../../db/schema/index';
 import { cachedTTL, invalidateTTL } from '../../lib/cache';
@@ -9,19 +9,34 @@ export function httpError(status: number, message: string): Error & { status: nu
   return err;
 }
 
-export async function performSearch(db: Database, organizationId: string, query: string) {
-  const trimmed = query.trim();
+export async function performSearch(
+  db: Database,
+  organizationId: string,
+  query: string,
+  userId?: string
+) {
+  const trimmed = query.trim().slice(0, 200);
   // Empty / wildcard-only queries would full-scan — return early.
   const literal = trimmed.replace(/[\\%_]/g, (m) => `\\${m}`);
   if (!literal) return [];
   // TTL-only: writers are any card/board/project edit — versioning would fan out.
-  const key = `q:${organizationId}:${literal.toLowerCase().slice(0, 80)}`;
-  const { data } = await cachedTTL(key, 30, () => runSearch(db, organizationId, literal));
+  const key = `q:${organizationId}:${userId ?? 'anon'}:${literal.toLowerCase().slice(0, 80)}`;
+  const { data } = await cachedTTL(key, 30, () => runSearch(db, organizationId, literal, userId));
   return data;
 }
 
-async function runSearch(db: Database, organizationId: string, literal: string) {
+async function runSearch(db: Database, organizationId: string, literal: string, userId?: string) {
   const searchTerm = `%${literal}%`;
+  // Private cards are visible only to involved users (assignee/watcher/creator).
+  // EXISTS subqueries (bound params) — no join fan-out duplicates.
+  const privateVisible = userId
+    ? or(
+        eq(cards.isPrivate, false),
+        sql`EXISTS (SELECT 1 FROM card_assignees WHERE card_id = ${cards.id} AND user_id = ${userId})`,
+        sql`EXISTS (SELECT 1 FROM card_watchers WHERE card_id = ${cards.id} AND user_id = ${userId})`,
+        eq(cards.createdBy, userId)
+      )
+    : eq(cards.isPrivate, false);
 
   // Three searches are independent — fan out concurrently (was 3 sequential).
   const [matchedCards, matchedBoards, matchedProjects] = await Promise.all([
@@ -45,6 +60,8 @@ async function runSearch(db: Database, organizationId: string, literal: string) 
       .where(
         and(
           eq(workspaces.organizationId, organizationId),
+          isNull(cards.deletedAt),
+          privateVisible,
           or(
             ilike(cards.title, searchTerm),
             ilike(cards.description, searchTerm),

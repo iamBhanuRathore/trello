@@ -7,12 +7,28 @@ interface MarkdownRendererProps {
   onToggleTask?: (newContent: string) => void;
 }
 
+/** Only these URL schemes may render as clickable links/images.
+ * Blocks javascript:/data:/vbscript: stored-XSS payloads from card text,
+ * comments and chat messages. Relative URLs resolve against the app origin. */
+const ALLOWED_URL_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
+
+function safeMarkdownUrl(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed || /[\s<>]/.test(trimmed)) return null;
+  try {
+    const parsed = new URL(trimmed, window.location.origin);
+    if (!ALLOWED_URL_SCHEMES.has(parsed.protocol)) return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
 export function MarkdownRenderer({ content, className = '', onToggleTask }: MarkdownRendererProps) {
   if (!content || !content.trim()) {
     return <p className="text-muted-foreground italic text-xs">No description provided yet.</p>;
-  }
-
-  // Handle task checkbox click by replacing the exact checkbox state at lineIndex
+  } // Handle task checkbox click by replacing the exact checkbox state at lineIndex
   const handleCheckboxClick = (lineIndex: number, isChecked: boolean) => {
     if (!onToggleTask) return;
     const lines = content.split('\n');
@@ -34,6 +50,8 @@ export function MarkdownRenderer({ content, className = '', onToggleTask }: Mark
 
   // Helper to parse inline markdown (bold, italic, code, links, strikethrough)
   const renderInline = (text: string): ReactNode[] => {
+    // Bound regex work on hostile oversized input: render plain beyond 20k chars.
+    if (text.length > 20000) return [text];
     const elements: ReactNode[] = [];
     let key = 0;
 
@@ -89,39 +107,47 @@ export function MarkdownRenderer({ content, className = '', onToggleTask }: Mark
       } else if (match[6]) {
         // Image ![alt](url)
         const imgAlt = match[7];
-        const imgUrl = match[8];
-        elements.push(
-          <a
-            key={key++}
-            href={imgUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block my-1.5 max-w-sm rounded-xl overflow-hidden border border-border/80 hover:opacity-95 transition-opacity"
-            title={imgAlt || 'View full image'}
-          >
-            <img
-              src={imgUrl}
-              alt={imgAlt || 'Attachment'}
-              className="max-h-64 w-auto rounded-xl object-contain bg-black/5"
-            />
-          </a>
-        );
+        const imgUrl = safeMarkdownUrl(match[8]);
+        if (!imgUrl) {
+          elements.push(<span key={key++}>{match[0]}</span>);
+        } else {
+          elements.push(
+            <a
+              key={key++}
+              href={imgUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block my-1.5 max-w-sm rounded-xl overflow-hidden border border-border/80 hover:opacity-95 transition-opacity"
+              title={imgAlt || 'View full image'}
+            >
+              <img
+                src={imgUrl}
+                alt={imgAlt || 'Attachment'}
+                className="max-h-64 w-auto rounded-xl object-contain bg-black/5"
+              />
+            </a>
+          );
+        }
       } else if (match[9]) {
         // Link [text](url)
         const linkText = match[10];
-        const linkUrl = match[11];
-        elements.push(
-          <a
-            key={key++}
-            href={linkUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-0.5 text-primary hover:underline font-medium"
-          >
-            <span>{linkText}</span>
-            <ExternalLink className="w-2.5 h-2.5 inline" />
-          </a>
-        );
+        const linkUrl = safeMarkdownUrl(match[11]);
+        if (!linkUrl) {
+          elements.push(<span key={key++}>{linkText}</span>);
+        } else {
+          elements.push(
+            <a
+              key={key++}
+              href={linkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-0.5 text-primary hover:underline font-medium"
+            >
+              <span>{linkText}</span>
+              <ExternalLink className="w-2.5 h-2.5 inline" />
+            </a>
+          );
+        }
       } else if (match[12]) {
         // Bold **text**
         elements.push(
