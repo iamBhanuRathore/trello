@@ -59,6 +59,8 @@ let _smtpTransport: nodemailer.Transporter | null = null;
 function getSMTPTransport(): nodemailer.Transporter | null {
   if (!HAS_SMTP) return null;
   if (_smtpTransport) return _smtpTransport;
+  const host = (process.env.SMTP_HOST || '').toLowerCase();
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
   _smtpTransport = nodemailer.createTransport({
     host: process.env.SMTP_HOST!,
     port: Number(process.env.SMTP_PORT ?? 587),
@@ -67,8 +69,19 @@ function getSMTPTransport(): nodemailer.Transporter | null {
       user: process.env.SMTP_USER!,
       pass: process.env.SMTP_PASS!,
     },
+    // Opportunistic STARTTLS off localhost is credential theft via MITM.
+    requireTLS: !isLocal,
+    tls: isLocal ? undefined : { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
   });
   return _smtpTransport;
+}
+
+/** Strips CR/LF/quotes so user-controlled display names can't inject headers. */
+function formatRecipient(to: string, toName?: string): string {
+  if (!toName) return to;
+  const safeName = toName.replace(/[\r\n"]/g, '').slice(0, 120);
+  if (!safeName) return to;
+  return `"${safeName}" <${to}>`;
 }
 
 // ─── Primary & Fallback Transmitters ──────────────────────────────────────────

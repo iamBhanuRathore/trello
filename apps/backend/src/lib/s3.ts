@@ -62,7 +62,8 @@ export async function generatePresignedUploadUrl(
     ContentType: fileType || 'application/octet-stream',
   });
 
-  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+  // Short-lived (5min): a leaked URL must not stay reusable for an hour.
+  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 300 });
 
   // Construct the final public URL
   let publicUrl = '';

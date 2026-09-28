@@ -671,6 +671,25 @@ export async function createCheckout(opts: {
 }
 
 // ─── Customer Portal Link ─────────────────────────────────────────────────────
+/** Return URLs must stay on our own dashboard origins (no open redirect). */
+function resolvePortalReturnUrl(returnUrl?: string): string {
+  const fallback = `${env.DASHBOARD_URL.split(',')[0]}/admin/billing`;
+  if (!returnUrl) return fallback;
+  try {
+    const origin = new URL(returnUrl).origin;
+    const allowed = new Set(
+      env.DASHBOARD_URL.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => new URL(s).origin)
+    );
+    if (allowed.has(origin)) return returnUrl;
+  } catch {
+    // fall through to fallback
+  }
+  return fallback;
+}
+
 export async function getCustomerPortalUrl(orgId: string, returnUrl?: string) {
   const sub = await db.query.subscriptions.findFirst({
     where: eq(subscriptions.organizationId, orgId),
@@ -680,7 +699,7 @@ export async function getCustomerPortalUrl(orgId: string, returnUrl?: string) {
     throw new Error('No Stripe customer record found for this organization.');
   }
 
-  const redirectUrl = returnUrl ?? `${env.DASHBOARD_URL.split(',')[0]}/admin/billing`;
+  const redirectUrl = resolvePortalReturnUrl(returnUrl);
   const portalSession = await createBillingPortalSession({
     stripeCustomerId: sub.stripeCustomerId,
     returnUrl: redirectUrl,
