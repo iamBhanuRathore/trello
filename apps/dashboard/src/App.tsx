@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { Toaster } from 'sonner';
 import { TooltipProvider } from '@boardly/ui';
@@ -7,6 +7,7 @@ import { GlobalTooltip } from './components/GlobalTooltip';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 import { RouteFallback } from './components/common/RouteFallback';
+import { RootErrorBoundary } from './components/common/RootErrorBoundary';
 
 // ─── Code-split routes ─────────────────────────────────────────────
 // Convention: EVERY page is React.lazy-loaded so each route ships as its
@@ -115,6 +116,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Crash containment for the route tree, keyed by pathname so a tripped
+ * fallback clears itself on navigation instead of sticking until reload.
+ */
+function BoundaryWithRouteReset({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return <RootErrorBoundary resetKey={location.pathname}>{children}</RootErrorBoundary>;
+}
+
 export function App() {
   const checkAuth = useAuthStore((state) => state.checkAuth);
 
@@ -125,73 +135,75 @@ export function App() {
   return (
     <TooltipProvider delay={500} closeDelay={300}>
       <BrowserRouter>
-        <Suspense fallback={<RouteFallback label="Loading page…" />}>
-          <Routes>
-            <Route path="/pricing" element={<Pricing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<SignUp />} />
-            <Route path="/invite" element={<AcceptInvite />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/forms/:slug" element={<PublicFormView />} />
+        <BoundaryWithRouteReset>
+          <Suspense fallback={<RouteFallback label="Loading page…" />}>
+            <Routes>
+              <Route path="/pricing" element={<Pricing />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/invite" element={<AcceptInvite />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/forms/:slug" element={<PublicFormView />} />
 
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<Workspaces />} />
-              <Route path="b/:boardId" element={<BoardView />} />
-              <Route path="b/:boardId/c/:cardId" element={<TaskPage />} />
-              <Route path="cards/:cardId" element={<TaskPage />} />
-              <Route path="marketplace" element={<Marketplace />} />
-              <Route path="workspaces/:workspaceId/portfolio" element={<PortfolioDashboard />} />
-              <Route path="projects/:projectId/sprints" element={<ProjectSprints />} />
-              <Route path="projects/:projectId/phases" element={<ProjectPhases />} />
-              <Route path="projects/:projectId/reports" element={<ProjectReports />} />
-              <Route path="projects/:projectId/docs" element={<ProjectDocs />} />
-              <Route path="timesheets" element={<Timesheets />} />
-              <Route path="my-tasks" element={<MyTasks />} />
-              <Route path="tasks" element={<MyTasks />} />
-              <Route path="chat" element={<ChatPage />} />
-              <Route path="chat/:channelId" element={<ChatPage />} />
-              <Route path="calendar" element={<Calendar />} />
-              <Route element={<SettingsLayout />}>
-                <Route path="profile" element={<ProfileSettings />} />
-                <Route path="settings/profile" element={<ProfileSettings />} />
-                <Route path="settings/notifications" element={<NotificationSettings />} />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <DashboardLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<Workspaces />} />
+                <Route path="b/:boardId" element={<BoardView />} />
+                <Route path="b/:boardId/c/:cardId" element={<TaskPage />} />
+                <Route path="cards/:cardId" element={<TaskPage />} />
+                <Route path="marketplace" element={<Marketplace />} />
+                <Route path="workspaces/:workspaceId/portfolio" element={<PortfolioDashboard />} />
+                <Route path="projects/:projectId/sprints" element={<ProjectSprints />} />
+                <Route path="projects/:projectId/phases" element={<ProjectPhases />} />
+                <Route path="projects/:projectId/reports" element={<ProjectReports />} />
+                <Route path="projects/:projectId/docs" element={<ProjectDocs />} />
+                <Route path="timesheets" element={<Timesheets />} />
+                <Route path="my-tasks" element={<MyTasks />} />
+                <Route path="tasks" element={<MyTasks />} />
+                <Route path="chat" element={<ChatPage />} />
+                <Route path="chat/:channelId" element={<ChatPage />} />
+                <Route path="calendar" element={<Calendar />} />
+                <Route element={<SettingsLayout />}>
+                  <Route path="profile" element={<ProfileSettings />} />
+                  <Route path="settings/profile" element={<ProfileSettings />} />
+                  <Route path="settings/notifications" element={<NotificationSettings />} />
+                </Route>
               </Route>
-            </Route>
 
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute>
-                  <AdminLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<Navigate to="users" replace />} />
-              <Route path="users" element={<Users />} />
-              <Route path="roles" element={<CustomRoles />} />
-              <Route path="priorities" element={<Priorities />} />
-              <Route path="sso" element={<SSOSettings />} />
-              <Route path="developer" element={<DeveloperSettings />} />
-              <Route path="audit-logs" element={<AuditLogs />} />
-              <Route path="billing" element={<Billing />} />
-              <Route path="branding" element={<Branding />} />
-              <Route path="stages" element={<StageTemplates />} />
-              <Route path="labels" element={<LabelsAdmin />} />
-              <Route path="webhooks" element={<WebhookSettings />} />
-              <Route path="integrations" element={<Integrations />} />
-            </Route>
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute>
+                    <AdminLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<Navigate to="users" replace />} />
+                <Route path="users" element={<Users />} />
+                <Route path="roles" element={<CustomRoles />} />
+                <Route path="priorities" element={<Priorities />} />
+                <Route path="sso" element={<SSOSettings />} />
+                <Route path="developer" element={<DeveloperSettings />} />
+                <Route path="audit-logs" element={<AuditLogs />} />
+                <Route path="billing" element={<Billing />} />
+                <Route path="branding" element={<Branding />} />
+                <Route path="stages" element={<StageTemplates />} />
+                <Route path="labels" element={<LabelsAdmin />} />
+                <Route path="webhooks" element={<WebhookSettings />} />
+                <Route path="integrations" element={<Integrations />} />
+              </Route>
 
-            {/* 404 Catch-All Route */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+              {/* 404 Catch-All Route */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </BoundaryWithRouteReset>
         <GlobalTooltip />
         <Toaster richColors position="top-right" closeButton />
       </BrowserRouter>
