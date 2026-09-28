@@ -1,3 +1,4 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { eq, and } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
@@ -7,13 +8,25 @@ import {
   organizationMembers,
 } from '../../db/schema/index';
 import { issueTokenPair } from '../auth/service';
-import { getWorkOS, getRedirectUri } from '../auth/workos.service';
+import { getWorkOS, getRedirectUri, verifyWorkOSCode } from '../auth/workos.service';
+import { getDataClient, isRedisAvailable } from '../../redis/client';
 import { env } from '../../lib/env';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
   err.status = status;
   return err;
+}
+
+/** SCIM bearer tokens: 256-bit CSPRNG, sha256-hashed at rest, shown once. */
+function generateScimToken(): { raw: string; hash: string } {
+  const raw = `scim_${randomBytes(32).toString('hex')}`;
+  const hash = createHash('sha256').update(raw).digest('hex');
+  return { raw, hash };
+}
+
+function hashScimToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }
 
 export async function getSSOConfig(db: Database, organizationId: string) {
@@ -39,7 +52,9 @@ export async function getSSOConfig(db: Database, organizationId: string) {
     };
   }
 
-  return config;
+  // Never leak the stored token hash to clients; the raw token is only
+  // returned once at generation time (see updateSSOConfig below).
+  return { ...config, scimToken: '' };
 }
 
 export async function updateSSOConfig(
@@ -63,10 +78,9 @@ export async function updateSSOConfig(
     .where(eq(ssoConfigurations.organizationId, organizationId))
     .limit(1);
 
-  const scimToken =
-    input.scimEnabled && (!existing || !existing.scimToken)
-      ? `scim_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`
-      : existing?.scimToken || null;
+  const shouldRegenerate = input.scimEnabled && (!existing || !existing.scimToken);
+  const generated = shouldRegenerate ? generateScimToken() : null;
+  const scimTokenHash = generated?.hash ?? existing?.scimToken ?? null;
 
   if (existing) {
     const [updated] = await db
@@ -89,7 +103,7 @@ export async function updateSSOConfig(
             ? input.workosConnectionId.trim()
             : existing.workosConnectionId,
         scimEnabled: input.scimEnabled ?? existing.scimEnabled,
-        scimToken: input.scimEnabled ? scimToken : null,
+        scimToken: input.scimEnabled ? scimTokenHash : null,
         enforceSSO: input.enforceSSO ?? existing.enforceSSO,
         updatedAt: new Date(),
       })
@@ -104,7 +118,8 @@ export async function updateSSOConfig(
         .where(eq(organizations.id, organizationId));
     }
 
-    return updated!;
+    // Show-once: return the raw token only at generation time.
+    return { ...updated!, scimToken: generated?.raw ?? '' };
   } else {
     if (!input.domain || input.domain.trim().length === 0) {
       throw httpError(400, 'Corporate email domain is required for SSO setup (e.g. acme.com)');
@@ -122,12 +137,13 @@ export async function updateSSOConfig(
         workosOrganizationId: input.workosOrganizationId || null,
         workosConnectionId: input.workosConnectionId || null,
         scimEnabled: input.scimEnabled ?? false,
-        scimToken: input.scimEnabled ? scimToken : null,
+        scimToken: input.scimEnabled ? scimTokenHash : null,
         enforceSSO: input.enforceSSO ?? false,
       })
       .returning();
 
-    return created!;
+    // Show-once: return the raw token only at generation time.
+    return { ...created!, scimToken: generated?.raw ?? '' };
   }
 }
 
@@ -148,7 +164,16 @@ export async function generateSSOLoginUrl(
   }
 
   const redirectUri = getRedirectUri(customRedirectUri);
-  const state = `sso_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+  // Unpredictable CSRF state, bound to the domain server-side (Redis, 10min TTL).
+  const state = `sso_${randomBytes(16).toString('hex')}`;
+  const redis = getDataClient();
+  if (redis && isRedisAvailable()) {
+    try {
+      await redis.set(`sso:state:${state}`, cleanDomain, 'EX', 600);
+    } catch {
+      // Best-effort: the WorkOS code exchange below remains the primary auth.
+    }
+  }
   let loginUrl: string;
 
   try {
@@ -191,21 +216,50 @@ export async function generateSSOLoginUrl(
   };
 }
 
+/**
+ * Enterprise SSO callback — exchanges a WorkOS authorization code for a verified
+ * identity, then provisions membership in the org that owns the email domain.
+ * Self-asserted `{domain,email,name}` bodies are NOT accepted: the IdP-signed
+ * code response is the sole source of identity.
+ */
 export async function processSSOCallback(
   db: Database,
   input: {
-    domain: string;
-    email: string;
-    name: string;
+    code: string;
+    state?: string;
   }
 ) {
-  const cleanDomain = input.domain.trim().toLowerCase().replace(/^@/, '');
-  const cleanEmail = input.email.trim().toLowerCase();
+  if (input.state) {
+    const redis = getDataClient();
+    if (redis && isRedisAvailable()) {
+      let expected: string | null = null;
+      try {
+        expected = await redis.get(`sso:state:${input.state}`);
+      } catch {
+        expected = null;
+      }
+      if (!expected) {
+        throw httpError(401, 'Invalid or expired SSO state');
+      }
+      try {
+        await redis.del(`sso:state:${input.state}`);
+      } catch {
+        // Single-use best-effort; TTL expiry bounds reuse.
+      }
+    }
+    // Without Redis the WorkOS code exchange below is still required auth.
+  }
+
+  const { email: cleanEmail, name } = await verifyWorkOSCode(input.code);
+  if (!cleanEmail) {
+    throw httpError(400, 'Unable to extract email from authentication response');
+  }
+  const emailDomain = cleanEmail.split('@')[1] || '';
 
   const [config] = await db
     .select()
     .from(ssoConfigurations)
-    .where(eq(ssoConfigurations.domain, cleanDomain))
+    .where(eq(ssoConfigurations.domain, emailDomain))
     .limit(1);
 
   if (!config) {
@@ -220,7 +274,7 @@ export async function processSSOCallback(
       .insert(users)
       .values({
         email: cleanEmail,
-        name: input.name || cleanEmail.split('@')[0]!,
+        name: name || cleanEmail.split('@')[0]!,
         passwordHash: null, // SSO-managed credentials
       })
       .returning();
@@ -281,13 +335,26 @@ export async function processSCIMWebhook(
     name?: string;
   }
 ) {
+  if (!scimToken) {
+    throw httpError(401, 'Invalid or disabled SCIM bearer token');
+  }
+  // Tokens are sha256-hashed at rest: hash the presented value, look up the
+  // digest, then constant-time compare. Pre-hash-rotation plaintext rows no
+  // longer match — re-save SSO config to generate a new token.
+  const presentedHash = hashScimToken(scimToken);
   const [config] = await db
     .select()
     .from(ssoConfigurations)
-    .where(and(eq(ssoConfigurations.scimToken, scimToken), eq(ssoConfigurations.scimEnabled, true)))
+    .where(
+      and(eq(ssoConfigurations.scimToken, presentedHash), eq(ssoConfigurations.scimEnabled, true))
+    )
     .limit(1);
 
-  if (!config) {
+  if (
+    !config?.scimToken ||
+    config.scimToken.length !== presentedHash.length ||
+    !timingSafeEqual(Buffer.from(config.scimToken), Buffer.from(presentedHash))
+  ) {
     throw httpError(401, 'Invalid or disabled SCIM bearer token');
   }
 

@@ -152,19 +152,22 @@ export async function getSSOAuthorizationUrl(
   };
 }
 
+export interface VerifiedWorkOSIdentity {
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+  workosOrgId: string | null;
+}
+
 /**
- * Authenticates user from WorkOS authorization code, provisions account (JIT),
- * links organization, and issues Boardly access + refresh tokens.
+ * Exchanges a WorkOS authorization code for a verified identity.
+ * The email/org below come from the IdP-signed response — never from client input.
+ * Test-only `mock_test_` codes are honored exclusively when NODE_ENV=test.
  */
-export async function authenticateWithWorkOSCode(db: Database, code: string) {
+export async function verifyWorkOSCode(code: string): Promise<VerifiedWorkOSIdentity> {
   if (!code || code.trim().length === 0) {
     throw httpError(400, 'Authorization code is required');
   }
-
-  let email = '';
-  let name = '';
-  let avatarUrl: string | null = null;
-  let workosOrgId: string | null = null;
 
   // Mock codes are test-only fixtures. Never honored in dev/production.
   if (code.startsWith('mock_test_')) {
@@ -174,50 +177,68 @@ export async function authenticateWithWorkOSCode(db: Database, code: string) {
     const parts = code.split('_');
     const userPart = parts[2] || 'mockuser';
     const domainPart = parts[3] || 'example.com';
-    email = `${userPart}@${domainPart}`.toLowerCase();
-    name = userPart.replace(/[0-9]/g, '') || 'Mock User';
-    avatarUrl = 'https://ui-avatars.com/api/?name=Mock+User';
-  } else {
-    const workos = getWorkOS();
-    const clientId = env.WORKOS_CLIENT_ID || 'client_placeholder';
+    return {
+      email: `${userPart}@${domainPart}`.toLowerCase(),
+      name: userPart.replace(/[0-9]/g, '') || 'Mock User',
+      avatarUrl: 'https://ui-avatars.com/api/?name=Mock+User',
+      workosOrgId: null,
+    };
+  }
 
+  const workos = getWorkOS();
+  const clientId = env.WORKOS_CLIENT_ID || 'client_placeholder';
+
+  try {
+    // 1. Try UserManagement authentication (standard for Google OAuth & modern SSO)
+    const authResponse = await workos.userManagement.authenticateWithCode({
+      code,
+      clientId,
+    });
+
+    const userProfile = authResponse.user;
+    return {
+      email: (userProfile.email || '').toLowerCase().trim(),
+      name:
+        `${userProfile.firstName || ''} ${userProfile.lastName || ''}`.trim() ||
+        userProfile.email?.split('@')[0] ||
+        'User',
+      avatarUrl: userProfile.profilePictureUrl || null,
+      workosOrgId: authResponse.organizationId || null,
+    };
+  } catch (umError: any) {
+    // 2. Fallback to SSO getProfileAndToken (for standalone SAML connections)
     try {
-      // 1. Try UserManagement authentication (standard for Google OAuth & modern SSO)
-      const authResponse = await workos.userManagement.authenticateWithCode({
+      const ssoResponse = await workos.sso.getProfileAndToken({
         code,
         clientId,
       });
-
-      const userProfile = authResponse.user;
-      email = (userProfile.email || '').toLowerCase().trim();
-      const first = userProfile.firstName || '';
-      const last = userProfile.lastName || '';
-      name = `${first} ${last}`.trim() || userProfile.email?.split('@')[0] || 'User';
-      avatarUrl = userProfile.profilePictureUrl || null;
-      workosOrgId = authResponse.organizationId || null;
-    } catch (umError: any) {
-      // 2. Fallback to SSO getProfileAndToken (for standalone SAML connections)
-      try {
-        const ssoResponse = await workos.sso.getProfileAndToken({
-          code,
-          clientId,
-        });
-        const profile = ssoResponse.profile;
-        email = (profile.email || '').toLowerCase().trim();
-        const first = profile.firstName || '';
-        const last = profile.lastName || '';
-        name = `${first} ${last}`.trim() || profile.email?.split('@')[0] || 'Enterprise User';
-        workosOrgId = profile.organizationId || null;
-      } catch (ssoError: any) {
-        throw httpError(
-          401,
-          `Failed to authenticate authorization code with WorkOS: ${
-            umError.message || ssoError.message || 'Invalid or expired code'
-          }`
-        );
-      }
+      const profile = ssoResponse.profile;
+      return {
+        email: (profile.email || '').toLowerCase().trim(),
+        name:
+          `${profile.firstName || ''} ${profile.lastName || ''}`.trim() ||
+          profile.email?.split('@')[0] ||
+          'Enterprise User',
+        avatarUrl: null,
+        workosOrgId: profile.organizationId || null,
+      };
+    } catch (ssoError: any) {
+      throw httpError(
+        401,
+        `Failed to authenticate authorization code with WorkOS: ${
+          umError.message || ssoError.message || 'Invalid or expired code'
+        }`
+      );
     }
   }
+}
+
+/**
+ * Authenticates user from WorkOS authorization code, provisions account (JIT),
+ * links organization, and issues Boardly access + refresh tokens.
+ */
+export async function authenticateWithWorkOSCode(db: Database, code: string) {
+  const { email, name, avatarUrl, workosOrgId } = await verifyWorkOSCode(code);
 
   if (!email) {
     throw httpError(400, 'Unable to extract email from authentication response');

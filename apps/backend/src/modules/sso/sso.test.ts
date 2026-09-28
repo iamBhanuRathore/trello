@@ -43,8 +43,12 @@ describe('Enterprise SSO & SCIM Service', () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.ssoConfigurations).where(eq(schema.ssoConfigurations.organizationId, orgId));
-    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
+    await db
+      .delete(schema.ssoConfigurations)
+      .where(eq(schema.ssoConfigurations.organizationId, orgId));
+    await db
+      .delete(schema.organizationMembers)
+      .where(eq(schema.organizationMembers.organizationId, orgId));
     await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
     await client.end();
   });
@@ -69,6 +73,7 @@ describe('Enterprise SSO & SCIM Service', () => {
     expect(config.domain).toBe(domain);
     expect(config.provider).toBe('okta');
     expect(config.scimEnabled).toBe(true);
+    // Raw token is returned once at generation time; storage holds the hash.
     expect(config.scimToken).toContain('scim_');
     scimToken = config.scimToken!;
   });
@@ -82,14 +87,12 @@ describe('Enterprise SSO & SCIM Service', () => {
   });
 
   it('should authenticate and auto-provision user on SSO callback', async () => {
-    const res = await processSSOCallback(db, {
-      domain,
-      email: `engineer_${Date.now()}@${domain}`,
-      name: 'Enterprise Engineer',
-    });
+    // Test-only WorkOS mock code (honored because bun test sets NODE_ENV=test).
+    const mockCode = `mock_test_engineer${Date.now()}_${domain}`;
+    const res = await processSSOCallback(db, { code: mockCode });
 
     expect(res.user.id).toBeDefined();
-    expect(res.user.name).toBe('Enterprise Engineer');
+    expect(res.user.email).toContain(`@${domain}`);
     expect(res.tokens.accessToken).toBeDefined();
     expect(res.organization.id).toBe(orgId);
   });

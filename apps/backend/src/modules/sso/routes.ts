@@ -39,9 +39,8 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
     },
     {
       body: t.Object({
-        domain: t.String(),
-        email: t.String(),
-        name: t.String(),
+        code: t.String({ minLength: 1 }),
+        state: t.Optional(t.String()),
       }),
     }
   )
