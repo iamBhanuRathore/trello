@@ -77,7 +77,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   onShowSeen,
   onJumpToMessage,
 }) => {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const { presenceMap, readReceipts, messageLayout } = useChatStore();
   const effectiveLayout = layout ?? messageLayout;
 

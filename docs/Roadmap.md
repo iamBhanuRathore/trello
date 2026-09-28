@@ -119,7 +119,7 @@ Checkable version of the Build Order from `trello-clone-architecture.md` §12. A
 - [x] 5.1 Company-configurable roles (Lead/Developer/Tester) + static assignment_rules + components with lead fallback (backend + APIs; admin UI pending)
 - [x] 5.2 OCC ordering (version-guarded moves, rebalance job) + WS reconnect with `changes?since=` gap-fill
 - [x] 5.3 DB perf: hot-path composite indexes, batched chat enrichment (153→6 queries/page), `clampLimit` pagination caps, audit/activity/notification retention (partitioning deferred — see Decisions)
-- [ ] 5.4 Frontend: list virtualization, memoized cards, scoped dnd state, store selectors
+- [x] 5.4 Frontend: column virtualization (>20 cards, @tanstack/react-virtual), immutable feed merge, leaf-memo cards, stable column callbacks, auth-store selectors; drag path renders in full + e2e-verified (windowing/scroll/drag/empty-state/short-column)
 - [ ] 5.5 Media: unified request-upload/confirm flow, presigned-GET reads, virus-scan gate
 
 - [ ] AI Copilot assistant for task summarization, sprint velocity forecasting, and PR description generation

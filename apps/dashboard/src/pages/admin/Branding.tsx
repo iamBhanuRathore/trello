@@ -8,7 +8,7 @@ import { Label } from '@boardly/ui/label';
 import { QueryError } from '../../components/common/QueryError';
 
 export const Branding = () => {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const orgId = user?.organizationId;
   const queryClient = useQueryClient();
 

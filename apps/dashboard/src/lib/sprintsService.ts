@@ -6,7 +6,10 @@ export const sprintsService = {
     return res.data;
   },
 
-  createSprint: async (projectId: string, data: { name: string; type: string; startDate: string; endDate: string; goal?: string }) => {
+  createSprint: async (
+    projectId: string,
+    data: { name: string; type: string; startDate: string; endDate: string; goal?: string }
+  ) => {
     const res = await api.post(`/sprints/projects/${projectId}`, data);
     return res.data;
   },
@@ -16,7 +19,17 @@ export const sprintsService = {
     return res.data;
   },
 
-  updateSprint: async (sprintId: string, data: { name?: string; type?: string; startDate?: string; endDate?: string; goal?: string; status?: string }) => {
+  updateSprint: async (
+    sprintId: string,
+    data: {
+      name?: string;
+      type?: string;
+      startDate?: string;
+      endDate?: string;
+      goal?: string;
+      status?: string;
+    }
+  ) => {
     const res = await api.patch(`/sprints/${sprintId}`, data);
     return res.data;
   },
@@ -39,5 +52,5 @@ export const sprintsService = {
   removeCardFromSprint: async (sprintId: string, cardId: string) => {
     const res = await api.delete(`/sprints/${sprintId}/cards/${cardId}`);
     return res.data;
-  }
+  },
 };

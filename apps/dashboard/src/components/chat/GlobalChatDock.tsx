@@ -27,7 +27,7 @@ export const GlobalChatDock: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
 
   const {
     isGlobalDockOpen,

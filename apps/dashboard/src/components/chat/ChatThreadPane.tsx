@@ -21,7 +21,7 @@ interface ChatThreadPaneProps {
 const COMMON_EMOJIS = ['👍', '❤️', '🔥', '🚀', '👀', '🎉'];
 
 export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, onClose }) => {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const { presenceMap, wsConnected } = useChatStore();
   const queryClient = useQueryClient();
 

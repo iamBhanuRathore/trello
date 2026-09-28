@@ -68,7 +68,12 @@ export function useRealtimeBoard(boardId: string | undefined) {
   );
 
   // Merge a changes-feed page into the cached full-board payload. Returns true
-  // when the caller must fall back to a full refetch (unknown ids or cap hit).
+  // when the caller must fall back to a full refetch (unknown ids).
+  //
+  // Strictly immutable: every touched row gets a new object identity so the
+  // memoized board columns can skip the ones that didn't change. Mutating in
+  // place would leave `memo` comparing equal references and silently skip the
+  // repaint.
   const applyChanges = useCallback(
     (boardId: string, changes: { lists: any[]; cards: any[] }) => {
       let needFullRefetch = false;
@@ -77,54 +82,83 @@ export function useRealtimeBoard(boardId: string | undefined) {
           needFullRefetch = true;
           return old;
         }
-        const listsById = new Map(old.lists.map((l) => [l.id, l]));
+        // Clone-on-write: `next` holds replaced rows, `lists` preserves
+        // identity for everything untouched.
+        const next = new Map<string, any>();
+        const list = (id: string) => next.get(id) ?? old!.lists!.find((l) => l.id === id);
+        const setList = (id: string, value: any) => next.set(id, value);
+
         for (const cl of changes.lists || []) {
-          const existing = listsById.get(cl.id);
+          const existing = list(cl.id);
           if (!existing) {
             needFullRefetch = true;
             continue;
           }
-          Object.assign(existing, {
+          setList(cl.id, {
+            ...existing,
             name: cl.name ?? existing.name,
             position: cl.position ?? existing.position,
             version: cl.version ?? existing.version,
             isArchived: cl.isArchived ?? existing.isArchived,
           });
         }
-        const cardsById = new Map<string, { list: any; index: number }>();
-        for (const list of old.lists) {
-          (list.cards || []).forEach((c, index) => cardsById.set(c.id, { list, index }));
+
+        // Cards are keyed to their (possibly already-replaced) list object.
+        const cardsById = new Map<string, { listId: string; index: number }>();
+        for (const l of old.lists) {
+          (l.cards || []).forEach((c, index) => cardsById.set(c.id, { listId: l.id, index }));
         }
+
         for (const cc of changes.cards || []) {
           const found = cardsById.get(cc.id);
           if (!found) {
             needFullRefetch = true; // New card — needs full enrichment, not a bare row.
             continue;
           }
+          const source = list(found.listId)!;
+          const current = source.cards[found.index];
           const updated = {
-            ...found.list.cards[found.index],
-            title: cc.title ?? found.list.cards[found.index].title,
-            position: cc.position ?? found.list.cards[found.index].position,
-            version: cc.version ?? found.list.cards[found.index].version,
-            isArchived: cc.isArchived ?? found.list.cards[found.index].isArchived,
+            ...current,
+            title: cc.title ?? current.title,
+            position: cc.position ?? current.position,
+            version: cc.version ?? current.version,
+            isArchived: cc.isArchived ?? current.isArchived,
+            listId: cc.listId ?? current.listId,
           };
-          if (cc.listId && cc.listId !== found.list.id) {
-            // Cross-list move: remove + insert sorted by position.
-            found.list.cards = found.list.cards.filter((c: any) => c.id !== cc.id);
-            const target = listsById.get(cc.listId);
+          const without = source.cards.filter((c: any) => c.id !== cc.id);
+          if (cc.listId && cc.listId !== source.id) {
+            const target = list(cc.listId);
             if (!target) {
               needFullRefetch = true;
               continue;
             }
-            updated.listId = cc.listId;
-            target.cards = [...(target.cards || []), updated].sort(
-              (a, b) => (a.position ?? 0) - (b.position ?? 0)
-            );
+            setList(source.id, { ...source, cards: without });
+            setList(target.id, {
+              ...target,
+              cards: [...(target.cards || []), updated].sort(
+                (a: any, b: any) => (a.position ?? 0) - (b.position ?? 0)
+              ),
+            });
           } else {
-            found.list.cards[found.index] = updated;
+            setList(source.id, {
+              ...source,
+              cards: source.cards.map((c: any, i: number) => (i === found.index ? updated : c)),
+            });
           }
         }
-        return { ...old, lists: [...old.lists] };
+
+        // Identity stability is load-bearing here. Returning a fresh `lists`
+        // array for a change page that altered nothing defeats TanStack Query's
+        // structural sharing, so every realtime frame re-renders the whole
+        // board with new list identities. dnd-kit reads those as index changes
+        // and its derived-transform effect then setStates once per render,
+        // which deadlocks an in-flight drag with "Maximum update depth
+        // exceeded". When nothing actually differs we hand back the original
+        // cache object untouched and React bails out.
+        if (next.size === 0) return old;
+
+        const lists = old.lists.map((l) => next.get(l.id) ?? l);
+        return { ...old, lists };
       });
       return needFullRefetch;
     },

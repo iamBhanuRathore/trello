@@ -39,8 +39,9 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 function PasswordStrength({ password }: { password: string }) {
-  const score =
-    [/.{8,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) => r.test(password)).length;
+  const score = [/.{8,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) =>
+    r.test(password)
+  ).length;
 
   const labels = ['', 'Weak', 'Fair', 'Good', 'Strong', 'Very strong'];
   const colors = ['', '#ef4444', '#f97316', '#eab308', '#22c55e', '#10b981'];
@@ -73,7 +74,7 @@ export const AcceptInvite: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token') ?? '';
-  const { login } = useAuthStore();
+  const login = useAuthStore((state) => state.login);
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [name, setName] = useState('');
@@ -84,7 +85,11 @@ export const AcceptInvite: React.FC = () => {
   const [formError, setFormError] = useState('');
 
   // ── Fetch invitation preview ───────────────────────────────────────────────
-  const { data: preview, isLoading, error: previewError } = useQuery({
+  const {
+    data: preview,
+    isLoading,
+    error: previewError,
+  } = useQuery({
     queryKey: ['invite-preview', token],
     queryFn: async () => {
       const { data } = await api.get(`/invite/preview/${token}`);
@@ -157,9 +162,18 @@ export const AcceptInvite: React.FC = () => {
       return;
     }
 
-    if (!name.trim()) { setFormError('Please enter your full name.'); return; }
-    if (password.length < 8) { setFormError('Password must be at least 8 characters.'); return; }
-    if (password !== confirmPassword) { setFormError('Passwords do not match.'); return; }
+    if (!name.trim()) {
+      setFormError('Please enter your full name.');
+      return;
+    }
+    if (password.length < 8) {
+      setFormError('Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setFormError('Passwords do not match.');
+      return;
+    }
 
     acceptMutation.mutate({ token, name: name.trim(), password });
   };
@@ -196,9 +210,11 @@ export const AcceptInvite: React.FC = () => {
       <ErrorScreen
         icon={<AlertTriangle size={32} color={errorCode === 410 ? '#f97316' : '#ef4444'} />}
         title={
-          errorCode === 410 ? 'Invitation Expired or Used'
-          : errorCode === 404 ? 'Invitation Not Found'
-          : 'Something Went Wrong'
+          errorCode === 410
+            ? 'Invitation Expired or Used'
+            : errorCode === 404
+              ? 'Invitation Not Found'
+              : 'Something Went Wrong'
         }
         message={errorMsg}
         showContact={errorCode === 410}
@@ -225,13 +241,17 @@ export const AcceptInvite: React.FC = () => {
           <div style={{ padding: '28px 40px 36px' }}>
             <h1 style={s.headline}>You're invited! 🎉</h1>
             <p style={s.sub}>
-              <strong style={{ color: '#a5b4fc' }}>{preview.inviterName}</strong> has invited you to join{' '}
-              <strong style={{ color: '#e2e8f0' }}>{preview.orgName}</strong> on Boardly.
+              <strong style={{ color: '#a5b4fc' }}>{preview.inviterName}</strong> has invited you to
+              join <strong style={{ color: '#e2e8f0' }}>{preview.orgName}</strong> on Boardly.
             </p>
 
             {/* Info card */}
             <div style={s.infoCard}>
-              <InfoRow icon={<Building2 size={14} />} label="Organization" value={preview.orgName} />
+              <InfoRow
+                icon={<Building2 size={14} />}
+                label="Organization"
+                value={preview.orgName}
+              />
               <div style={s.sep} />
               <InfoRow icon={<User size={14} />} label="Invited by" value={preview.inviterName} />
               <div style={s.sep} />
@@ -248,7 +268,16 @@ export const AcceptInvite: React.FC = () => {
 
             {/* Benefits */}
             <div style={s.benefits}>
-              <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <p
+                style={{
+                  margin: '0 0 10px',
+                  fontSize: '12px',
+                  color: '#64748b',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
                 What you'll get access to
               </p>
               {[
@@ -256,22 +285,23 @@ export const AcceptInvite: React.FC = () => {
                 'Task management, sprints, and timesheets',
                 'Real-time team communication & notifications',
               ].map((b) => (
-                <div key={b} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <div
+                  key={b}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}
+                >
                   <CheckCircle2 size={13} color="#6366f1" />
                   <span style={{ fontSize: '13px', color: '#94a3b8' }}>{b}</span>
                 </div>
               ))}
             </div>
 
-            <button
-              id="invite-accept-btn"
-              onClick={() => setStep(2)}
-              style={s.primaryBtn}
-            >
+            <button id="invite-accept-btn" onClick={() => setStep(2)} style={s.primaryBtn}>
               {skipPasswordStep ? `Join ${preview.orgName}` : 'Accept Invitation'}
               <ArrowRight size={16} />
             </button>
-            <p style={{ textAlign: 'center', fontSize: '12px', color: '#475569', marginTop: '14px' }}>
+            <p
+              style={{ textAlign: 'center', fontSize: '12px', color: '#475569', marginTop: '14px' }}
+            >
               By accepting, you agree to Boardly's Terms of Service.
             </p>
           </div>
@@ -289,9 +319,15 @@ export const AcceptInvite: React.FC = () => {
           <div style={{ padding: '36px 40px' }}>
             <div style={{ textAlign: 'center', marginBottom: '24px' }}>
               <div style={s.stepIcon}>
-                {skipPasswordStep ? <Building2 size={22} color="#6366f1" /> : <Lock size={22} color="#6366f1" />}
+                {skipPasswordStep ? (
+                  <Building2 size={22} color="#6366f1" />
+                ) : (
+                  <Lock size={22} color="#6366f1" />
+                )}
               </div>
-              <h1 style={{ ...s.headline, fontSize: '21px', marginTop: '14px', marginBottom: '6px' }}>
+              <h1
+                style={{ ...s.headline, fontSize: '21px', marginTop: '14px', marginBottom: '6px' }}
+              >
                 {skipPasswordStep ? `Join ${preview.orgName}` : 'Set Up Your Account'}
               </h1>
               <p style={{ ...s.sub, marginBottom: 0 }}>
@@ -302,11 +338,28 @@ export const AcceptInvite: React.FC = () => {
             </div>
 
             {/* Role pill */}
-            <div style={{ ...s.infoCard, flexDirection: 'row', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+            <div
+              style={{
+                ...s.infoCard,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '24px',
+              }}
+            >
               <Briefcase size={14} color="#6366f1" />
               <span style={{ fontSize: '13px', color: '#94a3b8' }}>
                 Joining <strong style={{ color: '#e2e8f0' }}>{preview.orgName}</strong> as{' '}
-                <span style={{ padding: '2px 8px', borderRadius: '99px', background: roleBadgeColor, color: '#fff', fontSize: '11px', fontWeight: 600 }}>
+                <span
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: '99px',
+                    background: roleBadgeColor,
+                    color: '#fff',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                  }}
+                >
                   {roleLabel}
                 </span>
               </span>
@@ -316,39 +369,103 @@ export const AcceptInvite: React.FC = () => {
             {!skipPasswordStep && (
               <div>
                 <div style={s.fGroup}>
-                  <label style={s.label} htmlFor="invite-name">Full Name</label>
+                  <label style={s.label} htmlFor="invite-name">
+                    Full Name
+                  </label>
                   <div style={{ position: 'relative' }}>
-                    <User size={14} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input id="invite-name" type="text" placeholder="Jane Doe" value={name}
-                      onChange={(e) => setName(e.target.value)} style={s.input} autoFocus />
+                    <User
+                      size={14}
+                      color="#64748b"
+                      style={{
+                        position: 'absolute',
+                        left: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                      }}
+                    />
+                    <input
+                      id="invite-name"
+                      type="text"
+                      placeholder="Jane Doe"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      style={s.input}
+                      autoFocus
+                    />
                   </div>
                 </div>
 
                 <div style={s.fGroup}>
-                  <label style={s.label} htmlFor="invite-password">Create Password</label>
+                  <label style={s.label} htmlFor="invite-password">
+                    Create Password
+                  </label>
                   <div style={{ position: 'relative' }}>
-                    <Lock size={14} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input id="invite-password" type={showPassword ? 'text' : 'password'}
-                      placeholder="Min. 8 characters" value={password}
+                    <Lock
+                      size={14}
+                      color="#64748b"
+                      style={{
+                        position: 'absolute',
+                        left: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                      }}
+                    />
+                    <input
+                      id="invite-password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Min. 8 characters"
+                      value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      style={{ ...s.input, paddingRight: '40px' }} />
-                    <button type="button" onClick={() => setShowPassword(v => !v)} style={s.eyeBtn}>
-                      {showPassword ? <EyeOff size={14} color="#64748b" /> : <Eye size={14} color="#64748b" />}
+                      style={{ ...s.input, paddingRight: '40px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      style={s.eyeBtn}
+                    >
+                      {showPassword ? (
+                        <EyeOff size={14} color="#64748b" />
+                      ) : (
+                        <Eye size={14} color="#64748b" />
+                      )}
                     </button>
                   </div>
                   <PasswordStrength password={password} />
                 </div>
 
                 <div style={s.fGroup}>
-                  <label style={s.label} htmlFor="invite-confirm">Confirm Password</label>
+                  <label style={s.label} htmlFor="invite-confirm">
+                    Confirm Password
+                  </label>
                   <div style={{ position: 'relative' }}>
-                    <Shield size={14} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input id="invite-confirm" type={showConfirm ? 'text' : 'password'}
-                      placeholder="Repeat password" value={confirmPassword}
+                    <Shield
+                      size={14}
+                      color="#64748b"
+                      style={{
+                        position: 'absolute',
+                        left: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                      }}
+                    />
+                    <input
+                      id="invite-confirm"
+                      type={showConfirm ? 'text' : 'password'}
+                      placeholder="Repeat password"
+                      value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      style={{ ...s.input, paddingRight: '40px' }} />
-                    <button type="button" onClick={() => setShowConfirm(v => !v)} style={s.eyeBtn}>
-                      {showConfirm ? <EyeOff size={14} color="#64748b" /> : <Eye size={14} color="#64748b" />}
+                      style={{ ...s.input, paddingRight: '40px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm((v) => !v)}
+                      style={s.eyeBtn}
+                    >
+                      {showConfirm ? (
+                        <EyeOff size={14} color="#64748b" />
+                      ) : (
+                        <Eye size={14} color="#64748b" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -362,14 +479,32 @@ export const AcceptInvite: React.FC = () => {
               </div>
             )}
 
-            <button id="invite-join-btn" onClick={handleAccept}
+            <button
+              id="invite-join-btn"
+              onClick={handleAccept}
               disabled={acceptMutation.isPending}
-              style={{ ...s.primaryBtn, marginTop: '8px', opacity: acceptMutation.isPending ? 0.7 : 1 }}>
-              {acceptMutation.isPending ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                : skipPasswordStep ? <Building2 size={15} /> : <CheckCircle2 size={15} />}
-              {acceptMutation.isPending ? 'Joining…' : skipPasswordStep ? `Join ${preview.orgName}` : 'Create Account & Join'}
+              style={{
+                ...s.primaryBtn,
+                marginTop: '8px',
+                opacity: acceptMutation.isPending ? 0.7 : 1,
+              }}
+            >
+              {acceptMutation.isPending ? (
+                <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
+              ) : skipPasswordStep ? (
+                <Building2 size={15} />
+              ) : (
+                <CheckCircle2 size={15} />
+              )}
+              {acceptMutation.isPending
+                ? 'Joining…'
+                : skipPasswordStep
+                  ? `Join ${preview.orgName}`
+                  : 'Create Account & Join'}
             </button>
-            <button id="invite-back-btn" onClick={() => setStep(1)} style={s.ghostBtn}>← Back</button>
+            <button id="invite-back-btn" onClick={() => setStep(1)} style={s.ghostBtn}>
+              ← Back
+            </button>
           </div>
         </div>
       </div>
@@ -404,8 +539,16 @@ export const AcceptInvite: React.FC = () => {
 };
 
 // ─── ErrorScreen ──────────────────────────────────────────────────────────────
-function ErrorScreen({ icon, title, message, showContact }: {
-  icon: React.ReactNode; title: string; message: string; showContact?: boolean;
+function ErrorScreen({
+  icon,
+  title,
+  message,
+  showContact,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  message: string;
+  showContact?: boolean;
 }) {
   return (
     <div style={s.page}>
@@ -415,7 +558,11 @@ function ErrorScreen({ icon, title, message, showContact }: {
           <div style={{ marginBottom: '14px' }}>{icon}</div>
           <h1 style={{ ...s.headline, fontSize: '20px', marginBottom: '8px' }}>{title}</h1>
           <p style={s.sub}>{message}</p>
-          {showContact && <p style={{ fontSize: '12px', color: '#475569' }}>Ask your admin to send a new invitation.</p>}
+          {showContact && (
+            <p style={{ fontSize: '12px', color: '#475569' }}>
+              Ask your admin to send a new invitation.
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -466,7 +613,13 @@ const s: Record<string, React.CSSProperties> = {
     marginRight: '8px',
   },
   logoText: { fontSize: '18px', fontWeight: 700, color: '#f8fafc', verticalAlign: 'middle' },
-  headline: { margin: '0 0 8px', fontSize: '24px', fontWeight: 700, color: '#f8fafc', lineHeight: 1.2 },
+  headline: {
+    margin: '0 0 8px',
+    fontSize: '24px',
+    fontWeight: 700,
+    color: '#f8fafc',
+    lineHeight: 1.2,
+  },
   sub: { margin: '0 0 20px', fontSize: '14px', color: '#94a3b8', lineHeight: 1.6 },
   infoCard: {
     background: 'rgba(99,102,241,0.07)',

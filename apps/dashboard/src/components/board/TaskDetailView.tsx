@@ -121,7 +121,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
   ) {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
-    const { user } = useAuthStore();
+    const user = useAuthStore((state) => state.user);
     const orgId = user?.organizationId;
 
     // Active view tab for mobile responsiveness (Details vs Task Chat)

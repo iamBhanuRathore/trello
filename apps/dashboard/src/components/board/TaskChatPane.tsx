@@ -198,7 +198,7 @@ export function TaskChatPane({
   onAddMemberClick,
   isSending = false,
 }: TaskChatPaneProps) {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const orgId = user?.organizationId;
   const { openGlobalDock } = useChatStore();
   const queryClient = useQueryClient();

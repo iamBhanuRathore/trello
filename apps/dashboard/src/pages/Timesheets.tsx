@@ -9,7 +9,7 @@ import { SearchableSelect } from '../components/ui/SearchableSelect';
 
 export function Timesheets() {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [dateRange, setDateRange] = useState<string>('30days');
 

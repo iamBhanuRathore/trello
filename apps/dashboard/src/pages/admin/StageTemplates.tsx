@@ -12,7 +12,7 @@ const CATEGORIES = ['not_started', 'in_progress', 'blocked', 'done'] as const;
 const PRESET_COLORS = ['#94a3b8', '#3b82f6', '#eab308', '#22c55e', '#ef4444', '#a855f7'];
 
 export const StageTemplates = () => {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const orgId = user?.organizationId;
 

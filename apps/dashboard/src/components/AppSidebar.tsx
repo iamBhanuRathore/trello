@@ -61,7 +61,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   onOpenShortcuts,
 }) => {
   const location = useLocation();
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const { isMobile, setOpenMobile, state } = useSidebar();
   const isCollapsed = state === 'collapsed';
 

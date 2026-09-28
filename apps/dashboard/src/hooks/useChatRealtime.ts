@@ -15,7 +15,7 @@ const ACTIVE_READ_DEBOUNCE_MS = 1500;
 
 export function useChatRealtime(passedChannelId?: string | null) {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const userId = user?.id;
   const token = typeof window !== 'undefined' ? localStorage.getItem('boardly_access_token') : null;
   const wsRef = useRef<WebSocket | null>(null);

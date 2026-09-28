@@ -18,7 +18,7 @@ const AVAILABLE_EVENTS = [
 ];
 
 export function WebhookSettings() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const [webhooks, setWebhooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 

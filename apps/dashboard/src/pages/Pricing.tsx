@@ -12,19 +12,12 @@ import {
   DialogTitle,
 } from '@boardly/ui/dialog';
 import { Input } from '@boardly/ui/input';
-import {
-  CheckCircle2,
-  Sparkles,
-  Zap,
-  Building2,
-  Loader2,
-  Users,
-} from 'lucide-react';
+import { CheckCircle2, Sparkles, Zap, Building2, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const Pricing: React.FC = () => {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuthStore();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   const [interval, setInterval] = useState<'monthly' | 'annual'>('monthly');
   const [proSeats, setProSeats] = useState<number>(5);
@@ -79,7 +72,9 @@ export const Pricing: React.FC = () => {
         teamSize: parseInt(enterpriseTeamSize, 10) || 50,
         requirements: enterpriseRequirements,
       });
-      toast.success('Your quote request has been submitted! Our enterprise sales team will reach out within 24 hours.');
+      toast.success(
+        'Your quote request has been submitted! Our enterprise sales team will reach out within 24 hours.'
+      );
       setIsEnterpriseModalOpen(false);
       setEnterpriseCompany('');
       setEnterpriseRequirements('');
@@ -137,7 +132,8 @@ export const Pricing: React.FC = () => {
             </span>
           </h1>
           <p className="mx-auto max-w-2xl text-base text-muted-foreground sm:text-lg">
-            Pay only for active team members. Unbilled guest accounts, instant prorated seat adjustments, and Slack-style fair billing credits built-in.
+            Pay only for active team members. Unbilled guest accounts, instant prorated seat
+            adjustments, and Slack-style fair billing credits built-in.
           </p>
 
           {/* Billing Interval Toggle */}
@@ -184,13 +180,17 @@ export const Pricing: React.FC = () => {
                   Starter
                 </span>
                 <h3 className="mt-2 text-2xl font-bold text-card-foreground">Free</h3>
-                <p className="mt-1 text-xs text-muted-foreground">Essential tools for small teams & projects.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Essential tools for small teams & projects.
+                </p>
               </div>
 
               <div className="mb-6">
                 <span className="text-4xl font-extrabold text-foreground">$0</span>
                 <span className="text-sm text-muted-foreground"> / month</span>
-                <p className="mt-1 text-xs text-muted-foreground font-medium">Free forever · Up to 5 seats</p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">
+                  Free forever · Up to 5 seats
+                </p>
               </div>
 
               <div className="h-px w-full bg-border/60 mb-6" />
@@ -198,11 +198,15 @@ export const Pricing: React.FC = () => {
               <ul className="space-y-3 text-xs text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                  <span><strong>5 team seats</strong> included</span>
+                  <span>
+                    <strong>5 team seats</strong> included
+                  </span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                  <span><strong>3 free viewer guests</strong></span>
+                  <span>
+                    <strong>3 free viewer guests</strong>
+                  </span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
@@ -242,7 +246,9 @@ export const Pricing: React.FC = () => {
                   Growing Teams
                 </span>
                 <h3 className="mt-2 text-2xl font-bold text-card-foreground">Pro</h3>
-                <p className="mt-1 text-xs text-muted-foreground">Unlimited boards, custom workflows & agile tracking.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Unlimited boards, custom workflows & agile tracking.
+                </p>
               </div>
 
               <div className="mb-4">
@@ -288,11 +294,15 @@ export const Pricing: React.FC = () => {
               <ul className="space-y-3 text-xs text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-indigo-500 shrink-0" />
-                  <span><strong>Unlimited boards & workspaces</strong></span>
+                  <span>
+                    <strong>Unlimited boards & workspaces</strong>
+                  </span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-indigo-500 shrink-0" />
-                  <span><strong>10 free viewer guests</strong> per paid seat</span>
+                  <span>
+                    <strong>10 free viewer guests</strong> per paid seat
+                  </span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-indigo-500 shrink-0" />
@@ -333,7 +343,9 @@ export const Pricing: React.FC = () => {
                   Scale & Control
                 </span>
                 <h3 className="mt-2 text-2xl font-bold text-card-foreground">Business</h3>
-                <p className="mt-1 text-xs text-muted-foreground">Portfolio reporting, custom roles & priority SLA.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Portfolio reporting, custom roles & priority SLA.
+                </p>
               </div>
 
               <div className="mb-4">
@@ -383,7 +395,9 @@ export const Pricing: React.FC = () => {
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-purple-500 shrink-0" />
-                  <span><strong>25 free viewer guests</strong> per paid seat</span>
+                  <span>
+                    <strong>25 free viewer guests</strong> per paid seat
+                  </span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-purple-500 shrink-0" />
@@ -425,13 +439,17 @@ export const Pricing: React.FC = () => {
                   Custom Contracts
                 </span>
                 <h3 className="mt-2 text-2xl font-bold text-card-foreground">Enterprise</h3>
-                <p className="mt-1 text-xs text-muted-foreground">SSO / SAML, NET-30 invoicing, and tailored SLA.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  SSO / SAML, NET-30 invoicing, and tailored SLA.
+                </p>
               </div>
 
               <div className="mb-6">
                 <span className="text-4xl font-extrabold text-foreground">Custom</span>
                 <span className="text-sm text-muted-foreground"> / seat</span>
-                <p className="mt-1 text-xs text-muted-foreground font-medium">Starts at $36/seat · Min 50 seats</p>
+                <p className="mt-1 text-xs text-muted-foreground font-medium">
+                  Starts at $36/seat · Min 50 seats
+                </p>
               </div>
 
               <div className="h-px w-full bg-border/60 mb-6" />
@@ -439,11 +457,15 @@ export const Pricing: React.FC = () => {
               <ul className="space-y-3 text-xs text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-pink-500 shrink-0" />
-                  <span><strong>SAML / SSO & SCIM Provisioning</strong></span>
+                  <span>
+                    <strong>SAML / SSO & SCIM Provisioning</strong>
+                  </span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-pink-500 shrink-0" />
-                  <span><strong>Unlimited viewer guests & storage</strong></span>
+                  <span>
+                    <strong>Unlimited viewer guests & storage</strong>
+                  </span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-pink-500 shrink-0" />
@@ -478,7 +500,9 @@ export const Pricing: React.FC = () => {
       <section className="mx-auto max-w-6xl px-6 pb-24">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold tracking-tight">Compare All Plan Features</h2>
-          <p className="text-sm text-muted-foreground mt-2">Every feature compared side-by-side with full transparency.</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Every feature compared side-by-side with full transparency.
+          </p>
         </div>
 
         <div className="overflow-x-auto rounded-2xl border border-border/80 bg-card shadow-xs">
@@ -488,8 +512,12 @@ export const Pricing: React.FC = () => {
                 <th className="py-4 px-6">Capability</th>
                 <th className="py-4 px-6 text-center">Free</th>
                 <th className="py-4 px-6 text-center text-indigo-600 dark:text-indigo-400">Pro</th>
-                <th className="py-4 px-6 text-center text-purple-600 dark:text-purple-400">Business</th>
-                <th className="py-4 px-6 text-center text-pink-600 dark:text-pink-400">Enterprise</th>
+                <th className="py-4 px-6 text-center text-purple-600 dark:text-purple-400">
+                  Business
+                </th>
+                <th className="py-4 px-6 text-center text-pink-600 dark:text-pink-400">
+                  Enterprise
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40 text-xs">
@@ -529,7 +557,9 @@ export const Pricing: React.FC = () => {
                 <td className="py-4 px-6 text-center">Unlimited</td>
               </tr>
               <tr>
-                <td className="py-4 px-6 font-medium text-foreground">Fair Billing Vacant Seat Credits</td>
+                <td className="py-4 px-6 font-medium text-foreground">
+                  Fair Billing Vacant Seat Credits
+                </td>
                 <td className="py-4 px-6 text-center">✓</td>
                 <td className="py-4 px-6 text-center">✓</td>
                 <td className="py-4 px-6 text-center">✓</td>
@@ -543,7 +573,9 @@ export const Pricing: React.FC = () => {
                 <td className="py-4 px-6 text-center text-pink-500 font-bold">✓ Included</td>
               </tr>
               <tr>
-                <td className="py-4 px-6 font-medium text-foreground">Payment Invoicing (NET-30)</td>
+                <td className="py-4 px-6 font-medium text-foreground">
+                  Payment Invoicing (NET-30)
+                </td>
                 <td className="py-4 px-6 text-center text-muted-foreground">—</td>
                 <td className="py-4 px-6 text-center text-muted-foreground">—</td>
                 <td className="py-4 px-6 text-center text-muted-foreground">—</td>
@@ -563,7 +595,8 @@ export const Pricing: React.FC = () => {
               Request Enterprise Quote
             </DialogTitle>
             <DialogDescription>
-              Get a custom proposal with volume pricing, NET-30 invoicing, and dedicated implementation assistance.
+              Get a custom proposal with volume pricing, NET-30 invoicing, and dedicated
+              implementation assistance.
             </DialogDescription>
           </DialogHeader>
 
@@ -579,7 +612,9 @@ export const Pricing: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Expected Team Size (Seats)</label>
+              <label className="text-xs font-semibold text-foreground">
+                Expected Team Size (Seats)
+              </label>
               <Input
                 type="number"
                 min="50"
@@ -591,7 +626,9 @@ export const Pricing: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Specific Requirements or Integrations</label>
+              <label className="text-xs font-semibold text-foreground">
+                Specific Requirements or Integrations
+              </label>
               <textarea
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[80px]"
                 placeholder="e.g. SAML SSO with Okta, custom SLA, European data residency..."
@@ -604,7 +641,11 @@ export const Pricing: React.FC = () => {
               <Button type="button" variant="ghost" onClick={() => setIsEnterpriseModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmittingQuote} className="bg-pink-600 hover:bg-pink-700 text-white">
+              <Button
+                type="submit"
+                disabled={isSubmittingQuote}
+                className="bg-pink-600 hover:bg-pink-700 text-white"
+              >
                 {isSubmittingQuote ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                 Submit Quote Request
               </Button>

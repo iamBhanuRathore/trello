@@ -42,7 +42,7 @@ export function CreateTaskFromMessageModal({
 }: CreateTaskFromMessageModalProps) {
   useEscapeKey(onClose, isOpen);
 
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const orgId = user?.organizationId;
   const queryClient = useQueryClient();
 

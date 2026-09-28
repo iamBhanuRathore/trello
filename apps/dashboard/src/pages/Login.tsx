@@ -45,7 +45,8 @@ export function Login() {
   const [ssoError, setSsoError] = useState('');
 
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuthStore();
+  const login = useAuthStore((state) => state.login);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   // If already authenticated, redirect immediately
   useEffect(() => {

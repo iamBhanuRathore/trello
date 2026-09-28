@@ -56,7 +56,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isAdmin = user?.isPlatformAdmin || user?.role === 'org_owner' || user?.role === 'org_admin';

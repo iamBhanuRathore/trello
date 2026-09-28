@@ -8,14 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@boardly/ui/dropdown-menu';
-import {
-  User,
-  Settings,
-  Palette,
-  Shield,
-  LogOut,
-  ChevronDown,
-} from 'lucide-react';
+import { User, Settings, Palette, Shield, LogOut, ChevronDown } from 'lucide-react';
 
 interface UserProfileDropdownProps {
   onOpenAppearance?: () => void;
@@ -36,7 +29,8 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
   side,
   className,
 }) => {
-  const { user, logout } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
 
   const resolvedSide = side || (variant === 'sidebar' ? 'top' : 'bottom');
@@ -125,9 +119,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
             <p className="text-xs font-bold text-foreground truncate leading-snug">
               {user?.name || 'User'}
             </p>
-            <p className="text-[11px] text-muted-foreground truncate leading-snug">
-              {user?.email}
-            </p>
+            <p className="text-[11px] text-muted-foreground truncate leading-snug">{user?.email}</p>
             {user?.role && (
               <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20">
                 {user.role.replace('_', ' ')}

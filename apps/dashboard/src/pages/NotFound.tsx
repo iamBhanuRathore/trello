@@ -6,7 +6,7 @@ import { LayoutDashboard, ArrowLeft, LogIn, HelpCircle } from 'lucide-react';
 
 export const NotFound: React.FC = () => {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuthStore();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-background p-4 sm:p-8">
@@ -28,7 +28,8 @@ export const NotFound: React.FC = () => {
             Page not found
           </h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Sorry, we couldn’t find the page you’re looking for. It may have been deleted, renamed, or temporarily unavailable.
+            Sorry, we couldn’t find the page you’re looking for. It may have been deleted, renamed,
+            or temporarily unavailable.
           </p>
         </div>
 

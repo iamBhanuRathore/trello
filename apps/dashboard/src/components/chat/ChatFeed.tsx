@@ -48,7 +48,7 @@ interface ChatFeedProps {
 }
 
 export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false, onBack }) => {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const {
     setActiveThreadMessage,
     toggleDetailsPane,

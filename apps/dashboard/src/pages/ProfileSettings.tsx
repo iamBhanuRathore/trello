@@ -52,7 +52,7 @@ const TIMEZONES = [
 
 export function ProfileSettings() {
   const queryClient = useQueryClient();
-  const { checkAuth } = useAuthStore();
+  const checkAuth = useAuthStore((state) => state.checkAuth);
 
   // Profile fields state
   const [name, setName] = useState('');

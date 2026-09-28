@@ -26,7 +26,7 @@ const FREQUENCIES = [
 ];
 
 export function NotificationSettings() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const [preferences, setPreferences] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);

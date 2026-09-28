@@ -44,7 +44,7 @@ export function useMentionAutocomplete({
   setText,
   afterInsert,
 }: UseMentionAutocompleteArgs) {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [startIndex, setStartIndex] = useState(-1);

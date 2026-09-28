@@ -21,7 +21,7 @@ export function MentionCommentBox({
   const effectivePlaceholder =
     placeholder ||
     `Write a comment... (Type @ to tag a teammate, ${formatShortcut('mod+enter')} to post)`;
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const orgId = user?.organizationId;
 
   const [text, setText] = useState('');

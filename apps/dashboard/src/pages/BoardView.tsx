@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { api, getApiErrorMessage } from '../lib/api';
 import { toast } from 'sonner';
 import { useOptimisticMutation } from '../lib/useOptimisticMutation';
@@ -119,6 +120,11 @@ interface KanbanList {
   version?: number;
   cards: KanbanCard[];
 }
+
+/** Average card tile height — seeds the virtualizer before first measurement. */
+const CARD_ESTIMATED_HEIGHT = 104;
+/** Below this many cards, plain rendering is cheaper than a virtualizer. */
+const VIRTUALIZE_THRESHOLD = 20;
 
 const dropAnimation: DropAnimation = {
   sideEffects: defaultDropAnimationSideEffects({
@@ -399,7 +405,7 @@ export function BoardView() {
   );
 
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const [isAutomationsOpen, setIsAutomationsOpen] = useState(false);
   const [isFormsOpen, setIsFormsOpen] = useState(false);
   const [createTaskConfig, setCreateTaskConfig] = useState<{
@@ -413,6 +419,55 @@ export function BoardView() {
       storyPoints?: string;
     };
   }>({ isOpen: false });
+
+  // Stable column handlers — the per-column closures they replace broke memo()
+  // by handing every column a fresh function identity on each render.
+  const handleColumnAddCard = useCallback((listId: string, card: KanbanCard) => {
+    setLists((prev) =>
+      prev.map((l) => (l.id === listId ? { ...l, cards: [...l.cards, card] } : l))
+    );
+  }, []);
+
+  const handleColumnReplaceCard = useCallback(
+    (listId: string, tempId: string, serverCard: KanbanCard) => {
+      setLists((prev) =>
+        prev.map((l) =>
+          l.id === listId
+            ? { ...l, cards: l.cards.map((c) => (c.id === tempId ? serverCard : c)) }
+            : l
+        )
+      );
+    },
+    []
+  );
+
+  const handleColumnRemoveCard = useCallback((listId: string, tempId: string) => {
+    setLists((prev) =>
+      prev.map((l) =>
+        l.id === listId ? { ...l, cards: l.cards.filter((c) => c.id !== tempId) } : l
+      )
+    );
+  }, []);
+
+  const handleColumnFullEditor = useCallback(
+    (
+      listId: string,
+      data: {
+        title?: string;
+        description?: string;
+        assigneeId?: string;
+        dueDate?: string;
+        storyPoints?: string;
+      }
+    ) => {
+      setCreateTaskConfig({
+        isOpen: true,
+        initialData: { listId, ...data },
+      });
+    },
+    [setCreateTaskConfig]
+  );
+
   const [isEditingBoard, setIsEditingBoard] = useState(false);
   const [isDeletingBoard, setIsDeletingBoard] = useState(false);
   const [editBoardName, setEditBoardName] = useState('');
@@ -578,49 +633,20 @@ export function BoardView() {
             onDragCancel={handleDragCancel}
           >
             <div className="flex h-full gap-4 items-start">
+              {/* Memoized columns: these handlers are stable and untouched
+                  lists keep their object identity, so a drag-over frame only
+                  repaints the two columns that actually changed. */}
               {lists.map((list) => (
                 <ListColumn
                   key={list.id}
                   list={list}
                   boardId={boardId!}
                   isDraggingActive={!!activeCard}
-                  onAddCard={(c) => {
-                    const newLists = lists.map((l) =>
-                      l.id === list.id ? { ...l, cards: [...l.cards, c] } : l
-                    );
-                    setLists(newLists);
-                  }}
-                  onReplaceCard={(tempId, serverCard) => {
-                    setLists((prev) =>
-                      prev.map((l) =>
-                        l.id === list.id
-                          ? {
-                              ...l,
-                              cards: l.cards.map((c) => (c.id === tempId ? serverCard : c)),
-                            }
-                          : l
-                      )
-                    );
-                  }}
-                  onRemoveCard={(tempId) => {
-                    setLists((prev) =>
-                      prev.map((l) =>
-                        l.id === list.id
-                          ? { ...l, cards: l.cards.filter((c) => c.id !== tempId) }
-                          : l
-                      )
-                    );
-                  }}
+                  onAddCard={handleColumnAddCard}
+                  onReplaceCard={handleColumnReplaceCard}
+                  onRemoveCard={handleColumnRemoveCard}
                   onCardClick={handleCardClick}
-                  onOpenFullEditor={(data) => {
-                    setCreateTaskConfig({
-                      isOpen: true,
-                      initialData: {
-                        listId: list.id,
-                        ...data,
-                      },
-                    });
-                  }}
+                  onOpenFullEditor={handleColumnFullEditor}
                 />
               ))}
 
@@ -816,17 +842,20 @@ function ListColumn({
   list: KanbanList;
   boardId: string;
   isDraggingActive: boolean;
-  onAddCard: (c: KanbanCard) => void;
-  onReplaceCard: (tempId: string, serverCard: KanbanCard) => void;
-  onRemoveCard: (tempId: string) => void;
+  onAddCard: (listId: string, card: KanbanCard) => void;
+  onReplaceCard: (listId: string, tempId: string, serverCard: KanbanCard) => void;
+  onRemoveCard: (listId: string, tempId: string) => void;
   onCardClick: (id: string) => void;
-  onOpenFullEditor: (data: {
-    title?: string;
-    description?: string;
-    assigneeId?: string;
-    dueDate?: string;
-    storyPoints?: string;
-  }) => void;
+  onOpenFullEditor: (
+    listId: string,
+    data: {
+      title?: string;
+      description?: string;
+      assigneeId?: string;
+      dueDate?: string;
+      storyPoints?: string;
+    }
+  ) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: list.id,
@@ -837,7 +866,7 @@ function ListColumn({
   });
 
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -889,7 +918,7 @@ function ListColumn({
       queryKeys: [['board', 'full', boardId]],
       applyOptimistic: (payload) => {
         pendingTempId.current = `temp-${Date.now()}`;
-        onAddCard({
+        onAddCard(list.id, {
           id: pendingTempId.current,
           title: payload.title,
           listId: list.id,
@@ -903,12 +932,12 @@ function ListColumn({
         } as KanbanCard);
       },
       onSuccessExtra: (serverCard) => {
-        if (pendingTempId.current) onReplaceCard(pendingTempId.current, serverCard);
+        if (pendingTempId.current) onReplaceCard(list.id, pendingTempId.current, serverCard);
         pendingTempId.current = null;
       },
       onErrorExtra: (payload) => {
         // Roll back the temp card and restore the typed title so nothing is lost.
-        if (pendingTempId.current) onRemoveCard(pendingTempId.current);
+        if (pendingTempId.current) onRemoveCard(list.id, pendingTempId.current);
         pendingTempId.current = null;
         if (payload?.title) setTitle(payload.title);
       },
@@ -937,7 +966,7 @@ function ListColumn({
   };
 
   const handleFullEditor = () => {
-    onOpenFullEditor({
+    onOpenFullEditor(list.id, {
       title: title.trim(),
       description: description.trim() || undefined,
       assigneeId: assigneeId || undefined,
@@ -953,6 +982,28 @@ function ListColumn({
   };
 
   const cardIds = useMemo(() => list.cards.map((c) => c.id), [list.cards]);
+
+  // Windowed column body. Disabled during a drag so dnd-kit measures real
+  // rects for every sibling while it computes the drop position.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Only long columns are windowed, and windowing always suspends while a drag
+  // is active so dnd-kit can measure every sibling rect before computing the
+  // drop position.
+  const isVirtualized = !isDraggingActive && list.cards.length > VIRTUALIZE_THRESHOLD;
+
+  const virtualizer = useVirtualizer({
+    count: list.cards.length,
+    // The virtualizer is detached for the whole duration of a drag. Its scroll
+    // observer and per-measurement state updates interleave with dnd-kit's own
+    // measure->setState cycle; together they exceed React's nested update limit
+    // and white-screen the board with "Maximum update depth exceeded". Outside
+    // a drag it reattaches on the next render, so the windowed layout returns
+    // as soon as the drop settles.
+    getScrollElement: () => (isDraggingActive ? null : scrollRef.current),
+    estimateSize: () => CARD_ESTIMATED_HEIGHT,
+    overscan: 8,
+    getItemKey: (index) => list.cards[index]?.id ?? index,
+  });
 
   return (
     <div
@@ -1089,31 +1140,73 @@ function ListColumn({
         </Dialog>
       )}
 
-      <div className="flex-1 overflow-y-auto min-h-[50px] space-y-2 pr-0.5">
+      <div
+        ref={scrollRef}
+        data-virtualized-column={isVirtualized ? 'true' : 'false'}
+        className="flex-1 overflow-y-auto min-h-[50px] pr-0.5"
+      >
         <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
-          <div className="flex flex-col gap-2 min-h-[40px]">
-            {list.cards.map((card) => (
-              <SortableCard
-                key={card.id}
-                card={card}
-                isDraggingActive={isDraggingActive}
-                onClick={() => onCardClick(card.id)}
-              />
-            ))}
+          {isVirtualized ? (
+            /* Windowed rows: absolutely positioned against a spacer sized to the
+               full scroll height, with each row reporting its real height back
+               through measureElement so variable-height cards don't drift. */
+            <div
+              className="relative min-h-[40px]"
+              style={{ height: `${virtualizer.getTotalSize()}px` }}
+            >
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const card = list.cards[virtualRow.index];
+                if (!card) return null;
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={virtualizer.measureElement}
+                    className="absolute left-0 top-0 w-full pb-2"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    <SortableCard
+                      card={card}
+                      isDraggingActive={isDraggingActive}
+                      onCardClick={onCardClick}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Drag surface and short columns: plain static layout. dnd-kit
+               needs a complete, measurable list of siblings.
 
-            {list.cards.length === 0 && (
-              <div
-                className={`h-24 rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-1.5 text-xs font-medium ${
-                  isOver && isDraggingActive
-                    ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
-                    : 'border-border/60 text-muted-foreground/50 bg-muted/20'
-                }`}
-              >
-                <Plus className="w-4 h-4 opacity-70" />
-                <span>Drop tasks here</span>
-              </div>
-            )}
-          </div>
+               The empty-state drop zone must stay *inside* this container.
+               As a direct child of SortableContext it becomes part of the
+               over-column's measured geometry, and dnd-kit's measure->setState
+               cycle then oscillates until React aborts the drag with
+               "Maximum update depth exceeded". */
+            <div className="flex flex-col gap-2 min-h-[40px]">
+              {list.cards.map((card) => (
+                <SortableCard
+                  key={card.id}
+                  card={card}
+                  isDraggingActive={isDraggingActive}
+                  onCardClick={onCardClick}
+                />
+              ))}
+
+              {list.cards.length === 0 && (
+                <div
+                  className={`h-24 rounded-xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-1.5 text-xs font-medium ${
+                    isOver && isDraggingActive
+                      ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
+                      : 'border-border/60 text-muted-foreground/50 bg-muted/20'
+                  }`}
+                >
+                  <Plus className="w-4 h-4 opacity-70" />
+                  <span>Drop tasks here</span>
+                </div>
+              )}
+            </div>
+          )}
         </SortableContext>
       </div>
 
@@ -1250,11 +1343,11 @@ function ListColumn({
 function SortableCard({
   card,
   isDraggingActive,
-  onClick,
+  onCardClick,
 }: {
   card: KanbanCard;
   isDraggingActive: boolean;
-  onClick: () => void;
+  onCardClick: (id: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
@@ -1264,18 +1357,22 @@ function SortableCard({
     },
   });
 
+  // Stable per-card handler: an inline arrow here would give every card a new
+  // identity each render and defeat the memo on both this and KanbanCardView.
+  const handleClick = useCallback(() => onCardClick(card.id), [onCardClick, card.id]);
+
   const style = {
     transform: CSS.Translate.toString(transform),
     transition,
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} data-card-id={card.id} style={style} {...attributes} {...listeners}>
       <KanbanCardView
         card={card}
         isDragging={isDragging}
         isDraggingActive={isDraggingActive}
-        onClick={onClick}
+        onClick={handleClick}
       />
     </div>
   );
@@ -1495,7 +1592,12 @@ function CardHoverPreviewPortal({
   );
 }
 
-function KanbanCardView({
+// Only the leaf card is memoized. `ListColumn` and `SortableCard` must stay
+// un-memoized: they sit inside dnd-kit's SortableContext, which relies on them
+// re-rendering freely to propagate item indexes and rects to the active drag.
+// With immutable board updates an unchanged card keeps its object identity, so
+// this boundary is where the skipped renders actually happen.
+const KanbanCardView = memo(function KanbanCardView({
   card,
   isDragging = false,
   isOverlay = false,
@@ -1775,7 +1877,7 @@ function KanbanCardView({
       )}
     </div>
   );
-}
+});
 
 function AddListForm({
   boardId,
