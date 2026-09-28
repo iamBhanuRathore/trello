@@ -16,8 +16,8 @@ interface OptimisticOptions<TData, TVariables> {
   applyOptimistic?: (variables: TVariables) => void;
   /** Extra work on success (e.g. swap temp ids). Runs before invalidate. */
   onSuccessExtra?: (data: TData, variables: TVariables) => void;
-  /** Extra work on error after rollback (e.g. reset a form flag). */
-  onErrorExtra?: (variables: TVariables) => void;
+  /** Extra work on error after rollback (e.g. reset a form flag). Receives the error for status-specific handling (e.g. 409 conflicts). Return true when the error is fully handled to skip the default toast. */
+  onErrorExtra?: (variables: TVariables, err: unknown) => boolean | void;
   /** Query keys to invalidate after settle. Defaults to `queryKeys`. */
   invalidateKeys?: QueryKey[];
   /** Failure message for the error toast. */
@@ -60,10 +60,12 @@ export function useOptimisticMutation<TData = unknown, TVariables = void>(
     },
     onError: (err, variables, context) => {
       context?.restore();
-      onErrorExtra?.(variables);
-      toast.error(
-        getApiErrorMessage(err, errorMessage ?? 'Something went wrong. Please try again.')
-      );
+      const handled = onErrorExtra?.(variables, err);
+      if (handled !== true) {
+        toast.error(
+          getApiErrorMessage(err, errorMessage ?? 'Something went wrong. Please try again.')
+        );
+      }
     },
     onSettled: () => {
       for (const key of invalidateKeys ?? queryKeys) {

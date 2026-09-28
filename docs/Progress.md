@@ -2123,3 +2123,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Tests added:** `components.test.ts` (seed-on-signup, attach, precedence matrix, allowUnassigned-false, cross-org rule/component guards). Fixed `roles.test.ts` teardown for seeded roles (+ pre-existing subscriptions gap).
 - Tests & Validation: 45/45 green across components/roles/cards/chat/git/automations; backend `tsc` clean. Full suite 225/249 on clean DB — remaining 24 fail identically on clean tree (pre-existing seed-collision/fixture issues). Also repaired dev DB (was missing 0025+0026) and test DB bookkeeping.
 - What's next: admin UI for roles/rules; `requirePermission` union over team-role rows; Phase 2 OCC + WS reconcile.
+
+### 2026-09-28 --- Phase 2 OCC Ordering + Reconnect Gap-Fill
+
+- **What:** Migration `0027` (version on cards/lists) + `0028` (change-feed indexes). Version-guarded moves (409 + server truth), transactional rebalance on fractional crowding, `GET /boards/:id/changes?since=` feed. Dashboard: WS reconnect with backoff, in-place delta merge with full-refetch fallback, expectedVersion on moves with 409 info toast; fixed dead invalidate key, ws URL bug, user-object dep churn.
+- **Tests added:** stale-move 409 + rebalance unit tests (`card.test.ts`), changes-feed cursor/org/400 test (`board.test.ts`); also repaired `board.test.ts` teardown (subscriptions + seeded roles) fixing 2 pre-existing failures.
+- Tests & Validation: cards/lists/boards/components 18/18 green; backend + dashboard `tsc` clean, dashboard `oxlint` clean. Dev + test DBs migrated.
+- What's next: 5.3 DB perf batch (enrichment batching, remaining pagination), 5.4 virtualization, 5.5 media pipeline; admin UI for roles/rules.

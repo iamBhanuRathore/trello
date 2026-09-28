@@ -24,6 +24,21 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-28 — OCC Ordering + Reconnect Gap-Fill (Phase 2)
+
+**Context:** Simultaneous card moves overwrote each other (last-write-wins blind update); repeated midpoint inserts risk float-precision exhaustion with no compaction; WS drops forced full board refetches with no retry loop.
+
+**Decision:**
+
+1. `version INT DEFAULT 1` on cards+lists (`0027`); `moveCard`/`updateList` accept optional `expectedVersion` — conditional `UPDATE ... WHERE version=` +1, stale writers get 409 + current server truth (`VERSION_CONFLICT`). Legacy callers omitting the version keep last-write-wins (backward compatible).
+2. Precision safety: one `MIN(gap)` window aggregate per move; rewrite at `i*65536` in a single transaction (versions bumped so interleavers 409) when min gap < 0.001.
+3. `GET /boards/:id/changes?since=` (capped 500, indexed `(list_id,updated_at)`/`(board_id,updated_at)` via `0028`) feeds reconnect gap-fill; WS hook reconnects with capped exponential backoff, merges deltas into the `['board','full']` cache (unknown ids or cap-hit fall back to full invalidate), and stamps `expectedVersion` on moves with a 409-specific info toast (optimistic hook's `onErrorExtra` can now suppress the default toast by returning true).
+4. Live WS frames also patch the cache in place instead of invalidating; fixed the dead `['lists',boardId]` invalidate key and the `https://→wsps://` URL bug, and stabilized the effect dep on `userId`.
+
+**Alternatives considered:** Server-side position assignment (rejected — client midpoint keeps drag math local, version guards the race); CRDT/Lexorank keys (rejected for now — fractional + OCC + rebalance covers company-scale; revisit past ~10k cards/list).
+
+**Consequences:** All mutation broadcasts now carry `version`; dashboard must render from it (added to Kanban types).
+
 ### 2026-09-28 — Team Roles & Static Assignment Rules (Phase 1b backend)
 
 **Context:** No per-company role model (Lead/Developer/Tester) and no default-assignee policy existed — only a single static `intakeForms.defaultAssigneeId`. Needed company-admin configurability with static (non-smart) resolution.

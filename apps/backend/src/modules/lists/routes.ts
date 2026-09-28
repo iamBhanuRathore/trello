@@ -65,6 +65,7 @@ export const listRoutes = new Elysia({ prefix: '/lists', tags: ['Lists'] })
         name: t.Optional(t.String()),
         position: t.Optional(t.Number()),
         isArchived: t.Optional(t.Boolean()),
+        expectedVersion: t.Optional(t.Number()),
       }),
     }
   )

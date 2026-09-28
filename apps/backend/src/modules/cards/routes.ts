@@ -269,14 +269,26 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/:id/move',
     async ({ params, body, user, set }) => {
       try {
-        return await moveCard(db, params.id, user.organizationId, body.listId, body.position);
+        return await moveCard(
+          db,
+          params.id,
+          user.organizationId,
+          body.listId,
+          body.position,
+          user.userId,
+          body.expectedVersion
+        );
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
       beforeHandle: requirePermission('card.update'),
-      body: t.Object({ listId: t.String({ format: 'uuid' }), position: t.Number() }),
+      body: t.Object({
+        listId: t.String({ format: 'uuid' }),
+        position: t.Number(),
+        expectedVersion: t.Optional(t.Number()),
+      }),
     }
   )
 

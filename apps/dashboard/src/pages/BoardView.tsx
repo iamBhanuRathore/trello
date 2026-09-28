@@ -96,6 +96,7 @@ interface KanbanCard {
   description?: string | null;
   listId: string;
   position: number;
+  version?: number;
   dueDate?: string | null;
   storyPoints?: number | null;
   estimateMinutes?: number | null;
@@ -115,6 +116,7 @@ interface KanbanList {
   id: string;
   name: string;
   position: number;
+  version?: number;
   cards: KanbanCard[];
 }
 
@@ -209,14 +211,14 @@ export function BoardView() {
 
   const moveCardMutation = useOptimisticMutation<
     void,
-    { cardId: string; listId: string; position: number }
+    { cardId: string; listId: string; position: number; expectedVersion?: number }
   >(
-    async ({ cardId, listId, position }) => {
-      await api.patch(`/cards/${cardId}/move`, { listId, position });
+    async ({ cardId, listId, position, expectedVersion }) => {
+      await api.patch(`/cards/${cardId}/move`, { listId, position, expectedVersion });
     },
     {
       queryKeys: [['board', 'full', boardId]],
-      onErrorExtra: () => {
+      onErrorExtra: (_variables, err) => {
         // Roll the optimistic board back to the last server state.
         const cached = queryClient.getQueryData<{ lists: KanbanList[] }>([
           'board',
@@ -224,6 +226,13 @@ export function BoardView() {
           boardId,
         ]);
         if (cached?.lists) setLists(cached.lists);
+        // Version conflicts refetch via onSettled — show the specific
+        // message and suppress the generic error toast (return true).
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 409) {
+          toast.info('Another session moved this task — synced to the latest position.');
+          return true;
+        }
       },
       errorMessage: 'Failed to move task. Please try again.',
     }
@@ -372,6 +381,7 @@ export function BoardView() {
         cardId: activeId,
         listId: currentContainer.id,
         position: newPos,
+        expectedVersion: newCards[targetIndex]?.version,
       });
     },
     [lists, clonedLists, moveCardMutation]

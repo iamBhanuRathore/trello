@@ -7,6 +7,7 @@ import {
   listBoards,
   getBoard,
   getBoardFull,
+  getBoardChanges,
   updateBoard,
   deleteBoard,
   archiveBoard,
@@ -77,6 +78,23 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     },
     {
       beforeHandle: requirePermission('board.read'),
+    }
+  )
+
+  // GET /v1/boards/:id/changes?since=ISO — incremental gap-fill for reconnects.
+  // Must be registered before /:id so "changes" isn't captured as a param.
+  .get(
+    '/:id/changes',
+    async ({ params, query, user, set }) => {
+      try {
+        return await getBoardChanges(db, params.id, user.organizationId, query.since);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    {
+      beforeHandle: requirePermission('board.read'),
+      query: t.Object({ since: t.String() }),
     }
   )
 

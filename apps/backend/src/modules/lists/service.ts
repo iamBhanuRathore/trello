@@ -1,4 +1,4 @@
-import { eq, and, isNull, max, inArray } from 'drizzle-orm';
+import { eq, and, isNull, max, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   lists,
@@ -85,11 +85,11 @@ export async function updateList(
   db: Database,
   id: string,
   organizationId: string,
-  input: { name?: string; position?: number; isArchived?: boolean }
+  input: { name?: string; position?: number; isArchived?: boolean; expectedVersion?: number }
 ) {
   // We need to verify that this list belongs to a board in the user's org
   const [existingList] = await db
-    .select({ listId: lists.id, boardId: lists.boardId, name: lists.name })
+    .select({ listId: lists.id, boardId: lists.boardId, name: lists.name, version: lists.version })
     .from(lists)
     .innerJoin(boards, eq(boards.id, lists.boardId))
     .where(and(eq(lists.id, id), eq(boards.organizationId, organizationId)))
@@ -97,9 +97,19 @@ export async function updateList(
 
   if (!existingList) throw httpError(404, 'List not found');
 
+  if (input.expectedVersion !== undefined && existingList.version !== input.expectedVersion) {
+    throw Object.assign(httpError(409, 'List moved by another session — refetch and retry'), {
+      details: {
+        code: 'VERSION_CONFLICT',
+        current: { id, position: undefined, version: existingList.version },
+      },
+    });
+  }
+
+  const { expectedVersion: _ignored, ...fields } = input;
   const [updatedList] = await db
     .update(lists)
-    .set({ ...input, updatedAt: new Date() })
+    .set({ ...fields, version: sql`${lists.version} + 1`, updatedAt: new Date() })
     .where(eq(lists.id, id))
     .returning();
 

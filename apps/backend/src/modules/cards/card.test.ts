@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
@@ -106,6 +107,88 @@ describe('Cards Service', () => {
     const moved = await moveCard(db, card!.id, organization.id, list2!.id, 100);
     expect(moved.listId).toBe(list2!.id);
     expect(moved.position).toBe(100);
+  });
+
+  it('should reject stale moves with 409 instead of overwriting order', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { organization } = await signUp(db, {
+      name: 'Owner',
+      email: `owner_${id}@card.com`,
+      password: 'pass',
+      orgName: `OCC Org ${id}`,
+      orgSlug: `occ-org-${id}`,
+    });
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board',
+    });
+    const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
+    const card = await createCard(db, organization.id, { listId: list!.id, title: 'Race' });
+
+    // First mover wins and bumps the version.
+    const first = await moveCard(db, card!.id, organization.id, list!.id, 10, undefined, 1);
+    expect(first.version).toBe(2);
+
+    // Stale writer (still on version 1) gets 409 + current server truth.
+    const err = await moveCard(db, card!.id, organization.id, list!.id, 20, undefined, 1).catch(
+      (e) => e
+    );
+    expect(err.status).toBe(409);
+    expect(err.details.code).toBe('VERSION_CONFLICT');
+    expect(err.details.current.version).toBe(2);
+
+    // Fresh writer succeeds.
+    const second = await moveCard(db, card!.id, organization.id, list!.id, 20, undefined, 2);
+    expect(second.version).toBe(3);
+    expect(second.position).toBe(20);
+  });
+
+  it('should rebalance crowded fractional positions', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { organization } = await signUp(db, {
+      name: 'Owner',
+      email: `owner_${id}@card.com`,
+      password: 'pass',
+      orgName: `Rebalance Org ${id}`,
+      orgSlug: `rebalance-org-${id}`,
+    });
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board',
+    });
+    const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
+    const a = await createCard(db, organization.id, { listId: list!.id, title: 'A' });
+    await createCard(db, organization.id, { listId: list!.id, title: 'B' });
+
+    // Simulate precision exhaustion: crowd B next to A below the gap floor.
+    const { rebalanceListPositions } = await import('./service');
+    await db
+      .update(schema.cards)
+      .set({ position: 65536.0000001 })
+      .where(eq(schema.cards.listId, list!.id));
+    const count = await rebalanceListPositions(db, list!.id);
+    expect(count).toBe(2);
+    const rows = await db
+      .select({ position: schema.cards.position })
+      .from(schema.cards)
+      .where(eq(schema.cards.listId, list!.id))
+      .orderBy(schema.cards.position);
+    expect(rows[1]!.position - rows[0]!.position).toBe(65536);
+    void a;
   });
 
   it('should prevent 3-level nesting of subtasks', async () => {

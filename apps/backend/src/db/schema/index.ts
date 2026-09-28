@@ -428,9 +428,14 @@ export const lists = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     position: real('position').notNull(),
     isArchived: boolean('is_archived').notNull().default(false),
+    // OCC guard for concurrent reorders — clients send the version they saw.
+    version: integer('version').notNull().default(1),
     ...timestamps,
   },
-  (t) => [index('lists_board_idx').on(t.boardId)]
+  (t) => [
+    index('lists_board_idx').on(t.boardId),
+    index('lists_board_updated_idx').on(t.boardId, t.updatedAt),
+  ]
 );
 
 // ─── Custom Stages ────────────────────────────────────────────────────────────
@@ -498,6 +503,8 @@ export const cards = pgTable(
     isArchived: boolean('is_archived').notNull().default(false),
     isPrivate: boolean('is_private').notNull().default(false),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    // OCC guard for concurrent moves — clients send the version they saw.
+    version: integer('version').notNull().default(1),
     ...timestamps,
   },
   (t) => [
@@ -508,6 +515,8 @@ export const cards = pgTable(
     index('cards_stage_idx').on(t.stageId),
     index('cards_priority_idx').on(t.priorityId),
     index('cards_scheduled_idx').on(t.scheduledStart, t.scheduledEnd),
+    // changes-feed gap-fill: rows touched since a cursor, per list.
+    index('cards_list_updated_idx').on(t.listId, t.updatedAt),
   ]
 );
 

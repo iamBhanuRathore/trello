@@ -1,4 +1,4 @@
-import { eq, and, isNull, inArray } from 'drizzle-orm';
+import { eq, and, isNull, inArray, gt } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   boards,
@@ -159,6 +159,73 @@ export interface BoardFullList {
 export interface BoardFull {
   board: typeof boards.$inferSelect;
   lists: BoardFullList[];
+}
+
+/**
+ * Incremental change feed for reconnect gap-fill: rows in this board with
+ * updatedAt after `since` (capped). Clients upsert by id instead of
+ * refetching the whole board. Never cached — it is per-cursor by definition.
+ */
+const CHANGES_LIMIT = 500;
+
+export async function getBoardChanges(
+  db: Database,
+  boardId: string,
+  organizationId: string,
+  since: string
+) {
+  const sinceDate = new Date(since);
+  if (Number.isNaN(sinceDate.getTime())) throw httpError(400, 'Invalid since cursor');
+
+  const [board] = await db
+    .select({ id: boards.id })
+    .from(boards)
+    .where(
+      and(
+        eq(boards.id, boardId),
+        eq(boards.organizationId, organizationId),
+        isNull(boards.deletedAt)
+      )
+    )
+    .limit(1);
+  if (!board) throw httpError(404, 'Board not found or access denied');
+
+  const changedLists = await db
+    .select({
+      id: lists.id,
+      boardId: lists.boardId,
+      name: lists.name,
+      position: lists.position,
+      version: lists.version,
+      isArchived: lists.isArchived,
+      updatedAt: lists.updatedAt,
+    })
+    .from(lists)
+    .where(and(eq(lists.boardId, boardId), gt(lists.updatedAt, sinceDate)))
+    .limit(CHANGES_LIMIT);
+
+  const changedCards = await db
+    .select({
+      id: cards.id,
+      listId: cards.listId,
+      title: cards.title,
+      position: cards.position,
+      version: cards.version,
+      isArchived: cards.isArchived,
+      updatedAt: cards.updatedAt,
+    })
+    .from(cards)
+    .innerJoin(lists, eq(lists.id, cards.listId))
+    .where(
+      and(
+        eq(lists.boardId, boardId),
+        eq(cards.organizationId, organizationId),
+        gt(cards.updatedAt, sinceDate)
+      )
+    )
+    .limit(CHANGES_LIMIT);
+
+  return { lists: changedLists, cards: changedCards, serverTime: new Date().toISOString() };
 }
 
 /**

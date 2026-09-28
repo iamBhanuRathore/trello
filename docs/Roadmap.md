@@ -117,7 +117,7 @@ Checkable version of the Build Order from `trello-clone-architecture.md` §12. A
 
 - [x] 5.0 Tenant isolation: org predicates on all card/chat sub-resources, `card.assign` enforcement, org-member invite invariant, 404 fail-closed, org-namespaced cache keys, upload caps, IDOR regression tests
 - [x] 5.1 Company-configurable roles (Lead/Developer/Tester) + static assignment_rules + components with lead fallback (backend + APIs; admin UI pending)
-- [ ] 5.2 OCC ordering (version-guarded moves, rebalance job) + WS reconnect with `changes?since=` gap-fill
+- [x] 5.2 OCC ordering (version-guarded moves, rebalance job) + WS reconnect with `changes?since=` gap-fill
 - [ ] 5.3 DB perf: composite indexes, batched message enrichment, pagination caps everywhere, log partitioning/archiving
 - [ ] 5.4 Frontend: list virtualization, memoized cards, scoped dnd state, store selectors
 - [ ] 5.5 Media: unified request-upload/confirm flow, presigned-GET reads, virus-scan gate

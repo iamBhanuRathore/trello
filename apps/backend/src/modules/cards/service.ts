@@ -106,8 +106,11 @@ async function linkCreateComponents(
   return valid.map((c) => c.id);
 }
 
-/** Tenant gate for every card sub-resource: single indexed PK lookup + org match. */
-async function verifyCardAccess(db: Database, cardId: string, organizationId: string) {
+/** Tenant gate for every card sub-resource: single indexed PK lookup + org match. */ async function verifyCardAccess(
+  db: Database,
+  cardId: string,
+  organizationId: string
+) {
   const [card] = await db
     .select({ id: cards.id })
     .from(cards)
@@ -1082,23 +1085,95 @@ export async function updateCard(db: Database, id: string, organizationId: strin
   return card;
 }
 
+/** Minimum fractional gap before a list is rewritten (precision safety). */
+const MIN_POSITION_GAP = 0.001;
+const REBALANCE_SPACING = 65536;
+
+export async function rebalanceListPositions(db: Database, listId: string): Promise<number> {
+  const rows = await db
+    .select({ id: cards.id })
+    .from(cards)
+    .where(and(eq(cards.listId, listId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
+    .orderBy(cards.position, cards.id);
+  // Single transaction: renumber + bump versions so concurrent movers conflict
+  // loudly (409) instead of interleaving with the rewrite.
+  type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+  await db.transaction(async (tx: Tx) => {
+    let pos = REBALANCE_SPACING;
+    for (const row of rows) {
+      await (tx as unknown as Database)
+        .update(cards)
+        .set({ position: pos, version: sql`${cards.version} + 1`, updatedAt: new Date() })
+        .where(eq(cards.id, row.id));
+      pos += REBALANCE_SPACING;
+    }
+  });
+  return rows.length;
+}
+
+async function maybeRebalanceList(db: Database, listId: string): Promise<void> {
+  const result = await db
+    .execute(
+      sql`SELECT MIN(next_pos - pos) AS "minGap" FROM (
+        SELECT position AS pos, LEAD(position) OVER (ORDER BY position) AS next_pos
+        FROM cards WHERE list_id = ${listId} AND is_archived = false AND deleted_at IS NULL
+      ) gaps WHERE next_pos IS NOT NULL`
+    )
+    .catch(() => null);
+  const rows = (result ?? []) as unknown as Array<Record<string, unknown>>;
+  const minGap = Number(rows[0]?.['minGap'] ?? Infinity);
+  if (Number.isFinite(minGap) && minGap < MIN_POSITION_GAP) {
+    await rebalanceListPositions(db, listId);
+  }
+}
+
 export async function moveCard(
   db: Database,
   id: string,
   organizationId: string,
   newListId: string,
   newPosition: number,
-  actorId?: string
+  actorId?: string,
+  expectedVersion?: number
 ) {
   await verifyListAccess(db, newListId, organizationId);
 
+  // Optimistic concurrency: when the client sends the version it rendered,
+  // the write only lands if nothing moved the card since. Stale writers get
+  // 409 + current server truth instead of silently overwriting order.
+  const conditions = [eq(cards.id, id), eq(cards.organizationId, organizationId)];
+  if (expectedVersion !== undefined) conditions.push(eq(cards.version, expectedVersion));
+
   const [card] = await db
     .update(cards)
-    .set({ listId: newListId, position: newPosition, updatedAt: new Date() })
-    .where(and(eq(cards.id, id), eq(cards.organizationId, organizationId)))
+    .set({
+      listId: newListId,
+      position: newPosition,
+      version: sql`${cards.version} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(and(...conditions))
     .returning();
 
-  if (!card) throw httpError(404, 'Card not found');
+  if (!card) {
+    if (expectedVersion !== undefined) {
+      const [current] = await db
+        .select({
+          id: cards.id,
+          listId: cards.listId,
+          position: cards.position,
+          version: cards.version,
+        })
+        .from(cards)
+        .where(and(eq(cards.id, id), eq(cards.organizationId, organizationId)))
+        .limit(1);
+      if (!current) throw httpError(404, 'Card not found');
+      throw Object.assign(httpError(409, 'Card moved by another session — refetch and retry'), {
+        details: { code: 'VERSION_CONFLICT', current },
+      });
+    }
+    throw httpError(404, 'Card not found');
+  }
   const boardId = await getBoardIdForCard(db, id);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.moved', card);
@@ -1112,6 +1187,9 @@ export async function moveCard(
     await bumpBoardCache(boardId);
   }
   await bumpForCard(db, id);
+  // Fractional positions lose precision after ~20 repeated midpoint inserts.
+  // One cheap aggregate per move detects crowding; rewrite is transactional.
+  await maybeRebalanceList(db, newListId).catch(() => {});
   if (actorId) {
     const [targetList] = await db
       .select({ name: lists.name })
