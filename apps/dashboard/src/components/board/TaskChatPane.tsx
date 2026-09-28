@@ -148,7 +148,8 @@ function isActivityComment(body: string): boolean {
     trimmed.startsWith('🏷️') ||
     trimmed.startsWith('👀') ||
     trimmed.startsWith('👤') ||
-    trimmed.startsWith('🤝')
+    trimmed.startsWith('🤝') ||
+    trimmed.startsWith('🔀')
   );
 }
 

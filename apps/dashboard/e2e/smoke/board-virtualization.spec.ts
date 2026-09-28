@@ -241,6 +241,15 @@ test.describe('board column virtualization', () => {
     // Windowing resumes once the drag ends.
     const windowedAfter = await mountedCardCount(page);
     expect(windowedAfter, 'column is windowed again after the drop').toBeLessThan(25);
+
+    // The move is recorded in the card's history: opening the task shows a
+    // system pill naming the source and target columns. Exact text match —
+    // a substring would also match cards 10-19 and open the wrong task.
+    await page.getByText(`E2E drag card ${STAMP} 1`, { exact: true }).click();
+    await expect(page).toHaveURL(/card=/, { timeout: 20000 });
+    await expect(page.getByText(/moved from source to target/i).first()).toBeVisible({
+      timeout: 20000,
+    });
   });
 
   test('short columns render every card without windowing', async ({ page, request }) => {

@@ -109,6 +109,47 @@ describe('Cards Service', () => {
     expect(moved.position).toBe(100);
   });
 
+  it('should log a move-history entry on list change, but not on reorder', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { user, organization } = await signUp(db, {
+      name: 'Owner',
+      email: `owner_${id}@card.com`,
+      password: 'pass',
+      orgName: `History Org ${id}`,
+      orgSlug: `history-org-${id}`,
+    });
+
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board 1',
+    });
+    const list1 = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
+    const list2 = await createList(db, organization.id, { boardId: board!.id, name: 'Doing' });
+
+    const card = await createCard(db, organization.id, { listId: list1!.id, title: 'Task' });
+
+    // Cross-list move writes a 🔀 history comment with from/to names.
+    await moveCard(db, card!.id, organization.id, list2!.id, 100, user!.id);
+    const afterMove = await listComments(db, card!.id, organization.id);
+    const entries = afterMove.filter((c: any) => c.body?.startsWith('🔀'));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.body).toContain('To Do');
+    expect(entries[0]!.body).toContain('Doing');
+    expect(entries[0]!.userId).toBe(user!.id);
+
+    // Same-list reorder is not a move — the feed stays clean.
+    await moveCard(db, card!.id, organization.id, list2!.id, 200, user!.id);
+    const afterReorder = await listComments(db, card!.id, organization.id);
+    expect(afterReorder.filter((c: any) => c.body?.startsWith('🔀'))).toHaveLength(1);
+  });
+
   it('should reject stale moves with 409 instead of overwriting order', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const { organization } = await signUp(db, {

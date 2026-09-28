@@ -1155,6 +1155,18 @@ export async function moveCard(
 ) {
   await verifyListAccess(db, newListId, organizationId);
 
+  // Source list for the move-history entry. Best-effort provenance: the read
+  // and the guarded write below aren't atomic, but a lost race surfaces as
+  // 409/404 (no history written), and only the winning writer logs — so the
+  // recorded "from" is always a list the card actually left.
+  const [previous] = await db
+    .select({ listId: cards.listId, listName: lists.name })
+    .from(cards)
+    .leftJoin(lists, eq(lists.id, cards.listId))
+    .where(and(eq(cards.id, id), eq(cards.organizationId, organizationId)))
+    .limit(1)
+    .catch(() => [undefined] as any);
+
   // Optimistic concurrency: when the client sends the version it rendered,
   // the write only lands if nothing moved the card since. Stale writers get
   // 409 + current server truth instead of silently overwriting order.
@@ -1224,6 +1236,17 @@ export async function moveCard(
         actorId,
         `🔀 ${label} moved to **${targetList?.name || 'another column'}**`
       ).catch(() => {});
+    }
+    // Persistent per-card move history, rendered as a system pill in the task
+    // chat (same convention as the label/assignee/watcher loggers). Only
+    // list changes are logged — same-list reorders would drown the feed.
+    if (previous?.listId && previous.listId !== newListId) {
+      await logCardHistory(
+        db,
+        id,
+        actorId,
+        `🔀 Moved from **${previous.listName || 'a column'}** to **${targetList?.name || 'another column'}**`
+      );
     }
   }
   return card;
