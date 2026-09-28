@@ -583,6 +583,16 @@ export const SEED_USERS: UserPersona[] = [
 ];
 
 export async function seedFullOrganization(force = false) {
+  // Demo seed uses a single well-known password for all 50 users (E2E + dev
+  // quick-login depend on it). Never allow it against production data by
+  // accident — explicit override required.
+  if (process.env['NODE_ENV'] === 'production' && process.env['BOARDLY_SEED_PRODUCTION'] !== '1') {
+    console.error(
+      '❌  Refusing to seed demo organization in production (shared Password123! credentials).'
+    );
+    console.error('   Set BOARDLY_SEED_PRODUCTION=1 to override explicitly.');
+    process.exit(1);
+  }
   try {
     // Platform-admin backfill (idempotent, runs even on the fast-path skip below):
     // the OPS console login + superadmin.spec expect Alex to hold isPlatformAdmin.

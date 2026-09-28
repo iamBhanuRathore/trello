@@ -12,6 +12,8 @@ on:
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:
 
+# contents:write is required — this workflow pushes the updated Helm tag back
+# to main. Self-trigger loops are contained by the bot-actor guard + [skip ci].
 permissions:
   contents: write
   packages: write
@@ -58,6 +60,9 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Update Helm values with new image tag
+        # Guard against self-trigger loops: only push from human commits, and the
+        # [skip ci] trailer keeps the resulting push from retriggering this workflow.
+        if: github.actor != 'github-actions[bot]'
         run: |
           IMAGE_TAG="${{ github.sha }}"
           sed -i "s/tag: .*/tag: \"${IMAGE_TAG}\"/" infra/helm/boardly-backend/values.yaml
