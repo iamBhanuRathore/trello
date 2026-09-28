@@ -72,18 +72,13 @@ await connectRedis();
 const allowedOrigins = [...(env.DASHBOARD_URL?.split(',').map((s) => s.trim()) || [])];
 
 export const isAllowedOrigin = (origin: string | null): boolean => {
-  if (!origin) return true;
-  // Always permit in development or test mode
+  if (!origin) return false;
+  // Dev/test convenience only — production uses the strict allowlist below.
   if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') return true;
+  // Strict allowlist from DASHBOARD_URL. No LAN/private-range bypass: a reflected
+  // origin combined with allow-credentials would hand credentialed access to any
+  // private-network page (CSRF-adjacent). Non-browser clients don't need ACAO.
   if (allowedOrigins.includes(origin)) return true;
-  // Localhost, 127.0.0.1, 0.0.0.0, [::1], or private LAN IPs
-  if (
-    /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(
-      origin
-    )
-  ) {
-    return true;
-  }
   return false;
 };
 
@@ -113,10 +108,10 @@ export const applyCorsHeaders = (headers: Record<string, any>, request: Request)
   headers['access-control-allow-credentials'] = 'true';
   headers['access-control-allow-methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD';
 
-  const reqHeaders = request.headers.get('access-control-request-headers');
-  headers['access-control-allow-headers'] = reqHeaders
-    ? reqHeaders
-    : 'Content-Type, Authorization, x-organization-id, x-requested-with, Accept, Origin, baggage, sentry-trace, Cache-Control, Pragma, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform';
+  // Fixed allow-headers list: never reflect access-control-request-headers
+  // alongside allow-credentials (lets a permitted origin smuggle exotic headers).
+  headers['access-control-allow-headers'] =
+    'Content-Type, Authorization, x-organization-id, x-requested-with, Accept, Origin, baggage, sentry-trace, Cache-Control, Pragma, sec-ch-ua, sec-ch-ua-mobile, sec-ch-ua-platform';
 
   // Chromium & Brave Private Network Access (PNA) preflight support
   if (

@@ -133,34 +133,62 @@ async function executeLuaTokenBucket(
 }
 
 interface RateLimiterContext {
-  user?: { organizationId?: string };
+  user?: { userId?: string; organizationId?: string };
   planTier?: PlanTier;
+  request?: Request;
   set: { status?: number | string; headers?: HTTPHeaders };
+}
+
+// Pre-auth / unauthenticated bucket: strict, keyed by client IP so sign-in,
+// sign-up, refresh, SSO and invite endpoints can't be brute-forced without bound.
+const PRE_AUTH_LIMIT: RateLimitConfig = { rps: 2, burst: 30 };
+
+function clientIp(request?: Request): string {
+  if (!request) return 'unknown';
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const first = forwarded.split(',')[0]?.trim();
+    if (first) return first.slice(0, 64);
+  }
+  const realIp = request.headers.get('x-real-ip')?.trim();
+  if (realIp) return realIp.slice(0, 64);
+  return 'unknown';
 }
 
 /**
  * Token-bucket rate limiter middleware.
- * Enforces per-org rate limits after JWT authentication.
+ * - Authenticated with org context → per-org bucket (plan tier).
+ * - Pre-auth / no org context → per-IP bucket (strict). Previously these
+ *   requests skipped limiting entirely (unbounded credential-stuffing).
  *
  * Fail-Open Policy: If Redis is unavailable or times out (>400ms),
  * the request is allowed through and metric is incremented.
  */
 export const rateLimiterMiddleware = () =>
   new Elysia({ name: 'rateLimiter' }).onBeforeHandle(
-    async ({ user, planTier, set }: RateLimiterContext) => {
-      // If unauthenticated or no org context, allow down to IP limiting at ingress / route auth
+    async ({ user, planTier, request, set }: RateLimiterContext) => {
       const orgId = user?.organizationId;
-      if (!orgId) return undefined;
+      const userId = user?.userId;
 
-      const tier: PlanTier = planTier || (await resolveOrgPlanTier(orgId));
-      const config = PLAN_RATE_LIMITS[tier] || PLAN_RATE_LIMITS.free;
-      const key = `ratelimit:org:${orgId}`;
+      let key: string;
+      let config: RateLimitConfig;
+      let tier: PlanTier | 'pre-auth';
+      if (orgId) {
+        tier = planTier || (await resolveOrgPlanTier(orgId));
+        config = PLAN_RATE_LIMITS[tier] || PLAN_RATE_LIMITS.free;
+        // Per-user sub-key: one member can't burn the whole org bucket (DoS).
+        key = userId ? `ratelimit:org:${orgId}:user:${userId}` : `ratelimit:org:${orgId}`;
+      } else {
+        tier = 'pre-auth';
+        config = PRE_AUTH_LIMIT;
+        key = `ratelimit:ip:${clientIp(request)}`;
+      }
       const nowSec = Date.now() / 1000;
 
       if (!isRedisAvailable() || !getDataClient()) {
         // Fail-open
         metrics.rateLimiterFailOpenTotal++;
-        logger.warn({ org_id: orgId }, 'Rate limiter fail-open: Redis is unavailable');
+        logger.warn({ key }, 'Rate limiter fail-open: Redis is unavailable');
         return undefined;
       }
 
@@ -176,7 +204,7 @@ export const rateLimiterMiddleware = () =>
 
         if ('timeout' in outcome) {
           metrics.rateLimiterFailOpenTotal++;
-          logger.warn({ org_id: orgId }, 'Rate limiter fail-open: Redis check timed out (>400ms)');
+          logger.warn({ key }, 'Rate limiter fail-open: Redis check timed out (>400ms)');
           return undefined;
         }
 
@@ -202,10 +230,7 @@ export const rateLimiterMiddleware = () =>
         // Fail-open on any Redis exception
         const errMsg = err instanceof Error ? err.message : String(err);
         metrics.rateLimiterFailOpenTotal++;
-        logger.error(
-          { err: errMsg, org_id: orgId },
-          'Rate limiter evaluation error — failing open'
-        );
+        logger.error({ err: errMsg, key }, 'Rate limiter evaluation error — failing open');
       }
       return undefined;
     }
