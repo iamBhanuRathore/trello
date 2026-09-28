@@ -2163,3 +2163,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Tests added:** backend `card.test.ts` (cross-list move logs with from/to + actor; reorder logs nothing); drag e2e extended to open the moved task and assert the pill (exact-text match — substring also matches cards 10–19).
 - Tests & Validation: backend `card.test.ts` 9 pass; smoke tier 13 passed / 1 skipped; backend + dashboard `tsc` clean, dashboard `oxlint`/prettier clean.
 - Follow-ups: `card_events` table exists in schema but has no readers/writers (dead — adopt or drop later); dev Neon DB is behind migrations and `db:migrate` dies on pre-existing enum (needs journal reconciliation before it can advance).
+
+### 2026-09-28 --- Dev Neon DB Reconciled to Current Schema
+
+- **What:** the dev backend's Neon database had an empty migration journal and a schema stuck at ~0024 (missing 0025 privacy columns, 0026 team-roles tables, 0027 OCC versions, 0029 change-seq, 0030/0031 + 0028 indexes), so list/card/priority/move routes 500'd with `errorMissingColumn`. `db:migrate` could not advance it (replays from 0000, dies on pre-existing enum).
+- **Fix:** verified every 0000–0024 effect (tables, columns, types, labels, indexes, constraints, RLS policies, task-number backfill) present via information_schema/pg_catalog, backfilled journal rows where snapshots exist (0–9, 13–15, 26), then applied 0025–0031 SQL directly (all idempotent: `IF NOT EXISTS`/`OR REPLACE`/guarded dedupe, no seeds), each in its own transaction. Verified columns/tables/indexes/sequence/triggers + `VACUUM ANALYZE`.
+- Tests & Validation: API smoke on Neon (list/card create, move + history entry, board full, priorities) all 200; smoke tier 13 passed / 1 skipped against Neon. No code changes — data/journal only.
+- Follow-ups: journal still lacks rows for entries without snapshot files (10–12, 16–25, 27–31) and `meta/` only keeps 14 snapshots, so `db:migrate` still cannot run cleanly on Neon — needs snapshot regeneration or a repaired `db:migrate` that tolerates drift (plus removing the `|| true` swallow in `dev.sh` that hid this).
