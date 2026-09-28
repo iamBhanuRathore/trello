@@ -816,3 +816,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** virtualizing through a single stable tree with `rangeExtractor` (rejected — the still-mounted virtualizer's measurement state updates interleave with dnd-kit's measure→setState cycle and the board white-screens mid-drag); `memo` on `ListColumn`/`SortableCard` (rejected — empirically produces the same "Maximum update depth exceeded" freeze); windowing the active drag column (rejected — collision math needs unmounted rows).
 
 **Decision:** JSX-branch on `isVirtualized` (`!isDraggingActive && cards > 20`): long idle columns window via `@tanstack/react-virtual` (estimate 104px, overscan 8, `measureElement`, card-id keys); any active drag or short column renders plain static rows. Only the leaf `KanbanCardView` is memoized, enabled by a clone-on-write feed merge that returns the original cache object when a change page alters nothing (preserves TanStack Query structural sharing). The "Drop tasks here" empty state MUST stay inside the cards container — as a direct `SortableContext` child it perturbs the over-column's measured geometry into the same update loop (found by elimination bisect, guarded by a mid-drag e2e page-error assertion). Benchmark: Trello/Linear window long lists and render drags in full; matched.
+
+## 2026-09-28 — Security Fix Trade-offs (Audit Remediation)
+
+**Context:** 30-finding audit (auth bypass, SSRF, stored XSS, token storage, tenant isolation) needed remediation without breaking dev/E2E flows that depend on demo credentials and mock auth.
+
+**Decision:**
+
+- SSO `/callback` now takes a WorkOS `code` (verified server-side) instead of self-asserted identity; test `mock_test_` codes only under `NODE_ENV=test` (bun sets it). Old `{domain,email,name}` shape rejected — breaking change, frontend updated.
+- Invite/SCIM bearer tokens stored as sha256 with show-once UX (resend/regenerate to rotate); legacy rows fail closed (invites self-heal in ≤7d via expiry).
+- JWTs gain `iss`/`aud` — pre-existing tokens rejected, all sessions re-login once.
+- `FORCE RLS` NOT enabled: app connects as table owner and never sets `app.current_org_id`, so enforcement would return zero rows outage-wide. Tenant isolation stays app-layer (explicit org filters + membership checks) until traffic moves through `withOrgContext`.
+- Demo seed keeps shared `Password123!` (E2E/dev-login depend on it) but hard-refuses production without `BOARDLY_SEED_PRODUCTION=1`.
+- Benchmark: matches Linear/Jira posture — short-lived access + rotating refresh with reuse detection, allowlisted redirects/uploads, hashed invite-style tokens.
