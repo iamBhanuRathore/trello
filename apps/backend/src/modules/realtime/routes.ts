@@ -1,9 +1,11 @@
 import { Elysia } from 'elysia';
+import { eq } from 'drizzle-orm';
 import { verifyAccessToken } from '../../middleware/auth';
 import { eventBus } from '../../lib/event-bus';
 import { presenceStore, initializeRedisPubSub, onRedisBroadcast } from '../../redis';
 import type { PresenceUser } from '../../redis';
 import { db } from '../../db/index';
+import { boards } from '../../db/schema/index';
 import { handleChatSocketAction, type ChatSocketMessage } from '../chat/chat.gateway';
 import {
   handlePresenceSocketAction,
@@ -34,6 +36,20 @@ export interface SocketInboundMessage {
 }
 
 export type { PresenceUser };
+
+/**
+ * Confirms a board belongs to the socket owner's organization.
+ * Every board-scoped WS action must pass this before subscribing or mutating.
+ */
+async function assertBoardAccess(boardId: string, organizationId?: string): Promise<boolean> {
+  if (!organizationId) return false;
+  const [row] = await db
+    .select({ organizationId: boards.organizationId })
+    .from(boards)
+    .where(eq(boards.id, boardId))
+    .limit(1);
+  return row?.organizationId === organizationId;
+}
 
 export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
   async open(ws) {
@@ -88,6 +104,10 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
     // 3. Board Real-time: Subscribe & Register Presence
     if (message.action === 'subscribe' && message.boardId) {
       const boardId = message.boardId;
+      if (!(await assertBoardAccess(boardId, wsData.organizationId))) {
+        ws.send({ type: 'error', message: 'Forbidden — board not in your organization' });
+        return;
+      }
       const topic = `board:${boardId}`;
       ws.subscribe(topic);
       subscribedBoards?.add(boardId);
@@ -115,6 +135,7 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
     // 4. Board Real-time: Active Card Focus / Viewing
     else if (message.action === 'card_focus' && message.boardId) {
       const boardId = message.boardId;
+      if (!(await assertBoardAccess(boardId, wsData.organizationId))) return;
       const topic = `board:${boardId}`;
 
       const updated = await presenceStore.updateUser(boardId, userId, {
@@ -133,6 +154,7 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
     // 5. Board Real-time: Card Comment Typing Indicators
     else if (message.action === 'typing' && message.boardId) {
       const boardId = message.boardId;
+      if (!(await assertBoardAccess(boardId, wsData.organizationId))) return;
       const topic = `board:${boardId}`;
 
       const updated = await presenceStore.updateUser(boardId, userId, {
@@ -153,6 +175,7 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
     // 6. Board Real-time: Heartbeat Keep-Alive
     else if (message.action === 'heartbeat' && message.boardId) {
       const boardId = message.boardId;
+      if (!(await assertBoardAccess(boardId, wsData.organizationId))) return;
       await presenceStore.refreshUser(boardId, userId);
       await recordUserHeartbeat(userId);
       ws.send({ type: 'heartbeat:ack', boardId, timestamp: Date.now() });

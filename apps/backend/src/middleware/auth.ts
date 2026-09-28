@@ -18,6 +18,8 @@ import { getCachedAllow, setCachedAllow } from '../lib/cache';
 import { logger } from '../lib/logger';
 
 const JWT_SECRET = new TextEncoder().encode(env.JWT_SECRET);
+const JWT_ISSUER = 'boardly';
+const JWT_AUDIENCE = 'boardly-api';
 
 export interface AuthContext {
   userId: string;
@@ -79,6 +81,8 @@ export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
 export async function signAccessToken(payload: AuthContext): Promise<string> {
   return new SignJWT(payload as unknown as Record<string, unknown>)
     .setProtectedHeader({ alg: 'HS256' })
+    .setIssuer(JWT_ISSUER)
+    .setAudience(JWT_AUDIENCE)
     .setIssuedAt()
     .setExpirationTime(env.JWT_EXPIRES_IN)
     .sign(JWT_SECRET);
@@ -86,10 +90,54 @@ export async function signAccessToken(payload: AuthContext): Promise<string> {
 
 /**
  * Verifies a JWT access token and returns the payload.
+ * Rejects tokens with wrong issuer/audience and malformed payloads.
+ * NOTE: pre-existing tokens issued without iss/aud are rejected (re-login required).
  */
 export async function verifyAccessToken(token: string): Promise<AuthContext> {
-  const { payload } = await jwtVerify(token, JWT_SECRET);
-  return payload as unknown as AuthContext;
+  const { payload } = await jwtVerify(token, JWT_SECRET, {
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+  });
+  const { userId, organizationId, isPlatformAdmin } = payload as {
+    userId?: unknown;
+    organizationId?: unknown;
+    isPlatformAdmin?: unknown;
+  };
+  if (typeof userId !== 'string' || userId.length === 0) {
+    throw new Error('Invalid token payload: userId');
+  }
+  if (organizationId !== undefined && typeof organizationId !== 'string') {
+    throw new Error('Invalid token payload: organizationId');
+  }
+  return {
+    userId,
+    organizationId: organizationId ?? '',
+    isPlatformAdmin: isPlatformAdmin === true,
+  };
+}
+
+/**
+ * Confirms the token holder is still an active member of the token's org.
+ * Cached 60s (strict improvement over the 15m token lifetime).
+ */
+async function assertActiveOrgMembership(userId: string, orgId: string): Promise<boolean> {
+  const { cachedTTL } = await import('../lib/cache');
+  const { data } = await cachedTTL(`auth:membership:${orgId}:${userId}`, 60, async () => {
+    const [row] = await db
+      .select({ id: organizationMembers.id })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, userId),
+          eq(organizationMembers.organizationId, orgId),
+          isNull(organizationMembers.deletedAt),
+          eq(organizationMembers.status, 'active')
+        )
+      )
+      .limit(1);
+    return { active: Boolean(row) };
+  });
+  return (data as { active: boolean }).active;
 }
 
 /**
@@ -127,6 +175,17 @@ export const authPlugin = new Elysia({ name: 'auth' })
 
     try {
       const user = await verifyAccessToken(bearer);
+      // Token claims are not trusted blindly: the holder must still be an
+      // active member of the claimed org (kills reused JWTs after removal).
+      if (user.organizationId && !user.isPlatformAdmin) {
+        const active = await assertActiveOrgMembership(user.userId, user.organizationId);
+        if (!active) {
+          set.status = 403;
+          throw Object.assign(new Error('Forbidden — no active membership in organization'), {
+            status: 403,
+          });
+        }
+      }
       const planTier = user.organizationId
         ? await resolveOrgPlanTier(user.organizationId)
         : ('free' as PlanTier);

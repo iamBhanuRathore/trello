@@ -4,7 +4,7 @@
  * All DB interactions accept an explicit `db` parameter so tests can inject
  * the test database without monkey-patching the module-level singleton.
  */
-import { eq, and, isNull, gt } from 'drizzle-orm';
+import { eq, and, isNull, gt, or } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import type { Database } from '../../db/index';
 import {
@@ -295,6 +295,23 @@ export async function refreshTokens(db: Database, rawToken: string) {
     .limit(1);
 
   if (!stored) {
+    // Reuse detection: a revoked-but-unexpired token presented again means the
+    // token was compromised (or raced). Burn the whole token family.
+    const [compromised] = await db
+      .select({
+        id: refreshTokensTable.id,
+        userId: refreshTokensTable.userId,
+        expiresAt: refreshTokensTable.expiresAt,
+      })
+      .from(refreshTokensTable)
+      .where(eq(refreshTokensTable.tokenHash, tokenHash))
+      .limit(1);
+    if (compromised && compromised.expiresAt > now) {
+      await db
+        .update(refreshTokensTable)
+        .set({ revokedAt: now })
+        .where(eq(refreshTokensTable.userId, compromised.userId));
+    }
     throw httpError(401, 'Invalid or expired refresh token');
   }
 
@@ -333,12 +350,13 @@ export async function refreshTokens(db: Database, rawToken: string) {
 }
 
 // ─── signOut ──────────────────────────────────────────────────────────────────
-export async function signOut(db: Database, rawToken: string, _userId: string) {
+export async function signOut(db: Database, rawToken: string, userId: string) {
   const tokenHash = hashToken(rawToken);
+  // Owner-scoped: a caller can only revoke their own refresh token.
   await db
     .update(refreshTokensTable)
     .set({ revokedAt: new Date() })
-    .where(eq(refreshTokensTable.tokenHash, tokenHash));
+    .where(and(eq(refreshTokensTable.tokenHash, tokenHash), eq(refreshTokensTable.userId, userId)));
 }
 
 // ─── getMe ────────────────────────────────────────────────────────────────────
@@ -460,7 +478,7 @@ export async function changePassword(db: Database, userId: string, input: Change
     throw httpError(400, 'New password must be at least 8 characters long');
   }
 
-  const newHash = await Bun.password.hash(input.newPassword, { algorithm: 'bcrypt', cost: 10 });
+  const newHash = await Bun.password.hash(input.newPassword, { algorithm: 'bcrypt', cost: 12 });
   await db
     .update(users)
     .set({ passwordHash: newHash, updatedAt: new Date() })
@@ -541,7 +559,15 @@ export async function getMyPermissions(db: Database, userId: string, organizatio
       .from(rpTable)
       .innerJoin(rolesTable, eq(rolesTable.id, rpTable.roleId))
       .innerJoin(permsTable, eq(permsTable.id, rpTable.permissionId))
-      .where(eq(rolesTable.name, matchedRoleName));
+      .where(
+        and(
+          eq(rolesTable.name, matchedRoleName),
+          or(
+            eq(rolesTable.organizationId, organizationId),
+            and(eq(rolesTable.isSystemRole, true), isNull(rolesTable.organizationId))
+          )
+        )
+      );
 
     grantedKeys = new Set(roleRows.map((r) => r.permKey));
     if (rawRole === 'member') {
