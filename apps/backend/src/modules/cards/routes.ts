@@ -49,50 +49,45 @@ import { env } from '../../lib/env';
 /** Local-dev upload buffer — disabled outside development/test (open write + world-readable). */
 const localUploadsEnabled = env.NODE_ENV !== 'production';
 
-/** Public card routes (e.g. uploaded file serving and local upload buffer) */
-export const cardPublicRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
-  .put('/attachments/local-upload', async ({ query, request, set }) => {
-    try {
-      if (!localUploadsEnabled) {
-        set.status = 404;
-        return { error: 'Not found' };
-      }
-      const key = (query as any)?.key;
-      if (!key) {
-        set.status = 400;
-        return { error: 'Missing key parameter' };
-      }
-      const safeKey = path.basename(key);
-      const filePath = path.join(LOCAL_UPLOADS_DIR, safeKey);
-      const arrayBuffer = await request.arrayBuffer();
-      if (arrayBuffer.byteLength > 25 * 1024 * 1024) {
-        set.status = 400;
-        return { error: 'File exceeds the 25 MB limit' };
-      }
-      await Bun.write(filePath, arrayBuffer);
-      return { success: true };
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
-  .get('/attachments/file/:key', async ({ params, set }) => {
-    try {
-      if (!localUploadsEnabled) {
-        set.status = 404;
-        return { error: 'Not found' };
-      }
-      const safeKey = path.basename(params.key);
-      const filePath = path.join(LOCAL_UPLOADS_DIR, safeKey);
-      const file = Bun.file(filePath);
-      if (!(await file.exists())) {
-        set.status = 404;
-        return 'File not found';
-      }
-      return file;
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  });
+/** Uploadable extensions for the local-dev buffer (blocks .html/.svg stored-XSS). */
+const LOCAL_UPLOAD_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'avif',
+  'bmp',
+  'ico',
+  'pdf',
+  'txt',
+  'md',
+  'csv',
+  'json',
+  'zip',
+  'mp4',
+  'webm',
+  'mp3',
+  'wav',
+  'ogg',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+]);
+
+function safeLocalKey(raw: string): string | null {
+  const base = path.basename(raw).toLowerCase();
+  const ext = base.includes('.') ? base.split('.').pop()! : '';
+  if (!LOCAL_UPLOAD_EXTENSIONS.has(ext)) return null;
+  if (base.length > 120) return null;
+  return base;
+}
+
+/** Attached to authed cardRoutes below — uploads require a signed-in org member. */
+export const cardPublicRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] });
 
 /** Card routes — /v1/cards/* */
 export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
@@ -486,8 +481,9 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       params: t.Object({ commentId: t.String({ format: 'uuid' }) }),
-      body: t.Object({ body: t.String() }),
+      body: t.Object({ body: t.String({ minLength: 1, maxLength: 10000 }) }),
     }
   )
   .delete(
@@ -506,6 +502,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     {
+      beforeHandle: requirePermission('card.update'),
       params: t.Object({ commentId: t.String({ format: 'uuid' }) }),
     }
   )
@@ -557,9 +554,15 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     {
       beforeHandle: requirePermission('card.update'),
       body: t.Object({
-        fileName: t.String(),
-        fileType: t.Optional(t.String()),
-        sizeBytes: t.Optional(t.Number()),
+        fileName: t.String({ minLength: 1, maxLength: 255 }),
+        fileType: t.Optional(
+          t.String({
+            minLength: 1,
+            maxLength: 127,
+            pattern: '^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$',
+          })
+        ),
+        sizeBytes: t.Optional(t.Number({ minimum: 0, maximum: 25 * 1024 * 1024 })),
       }),
     }
   )
@@ -573,6 +576,61 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       }
     },
     { beforeHandle: requirePermission('card.update') }
+  )
+  // Local-dev upload buffer (same paths as before, now behind auth + guards).
+  .put(
+    '/attachments/local-upload',
+    async ({ query, request, set }) => {
+      try {
+        if (!localUploadsEnabled) {
+          set.status = 404;
+          return { error: 'Not found' };
+        }
+        const safeKey = safeLocalKey(String((query as any)?.key || ''));
+        if (!safeKey) {
+          set.status = 400;
+          return { error: 'Missing or disallowed file key' };
+        }
+        const arrayBuffer = await request.arrayBuffer();
+        if (arrayBuffer.byteLength > 25 * 1024 * 1024) {
+          set.status = 400;
+          return { error: 'File exceeds the 25 MB limit' };
+        }
+        await Bun.write(path.join(LOCAL_UPLOADS_DIR, safeKey), arrayBuffer);
+        return { success: true };
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.update') }
+  )
+  .get(
+    '/attachments/file/:key',
+    async ({ params, set }) => {
+      try {
+        if (!localUploadsEnabled) {
+          set.status = 404;
+          return { error: 'Not found' };
+        }
+        const safeKey = safeLocalKey(params.key);
+        if (!safeKey) {
+          set.status = 404;
+          return 'File not found';
+        }
+        const file = Bun.file(path.join(LOCAL_UPLOADS_DIR, safeKey));
+        if (!(await file.exists())) {
+          set.status = 404;
+          return 'File not found';
+        }
+        // Force download + no sniffing: uploaded bytes never execute as page JS.
+        set.headers['Content-Disposition'] = `attachment; filename="${safeKey}"`;
+        set.headers['X-Content-Type-Options'] = 'nosniff';
+        return file;
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: requirePermission('card.read') }
   )
 
   // Labels
@@ -807,6 +865,11 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, body, set }) => {
       try {
         const targetUserId = (body as any)?.userId || user.userId;
+        // Self-watch needs card.watch; targeting anyone else needs card.update.
+        const denied = await requirePermission(
+          targetUserId === user.userId ? 'card.watch' : 'card.update'
+        )({ user, set } as any);
+        if (denied) return denied;
         return await watchCard(db, params.id, targetUserId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
@@ -822,6 +885,10 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, body, set }) => {
       try {
         const targetUserId = (body as any)?.userId || user.userId;
+        const denied = await requirePermission(
+          targetUserId === user.userId ? 'card.watch' : 'card.update'
+        )({ user, set } as any);
+        if (denied) return denied;
         return await unwatchCard(db, params.id, targetUserId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
@@ -836,6 +903,10 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/:id/watch/:userId',
     async ({ params, user, set }) => {
       try {
+        const denied = await requirePermission(
+          params.userId === user.userId ? 'card.watch' : 'card.update'
+        )({ user, set } as any);
+        if (denied) return denied;
         return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
@@ -848,6 +919,10 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, body, set }) => {
       try {
         const targetUserId = (body as any)?.userId || user.userId;
+        const denied = await requirePermission(
+          targetUserId === user.userId ? 'card.watch' : 'card.update'
+        )({ user, set } as any);
+        if (denied) return denied;
         return await unwatchCard(db, params.id, targetUserId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
@@ -863,6 +938,10 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     async ({ params, user, body, set }) => {
       try {
         const targetUserId = (body as any)?.userId || user.userId;
+        const denied = await requirePermission(
+          targetUserId === user.userId ? 'card.watch' : 'card.update'
+        )({ user, set } as any);
+        if (denied) return denied;
         return await unwatchCard(db, params.id, targetUserId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
@@ -877,6 +956,10 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/:id/unwatch/:userId',
     async ({ params, user, set }) => {
       try {
+        const denied = await requirePermission(
+          params.userId === user.userId ? 'card.watch' : 'card.update'
+        )({ user, set } as any);
+        if (denied) return denied;
         return await unwatchCard(db, params.id, params.userId, user.organizationId, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
@@ -895,5 +978,8 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
         return handleRouteError(err, set);
       }
     },
-    { query: t.Object({ limit: t.Optional(t.String()) }) }
+    {
+      beforeHandle: requirePermission('card.read'),
+      query: t.Object({ limit: t.Optional(t.String()) }),
+    }
   );

@@ -1079,10 +1079,26 @@ export async function deleteBoardLabel(db: Database, labelId: string, organizati
   await Promise.all(attached.map((r) => bumpCardCache(r.cardId)));
 }
 
+/** Fields a caller may change via updateCard — everything else is rejected
+ * (mass-assignment: organizationId/listId/isArchived/version must never be
+ * settable through this path, even if a route schema ever passes them through). */
+const UPDATE_CARD_FIELDS = [
+  'title',
+  'description',
+  'dueDate',
+  'stageId',
+  'storyPoints',
+  'estimateMinutes',
+  'priorityId',
+  'coverImage',
+] as const;
+
 export async function updateCard(db: Database, id: string, organizationId: string, input: any) {
-  const { priorityId, ...rest } = input ?? {};
-  const patch: any = { ...rest, updatedAt: new Date() };
-  const resolvedPriority = await resolvePriorityId(db, organizationId, priorityId);
+  const patch: any = { updatedAt: new Date() };
+  for (const field of UPDATE_CARD_FIELDS) {
+    if (input?.[field] !== undefined) patch[field] = input[field];
+  }
+  const resolvedPriority = await resolvePriorityId(db, organizationId, input?.priorityId);
   if (resolvedPriority !== undefined) patch.priorityId = resolvedPriority;
   const [card] = await db
     .update(cards)
@@ -2187,7 +2203,14 @@ export async function updateChecklistItem(
 
   const [item] = await db
     .update(checklistItems)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input?.text !== undefined ? { text: input.text } : {}),
+      ...(input?.isDone !== undefined ? { isDone: input.isDone } : {}),
+      ...(input?.position !== undefined ? { position: input.position } : {}),
+      ...(input?.assignedTo !== undefined ? { assignedTo: input.assignedTo } : {}),
+      ...(input?.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(checklistItems.id, itemId))
     .returning();
   if (!item) throw httpError(404, 'Checklist item not found');
