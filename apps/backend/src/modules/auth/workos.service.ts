@@ -1,4 +1,5 @@
 import { WorkOS } from '@workos-inc/node';
+import { randomBytes } from 'node:crypto';
 import { eq, and, isNull } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
@@ -21,9 +22,45 @@ export function getWorkOS(): WorkOS {
   return workosClient;
 }
 
+const DASHBOARD_ORIGINS = new Set(
+  (env.DASHBOARD_URL || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return new URL(s).origin;
+      } catch {
+        return null;
+      }
+    })
+    .filter((o): o is string => !!o)
+);
+
+function isAllowedRedirectUri(uri: string): boolean {
+  try {
+    const origin = new URL(uri).origin;
+    if (DASHBOARD_ORIGINS.has(origin)) return true;
+    if (env.WORKOS_REDIRECT_URI) {
+      try {
+        if (new URL(env.WORKOS_REDIRECT_URI).origin === origin) return true;
+      } catch {
+        // fall through
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function getRedirectUri(customRedirectUri?: string): string {
   if (customRedirectUri && customRedirectUri.trim().length > 0) {
-    return customRedirectUri.trim();
+    const trimmed = customRedirectUri.trim();
+    if (!isAllowedRedirectUri(trimmed)) {
+      throw httpError(400, 'redirectUri must match a configured dashboard origin');
+    }
+    return trimmed;
   }
   if (env.WORKOS_REDIRECT_URI) {
     return env.WORKOS_REDIRECT_URI;
@@ -119,10 +156,7 @@ export async function getSSOAuthorizationUrl(
  * Authenticates user from WorkOS authorization code, provisions account (JIT),
  * links organization, and issues Boardly access + refresh tokens.
  */
-export async function authenticateWithWorkOSCode(
-  db: Database,
-  code: string
-) {
+export async function authenticateWithWorkOSCode(db: Database, code: string) {
   if (!code || code.trim().length === 0) {
     throw httpError(400, 'Authorization code is required');
   }
@@ -132,8 +166,11 @@ export async function authenticateWithWorkOSCode(
   let avatarUrl: string | null = null;
   let workosOrgId: string | null = null;
 
-  // Check for mock testing code
+  // Mock codes are test-only fixtures. Never honored in dev/production.
   if (code.startsWith('mock_test_')) {
+    if (env.NODE_ENV !== 'test') {
+      throw httpError(401, 'Invalid authorization code');
+    }
     const parts = code.split('_');
     const userPart = parts[2] || 'mockuser';
     const domainPart = parts[3] || 'example.com';
@@ -229,12 +266,7 @@ export async function authenticateWithWorkOSCode(
       status: organizationMembers.status,
     })
     .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, user.id),
-        isNull(organizationMembers.deletedAt)
-      )
-    )
+    .where(and(eq(organizationMembers.userId, user.id), isNull(organizationMembers.deletedAt)))
     .limit(1);
 
   let targetOrgId = existingMembership?.organizationId;
@@ -289,7 +321,7 @@ export async function authenticateWithWorkOSCode(
         .replace(/[^a-z0-9]/g, '-')
         .replace(/-+/g, '-')
         .slice(0, 20);
-      const uniqueSlug = `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`;
+      const uniqueSlug = `${baseSlug}-${randomBytes(4).toString('hex')}`;
       const orgName = `${user.name || 'My'}'s Workspace`;
 
       const [newOrg] = await db
@@ -319,12 +351,7 @@ export async function authenticateWithWorkOSCode(
     .where(eq(organizations.id, targetOrgId))
     .limit(1);
 
-  const tokens = await issueTokenPair(
-    db,
-    user.id,
-    targetOrgId,
-    user.isPlatformAdmin ?? false
-  );
+  const tokens = await issueTokenPair(db, user.id, targetOrgId, user.isPlatformAdmin ?? false);
 
   return {
     ...tokens,

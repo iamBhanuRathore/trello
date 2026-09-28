@@ -39,9 +39,10 @@ export function buildAuthUrl(state: string): string {
 }
 
 function tokenKey(): Buffer {
-  return createHash('sha256')
-    .update(env.CALENDAR_TOKEN_KEY || '')
-    .digest();
+  if (!env.CALENDAR_TOKEN_KEY) {
+    throw new Error('CALENDAR_TOKEN_KEY must be set (generate: openssl rand -base64 32)');
+  }
+  return createHash('sha256').update(env.CALENDAR_TOKEN_KEY).digest();
 }
 
 /** Bind OAuth state to the initiating user so callbacks can't be re-targeted. */

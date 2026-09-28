@@ -28,7 +28,9 @@ const envSchema = z.object({
   ),
   PRESENCE_TTL_SECONDS: z.coerce.number().default(60),
 
-  // Auth
+  // Auth — dev-only fallback defaults so `bun dev` boots without secrets.
+  // Production MUST provide real values: superRefine below rejects defaults,
+  // placeholders, and short secrets when NODE_ENV=production.
   JWT_SECRET: z
     .string()
     .min(32)
@@ -92,7 +94,28 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const parsed = envSchema
+  .superRefine((val, ctx) => {
+    if (val.NODE_ENV === 'production') {
+      for (const key of ['JWT_SECRET', 'REFRESH_TOKEN_SECRET'] as const) {
+        const secret = val[key] as string;
+        if (
+          !secret ||
+          secret.length < 32 ||
+          /replace-me|dev-only|placeholder|test|changeme|example/i.test(secret) ||
+          secret === 'ZptMgi0ZAemUmS3Ku3COjAWHgBcIylR0zvZiN7YtmARoz8BbIHnNluqfAZkr/6Z3' ||
+          secret === 'ayUfgRGoM07P8GvHIBN1Movg5hwx33/jZSQqYMC6luDz+9+84VG48EgbwT5HGX2v'
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} must be set to a unique random value (>=32 chars) in production`,
+          });
+        }
+      }
+    }
+  })
+  .safeParse(process.env);
 
 if (!parsed.success) {
   console.error('❌ Invalid environment variables:');
