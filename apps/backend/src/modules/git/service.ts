@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { eq, and, sql, inArray } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
@@ -113,9 +113,7 @@ export async function connectRepository(
   if (!input.owner?.trim() || !input.repo?.trim()) {
     throw httpError(400, 'Repository owner and name are required');
   }
-  const secret =
-    input.webhookSecret?.trim() ||
-    Array.from({ length: 32 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
+  const secret = input.webhookSecret?.trim() || randomBytes(16).toString('hex');
 
   if (input.projectId) {
     const [proj] = await db

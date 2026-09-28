@@ -1,5 +1,5 @@
 import { eq, and, isNull, or, ilike, asc, desc, gte, inArray, sql, type SQL } from 'drizzle-orm';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import type { Database } from '../../db/index';
 import {
   organizations,
@@ -36,6 +36,11 @@ export const ALLOWED_ORG_ROLES = [
 ] as const;
 
 export type AllowedOrgRole = (typeof ALLOWED_ORG_ROLES)[number];
+
+/** Invite bearer tokens are sha256-hashed at rest (same convention as refresh tokens). */
+function hashInviteToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 // ─── getOrg ───────────────────────────────────────────────────────────────────
 export async function getOrg(db: Database, orgId: string) {
@@ -354,7 +359,8 @@ export async function inviteMember(
       }
     }
 
-    // Create invitation record
+    // Create invitation record — the raw token goes into the email link only;
+    // storage holds its sha256 so a DB dump can't be replayed as invites.
     const inviteToken = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
@@ -364,7 +370,7 @@ export async function inviteMember(
         organizationId: orgId,
         email: normalizedEmail,
         role: normalizedRole,
-        token: inviteToken,
+        token: hashInviteToken(inviteToken),
         status: 'pending',
         invitedByUserId: invitedBy || null,
         invitedByName: inviterName,
@@ -499,7 +505,6 @@ export async function listPendingInvitations(db: Database, orgId: string) {
       organizationId: invitations.organizationId,
       email: invitations.email,
       role: invitations.role,
-      token: invitations.token,
       status: invitations.status,
       invitedByName: invitations.invitedByName,
       expiresAt: invitations.expiresAt,
@@ -509,7 +514,8 @@ export async function listPendingInvitations(db: Database, orgId: string) {
     .where(and(eq(invitations.organizationId, orgId), gte(invitations.expiresAt, now)))
     .orderBy(desc(invitations.createdAt));
 
-  return list;
+  // Token hashes are never exposed; admins copy links via create/resend (show-once).
+  return list.map((row) => ({ ...row, token: '' }));
 }
 
 // ─── resendInvitation ─────────────────────────────────────────────────────────────────
@@ -525,7 +531,7 @@ export async function resendInvitation(
   const [updated] = await db
     .update(invitations)
     .set({
-      token: newToken,
+      token: hashInviteToken(newToken),
       expiresAt: newExpiresAt,
       updatedAt: new Date(),
     })
@@ -543,7 +549,7 @@ export async function resendInvitation(
     metadata: { role: updated.role },
   });
 
-  return updated;
+  return { ...updated, token: newToken };
 }
 
 // ─── revokeInvitation ─────────────────────────────────────────────────────────
@@ -967,7 +973,7 @@ export async function previewInvitation(db: Database, token: string) {
       organizationId: invitations.organizationId,
     })
     .from(invitations)
-    .where(eq(invitations.token, token))
+    .where(eq(invitations.token, hashInviteToken(token)))
     .limit(1);
 
   if (!invite)
@@ -1016,7 +1022,11 @@ export async function acceptInvitation(
 ) {
   const now = new Date();
 
-  const [invite] = await db.select().from(invitations).where(eq(invitations.token, token)).limit(1);
+  const [invite] = await db
+    .select()
+    .from(invitations)
+    .where(eq(invitations.token, hashInviteToken(token)))
+    .limit(1);
 
   if (!invite) throw httpError(404, 'Invitation not found.');
   if (invite.status === 'accepted')

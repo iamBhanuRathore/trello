@@ -6,9 +6,19 @@ const urls = [
   env.DATABASE_TEST_URL || 'postgresql://boardly:boardly_test@localhost:5433/boardly_test',
 ];
 
+/** Never print credentials: host/db only (same convention as redis/client). */
+function redactedDbHost(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.host}${u.pathname}`;
+  } catch {
+    return '<invalid-url>';
+  }
+}
+
 for (const url of urls) {
   if (!url) continue;
-  console.log(`Connecting to: ${url}`);
+  console.log(`Connecting to: ${redactedDbHost(url)}`);
   try {
     const sql = postgres(url, { max: 1 });
     await sql.unsafe(`
@@ -64,9 +74,9 @@ for (const url of urls) {
       );
     `);
     await sql.end();
-    console.log(`✅ Applied schema patch to ${url}`);
+    console.log(`✅ Applied schema patch to ${redactedDbHost(url)}`);
   } catch (err: unknown) {
-    console.error(`Error on ${url}:`, err instanceof Error ? err.message : err);
+    console.error(`Error on ${redactedDbHost(url)}:`, err instanceof Error ? err.message : err);
   }
 }
 process.exit(0);

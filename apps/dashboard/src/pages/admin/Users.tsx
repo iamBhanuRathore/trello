@@ -677,6 +677,11 @@ export const Users: React.FC = () => {
               size="sm"
               className="h-7 text-xs gap-1.5 cursor-pointer hover:border-primary"
               onClick={() => {
+                // Tokens are show-once (hashed at rest): empty means refresh first.
+                if (!row.token) {
+                  resendInviteMutation.mutate(row.id);
+                  return;
+                }
                 const link = `${window.location.origin}/invite?token=${row.token}`;
                 navigator.clipboard.writeText(link);
                 toast.success('Invite link copied to clipboard!');

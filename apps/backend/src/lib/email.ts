@@ -90,7 +90,7 @@ async function sendViaResend(opts: SendEmailOptions): Promise<boolean> {
   const client = getResendClient();
   if (!client) return false;
 
-  const toAddress = opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to;
+  const toAddress = formatRecipient(opts.to, opts.toName);
   const result = await client.emails.send({
     from: FROM_EMAIL,
     to: toAddress,
@@ -113,7 +113,7 @@ async function sendViaSES(opts: SendEmailOptions): Promise<boolean> {
 
   const info = await transport.sendMail({
     from: FROM_EMAIL,
-    to: opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to,
+    to: formatRecipient(opts.to, opts.toName),
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
@@ -129,7 +129,7 @@ async function sendViaSMTP(opts: SendEmailOptions): Promise<boolean> {
 
   const info = await transport.sendMail({
     from: FROM_EMAIL,
-    to: opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to,
+    to: formatRecipient(opts.to, opts.toName),
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
@@ -143,7 +143,7 @@ function printDevModeEmail(opts: SendEmailOptions): void {
   // Dev-only preview (logger.debug is a no-op outside development).
   logger.debug(
     {
-      to: opts.toName ? `"${opts.toName}" <${opts.to}>` : opts.to,
+      to: formatRecipient(opts.to, opts.toName),
       from: FROM_EMAIL,
       subject: opts.subject,
       htmlPreview: opts.html.substring(0, 800),
