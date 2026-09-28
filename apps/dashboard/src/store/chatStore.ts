@@ -64,6 +64,14 @@ interface ChatStoreState {
   setDraft: (channelId: string, text: string) => void;
   setWsConnected: (connected: boolean) => void;
   setMessageLayout: (layout: ChatMessageLayout) => void;
+  /**
+   * Drop all session-scoped chat state on identity change or logout: queued
+   * outbox messages (persisted — unsent text must never surface under, or be
+   * sent as, the next account), drafts, channel pointers, and ephemeral
+   * presence/typing/receipt maps. The layout preference is device-scoped and
+   * intentionally kept.
+   */
+  resetSessionState: () => void;
 }
 
 const OUTBOX_STORAGE_KEY = 'boardly_chat_outbox';
@@ -210,6 +218,27 @@ export const useChatStore = create<ChatStoreState>((set) => ({
       localStorage.setItem(LAYOUT_STORAGE_KEY, layout);
     } catch {}
     set({ messageLayout: layout });
+  },
+
+  resetSessionState: () => {
+    try {
+      localStorage.removeItem(OUTBOX_STORAGE_KEY);
+    } catch {}
+    set({
+      activeChannelId: null,
+      activeThreadMessage: null,
+      isDetailsPaneOpen: false,
+      replyingToMessage: null,
+      typingUsers: {},
+      presenceMap: {},
+      readReceipts: {},
+      outbox: [],
+      isGlobalDockOpen: false,
+      dockedChannelId: null,
+      isDockMinimized: false,
+      drafts: {},
+      wsConnected: false,
+    });
   },
 
   setReadReceipt: (channelId, userId, readAt) =>

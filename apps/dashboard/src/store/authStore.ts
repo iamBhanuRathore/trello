@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { api } from '../lib/api';
+import { clearCachedData } from '../lib/queryClient';
+import { useChatStore } from './chatStore';
 
 interface User {
   id: string;
@@ -31,6 +33,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (data.accessToken) localStorage.setItem('boardly_access_token', data.accessToken);
     if (data.refreshToken) localStorage.setItem('boardly_refresh_token', data.refreshToken);
     set({ user: data.user, isAuthenticated: true, isLoading: false });
+    resetSessionCaches();
   },
   logout: async () => {
     try {
@@ -42,17 +45,23 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem('boardly_access_token');
     localStorage.removeItem('boardly_refresh_token');
     set({ user: null, isAuthenticated: false, isLoading: false });
+    resetSessionCaches();
   },
   checkAuth: async () => {
     const token = localStorage.getItem('boardly_access_token');
     if (!token) {
       set({ user: null, isAuthenticated: false, isLoading: false });
+      resetSessionCaches();
       return;
     }
 
     try {
       const res = await api.get('/auth/me');
+      const previousId = useAuthStore.getState().user?.id;
       set({ user: res.data, isAuthenticated: true, isLoading: false });
+      // Token swap without a login call (DevTools paste, restored session):
+      // a different identity must never inherit the cached identity's data.
+      if (previousId && previousId !== res.data?.id) resetSessionCaches();
     } catch (error: any) {
       const status = error?.response?.status;
       // Reboot/network blip (or 5xx): the stored session may still be valid.
@@ -68,7 +77,20 @@ export const useAuthStore = create<AuthState>((set) => ({
         localStorage.removeItem('boardly_access_token');
         localStorage.removeItem('boardly_refresh_token');
         set({ user: null, isAuthenticated: false, isLoading: false });
+        resetSessionCaches();
       }
     }
   },
 }));
+
+/**
+ * Drop everything the previous identity could leak into the next session:
+ * server cache (query keys are not user-scoped) and persisted/ephemeral chat
+ * state (outbox, drafts, channel pointers). Called on every transition that
+ * establishes or revokes an identity — never on transient network blips,
+ * where the session may still be valid.
+ */
+function resetSessionCaches(): void {
+  clearCachedData();
+  useChatStore.getState().resetSessionState();
+}
