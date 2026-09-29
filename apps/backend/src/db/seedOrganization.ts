@@ -9,12 +9,14 @@
  */
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { sql, eq } from 'drizzle-orm';
+import { sql, eq, and } from 'drizzle-orm';
 import {
   plans,
   organizations,
   users,
   organizationMembers,
+  roles,
+  organizationRoleMembers,
   subscriptions,
   workspaces,
   workspaceMembers,
@@ -64,7 +66,7 @@ function toISODate(d: Date): string {
 export interface UserPersona {
   name: string;
   email: string;
-  orgRole: 'org_owner' | 'org_admin' | 'billing_manager' | 'workspace_admin' | 'member';
+  orgRole: 'org_owner' | 'org_admin' | 'billing_manager' | 'workspace_admin' | 'member' | 'viewer';
   title: string;
   /** Platform-level super-admin (Boardly OPS console). Only demo CEO holds this. */
   isPlatformAdmin?: boolean;
@@ -547,7 +549,7 @@ export const SEED_USERS: UserPersona[] = [
   {
     name: 'Dr. Raymond Vance',
     email: 'raymond.vance@board.acme.corp',
-    orgRole: 'member',
+    orgRole: 'viewer',
     title: 'Board of Directors Observer',
     department: 'External',
     avatarUrl:
@@ -746,6 +748,12 @@ export async function seedFullOrganization(force = false) {
           role: persona.orgRole,
           status: 'active',
         });
+      } else if (existingMember[0]!.role !== persona.orgRole) {
+        // Keep the enum tier in sync on re-runs (e.g. Raymond member → viewer).
+        await db
+          .update(organizationMembers)
+          .set({ role: persona.orgRole, updatedAt: new Date() })
+          .where(sql`organization_id = ${org!.id} AND user_id = ${dbUser!.id}`);
       }
 
       userMap.set(persona.email, { id: dbUser!.id, persona });
@@ -753,6 +761,56 @@ export async function seedFullOrganization(force = false) {
 
     const allUserIds = Array.from(userMap.values()).map((u) => u.id);
     const getUser = (email: string) => userMap.get(email)!.id;
+
+    // 3b. Team-role holders (Lead/Developer/Tester) — company-configurable roles
+    // used by automation round-robin pools. Idempotent: roles ensured,
+    // grants inserted with onConflictDoNothing so re-runs are safe.
+    // (Permission links live in roles/service.seedOrgTeamRoles; pools only
+    // need the grants, and RBAC resolves via the membership enum tier.)
+    console.log('🎖️  Granting team roles (Lead/Developer/Tester)...');
+    for (const roleName of ['Lead', 'Developer', 'Tester']) {
+      await db
+        .insert(roles)
+        .values({
+          organizationId: org!.id,
+          name: roleName,
+          description: `${roleName} team role`,
+          isSystemRole: false,
+        })
+        .onConflictDoNothing();
+    }
+    const teamGrants: Array<{ role: string; emails: string[] }> = [
+      { role: 'Lead', emails: ['elena.rostova@acme.corp', 'liam.gallagher@acme.corp'] },
+      {
+        role: 'Developer',
+        emails: [
+          'leo.thorne@acme.corp',
+          'maya.lin@acme.corp',
+          'lucas.dupont@acme.corp',
+          'jordan.rivera@acme.corp',
+        ],
+      },
+      {
+        role: 'Tester',
+        emails: ['zara.patel@acme.corp', 'amara.diop@acme.corp', 'leo.thorne@acme.corp'],
+      },
+    ];
+    for (const grant of teamGrants) {
+      const [roleRow] = await db
+        .select({ id: roles.id })
+        .from(roles)
+        .where(and(eq(roles.organizationId, org!.id), eq(roles.name, grant.role)))
+        .limit(1);
+      if (!roleRow) continue;
+      for (const email of grant.emails) {
+        const member = userMap.get(email);
+        if (!member) continue;
+        await db
+          .insert(organizationRoleMembers)
+          .values({ organizationId: org!.id, roleId: roleRow.id, userId: member.id })
+          .onConflictDoNothing();
+      }
+    }
 
     // 4. Create 5 Diverse Workspaces
     console.log('📂  Configuring 5 Department Workspaces...');

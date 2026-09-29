@@ -117,6 +117,12 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - Tests added: `project-automation.test.ts` — 13 tests (matchers, label router + ALREADY_ASSIGNED, RR order, parallel-move single subtask, deactivation mid-rotation, empty pool, role pool, LOOP_GUARD, DUPLICATE_EVENT, nesting→FAILED, CONDITION_UNMET, disabled-silent). Backend typecheck/lint clean; cards/automations/roles/orgs/boards suites green (43 tests).
 - What's next: Phase 3 builder page (Project → Automation: WHEN/IF/THEN, templates, dry-run preview, coverage auto-fix, run-history drawer).
 
+### 2026-09-29 — Team-role seed holders + login quick accounts
+
+- What was done: seeded holders for Lead (Elena, Liam), Developer (Leo, Maya, Lucas, Jordan), Tester (Zara, Amara, Leo) so automation pools are non-empty out of the box; Raymond moved to the viewer enum tier (matches his Board Observer persona); login screen (dev-only) now offers one-click sign-in for all five types with team-role badges. Also fixed pool-picker duplicate adds on rapid clicks (dedupe at handler).
+- Tests: backend automations+roles 24/24, automation e2e 3/3, auth+roles smoke 8 passed/1 skipped; typecheck+lint clean.
+- What's next: least-loaded assignment / SLA / webhook actions (parked post-v1).
+
 ### 2026-09-29 — Project Automation builder UI (Phase 3) + whole-setup test
 
 - What was done: dashboard `Project → Automation` page (`/projects/:id/automation`, sidebar link): rule list (toggle/last-run/count/attention badge), WHEN/IF/THEN editor (dirty-gated Save, Esc-cancel + discard confirm, error-only toasts), Label-router/Testing-handoff one-click templates, coverage warnings with one-click Create Missing Labels, dry-run panel (board→list→card, would-fire + per-action previews), run-history drawer (status filter, paging, 5s live refresh, expandable action results), member-gated permission wall. Fixed Elysia route-param collision (`:projectId` vs existing `:id` — server refused to boot) and a ghost-editor bug (deleting the open rule left it editing).

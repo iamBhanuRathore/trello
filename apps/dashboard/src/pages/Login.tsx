@@ -22,10 +22,24 @@ import {
 // Local-dev only: one-click sign-in with seeded Acme accounts (all use
 // Password123!, see docs/SEED_CREDENTIALS.md). Stripped from prod builds
 // via import.meta.env.DEV so demo credentials never ship to production.
+// Covers every user type: org tiers (Owner/Admin/Member/Viewer) plus the
+// team roles (Lead/Developer/Tester) used by automation pools.
 const DEV_QUICK_ACCOUNTS = [
-  { name: 'Alex Vance', email: 'alex.vance@acme.corp', role: 'Org Owner' },
-  { name: 'Elena Rostova', email: 'elena.rostova@acme.corp', role: 'Org Admin' },
-  { name: 'Jordan Rivera', email: 'jordan.rivera@acme.corp', role: 'Member' },
+  { name: 'Alex Vance', email: 'alex.vance@acme.corp', role: 'Org Owner', team: [] as string[] },
+  { name: 'Elena Rostova', email: 'elena.rostova@acme.corp', role: 'Org Admin', team: ['Lead'] },
+  {
+    name: 'Leo Thorne',
+    email: 'leo.thorne@acme.corp',
+    role: 'Member',
+    team: ['Developer', 'Tester'],
+  },
+  { name: 'Jordan Rivera', email: 'jordan.rivera@acme.corp', role: 'Member', team: ['Developer'] },
+  {
+    name: 'Dr. Raymond Vance',
+    email: 'raymond.vance@board.acme.corp',
+    role: 'Viewer',
+    team: [] as string[],
+  },
 ] as const;
 const DEV_PASSWORD = 'Password123!';
 
@@ -317,6 +331,14 @@ export function Login() {
                       <span className="px-2 py-0.5 rounded-md bg-muted text-[11px] font-semibold text-muted-foreground shrink-0">
                         {account.role}
                       </span>
+                      {account.team.map((t) => (
+                        <span
+                          key={t}
+                          className="px-2 py-0.5 rounded-md bg-primary/10 text-[11px] font-semibold text-primary shrink-0 hidden sm:inline-block"
+                        >
+                          {t}
+                        </span>
+                      ))}
                       {isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin text-muted-foreground shrink-0" />
                       ) : (

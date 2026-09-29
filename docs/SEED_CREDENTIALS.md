@@ -16,18 +16,30 @@ This environment is pre-loaded with **50 realistic team members**, **5 departmen
 
 ## 🎯 Recommended Test Personas by Scenario
 
-| Scenario to Test                   | Recommended User      | Email                           | Password       | Role & Key Highlights                                                                                               |
-| :--------------------------------- | :-------------------- | :------------------------------ | :------------- | :------------------------------------------------------------------------------------------------------------------ |
-| **Org Owner & Executive Controls** | **Alex Vance**        | `alex.vance@acme.corp`          | `Password123!` | CEO & Founder. Has full Admin Panel access, billing overview, audit logs, and member governance.                    |
-| **Engineering CTO & Sprints**      | **Elena Rostova**     | `elena.rostova@acme.corp`       | `Password123!` | CTO & Org Admin. Admin of _Engineering & Infra_ workspace. Full access to Sprint 24-27 planning & burndown reports. |
-| **Product & UX Design**            | **Marcus Brody**      | `marcus.brody@acme.corp`        | `Password123!` | VP of Product. Admin of _Product & UX_ workspace. Manages Kanban stages, Design System, and user roadmap.           |
-| **Product Designer**               | **Clara Oswald**      | `clara.oswald@acme.corp`        | `Password123!` | Principal Product Designer. Active on Design System cards, component reviews, and Figma assets.                     |
-| **Senior Backend Developer**       | **Leo Thorne**        | `leo.thorne@acme.corp`          | `Password123!` | Senior Backend Engineer. Has active tasks, checklist items, card watching, and multiple logged time entries.        |
-| **Staff Frontend Engineer**        | **Aria Montgomery**   | `aria.montgomery@acme.corp`     | `Password123!` | Staff Frontend Engineer. Assigned to Kanban DND board, optimistic UI sync, and performance optimizations.           |
-| **Growth & Marketing Lead**        | **Sarah Chen**        | `sarah.chen@acme.corp`          | `Password123!` | VP of Marketing. Admin of _Growth & Product Marketing_ workspace. Manages Q3 launch campaign cards.                 |
-| **Security & Compliance**          | **Nathan Drake**      | `nathan.drake@acme.corp`        | `Password123!` | Compliance Officer. Manages SOC 2 Type II phased project milestones and penetration test audits.                    |
-| **Customer Success Director**      | **Priya Sharma**      | `priya.sharma@acme.corp`        | `Password123!` | VP of Customer Success. Admin of _CS & Enterprise Support_ workspace. Manages Enterprise SLA onboarding desk.       |
-| **External Board / Auditor**       | **Dr. Raymond Vance** | `raymond.vance@board.acme.corp` | `Password123!` | Board Observer. Demonstrates read-only / stakeholder visibility permissions across organization boards.             |
+| Scenario to Test                   | Recommended User      | Email                           | Password       | Role & Key Highlights                                                                                                 |
+| :--------------------------------- | :-------------------- | :------------------------------ | :------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| **Org Owner & Executive Controls** | **Alex Vance**        | `alex.vance@acme.corp`          | `Password123!` | CEO & Founder. Has full Admin Panel access, billing overview, audit logs, and member governance.                      |
+| **Engineering CTO & Sprints**      | **Elena Rostova**     | `elena.rostova@acme.corp`       | `Password123!` | CTO & Org Admin. Admin of _Engineering & Infra_ workspace. Full access to Sprint 24-27 planning & burndown reports.   |
+| **Product & UX Design**            | **Marcus Brody**      | `marcus.brody@acme.corp`        | `Password123!` | VP of Product. Admin of _Product & UX_ workspace. Manages Kanban stages, Design System, and user roadmap.             |
+| **Product Designer**               | **Clara Oswald**      | `clara.oswald@acme.corp`        | `Password123!` | Principal Product Designer. Active on Design System cards, component reviews, and Figma assets.                       |
+| **Senior Backend Developer**       | **Leo Thorne**        | `leo.thorne@acme.corp`          | `Password123!` | Senior Backend Engineer. Has active tasks, checklist items, card watching, and multiple logged time entries.          |
+| **Staff Frontend Engineer**        | **Aria Montgomery**   | `aria.montgomery@acme.corp`     | `Password123!` | Staff Frontend Engineer. Assigned to Kanban DND board, optimistic UI sync, and performance optimizations.             |
+| **Growth & Marketing Lead**        | **Sarah Chen**        | `sarah.chen@acme.corp`          | `Password123!` | VP of Marketing. Admin of _Growth & Product Marketing_ workspace. Manages Q3 launch campaign cards.                   |
+| **Security & Compliance**          | **Nathan Drake**      | `nathan.drake@acme.corp`        | `Password123!` | Compliance Officer. Manages SOC 2 Type II phased project milestones and penetration test audits.                      |
+| **Customer Success Director**      | **Priya Sharma**      | `priya.sharma@acme.corp`        | `Password123!` | VP of Customer Success. Admin of _CS & Enterprise Support_ workspace. Manages Enterprise SLA onboarding desk.         |
+| **External Board / Auditor**       | **Dr. Raymond Vance** | `raymond.vance@board.acme.corp` | `Password123!` | Board Observer (Viewer tier). Demonstrates read-only / stakeholder visibility permissions across organization boards. |
+
+## 🎖️ Team Roles (automation pools)
+
+Company-configurable roles granted on top of the org tier — used by automation round-robin pools and default assignment:
+
+| Team Role | Holders                                           |
+| --------- | ------------------------------------------------- |
+| Lead      | Elena Rostova, Liam Gallagher                     |
+| Developer | Leo Thorne, Maya Lin, Lucas Dupont, Jordan Rivera |
+| Tester    | Zara Patel, Amara Diop, Leo Thorne                |
+
+Login screen (dev only) offers one-click sign-in for every type: Org Owner, Org Admin, Member, Viewer, plus team-role badges.
 
 ---
 

@@ -866,7 +866,9 @@ function UserPoolPicker({
           variant="outline"
           disabled={!pick || userIds.includes(pick)}
           onClick={() => {
-            if (pick && !userIds.includes(pick)) onChange([...userIds, pick]);
+            // Dedupe at the handler level too: rapid double-clicks can beat the
+            // disabled state and append the same member twice (unfair rotation).
+            if (pick && !userIds.includes(pick)) onChange([...new Set([...userIds, pick])]);
             setPick('');
           }}
           className="shrink-0 cursor-pointer"
