@@ -11,6 +11,7 @@ import {
   BookOpen,
   ArrowRight,
   ShieldCheck,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 
@@ -254,6 +255,13 @@ export function PortfolioDashboard() {
                       className="text-muted-foreground hover:text-foreground flex items-center gap-1 hover:underline"
                     >
                       <BookOpen className="w-3.5 h-3.5 text-teal-500" /> Docs
+                    </Link>
+                    <span className="text-muted-foreground">•</span>
+                    <Link
+                      to={`/projects/${proj.id}/automation`}
+                      className="text-muted-foreground hover:text-foreground flex items-center gap-1 hover:underline"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-amber-500" /> Automation
                     </Link>
                   </div>
 

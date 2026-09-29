@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   Check,
   Kanban,
+  Zap,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -489,6 +490,11 @@ function ProjectsList({
               <Link to={`/projects/${proj.id}/sprints`}>
                 <Button variant="outline" size="sm" className="h-7 text-xs">
                   Sprints
+                </Button>
+              </Link>
+              <Link to={`/projects/${proj.id}/automation`}>
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                  <Zap className="w-3.5 h-3.5 text-amber-500" /> Automation
                 </Button>
               </Link>
               <Button
