@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
   organizations,
@@ -31,6 +31,8 @@ import {
   systemActorForRule,
   flagStaleRules,
 } from './project-engine';
+import { createProjectRule } from './project-service';
+import { formatErrorResponse } from '../../lib/errors';
 
 let n = 0;
 const uniq = (p: string) => `${p}-${Date.now()}-${n++}`;
@@ -120,6 +122,27 @@ async function setupFixture(): Promise<Fixture> {
 
 async function teardownFixture(f: Fixture) {
   const { orgId } = f;
+  // Scope sub-resource deletes to this fixture's cards — never wipe shared tables.
+  const ownCards = await db
+    .select({ id: cards.id })
+    .from(cards)
+    .where(eq(cards.organizationId, orgId))
+    .catch(() => []);
+  const ownCardIds = ownCards.map((c) => c.id);
+  if (ownCardIds.length > 0) {
+    await db
+      .delete(comments)
+      .where(inArray(comments.cardId, ownCardIds))
+      .catch(() => {});
+    await db
+      .delete(cardAssignees)
+      .where(inArray(cardAssignees.cardId, ownCardIds))
+      .catch(() => {});
+    await db
+      .delete(cardLabels)
+      .where(inArray(cardLabels.cardId, ownCardIds))
+      .catch(() => {});
+  }
   await db
     .delete(automationRuleRuns)
     .where(eq(automationRuleRuns.organizationId, orgId))
@@ -134,9 +157,18 @@ async function teardownFixture(f: Fixture) {
       .where(eq(automationRuleCursors.ruleId, r.id))
       .catch(() => {});
   }
-  await db.delete(comments).catch(() => {});
-  await db.delete(cardAssignees).catch(() => {});
-  await db.delete(cardLabels).catch(() => {});
+  await db
+    .delete(comments)
+    .where(inArray(comments.cardId, ownCardIds))
+    .catch(() => {});
+  await db
+    .delete(cardAssignees)
+    .where(inArray(cardAssignees.cardId, ownCardIds))
+    .catch(() => {});
+  await db
+    .delete(cardLabels)
+    .where(inArray(cardLabels.cardId, ownCardIds))
+    .catch(() => {});
   await db
     .delete(cards)
     .where(eq(cards.organizationId, orgId))
@@ -228,7 +260,7 @@ async function makeRule(
           pool: { kind: 'users', userIds: f.qa },
         },
       ],
-      createdBy: f.qa[0],
+      createdBy: f.qa[0]!,
     })
     .returning();
   return rule!;
@@ -273,7 +305,7 @@ describe('Project Automation Engine', () => {
     const rule = await makeRule(f, {
       trigger: { event: 'card.labeled' },
       condition: { labelNames: ['front-end'] },
-      actions: [{ id: randomUUID(), type: 'assign_user', userId: f.qa[0] }],
+      actions: [{ id: randomUUID(), type: 'assign_user', userId: f.qa[0]! }],
     });
     await db.insert(cardLabels).values({ cardId: f.cardId, labelId: f.labelId });
     const e1 = randomUUID();
@@ -287,7 +319,7 @@ describe('Project Automation Engine', () => {
       .select()
       .from(cardAssignees)
       .where(eq(cardAssignees.cardId, f.cardId));
-    expect(assignees.map((a) => a.userId)).toEqual([f.qa[0]]);
+    expect(assignees.map((a) => a.userId)).toEqual([f.qa[0]!]);
     // Second label event: already assigned → ALREADY_ASSIGNED, assignee unchanged.
     await db
       .insert(cardLabels)
@@ -303,7 +335,7 @@ describe('Project Automation Engine', () => {
       .select()
       .from(cardAssignees)
       .where(eq(cardAssignees.cardId, f.cardId));
-    expect(assignees2.map((a) => a.userId)).toEqual([f.qa[0]]);
+    expect(assignees2.map((a) => a.userId)).toEqual([f.qa[0]!]);
     const runs = await runsFor(rule.id);
     expect(runs.some((r) => r.status === 'executed')).toBe(true);
     expect(runs.some((r) => r.reason === 'ALREADY_ASSIGNED')).toBe(true);
@@ -386,7 +418,7 @@ describe('Project Automation Engine', () => {
       .where(
         and(
           eq(organizationMembers.organizationId, f.orgId),
-          eq(organizationMembers.userId, f.qa[1])
+          eq(organizationMembers.userId, f.qa[1]!)
         )
       );
     await handleProjectAutomationEvent(db, {
@@ -401,7 +433,8 @@ describe('Project Automation Engine', () => {
       .leftJoin(cardAssignees, eq(cardAssignees.cardId, cards.id))
       .where(and(eq(cards.parentCardId, f.cardId), eq(cards.isArchived, false)));
     // Live pool is [qa0, qa2]; cursor was 1 → pool[1 % 2] = qa[2].
-    expect(subs.map((s) => s.assignee)).toEqual([f.qa[2]]);
+    expect(subs.map((s) => s.assignee)).toEqual([f.qa[2]!]);
+    expect((await runsFor(rule.id)).filter((r) => r.status === 'executed').length).toBe(2);
 
     // Empty pool: bypass write-time validation with a direct insert.
     const ghost = randomUUID();
@@ -437,11 +470,13 @@ describe('Project Automation Engine', () => {
     const actionId = ((rule.actionJson as unknown[])[0] as { id: string }).id;
     // Simulate a cursor pointing at a removed user: position arithmetic only.
     const first = await pickRoundRobinMember(db, rule.id, actionId, f.qa);
-    expect(f.qa).toContain(first);
+    expect(first).not.toBeNull();
+    expect(f.qa).toContain(first!);
     // Remove the picked user from the pool; rotation continues over survivors.
     const survivors = f.qa.filter((u) => u !== first);
     const second = await pickRoundRobinMember(db, rule.id, actionId, survivors);
-    expect(survivors).toContain(second);
+    expect(second).not.toBeNull();
+    expect(survivors).toContain(second!);
   });
 
   it('system-actor events never retrigger; depth overflow records LOOP_GUARD', async () => {
@@ -566,5 +601,57 @@ describe('Project Automation Engine', () => {
     });
     expect(await runsFor(rule.id)).toEqual([]);
     expect(isNull).toBeDefined();
+  });
+
+  it('automation-created subtasks never retrigger other rules (actor propagation)', async () => {
+    await makeRule(f); // Rule A: moved→Testing, creates RR subtask.
+    const ruleB = await makeRule(f, {
+      name: 'creator watcher',
+      trigger: { event: 'card.created' },
+      actions: [
+        { id: randomUUID(), type: 'assign_user', userId: f.qa[2]!, overrideExisting: true },
+      ],
+    });
+    await db.update(cards).set({ listId: f.testingId }).where(eq(cards.id, f.cardId));
+    await handleProjectAutomationEvent(db, {
+      event: 'card.moved',
+      payload: { cardId: f.cardId, eventId: randomUUID() },
+      actorId: 'human',
+      organizationId: f.orgId,
+    });
+    const subs = await db.select().from(cards).where(eq(cards.parentCardId, f.cardId));
+    expect(subs.length).toBe(1);
+    // Rule B must not have fired on the automation-created subtask.
+    expect(await runsFor(ruleB.id)).toEqual([]);
+  });
+
+  it('archived cards do not trigger rules', async () => {
+    const rule = await makeRule(f);
+    await db
+      .update(cards)
+      .set({ listId: f.testingId, isArchived: true })
+      .where(eq(cards.id, f.cardId));
+    await handleProjectAutomationEvent(db, {
+      event: 'card.moved',
+      payload: { cardId: f.cardId, eventId: randomUUID() },
+      actorId: 'human',
+      organizationId: f.orgId,
+    });
+    expect(await runsFor(rule.id)).toEqual([]);
+  });
+
+  it('invalid rule bodies fail validation with 422, not 500', async () => {
+    const err = await createProjectRule(
+      db,
+      f.orgId,
+      f.projectId,
+      { name: 'bad', trigger: { event: 'nope' }, actions: [] },
+      f.qa[0]!
+    ).then(
+      () => null,
+      (e: unknown) => e
+    );
+    expect(err).not.toBeNull();
+    expect(formatErrorResponse(err).status).toBe(422);
   });
 });

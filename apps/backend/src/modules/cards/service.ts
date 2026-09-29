@@ -416,7 +416,10 @@ export async function createCard(db: Database, organizationId: string, input: Cr
       boardId: boardInfo!.boardId,
       eventId: randomUUID(),
     },
-    actorId: 'system',
+    // Propagate the actor (automation:{ruleId} for rule-created subtasks) so
+    // the project automation engine's never-retrigger layer actually holds.
+    // Consumers only compare actorId (notifications) or forward it (webhooks).
+    actorId: input.actorId || 'system',
     organizationId: boardInfo!.organizationId,
   });
   await bumpBoardCache(boardInfo!.boardId);

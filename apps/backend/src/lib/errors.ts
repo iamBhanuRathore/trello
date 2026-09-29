@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { ZodError } from 'zod';
 
 export class HttpError extends Error {
   status: number;
@@ -84,6 +85,17 @@ export function formatErrorResponse(err: unknown): {
   status: number;
   body: { error: string; details?: any };
 } {
+  // Zod input validation (project automation rules, future schemas): 422 with
+  // the first issue — never a 500 + server-error log for a client mistake.
+  if (err instanceof ZodError) {
+    const first = err.issues[0];
+    const path = first?.path.join('.') || 'request';
+    return {
+      status: 422,
+      body: { error: `Validation failed: ${path} — ${first?.message ?? 'invalid value'}` },
+    };
+  }
+
   // If it is an explicit HttpError with a custom status code
   if (
     err &&

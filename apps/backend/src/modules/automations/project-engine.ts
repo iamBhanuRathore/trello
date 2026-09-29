@@ -92,6 +92,8 @@ export interface HydratedCard {
   listName: string;
   title: string;
   parentCardId: string | null;
+  isArchived: boolean;
+  isDeleted: boolean;
   labelNames: string[];
   assigneeIds: string[];
 }
@@ -112,6 +114,8 @@ export async function hydrateCard(
       projectId: boards.projectId,
       title: cards.title,
       parentCardId: cards.parentCardId,
+      isArchived: cards.isArchived,
+      deletedAt: cards.deletedAt,
     })
     .from(cards)
     .innerJoin(lists, eq(lists.id, cards.listId))
@@ -140,6 +144,8 @@ export async function hydrateCard(
     listName: row.listName,
     title: row.title,
     parentCardId: row.parentCardId,
+    isArchived: row.isArchived,
+    isDeleted: row.deletedAt !== null,
     labelNames: labelRows.map((l) => l.name),
     assigneeIds: assigneeRows.map((a) => a.userId),
   };
@@ -540,7 +546,7 @@ export async function executeRuleForCard(
           actionId: action.id,
           type: action.type,
           outcome: 'skipped',
-          reason: 'CONDITION_UNMET',
+          reason: 'ERROR',
           detail: `failed: ${message}`.slice(0, 500),
         });
         logger.error({ err, ruleId: rule.id, actionId: action.id }, 'Automation action failed');
@@ -638,19 +644,26 @@ export async function handleProjectAutomationEvent(
 
   const card = await hydrateCard(db, cardId, organizationId).catch(() => null);
   if (!card) return;
+  // No automation on trashed cards (bounce-guard index only covers open cards).
+  if (card.isArchived || card.isDeleted) return;
 
-  const rules = await db
-    .select()
-    .from(projectAutomationRules)
-    .where(
-      and(
-        eq(projectAutomationRules.projectId, card.projectId),
-        eq(projectAutomationRules.organizationId, organizationId),
-        eq(projectAutomationRules.isEnabled, true),
-        isNull(projectAutomationRules.deletedAt)
-      )
-    )
-    .catch(() => []);
+  let rules: Array<typeof projectAutomationRules.$inferSelect> = [];
+  try {
+    rules = await db
+      .select()
+      .from(projectAutomationRules)
+      .where(
+        and(
+          eq(projectAutomationRules.projectId, card.projectId),
+          eq(projectAutomationRules.organizationId, organizationId),
+          eq(projectAutomationRules.isEnabled, true),
+          isNull(projectAutomationRules.deletedAt)
+        )
+      );
+  } catch (err) {
+    logger.error({ err, projectId: card.projectId }, 'Project automation rule lookup failed');
+    return;
+  }
   if (rules.length === 0) return;
 
   const store = getAutomationStore();
@@ -672,7 +685,7 @@ export async function handleProjectAutomationEvent(
       await executeRuleForCard(db, rule, card, event, eventId);
     } catch (err) {
       logger.error({ err, ruleId: rule.id }, 'Project automation rule failed');
-      await recordRun(db, rule, card.cardId, null, 'failed', 'CONDITION_UNMET', {
+      await recordRun(db, rule, card.cardId, null, 'failed', 'ERROR', {
         event,
         error: err instanceof Error ? err.message : String(err),
       }).catch(() => {});
@@ -805,7 +818,8 @@ export async function validateRuleReferences(
     }
   }
   for (const r of roleIds) await assertRoleInOrg(db, organizationId, r);
-  // Explicit user pools may include future members; only single-assign targets
-  // and RR pools are validated live at execution. Validate now for fast feedback.
+  // All referenced users must be active members now (fast feedback); pools are
+  // still re-resolved from live membership on every fire, so mid-rotation
+  // deactivations degrade to skips instead of stale picks.
   for (const u of userIds) await assertUserActiveInOrg(db, organizationId, u);
 }

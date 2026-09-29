@@ -469,6 +469,7 @@ export const AutomationSkipReasonSchema = z.enum([
   'LABEL_NOT_FOUND',
   'ASSIGNEE_NOT_FOUND',
   'RULE_DISABLED',
+  'ERROR',
 ]);
 
 export type AutomationTrigger = z.infer<typeof AutomationTriggerSchema>;

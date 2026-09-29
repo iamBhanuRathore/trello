@@ -117,6 +117,12 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - Tests added: `project-automation.test.ts` — 13 tests (matchers, label router + ALREADY_ASSIGNED, RR order, parallel-move single subtask, deactivation mid-rotation, empty pool, role pool, LOOP_GUARD, DUPLICATE_EVENT, nesting→FAILED, CONDITION_UNMET, disabled-silent). Backend typecheck/lint clean; cards/automations/roles/orgs/boards suites green (43 tests).
 - What's next: Phase 3 builder page (Project → Automation: WHEN/IF/THEN, templates, dry-run preview, coverage auto-fix, run-history drawer).
 
+### 2026-09-29 — Automation backend review fixes (Phase 3 code review)
+
+- Review verdict: no Phase 3 builder UI exists yet (parked) — reviewed the Phase 0–2 backend instead. Found + fixed 3 real bugs: (1) `createCard` hardcoded `actorId: 'system'` on `card.created`, so automation-created subtasks emitted non-automation events and could retrigger other rules — now propagates `input.actorId` (notifications don't consume `created`, webhooks only forward); (2) Zod rule-validation errors surfaced as HTTP 500 — `formatErrorResponse` now maps `ZodError` → 422 globally; (3) engine-test teardown wiped shared `comments`/`cardAssignees`/`cardLabels` tables — now scoped to fixture cards. Minors: failed runs now record reason `ERROR` (was misleading `CONDITION_UNMET`), engine skips archived/deleted cards, rule-lookup failures log instead of silent `[]`, fixed a stale validation comment, full strict-typecheck clean.
+- Tests added: actor-propagation (second rule stays silent on automation subtask), archived-card silence, Zod→422 mapping. Automations suite 17/17; cards/boards/roles/orgs green. Full backend suite: 26 failures in auth/sso/notifications/etc. verified pre-existing (identical on stashed clean tree — test-DB seed state, unrelated).
+- What's next: Phase 3 builder page.
+
 ### 2026-08-10 — Session 1 (Phase 0 Scaffold)
 
 - What was done: Full monorepo scaffold. All packages created (config, shared-types, test-fixtures). Backend running with Drizzle schema, RBAC middleware, JWT auth, Swagger docs, 27 route stubs across 7 modules. Docker services healthy. 658 packages installed.
