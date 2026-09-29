@@ -145,6 +145,10 @@ export const app = new Elysia()
         'access-control-max-age': maxAge,
       };
       applyCorsHeaders(headers, request);
+      // Balance the onRequest increment: Elysia never fires onAfterResponse
+      // for onRequest early-returns (verified), so without this every CORS
+      // preflight leaks +1 and the shutdown drain always hits its deadline.
+      inFlight = Math.max(0, inFlight - 1);
       return new Response(null, { status: 204, headers });
     }
     return undefined;
