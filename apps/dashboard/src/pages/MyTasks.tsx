@@ -93,7 +93,22 @@ export function MyTasks() {
   const pages = data?.pages ?? [];
   const tasks: any[] = pages.flatMap((p) => p?.tasks ?? []);
   const total: number = pages[0]?.total ?? tasks.length;
-  const summary = pages[0]?.summary || {
+  // KPI/tab counts come from a dedicated key independent of the active tab.
+  // Previously they were read off the active tab's pages, so every tab switch
+  // (fresh key, no cache) flashed zeros until its fetch landed. This query is
+  // covered by the same ['my-tasks'] invalidations, so counts stay fresh —
+  // and TanStack retains the previous value during background refetch, so
+  // they never flash. limit=1: we only need the summary envelope.
+  const { data: liveSummary } = useQuery({
+    queryKey: ['my-tasks', 'summary'],
+    queryFn: async () => {
+      const res = await api.get('/cards/my-tasks?limit=1');
+      return res.data?.summary;
+    },
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
+  });
+  const summary = liveSummary || {
     totalAssigned: 0,
     totalObserving: 0,
     totalParticipating: 0,
