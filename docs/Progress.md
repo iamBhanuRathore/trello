@@ -2184,3 +2184,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - Decisions made: RLS FORCE deliberately deferred (would zero-out all reads — app never sets org context; see Decisions.md); pre-existing JWTs invalidated by iss/aud (forced re-login); legacy SCIM/invite tokens require rotation (re-save/resend).
 - Tests added: updated `sso.test.ts` to WorkOS-code flow; verified backend+dashboard typecheck clean, 23/24 card/workos/billing tests pass (1 pre-existing afterAll cleanup failure, identical on base `31cd602`).
 - What's next: withOrgContext adoption → FORCE RLS + least-privilege DB role; `bun audit`/osv-scanner in CI; axios version pin confirmation.
+
+### 2026-09-29 — Project Defaults in Automations Modal + Rule-Builder Fixes
+
+- **What:** `AutomationsModal` gains a second tab, **Project Defaults** (Jira-style "if project is X, assign Y"): pick a project (from `/workspaces/tree`, current board's project preselected) + User/Role toggle, then save via existing `PUT /components/assignment-rules` (project scope, user or team-role target). Lists existing project rules with per-row delete. No backend changes — `resolveDefaultAssignee` already auto-assigns on card creation with component > board > project > org precedence.
+- **Fixes (bugs visible in report screenshot):** WHEN dropdown showed a raw list UUID and THEN showed raw `assign_user` — replaced Base UI `Select` with proven `ListSearchableSelect` (real names + card counts) and labeled action options. Select User was empty — it fetched nonexistent `GET /users`; now uses server-side `AsyncMemberSearchableSelect` (`GET /orgs/:id/members`, paginated, no full-directory download per 2026-09-09 rule).
+- **Standards:** close path via `useDialogClose` (first Esc collapses an open builder instead of discarding it); error-only toasts; tab/toggle targets ≥36px; Save disabled when pristine; rule rows resolve list names instead of raw IDs. `BoardView` passes `projectId` (`board.projectId`) + `orgId` through.
+- Tests & Validation: dashboard `tsc` clean. Resize to 390px before commit (pickers stack full-width).

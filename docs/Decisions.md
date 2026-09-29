@@ -829,3 +829,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 - `FORCE RLS` NOT enabled: app connects as table owner and never sets `app.current_org_id`, so enforcement would return zero rows outage-wide. Tenant isolation stays app-layer (explicit org filters + membership checks) until traffic moves through `withOrgContext`.
 - Demo seed keeps shared `Password123!` (E2E/dev-login depend on it) but hard-refuses production without `BOARDLY_SEED_PRODUCTION=1`.
 - Benchmark: matches Linear/Jira posture — short-lived access + rotating refresh with reuse detection, allowlisted redirects/uploads, hashed invite-style tokens.
+
+## 2026-09-29 — Project Defaults Tab Lives in the Automations Modal (Jira + Butler parity)
+
+**Context:** Proprietary-tool request: "if the project is this, assign this". Backend already had both halves with no UI: board-scoped Butler-style event rules (`automations`, on `card.moved`) and Jira-style static default assignees (`assignment_rules` project scope, resolved in `createCard`).
+
+**Alternatives considered:** separate Project Settings page (rejected — the ask was for config "in here", next to the board rules where the screenshot was taken); new backend table/endpoints (rejected — `assignment-rules` + `resolveDefaultAssignee` already cover user + role targets).
+
+**Decision:** two tabs in the existing modal — Board Rules (event-driven, on move) and Project Defaults (static, on creation), matching Jira (project default assignee + automation side by side) over Trello (Butler board-only). Same pass fixes the two screenshot bugs by reusing proven pickers instead of adding new ones.

@@ -698,6 +698,8 @@ export function BoardView() {
                 isOpen={isAutomationsOpen}
                 onClose={() => setIsAutomationsOpen(false)}
                 lists={lists}
+                projectId={board?.projectId}
+                orgId={user?.organizationId}
               />
             </Suspense>
           )}
