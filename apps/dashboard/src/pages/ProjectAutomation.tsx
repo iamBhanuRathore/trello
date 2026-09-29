@@ -189,8 +189,8 @@ export function ProjectAutomation() {
   }, [editor]);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-16 px-4 sm:px-6 pt-6">
-      <header className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between border-b pb-5">
+    <div className="mx-auto w-full max-w-[1600px] space-y-6 pb-16 px-4 sm:px-6 lg:px-8 pt-6">
+      <header className="flex flex-col gap-3 justify-between border-b pb-5 lg:flex-row lg:items-center">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-11 h-11 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
             <Zap className="h-5 w-5 text-amber-500" aria-hidden />
