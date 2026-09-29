@@ -29,6 +29,7 @@ import {
   resolveRolePool,
   resolveExplicitPool,
   peekRoundRobinMember,
+  systemRoleName,
 } from './project-engine';
 import { isValidUuid } from '../cards/service';
 
@@ -405,25 +406,51 @@ export async function getAutomationContext(
   }));
 
   // Roles visible to this org (org roles + system roles) with live member counts.
+  // Counts cover both systems: team-role grants AND system-role enum holders
+  // (Org Owner/Admin/Member/Viewer live on organizationMembers.role).
   const visibleRoles = orgRoles.filter(
     (r) => r.organizationId === orgId || r.organizationId === null || r.isSystemRole
   );
   const counts = new Map<string, number>();
-  const holderRows = await db
-    .select({ roleId: organizationRoleMembers.roleId, userId: organizationRoleMembers.userId })
-    .from(organizationRoleMembers)
-    .innerJoin(
-      organizationMembers,
-      and(
-        eq(organizationMembers.organizationId, organizationRoleMembers.organizationId),
-        eq(organizationMembers.userId, organizationRoleMembers.userId),
-        eq(organizationMembers.status, 'active'),
-        isNull(organizationMembers.deletedAt)
+  const [holderRows, sysHolderRows] = await Promise.all([
+    db
+      .select({ roleId: organizationRoleMembers.roleId, userId: organizationRoleMembers.userId })
+      .from(organizationRoleMembers)
+      .innerJoin(
+        organizationMembers,
+        and(
+          eq(organizationMembers.organizationId, organizationRoleMembers.organizationId),
+          eq(organizationMembers.userId, organizationRoleMembers.userId),
+          eq(organizationMembers.status, 'active'),
+          isNull(organizationMembers.deletedAt)
+        )
       )
-    )
-    .where(eq(organizationRoleMembers.organizationId, orgId));
+      .where(eq(organizationRoleMembers.organizationId, orgId)),
+    db
+      .select({ memberRole: organizationMembers.role })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(
+        and(
+          eq(organizationMembers.organizationId, orgId),
+          eq(organizationMembers.status, 'active'),
+          isNull(organizationMembers.deletedAt),
+          isNull(users.deactivatedAt)
+        )
+      ),
+  ]);
   for (const h of holderRows) {
     counts.set(h.roleId, (counts.get(h.roleId) ?? 0) + 1);
+  }
+  const sysTotals = new Map<string, number>();
+  for (const s of sysHolderRows) {
+    const name = systemRoleName(s.memberRole);
+    sysTotals.set(name, (sysTotals.get(name) ?? 0) + 1);
+  }
+  for (const r of visibleRoles) {
+    if (r.isSystemRole || r.organizationId === null) {
+      counts.set(r.id, (counts.get(r.id) ?? 0) + (sysTotals.get(r.name) ?? 0));
+    }
   }
 
   const mp = Math.max(1, Number(memberPage) || 1);

@@ -168,13 +168,20 @@ async function activeOrgMemberIds(db: Database, organizationId: string): Promise
   return new Set(rows.map((r) => r.userId));
 }
 
-/** All active holders of a team role, stable order (oldest grant first). */
+/**
+ * All active holders of a role, stable order (oldest grant first).
+ * Covers BOTH role systems: explicit team-role grants (organizationRoleMembers)
+ * AND system roles (Org Owner/Admin/Member/Viewer…), which live on the
+ * organizationMembers.role enum and never appear in the grants table.
+ * Without the second source every system-role pool would resolve empty.
+ */
 export async function resolveRolePool(
   db: Database,
   organizationId: string,
   roleId: string
 ): Promise<string[]> {
   if (!isValidUuid(roleId)) return [];
+  const [role] = await db.select().from(roles).where(eq(roles.id, roleId)).limit(1);
   const rows = await db
     .select({
       userId: organizationRoleMembers.userId,
@@ -203,7 +210,53 @@ export async function resolveRolePool(
       (a.grantedAt?.getTime() ?? 0) - (b.grantedAt?.getTime() ?? 0) ||
       (a.userId < b.userId ? -1 : 1)
   );
-  return rows.map((r) => r.userId);
+  const pool = rows.map((r) => r.userId);
+
+  // System-role holders: same enum→name mapping as the RBAC check.
+  if (role && (role.isSystemRole || role.organizationId === null)) {
+    const sysRows = await db
+      .select({
+        userId: organizationMembers.userId,
+        memberRole: organizationMembers.role,
+        joinedAt: organizationMembers.createdAt,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          eq(organizationMembers.status, 'active'),
+          isNull(organizationMembers.deletedAt),
+          isNull(users.deactivatedAt)
+        )
+      );
+    sysRows.sort((a, b) => (a.joinedAt?.getTime() ?? 0) - (b.joinedAt?.getTime() ?? 0));
+    for (const m of sysRows) {
+      if (systemRoleName(m.memberRole) === role.name && !pool.includes(m.userId)) {
+        pool.push(m.userId);
+      }
+    }
+  }
+  return pool;
+}
+
+/** Mirrors the CASE mapping in middleware/auth.ts (enum → display role name). */
+export function systemRoleName(memberRole: string): string {
+  switch (memberRole) {
+    case 'org_owner':
+      return 'Org Owner';
+    case 'org_admin':
+      return 'Org Admin';
+    case 'billing_manager':
+      return 'Billing Manager';
+    case 'workspace_admin':
+      return 'Workspace Admin';
+    case 'viewer':
+      return 'Viewer';
+    case 'member':
+    default:
+      return 'Member';
+  }
 }
 
 /** Explicit user pool filtered to live members (preserves configured order). */
