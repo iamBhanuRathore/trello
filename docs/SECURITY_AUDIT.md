@@ -62,3 +62,33 @@ Stripe webhook sig, refresh hash+CSPRNG, bcrypt, AES-GCM IV, no `dangerouslySetI
 - Test note: `sso/auth/org` suites have a pre-existing `afterAll` cleanup
   failure (`roles` FK blocks org delete; fails identically on base commit
   `31cd602`). Functional tests pass (incl. new hashed-token + WorkOS-code flows).
+
+## Post-fix review (2026-09-28)
+
+Re-audited all fixes for breakage/loopholes. Found and fixed:
+
+- R1 calendar scheduling silently dropped by `updateCard` whitelist
+  (`scheduledStart/End` re-added; internal caller).
+- R2 local-dev uploads 401'd: dashboard `fetch(PUT)` sends no auth —
+  added `uploadToPresignedUrl()` (Bearer only for same-origin buffer URLs,
+  never for S3 signatures) and wired both upload call sites.
+- R3 WS handshake skipped membership check (deactivated users kept sockets)
+  — enforced at `open()`; presence actions already self-scoped.
+- R4 webhook SSRF guard blocked dev `http://localhost` at DNS step while
+  allowing it at scheme step — loopback now consistently allowed off-prod.
+- R5 filename/column mismatches: presigned keys truncated to guard limit,
+  `fileType` cap 100 to match DB columns, mint-time extension fail-fast.
+- R6 `signOut` 500 on malformed userId — UUID-format guard.
+- R7 new cross-tenant IDOR found in review: sprints/phases had zero org
+  scoping (any authed user, any org, full CRUD by id) — project-join guards
+  added, routes pass `organizationId`, unit-test callers unaffected (optional param).
+- R8 mass-assignment spreads hardened to explicit picks in boards, orgs,
+  projects, workspaces, stages, automations, webhooks, sprints, phases services.
+- Verified live: prod boot refuses without secrets; prod CORS reflects only
+  allowlisted origins; tampered JWT 401; SSRF metadata/LAN 400, legit https
+  created+deleted; old SSO body-shape 422; refresh rotation/reuse-burn/
+  owner-scoped signout proven against test DB; sign-in→me/search/billing 200.
+- Residuals: SSO `state` optional (code exchange is the auth); pre-auth IP
+  bucket is shared behind NAT (2rps/30burst); `billing_manager` maps to a
+  nonexistent system role (pre-existing); sso/auth/org suites' `afterAll`
+  cleanup FK failure is pre-existing on base `31cd602`.
