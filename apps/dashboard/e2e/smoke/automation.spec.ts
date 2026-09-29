@@ -154,13 +154,13 @@ test.describe('project automation builder', () => {
     expect(picked, 'Leo Thorne option appears').toBe(true);
     await page.locator('div.cursor-pointer', { hasText: 'Leo Thorne' }).first().click();
     await editor
-      .getByRole('region', { name: 'Actions' })
+      .getByRole('region', { name: 'Then' })
       .getByRole('button', { name: 'Add', exact: true })
       .click();
     // Coverage auto-fix: a label missing on the board warns, then one click creates it.
     await editor.getByLabel('Add label condition').fill('e2e-missing-label');
     await editor
-      .getByRole('region', { name: 'Conditions' })
+      .getByRole('region', { name: 'If' })
       .getByRole('button', { name: 'Add', exact: true })
       .click();
     const warn = editor.getByText(/missing on 1 of 1 board/);

@@ -10,6 +10,9 @@ import {
   Tag,
   ListPlus,
   X,
+  Zap,
+  ListFilter,
+  Play,
 } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
@@ -55,6 +58,72 @@ function actionLabel(a: AutomationAction): string {
   if (a.type === 'assign_user') return 'Assign user';
   if (a.type === 'create_subtask') return 'Create subtask';
   return 'Add label';
+}
+
+/** Live plain-language summary of the draft (Jira-style). */
+function describeDraft(d: RulePayload): string {
+  const when =
+    d.trigger.event === 'card.moved'
+      ? `card moved${d.trigger.listName ? ` to ${d.trigger.listName}` : ''}`
+      : d.trigger.event === 'card.created'
+        ? 'card created'
+        : 'card labeled';
+  const labels = d.condition?.labelNames ?? [];
+  const ifPart = labels.length > 0 ? `, if labeled ${labels.join(', ')}` : '';
+  const thenPart =
+    d.actions.length === 0
+      ? 'then nothing yet'
+      : `then ${d.actions
+          .map((a) =>
+            a.type === 'assign_user'
+              ? 'assign user'
+              : a.type === 'create_subtask'
+                ? 'create subtask'
+                : `add label ${a.labelName || '…'}`
+          )
+          .join(' → ')}`;
+  return `When ${when}${ifPart}, ${thenPart}.`;
+}
+
+/** Numbered step shell: badge + connecting rail + content panel. */
+function Step({
+  n,
+  icon,
+  title,
+  hint,
+  badge,
+  children,
+  last = false,
+}: {
+  n: number;
+  icon: React.ReactNode;
+  title: string;
+  hint?: string;
+  badge?: React.ReactNode;
+  children: React.ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <div className="flex gap-3 sm:gap-4" role="region" aria-label={title}>
+      <div className="flex flex-col items-center shrink-0" aria-hidden>
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+          {icon}
+        </span>
+        {!last && <span className="w-px flex-1 min-h-4 bg-border" />}
+      </div>
+      <div className="flex-1 min-w-0 pb-1">
+        <div className="flex items-center gap-2 mb-2 min-w-0">
+          <span className="text-[11px] font-bold text-muted-foreground">0{n}</span>
+          <h3 className="text-xs font-semibold uppercase tracking-wider truncate">{title}</h3>
+          {badge}
+        </div>
+        {hint && <p className="text-xs text-muted-foreground mb-2">{hint}</p>}
+        <div className="rounded-xl border border-border/70 bg-muted/20 p-3 sm:p-4 space-y-3">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function RuleEditor({
@@ -143,6 +212,14 @@ export function RuleEditor({
       prev.map((a) => (a.id === id ? ({ ...a, ...patch } as AutomationAction) : a))
     );
 
+  const addCustomLabel = () => {
+    const v = customLabel.trim();
+    if (v && !labelNames.some((x) => x.toLowerCase() === v.toLowerCase())) {
+      setLabelNames((p) => (p.length >= 20 ? p : [...p, v]));
+    }
+    setCustomLabel('');
+  };
+
   const addAction = (kind: ActionKind) => {
     if (actions.length >= 10) return;
     const id = newActionId();
@@ -197,7 +274,7 @@ export function RuleEditor({
   return (
     <form
       onSubmit={submit}
-      className="rounded-xl border border-border bg-card p-4 sm:p-6 space-y-6"
+      className="rounded-xl border border-border bg-card p-4 sm:p-6 space-y-5"
       aria-label="Rule editor"
     >
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -214,170 +291,198 @@ export function RuleEditor({
           Enabled
         </label>
       </div>
+      <p
+        className="rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-[13px] text-muted-foreground"
+        aria-live="polite"
+      >
+        {describeDraft(draft)}
+      </p>
 
-      {/* WHEN */}
-      <section className="space-y-3" aria-label="Trigger">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          When
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <SearchableSelect
-            options={EVENT_OPTIONS}
-            value={event}
-            onChange={(v) => setEvent(v as AutomationEvent)}
-            placeholder="Event…"
-          />
-          <SearchableSelect
-            options={listNameOptions}
-            value={listName}
-            onChange={setListName}
-            placeholder="Any list (or pick one)…"
-            clearable
-            emptyText={
-              context.boards.length === 0 ? 'No boards in this project' : 'No matching lists'
-            }
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          List names match across every board — “Testing” fires on all of them.
-        </p>
-      </section>
-
-      {/* IF */}
-      <section className="space-y-3" aria-label="Conditions">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          If{' '}
-          <span className="normal-case font-normal">
-            (optional — card carries any of these labels)
-          </span>
-        </h3>
-        {labelNames.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {labelNames.map((n) => (
-              <span
-                key={n}
-                className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs min-h-[36px]"
-              >
-                <Tag className="h-3 w-3" aria-hidden />
-                <span className="truncate max-w-40">{n}</span>
-                <button
-                  type="button"
-                  onClick={() => setLabelNames((p) => p.filter((x) => x !== n))}
-                  className="rounded-full p-1 hover:bg-background cursor-pointer"
-                  aria-label={`Remove label condition ${n}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
+      <div className="space-y-1">
+        <Step
+          n={1}
+          icon={<Zap className="h-4 w-4" />}
+          title="When"
+          hint="List names match across every board — “Testing” fires on all of them."
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <SearchableSelect
+              options={EVENT_OPTIONS}
+              value={event}
+              onChange={(v) => setEvent(v as AutomationEvent)}
+              placeholder="Event…"
+            />
+            <SearchableSelect
+              options={listNameOptions}
+              value={listName}
+              onChange={setListName}
+              placeholder="Any list (or pick one)…"
+              clearable
+              emptyText={
+                context.boards.length === 0 ? 'No boards in this project' : 'No matching lists'
+              }
+            />
           </div>
-        )}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="flex-1 min-w-0">
+        </Step>
+
+        <Step
+          n={2}
+          icon={<ListFilter className="h-4 w-4" />}
+          title="If"
+          hint="Optional — the card must carry any of these labels."
+          badge={
+            labelNames.length > 0 ? (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary shrink-0">
+                {labelNames.length}
+              </span>
+            ) : undefined
+          }
+        >
+          {labelNames.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {labelNames.map((n) => (
+                <span
+                  key={n}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary min-h-[32px]"
+                >
+                  <Tag className="h-3 w-3" aria-hidden />
+                  <span className="truncate max-w-40">{n}</span>
+                  <button
+                    type="button"
+                    onClick={() => setLabelNames((p) => p.filter((x) => x !== n))}
+                    className="rounded-full p-1 hover:bg-background cursor-pointer"
+                    aria-label={`Remove label condition ${n}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {context.labels.length > 0 && (
+            <div className="flex flex-wrap gap-1.5" aria-label="Existing labels quick pick">
+              {context.labels.slice(0, 12).map((l) => {
+                const active = labelNames.some((x) => x.toLowerCase() === l.name.toLowerCase());
+                return (
+                  <button
+                    key={l.name}
+                    type="button"
+                    onClick={() =>
+                      setLabelNames((p) =>
+                        active
+                          ? p.filter((x) => x.toLowerCase() !== l.name.toLowerCase())
+                          : p.length >= 20
+                            ? p
+                            : [...p, l.name]
+                      )
+                    }
+                    aria-pressed={active}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] min-h-[32px] cursor-pointer transition-colors ${
+                      active
+                        ? 'border-primary/50 bg-primary/10 font-medium text-primary'
+                        : 'border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground'
+                    }`}
+                  >
+                    {l.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div className="flex flex-col sm:flex-row gap-2">
             <Input
               value={customLabel}
               onChange={(e) => setCustomLabel(e.target.value)}
-              placeholder="Label name, e.g. front-end"
+              placeholder="Or type a custom label name…"
               maxLength={100}
-              list="automation-label-names"
               aria-label="Add label condition"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && customLabel.trim()) {
                   e.preventDefault();
-                  const v = customLabel.trim();
-                  if (!labelNames.some((x) => x.toLowerCase() === v.toLowerCase())) {
-                    setLabelNames((p) => (p.length >= 20 ? p : [...p, v]));
-                  }
-                  setCustomLabel('');
+                  addCustomLabel();
                 }
               }}
+              className="flex-1 min-w-0"
             />
-            <datalist id="automation-label-names">
-              {context.labels.map((l) => (
-                <option key={l.name} value={l.name} />
-              ))}
-            </datalist>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!customLabel.trim()}
+              onClick={addCustomLabel}
+              className="shrink-0 min-h-[36px] cursor-pointer"
+            >
+              Add
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!customLabel.trim()}
-            onClick={() => {
-              const v = customLabel.trim();
-              if (v && !labelNames.some((x) => x.toLowerCase() === v.toLowerCase())) {
-                setLabelNames((p) => (p.length >= 20 ? p : [...p, v]));
-              }
-              setCustomLabel('');
-            }}
-            className="shrink-0 min-h-[36px] cursor-pointer"
-          >
-            Add
-          </Button>
-        </div>
-      </section>
+        </Step>
 
-      {/* THEN */}
-      <section className="space-y-3" aria-label="Actions">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Then{' '}
-            <span className="normal-case font-normal">({actions.length}/10, run in order)</span>
-          </h3>
-        </div>
-        {actions.length === 0 && (
-          <p className="text-sm text-muted-foreground rounded-lg border border-dashed p-4 text-center">
-            No actions yet — add one below.
-          </p>
-        )}
-        <ol className="space-y-3">
-          {actions.map((a, i) => (
-            <li key={a.id} className="rounded-lg border border-border p-3 space-y-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-muted-foreground w-5 shrink-0">
-                  {i + 1}.
-                </span>
-                <span className="text-sm font-medium flex-1 min-w-0 truncate">
-                  {actionLabel(a)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => moveAction(a.id, -1)}
-                  disabled={i === 0}
-                  className="rounded-md p-2 hover:bg-muted disabled:opacity-30 cursor-pointer disabled:cursor-default"
-                  aria-label="Move action up"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveAction(a.id, 1)}
-                  disabled={i === actions.length - 1}
-                  className="rounded-md p-2 hover:bg-muted disabled:opacity-30 cursor-pointer disabled:cursor-default"
-                  aria-label="Move action down"
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActions((p) => p.filter((x) => x.id !== a.id))}
-                  className="rounded-md p-2 hover:bg-destructive/10 hover:text-destructive cursor-pointer"
-                  aria-label="Remove action"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-              <ActionFields
-                action={a}
-                context={context}
-                orgId={orgId}
-                onPatch={(patch) => updateAction(a.id, patch)}
-              />
-              {problems[i] && <p className="text-xs text-destructive">{problems[i]}</p>}
-            </li>
-          ))}
-        </ol>
-        <AddActionRow onAdd={addAction} disabled={actions.length >= 10} />
-      </section>
+        <Step
+          n={3}
+          icon={<Play className="h-4 w-4" />}
+          title="Then"
+          hint="Actions run in order, top to bottom."
+          last
+          badge={
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground shrink-0">
+              {actions.length}/10
+            </span>
+          }
+        >
+          {actions.length === 0 && (
+            <p className="text-sm text-muted-foreground rounded-lg border border-dashed p-4 text-center">
+              No actions yet — add one below.
+            </p>
+          )}
+          <ol className="space-y-3">
+            {actions.map((a, i) => (
+              <li key={a.id} className="rounded-lg border border-border bg-card p-3 space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground w-5 shrink-0">
+                    {i + 1}.
+                  </span>
+                  <span className="text-sm font-medium flex-1 min-w-0 truncate">
+                    {actionLabel(a)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => moveAction(a.id, -1)}
+                    disabled={i === 0}
+                    className="rounded-md p-2 hover:bg-muted disabled:opacity-30 cursor-pointer disabled:cursor-default"
+                    aria-label="Move action up"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveAction(a.id, 1)}
+                    disabled={i === actions.length - 1}
+                    className="rounded-md p-2 hover:bg-muted disabled:opacity-30 cursor-pointer disabled:cursor-default"
+                    aria-label="Move action down"
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActions((p) => p.filter((x) => x.id !== a.id))}
+                    className="rounded-md p-2 hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                    aria-label="Remove action"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <ActionFields
+                  action={a}
+                  context={context}
+                  orgId={orgId}
+                  onPatch={(patch) => updateAction(a.id, patch)}
+                />
+                {problems[i] && <p className="text-xs text-destructive">{problems[i]}</p>}
+              </li>
+            ))}
+          </ol>
+          <AddActionRow onAdd={addAction} disabled={actions.length >= 10} />
+        </Step>
+      </div>
 
       {/* Coverage warnings */}
       {coverageWarnings.length > 0 && (
@@ -621,21 +726,36 @@ function ActionFields({
     );
   }
 
+  const matchedLabel = context.labels.find(
+    (l) => l.name.toLowerCase() === action.labelName.trim().toLowerCase()
+  );
   return (
     <div className="space-y-2">
+      {context.labels.length > 0 && (
+        <SearchableSelect
+          options={context.labels.map((l) => ({
+            value: l.name,
+            label: l.name,
+            sublabel:
+              l.boardCount === l.totalBoards
+                ? 'All boards'
+                : `${l.boardCount} of ${l.totalBoards} boards`,
+          }))}
+          value={matchedLabel?.name ?? ''}
+          onChange={(v) => onPatch({ labelName: v })}
+          placeholder="Pick an existing label…"
+          clearable
+        />
+      )}
       <Input
         value={action.labelName}
         onChange={(e) => onPatch({ labelName: e.target.value })}
-        placeholder="Label name, e.g. front-end"
+        placeholder={
+          context.labels.length > 0 ? 'Or type a custom name…' : 'Label name, e.g. front-end'
+        }
         maxLength={100}
-        list="automation-add-label-names"
         aria-label="Label name"
       />
-      <datalist id="automation-add-label-names">
-        {context.labels.map((l) => (
-          <option key={l.name} value={l.name} />
-        ))}
-      </datalist>
     </div>
   );
 }
