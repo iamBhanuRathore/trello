@@ -119,8 +119,9 @@ export async function verifyAccessToken(token: string): Promise<AuthContext> {
 /**
  * Confirms the token holder is still an active member of the token's org.
  * Cached 60s (strict improvement over the 15m token lifetime).
+ * Exported for the realtime WS handshake, which verifies tokens manually.
  */
-async function assertActiveOrgMembership(userId: string, orgId: string): Promise<boolean> {
+export async function assertActiveOrgMembership(userId: string, orgId: string): Promise<boolean> {
   const { cachedTTL } = await import('../lib/cache');
   const { data } = await cachedTTL(`auth:membership:${orgId}:${userId}`, 60, async () => {
     const [row] = await db

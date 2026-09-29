@@ -233,7 +233,11 @@ export async function updateWorkspace(
 ) {
   const [workspace] = await db
     .update(workspaces)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(workspaces.id, id),

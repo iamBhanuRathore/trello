@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, uploadToPresignedUrl } from './api';
 
 export interface ChatChannel {
   id: string;
@@ -262,11 +262,7 @@ export const chatService = {
       fileSize: file.size,
     });
     const { uploadUrl, attachment } = res.data;
-    await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'application/octet-stream' },
-      body: file,
-    });
+    await uploadToPresignedUrl(uploadUrl, file, file.type || 'application/octet-stream');
     return { uploadUrl, attachment };
   },
 };

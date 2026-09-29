@@ -29,8 +29,8 @@ export const searchRoutes = new Elysia({ prefix: '/search' })
     },
     {
       body: t.Object({
-        name: t.String(),
-        query: t.String(),
+        name: t.String({ minLength: 1, maxLength: 200 }),
+        query: t.String({ minLength: 1, maxLength: 200 }),
         filters: t.Optional(t.Any()),
       }),
     }

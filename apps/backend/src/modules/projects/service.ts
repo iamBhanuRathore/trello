@@ -114,7 +114,12 @@ export async function updateProject(
 ) {
   const [project] = await db
     .update(projects)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(projects.id, id),

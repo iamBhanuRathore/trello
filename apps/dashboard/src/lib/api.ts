@@ -96,6 +96,33 @@ function isEdenErrorBody(data: unknown): data is { error: string } {
   );
 }
 
+/**
+ * PUTs a file to a presigned upload URL.
+ * S3 URLs are pre-signed (no auth header — an `Authorization` header would
+ * collide with the query-string signature). Same-origin URLs hit the local-dev
+ * upload buffer, which requires the Bearer token, so attach it there only.
+ */
+export async function uploadToPresignedUrl(
+  uploadUrl: string,
+  file: File,
+  contentType?: string
+): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (contentType) headers['Content-Type'] = contentType;
+  try {
+    const apiOrigin = new URL(API_URL).origin;
+    const targetOrigin = new URL(uploadUrl, window.location.origin).origin;
+    if (targetOrigin === apiOrigin) {
+      const token = window.localStorage.getItem('boardly_access_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch {
+    // Unparseable URL — send without auth; server will reject if needed.
+  }
+  const res = await fetch(uploadUrl, { method: 'PUT', headers, body: file });
+  if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+}
+
 // Notifications
 export const getNotifications = async () => {
   return api.get('/notifications');

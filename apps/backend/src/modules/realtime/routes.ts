@@ -1,6 +1,6 @@
 import { Elysia } from 'elysia';
 import { eq } from 'drizzle-orm';
-import { verifyAccessToken } from '../../middleware/auth';
+import { verifyAccessToken, assertActiveOrgMembership } from '../../middleware/auth';
 import { eventBus } from '../../lib/event-bus';
 import { presenceStore, initializeRedisPubSub, onRedisBroadcast } from '../../redis';
 import type { PresenceUser } from '../../redis';
@@ -64,8 +64,18 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
 
     try {
       const payload = await verifyAccessToken(token);
+      const organizationId = (payload as { organizationId?: string }).organizationId;
+      // Same membership bar as HTTP: removed/deactivated holders can't open sockets.
+      if (organizationId && !payload.isPlatformAdmin) {
+        const active = await assertActiveOrgMembership(payload.userId, organizationId);
+        if (!active) {
+          ws.send({ type: 'error', message: 'Forbidden — no active membership' });
+          ws.close();
+          return;
+        }
+      }
       wsData.userId = payload.userId;
-      wsData.organizationId = (payload as { organizationId?: string }).organizationId;
+      wsData.organizationId = organizationId;
       wsData.subscribedBoards = new Set<string>();
 
       // Subscribe user to personal inbox & organization presence feed

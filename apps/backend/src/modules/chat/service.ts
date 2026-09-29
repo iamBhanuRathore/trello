@@ -12,7 +12,7 @@ import {
 } from '../../db/schema/index';
 import { eventBus } from '../../lib/event-bus';
 import { clampLimit } from '../../lib/pagination';
-import { generatePresignedUploadUrl } from '../../lib/s3';
+import { generatePresignedUploadUrl, isLocalUploadKeyAllowed, s3Client } from '../../lib/s3';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -1446,6 +1446,10 @@ export async function createChatAttachment(
   }
   if (input.fileSize && input.fileSize > CHAT_UPLOAD_MAX_BYTES) {
     throw httpError(400, 'File exceeds the 25 MB chat upload limit');
+  }
+  // Local-dev buffer serves bytes back: fail fast before the DB record exists.
+  if (!s3Client && !isLocalUploadKeyAllowed(input.fileName)) {
+    throw httpError(400, 'File type not allowed');
   }
 
   const [channel] = await db

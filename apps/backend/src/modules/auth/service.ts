@@ -351,8 +351,10 @@ export async function refreshTokens(db: Database, rawToken: string) {
 
 // ─── signOut ──────────────────────────────────────────────────────────────────
 export async function signOut(db: Database, rawToken: string, userId: string) {
-  const tokenHash = hashToken(rawToken);
   // Owner-scoped: a caller can only revoke their own refresh token.
+  // Malformed ids are a no-op (never let a UUID cast error become a 500).
+  if (!/^[0-9a-fA-F-]{36}$/.test(userId)) return;
+  const tokenHash = hashToken(rawToken);
   await db
     .update(refreshTokensTable)
     .set({ revokedAt: new Date() })

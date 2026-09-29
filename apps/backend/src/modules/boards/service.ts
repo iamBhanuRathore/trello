@@ -100,9 +100,14 @@ export async function updateBoard(
   organizationId: string,
   input: { name?: string; background?: string }
 ) {
+  // Explicit pick: never spread caller input into .set() (mass-assignment).
   const [board] = await db
     .update(boards)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.background !== undefined ? { background: input.background } : {}),
+      updatedAt: new Date(),
+    })
     .where(
       and(eq(boards.id, id), eq(boards.organizationId, organizationId), isNull(boards.deletedAt))
     )

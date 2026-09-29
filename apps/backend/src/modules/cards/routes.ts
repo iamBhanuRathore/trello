@@ -43,47 +43,21 @@ import {
   getCardViewers,
 } from './service';
 import path from 'path';
-import { generatePresignedUploadUrl, LOCAL_UPLOADS_DIR } from '../../lib/s3';
+import {
+  generatePresignedUploadUrl,
+  LOCAL_UPLOADS_DIR,
+  isLocalUploadKeyAllowed,
+  s3Client,
+} from '../../lib/s3';
 import { env } from '../../lib/env';
 
 /** Local-dev upload buffer — disabled outside development/test (open write + world-readable). */
 const localUploadsEnabled = env.NODE_ENV !== 'production';
 
-/** Uploadable extensions for the local-dev buffer (blocks .html/.svg stored-XSS). */
-const LOCAL_UPLOAD_EXTENSIONS = new Set([
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'avif',
-  'bmp',
-  'ico',
-  'pdf',
-  'txt',
-  'md',
-  'csv',
-  'json',
-  'zip',
-  'mp4',
-  'webm',
-  'mp3',
-  'wav',
-  'ogg',
-  'doc',
-  'docx',
-  'xls',
-  'xlsx',
-  'ppt',
-  'pptx',
-]);
-
+/** Serve-time key guard (single source: lib/s3). */
 function safeLocalKey(raw: string): string | null {
-  const base = path.basename(raw).toLowerCase();
-  const ext = base.includes('.') ? base.split('.').pop()! : '';
-  if (!LOCAL_UPLOAD_EXTENSIONS.has(ext)) return null;
-  if (base.length > 120) return null;
-  return base;
+  if (!isLocalUploadKeyAllowed(raw)) return null;
+  return path.basename(raw).toLowerCase();
 }
 
 /** Attached to authed cardRoutes below — uploads require a signed-in org member. */
@@ -530,6 +504,12 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           set.status = 400;
           return { error: 'File exceeds the 25 MB limit' };
         }
+        // Local-dev buffer serves bytes back: reject non-allowlisted types here
+        // so the staged PUT can't 400 after the DB record is created.
+        if (!s3Client && !isLocalUploadKeyAllowed(body.fileName)) {
+          set.status = 400;
+          return { error: 'File type not allowed' };
+        }
         const { uploadUrl, publicUrl } = await generatePresignedUploadUrl(
           user.organizationId,
           params.id,
@@ -558,7 +538,7 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
         fileType: t.Optional(
           t.String({
             minLength: 1,
-            maxLength: 127,
+            maxLength: 100,
             pattern: '^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$',
           })
         ),

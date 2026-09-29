@@ -11,21 +11,44 @@ export function httpError(status: number, message: string): Error & { status: nu
 
 // ─── Phases ───────────────────────────────────────────────────────────────────
 
-export async function listPhases(db: Database, projectId: string) {
-  return db
-    .select()
-    .from(phases)
-    .where(eq(phases.projectId, projectId))
-    .orderBy(phases.position);
+/**
+ * Tenant guard: phases hang off projects, which hang off orgs. Every entry
+ * point that accepts a raw phase/project id must prove org ownership —
+ * otherwise any authenticated user could read/mutate any org's phases.
+ * organizationId is optional only so unit tests can call without tenant ctx;
+ * all HTTP routes pass it.
+ */
+async function assertProjectInOrg(db: Database, projectId: string, organizationId?: string) {
+  if (!organizationId) return;
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+    .limit(1);
+  if (!project) throw httpError(404, 'Project not found');
 }
 
-export async function getPhase(db: Database, phaseId: string) {
-  const [phase] = await db
-    .select()
+async function assertPhaseInOrg(db: Database, phaseId: string, organizationId?: string) {
+  if (!organizationId) return;
+  const [row] = await db
+    .select({ id: phases.id, projectId: phases.projectId })
     .from(phases)
-    .where(eq(phases.id, phaseId));
+    .where(eq(phases.id, phaseId))
+    .limit(1);
+  if (!row) throw httpError(404, 'Phase not found');
+  await assertProjectInOrg(db, row.projectId, organizationId);
+}
+
+export async function listPhases(db: Database, projectId: string, organizationId?: string) {
+  await assertProjectInOrg(db, projectId, organizationId);
+  return db.select().from(phases).where(eq(phases.projectId, projectId)).orderBy(phases.position);
+}
+
+export async function getPhase(db: Database, phaseId: string, organizationId?: string) {
+  const [phase] = await db.select().from(phases).where(eq(phases.id, phaseId));
 
   if (!phase) throw httpError(404, 'Phase not found');
+  await assertProjectInOrg(db, phase.projectId, organizationId);
   return phase;
 }
 
@@ -37,9 +60,11 @@ export async function createPhase(
     position: number;
     startDate?: string;
     endDate?: string;
-  }
+  },
+  organizationId?: string
 ) {
-  // verify project exists
+  // verify project exists (and belongs to the caller's org)
+  await assertProjectInOrg(db, projectId, organizationId);
   const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
   if (!project) throw httpError(404, 'Project not found');
 
@@ -51,7 +76,7 @@ export async function createPhase(
       position: input.position,
       startDate: input.startDate,
       endDate: input.endDate,
-      status: 'not_started'
+      status: 'not_started',
     })
     .returning();
   return phase;
@@ -66,11 +91,20 @@ export async function updatePhase(
     startDate?: string;
     endDate?: string;
     status?: 'not_started' | 'active' | 'completed' | 'blocked';
-  }
+  },
+  organizationId?: string
 ) {
+  await assertPhaseInOrg(db, phaseId, organizationId);
   const [phase] = await db
     .update(phases)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.position !== undefined ? { position: input.position } : {}),
+      ...(input.startDate !== undefined ? { startDate: input.startDate } : {}),
+      ...(input.endDate !== undefined ? { endDate: input.endDate } : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(phases.id, phaseId))
     .returning();
 
@@ -78,7 +112,8 @@ export async function updatePhase(
   return phase;
 }
 
-export async function deletePhase(db: Database, phaseId: string) {
+export async function deletePhase(db: Database, phaseId: string, organizationId?: string) {
+  await assertPhaseInOrg(db, phaseId, organizationId);
   await db.delete(cardPhase).where(eq(cardPhase.phaseId, phaseId));
   const [deleted] = await db.delete(phases).where(eq(phases.id, phaseId)).returning();
   if (!deleted) throw httpError(404, 'Phase not found');
@@ -87,7 +122,13 @@ export async function deletePhase(db: Database, phaseId: string) {
 
 // ─── Phase Cards ──────────────────────────────────────────────────────────────
 
-export async function addCardToPhase(db: Database, phaseId: string, cardId: string) {
+export async function addCardToPhase(
+  db: Database,
+  phaseId: string,
+  cardId: string,
+  organizationId?: string
+) {
+  await assertPhaseInOrg(db, phaseId, organizationId);
   // In our schema, it's a many-to-many join table for cards and phases.
   // Actually, a card might only belong to one phase at a time logically, but DB allows many.
   // We'll just insert/do nothing on conflict.
@@ -99,7 +140,13 @@ export async function addCardToPhase(db: Database, phaseId: string, cardId: stri
   return cp || { phaseId, cardId }; // Return existing if conflict
 }
 
-export async function removeCardFromPhase(db: Database, phaseId: string, cardId: string) {
+export async function removeCardFromPhase(
+  db: Database,
+  phaseId: string,
+  cardId: string,
+  organizationId?: string
+) {
+  await assertPhaseInOrg(db, phaseId, organizationId);
   const [deleted] = await db
     .delete(cardPhase)
     .where(and(eq(cardPhase.phaseId, phaseId), eq(cardPhase.cardId, cardId)))
@@ -108,10 +155,8 @@ export async function removeCardFromPhase(db: Database, phaseId: string, cardId:
   return deleted;
 }
 
-export async function listPhaseCards(db: Database, phaseId: string) {
-  const items = await db
-    .select()
-    .from(cardPhase)
-    .where(eq(cardPhase.phaseId, phaseId));
+export async function listPhaseCards(db: Database, phaseId: string, organizationId?: string) {
+  await assertPhaseInOrg(db, phaseId, organizationId);
+  const items = await db.select().from(cardPhase).where(eq(cardPhase.phaseId, phaseId));
   return items;
 }

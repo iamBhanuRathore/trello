@@ -1091,6 +1091,9 @@ const UPDATE_CARD_FIELDS = [
   'estimateMinutes',
   'priorityId',
   'coverImage',
+  // Written by the calendar module (scheduleCard), not by the PATCH /cards/:id route.
+  'scheduledStart',
+  'scheduledEnd',
 ] as const;
 
 export async function updateCard(db: Database, id: string, organizationId: string, input: any) {

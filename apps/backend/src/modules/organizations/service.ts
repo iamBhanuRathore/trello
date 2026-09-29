@@ -74,9 +74,15 @@ export async function updateOrg(
   orgId: string,
   input: { name?: string; logoUrl?: string | null; primaryColor?: string | null }
 ) {
+  // Explicit pick: never spread caller input into .set() (mass-assignment).
   const [org] = await db
     .update(organizations)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.logoUrl !== undefined ? { logoUrl: input.logoUrl } : {}),
+      ...(input.primaryColor !== undefined ? { primaryColor: input.primaryColor } : {}),
+      updatedAt: new Date(),
+    })
     .where(and(eq(organizations.id, orgId), isNull(organizations.deletedAt)))
     .returning();
 

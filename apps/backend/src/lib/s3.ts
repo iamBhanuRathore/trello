@@ -27,6 +27,42 @@ if (env.STORAGE_ACCESS_KEY && env.STORAGE_SECRET_KEY && env.STORAGE_BUCKET) {
 
 export { s3Client };
 
+/** Uploadable extensions for the local-dev buffer (blocks .html/.svg stored-XSS). */
+export const LOCAL_UPLOAD_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'avif',
+  'bmp',
+  'ico',
+  'pdf',
+  'txt',
+  'md',
+  'csv',
+  'json',
+  'zip',
+  'mp4',
+  'webm',
+  'mp3',
+  'wav',
+  'ogg',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+]);
+
+/** Mirrors the serve-time key guard so bad keys fail fast at mint time. */
+export function isLocalUploadKeyAllowed(raw: string): boolean {
+  const base = raw.split('/').pop()?.toLowerCase() ?? '';
+  const ext = base.includes('.') ? base.split('.').pop()! : '';
+  return base.length > 0 && base.length <= 120 && LOCAL_UPLOAD_EXTENSIONS.has(ext);
+}
+
 /**
  * Generates a presigned URL for the client to upload an attachment directly to S3.
  * If S3 is not configured, gracefully falls back to local storage endpoints.
@@ -41,8 +77,9 @@ export async function generatePresignedUploadUrl(
   // Local-dev fallback endpoints are key-agnostic, so only the S3 path changes.
   keyScope?: string
 ) {
-  // Sanitize filename and create a unique key
-  const safeFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+  // Sanitize filename and create a unique key. Truncated so the local-dev
+  // buffer's key guard (120 chars incl. timestamp prefix) never rejects it.
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_').slice(-100);
   const timestamp = Date.now();
   const fileKey = `${timestamp}-${safeFileName}`;
 

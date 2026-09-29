@@ -73,6 +73,8 @@ export async function assertSafeWebhookUrl(rawUrl: string): Promise<URL> {
     parsed.hostname === '127.0.0.1' ||
     parsed.hostname === '[::1]' ||
     parsed.hostname === '::1';
+  // Local-dev escape hatch: plain-http loopback only (never in production).
+  const allowLoopback = env.NODE_ENV !== 'production' && parsed.protocol === 'http:';
   if (parsed.protocol === 'http:') {
     if (env.NODE_ENV === 'production' || !isLoopbackHost) {
       throw httpError(400, 'Webhook URL must use https');
@@ -87,7 +89,11 @@ export async function assertSafeWebhookUrl(rawUrl: string): Promise<URL> {
   } catch {
     throw httpError(400, 'Webhook hostname does not resolve');
   }
-  if (addresses.length === 0 || addresses.some((a) => isBlockedIP(a.address))) {
+  const blocked = addresses.some((a) => {
+    if (allowLoopback && (a.address === '127.0.0.1' || a.address === '::1')) return false;
+    return isBlockedIP(a.address);
+  });
+  if (addresses.length === 0 || blocked) {
     throw httpError(400, 'Webhook URL resolves to a blocked (private/internal) address');
   }
   return parsed;
@@ -127,7 +133,12 @@ export async function updateWebhook(
   }
   const [webhook] = await db
     .update(webhooks)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.url !== undefined ? { url: input.url } : {}),
+      ...(input.events !== undefined ? { events: input.events } : {}),
+      ...(input.isEnabled !== undefined ? { isEnabled: input.isEnabled } : {}),
+      updatedAt: new Date(),
+    })
     .where(and(eq(webhooks.id, id), eq(webhooks.organizationId, organizationId)))
     .returning();
   if (!webhook) throw httpError(404, 'Webhook not found');

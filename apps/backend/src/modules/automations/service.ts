@@ -55,7 +55,13 @@ export async function updateAutomation(
 ) {
   const [automation] = await db
     .update(automations)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.triggerJson !== undefined ? { triggerJson: input.triggerJson } : {}),
+      ...(input.actionJson !== undefined ? { actionJson: input.actionJson } : {}),
+      ...(input.isEnabled !== undefined ? { isEnabled: input.isEnabled } : {}),
+      updatedAt: new Date(),
+    })
     .where(and(eq(automations.id, id), eq(automations.boardId, boardId)))
     .returning();
   if (!automation) throw httpError(404, 'Automation not found');

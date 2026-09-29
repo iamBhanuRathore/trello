@@ -485,7 +485,7 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
         fileType: t.Optional(
           t.String({
             minLength: 1,
-            maxLength: 127,
+            maxLength: 100,
             pattern: '^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$',
           })
         ),

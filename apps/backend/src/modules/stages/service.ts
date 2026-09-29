@@ -12,10 +12,7 @@ export function httpError(status: number, message: string): Error & { status: nu
 // ─── Templates ────────────────────────────────────────────────────────────────
 
 export async function listStageTemplates(db: Database, organizationId: string) {
-  return db
-    .select()
-    .from(stageTemplates)
-    .where(eq(stageTemplates.organizationId, organizationId));
+  return db.select().from(stageTemplates).where(eq(stageTemplates.organizationId, organizationId));
 }
 
 export async function getStageTemplateWithStages(db: Database, templateId: string) {
@@ -58,7 +55,11 @@ export async function updateStageTemplate(
 ) {
   const [template] = await db
     .update(stageTemplates)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.isDefault !== undefined ? { isDefault: input.isDefault } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(stageTemplates.id, templateId))
     .returning();
 
@@ -82,7 +83,12 @@ export async function deleteStageTemplate(db: Database, templateId: string) {
 export async function createStage(
   db: Database,
   templateId: string,
-  input: { name: string; color: string; position: number; category: 'not_started' | 'in_progress' | 'blocked' | 'done' }
+  input: {
+    name: string;
+    color: string;
+    position: number;
+    category: 'not_started' | 'in_progress' | 'blocked' | 'done';
+  }
 ) {
   const [stage] = await db
     .insert(stages)
@@ -100,23 +106,31 @@ export async function createStage(
 export async function updateStage(
   db: Database,
   stageId: string,
-  input: { name?: string; color?: string; position?: number; category?: 'not_started' | 'in_progress' | 'blocked' | 'done' }
+  input: {
+    name?: string;
+    color?: string;
+    position?: number;
+    category?: 'not_started' | 'in_progress' | 'blocked' | 'done';
+  }
 ) {
   const [stage] = await db
     .update(stages)
-    .set({ ...input, updatedAt: new Date() })
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.color !== undefined ? { color: input.color } : {}),
+      ...(input.position !== undefined ? { position: input.position } : {}),
+      ...(input.category !== undefined ? { category: input.category } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(stages.id, stageId))
     .returning();
-    
+
   if (!stage) throw httpError(404, 'Stage not found');
   return stage;
 }
 
 export async function deleteStage(db: Database, stageId: string) {
-  const [deleted] = await db
-    .delete(stages)
-    .where(eq(stages.id, stageId))
-    .returning();
+  const [deleted] = await db.delete(stages).where(eq(stages.id, stageId)).returning();
   if (!deleted) throw httpError(404, 'Stage not found');
   return deleted;
 }

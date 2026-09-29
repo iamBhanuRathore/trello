@@ -647,11 +647,8 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         });
         const { uploadUrl, attachment } = res.data;
         if (uploadUrl) {
-          await fetch(uploadUrl, {
-            method: 'PUT',
-            body: file,
-            headers: { 'Content-Type': file.type || 'application/octet-stream' },
-          });
+          const { uploadToPresignedUrl } = await import('../../lib/api');
+          await uploadToPresignedUrl(uploadUrl, file, file.type || 'application/octet-stream');
         }
         return attachment;
       },
