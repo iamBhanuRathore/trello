@@ -22,6 +22,12 @@ export type AutomationAction =
     }
   | {
       id: string;
+      type: 'add_participant';
+      userId?: string;
+      roleId?: string;
+    }
+  | {
+      id: string;
       type: 'create_subtask';
       titleTemplate: string;
       pool: { kind: 'role'; roleId: string } | { kind: 'users'; userIds: string[] };

@@ -337,6 +337,46 @@ async function previewAction(
       detail: `create subtask assigned to next in rotation: @${await displayName(db, next)} (approximate — cursor advances on fire)`,
     };
   }
+  if (action.type === 'add_participant') {
+    let target: string | null = null;
+    if (action.userId) {
+      const [m] = await db
+        .select({ userId: organizationMembers.userId })
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.organizationId, card.organizationId),
+            eq(organizationMembers.userId, action.userId),
+            eq(organizationMembers.status, 'active'),
+            isNull(organizationMembers.deletedAt)
+          )
+        )
+        .limit(1);
+      target = m?.userId ?? null;
+    } else if (action.roleId) {
+      target = (await resolveRolePool(db, card.organizationId, action.roleId))[0] ?? null;
+    }
+    if (!target)
+      return {
+        ...base,
+        outcome: 'would_skip',
+        reason: 'ASSIGNEE_NOT_FOUND',
+        detail: 'no live collaborator',
+      };
+    return {
+      ...base,
+      outcome: 'would_execute',
+      detail: `add @${await displayName(db, target)} as a collaborator`,
+    };
+  }
+  if (action.type !== 'add_label') {
+    return {
+      ...base,
+      outcome: 'would_skip',
+      reason: 'CONDITION_UNMET',
+      detail: 'unknown action type',
+    };
+  }
   const boardLabels = await db
     .select({ name: labels.name })
     .from(labels)

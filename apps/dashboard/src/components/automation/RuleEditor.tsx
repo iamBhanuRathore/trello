@@ -50,12 +50,14 @@ type ActionKind = AutomationAction['type'];
 
 const ACTION_OPTIONS: Array<{ value: ActionKind; label: string; sublabel: string }> = [
   { value: 'assign_user', label: 'Assign user', sublabel: 'Set the card assignee' },
+  { value: 'add_participant', label: 'Add participant', sublabel: 'Add a collaborator' },
   { value: 'create_subtask', label: 'Create subtask', sublabel: 'Round-robin test handoff' },
   { value: 'add_label', label: 'Add label', sublabel: 'Attach a label by name' },
 ];
 
 function actionLabel(a: AutomationAction): string {
   if (a.type === 'assign_user') return 'Assign user';
+  if (a.type === 'add_participant') return 'Add participant';
   if (a.type === 'create_subtask') return 'Create subtask';
   return 'Add label';
 }
@@ -77,9 +79,11 @@ function describeDraft(d: RulePayload): string {
           .map((a) =>
             a.type === 'assign_user'
               ? 'assign user'
-              : a.type === 'create_subtask'
-                ? 'create subtask'
-                : `add label ${a.labelName || '…'}`
+              : a.type === 'add_participant'
+                ? 'add participant'
+                : a.type === 'create_subtask'
+                  ? 'create subtask'
+                  : `add label ${a.labelName || '…'}`
           )
           .join(' → ')}`;
   return `When ${when}${ifPart}, ${thenPart}.`;
@@ -224,6 +228,7 @@ export function RuleEditor({
     if (actions.length >= 10) return;
     const id = newActionId();
     if (kind === 'assign_user') setActions((p) => [...p, { id, type: 'assign_user' }]);
+    else if (kind === 'add_participant') setActions((p) => [...p, { id, type: 'add_participant' }]);
     else if (kind === 'create_subtask')
       setActions((p) => [
         ...p,
@@ -249,6 +254,7 @@ export function RuleEditor({
 
   const actionProblems = (a: AutomationAction): string | null => {
     if (a.type === 'assign_user' && !a.userId && !a.roleId) return 'Pick a user or role';
+    if (a.type === 'add_participant' && !a.userId && !a.roleId) return 'Pick a user or role';
     if (a.type === 'create_subtask') {
       if (a.pool.kind === 'role' && !a.pool.roleId) return 'Pick a role pool';
       if (a.pool.kind === 'users' && a.pool.userIds.length === 0) return 'Add at least one member';
@@ -582,7 +588,7 @@ function AddActionRow({ onAdd, disabled }: { onAdd: (k: ActionKind) => void; dis
         onClick={() => onAdd(kind)}
         className="w-full sm:w-auto cursor-pointer"
       >
-        <Plus className="h-4 w-4 mr-1" /> Add {selected?.label.toLowerCase()}
+        <Plus className="h-4 w-4 mr-1" /> Add to rule
       </Button>
     </div>
   );
@@ -680,6 +686,55 @@ function ActionFields({
           />
           Replace current assignee (default: only assign when unassigned)
         </label>
+      </div>
+    );
+  }
+
+  if (action.type === 'add_participant') {
+    const mode = action.roleId ? 'role' : 'user';
+    return (
+      <div className="space-y-2.5">
+        <p className="-mb-1 text-xs text-muted-foreground">
+          Adds a collaborator without touching the assignee.
+        </p>
+        <TargetToggle
+          value={mode}
+          onChange={(m) =>
+            onPatch(
+              m === 'role'
+                ? { userId: undefined, roleId: action.roleId ?? '' }
+                : { roleId: undefined, userId: action.userId ?? '' }
+            )
+          }
+          options={[
+            { value: 'user', label: 'User', icon: <UserIcon className="h-3.5 w-3.5" /> },
+            { value: 'role', label: 'Role', icon: <Users className="h-3.5 w-3.5" /> },
+          ]}
+        />
+        {mode === 'user' ? (
+          <AsyncMemberSearchableSelect
+            orgId={orgId}
+            value={action.userId ?? ''}
+            onChange={(userId) => onPatch({ userId })}
+            allowUnassigned={false}
+            placeholder="Pick collaborator…"
+            pinnedIds={action.userId ? [action.userId] : []}
+          />
+        ) : (
+          <SearchableSelect
+            options={context.roles.map((r) => ({
+              value: r.id,
+              label: r.name,
+              sublabel: `${r.memberCount} member${r.memberCount === 1 ? '' : 's'}`,
+            }))}
+            value={action.roleId ?? ''}
+            onChange={(roleId) => onPatch({ roleId })}
+            placeholder="Pick role…"
+            emptyText={
+              context.roles.length === 0 ? 'No roles in this organization' : 'No matching roles'
+            }
+          />
+        )}
       </div>
     );
   }

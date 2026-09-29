@@ -403,10 +403,17 @@ export const AddLabelActionSchema = AutomationActionBase.extend({
   labelName: z.string().min(1).max(100).trim(),
 });
 
+export const AddParticipantActionSchema = AutomationActionBase.extend({
+  type: z.literal('add_participant'),
+  userId: UuidSchema.optional(),
+  roleId: UuidSchema.optional(),
+});
+
 export const AutomationActionSchema = z.discriminatedUnion('type', [
   AssignUserActionSchema,
   CreateSubtaskActionSchema,
   AddLabelActionSchema,
+  AddParticipantActionSchema,
 ]);
 
 export const CreateProjectAutomationRuleSchema = z
@@ -428,6 +435,12 @@ export const CreateProjectAutomationRuleSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: 'assign_user needs userId or roleId',
+        });
+      }
+      if (a.type === 'add_participant' && !a.userId && !a.roleId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'add_participant needs userId or roleId',
         });
       }
     }
@@ -452,6 +465,12 @@ export const UpdateProjectAutomationRuleSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: 'assign_user needs userId or roleId',
+        });
+      }
+      if (a.type === 'add_participant' && !a.userId && !a.roleId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'add_participant needs userId or roleId',
         });
       }
     }

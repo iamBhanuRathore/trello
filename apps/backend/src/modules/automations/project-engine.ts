@@ -12,6 +12,7 @@ import {
   labels,
   cardLabels,
   cardAssignees,
+  cardParticipants,
   users,
   roles,
   organizationMembers,
@@ -21,7 +22,13 @@ import {
 import { eventBus } from '../../lib/event-bus';
 import { logger } from '../../lib/logger';
 import { httpError } from '../organizations/service';
-import { attachLabelToCard, assignUserToCard, createCard, isValidUuid } from '../cards/service';
+import {
+  attachLabelToCard,
+  assignUserToCard,
+  addParticipantToCard,
+  createCard,
+  isValidUuid,
+} from '../cards/service';
 import type { AutomationTrigger, AutomationAction } from '@boardly/shared-types';
 
 // ─── System actor + loop-guard context ──────────────────────────────────────
@@ -478,6 +485,57 @@ async function runSubtaskAction(
     throw err;
   }
 }
+async function runAddParticipantAction(
+  db: Database,
+  rule: { id: string; name: string; createdBy: string | null },
+  action: Extract<AutomationAction, { type: 'add_participant' }>,
+  card: HydratedCard
+): Promise<ActionResult> {
+  const base = { actionId: action.id, type: 'add_participant' as const };
+  let target: string | null = null;
+  if (action.userId) {
+    const active = await activeOrgMemberIds(db, card.organizationId);
+    target = active.has(action.userId) ? action.userId : null;
+  } else if (action.roleId) {
+    const pool = await resolveRolePool(db, card.organizationId, action.roleId);
+    target = pool[0] ?? null;
+  }
+  if (!target) {
+    return {
+      ...base,
+      outcome: 'skipped',
+      reason: 'ASSIGNEE_NOT_FOUND',
+      detail: 'no live collaborator',
+    };
+  }
+  const [existing] = await db
+    .select({ userId: cardParticipants.userId })
+    .from(cardParticipants)
+    .where(and(eq(cardParticipants.cardId, card.cardId), eq(cardParticipants.userId, target)))
+    .limit(1);
+  if (existing) {
+    return {
+      ...base,
+      outcome: 'skipped',
+      reason: 'ALREADY_ASSIGNED',
+      detail: 'already a participant',
+    };
+  }
+  await addParticipantToCard(
+    db,
+    card.cardId,
+    card.organizationId,
+    target,
+    systemActorForRule(rule.id)
+  );
+  await writeRuleHistory(
+    db,
+    card.cardId,
+    rule.createdBy ?? undefined,
+    `🤖 Rule '${rule.name}' added **${await getDisplayName(db, target)}** as a collaborator`
+  );
+  return { ...base, outcome: 'executed', detail: target };
+}
 
 async function runAddLabelAction(
   db: Database,
@@ -582,6 +640,8 @@ export async function executeRuleForCard(
           results.push(await runSubtaskAction(db, rule, action, card));
         else if (action.type === 'add_label')
           results.push(await runAddLabelAction(db, rule, action, card));
+        else if (action.type === 'add_participant')
+          results.push(await runAddParticipantAction(db, rule, action, card));
         else
           results.push({
             actionId: (action as { id: string }).id,
@@ -781,7 +841,7 @@ export async function flagStaleRules(
   for (const rule of rules) {
     const actions = (rule.actionJson ?? []) as AutomationAction[];
     const hits = actions.some((a) => {
-      if (a.type === 'assign_user')
+      if (a.type === 'assign_user' || a.type === 'add_participant')
         return kind === 'role' ? a.roleId === refId : a.userId === refId;
       if (a.type === 'create_subtask' && a.pool.kind === 'role' && kind === 'role')
         return a.pool.roleId === refId;
@@ -861,7 +921,7 @@ export async function validateRuleReferences(
   const roleIds = new Set<string>();
   const userIds = new Set<string>();
   for (const a of actions) {
-    if (a.type === 'assign_user') {
+    if (a.type === 'assign_user' || a.type === 'add_participant') {
       if (a.roleId) roleIds.add(a.roleId);
       if (a.userId) userIds.add(a.userId);
     } else if (a.type === 'create_subtask' && a.pool.kind === 'role') {

@@ -1817,12 +1817,14 @@ export async function addParticipantToCard(
   }
   await verifyCardAccess(db, cardId, organizationId);
   await requireOrgMember(db, organizationId, userId);
+  // Automation system actors are not users rows — coerce to NULL.
+  const addedBy = isValidUuid(actorId) ? actorId : undefined;
   await db
     .insert(cardParticipants)
-    .values({ cardId, userId, addedBy: actorId, addedAt: new Date() })
+    .values({ cardId, userId, addedBy, addedAt: new Date() })
     .onConflictDoUpdate({
       target: [cardParticipants.cardId, cardParticipants.userId],
-      set: { addedAt: new Date(), addedBy: actorId },
+      set: { addedAt: new Date(), addedBy },
     });
   await logCardHistory(
     db,

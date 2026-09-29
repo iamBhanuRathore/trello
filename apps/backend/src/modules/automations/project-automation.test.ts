@@ -14,6 +14,7 @@ import {
   labels,
   cardLabels,
   cardAssignees,
+  cardParticipants,
   comments,
   roles,
   organizationRoleMembers,
@@ -168,6 +169,10 @@ async function teardownFixture(f: Fixture) {
   await db
     .delete(cardLabels)
     .where(inArray(cardLabels.cardId, ownCardIds))
+    .catch(() => {});
+  await db
+    .delete(cardParticipants)
+    .where(inArray(cardParticipants.cardId, ownCardIds))
     .catch(() => {});
   await db
     .delete(cards)
@@ -499,6 +504,37 @@ describe('Project Automation Engine', () => {
         .delete(roles)
         .where(eq(roles.id, sysRole!.id))
         .catch(() => {});
+  });
+
+  it('add_participant adds a collaborator once, then skips as duplicate', async () => {
+    const rule = await makeRule(f, {
+      trigger: { event: 'card.labeled' },
+      condition: { labelNames: ['front-end'] },
+      actions: [{ id: randomUUID(), type: 'add_participant', userId: f.qa[1]! }],
+    });
+    await db.insert(cardLabels).values({ cardId: f.cardId, labelId: f.labelId });
+    const fire = () =>
+      handleProjectAutomationEvent(db, {
+        event: 'card.labeled',
+        payload: { cardId: f.cardId, eventId: randomUUID() },
+        actorId: 'some-user',
+        organizationId: f.orgId,
+      });
+    await fire();
+    const parts = await db
+      .select()
+      .from(cardParticipants)
+      .where(eq(cardParticipants.cardId, f.cardId));
+    expect(parts.map((p) => p.userId)).toEqual([f.qa[1]!]);
+    await fire();
+    const parts2 = await db
+      .select()
+      .from(cardParticipants)
+      .where(eq(cardParticipants.cardId, f.cardId));
+    expect(parts2.length).toBe(1);
+    const runs = await runsFor(rule.id);
+    expect(runs.some((r) => r.status === 'executed')).toBe(true);
+    expect(runs.some((r) => r.reason === 'ALREADY_ASSIGNED')).toBe(true);
   });
 
   it('system-actor events never retrigger; depth overflow records LOOP_GUARD', async () => {
