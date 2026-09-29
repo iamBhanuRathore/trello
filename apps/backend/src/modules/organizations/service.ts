@@ -134,9 +134,19 @@ function buildMemberConditions(orgId: string, options: ListMembersOptions = {}):
 }
 
 // ─── listMembers ──────────────────────────────────────────────────────────────
+/** Cache key for member listings. userIds MUST be part of the key: per-id
+ * lookups (member chips, pinned selections) otherwise share one entry and
+ * every lookup returns whoever cached first. */
+export function memberListCacheKey(orgId: string, options: ListMembersOptions = {}): string {
+  const userKey =
+    options.userIds && options.userIds.length > 0 ? [...options.userIds].sort().join(',') : '';
+  return `m:${orgId}:${options.search ?? ''}:${options.role ?? ''}:${options.status ?? ''}:${options.limit ?? ''}:${options.offset ?? ''}:${userKey}`;
+}
+
 export async function listMembers(db: Database, orgId: string, options: ListMembersOptions = {}) {
-  const key = `m:${orgId}:${options.search ?? ''}:${options.role ?? ''}:${options.status ?? ''}:${options.limit ?? ''}:${options.offset ?? ''}`;
-  const { data } = await cachedTTL(key, 30, () => loadMembers(db, orgId, options));
+  const { data } = await cachedTTL(memberListCacheKey(orgId, options), 30, () =>
+    loadMembers(db, orgId, options)
+  );
   return data;
 }
 
