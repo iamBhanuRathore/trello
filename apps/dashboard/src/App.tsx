@@ -53,6 +53,9 @@ const ProjectReports = lazy(() =>
 const ProjectDocs = lazy(() =>
   import('./pages/ProjectDocs').then((m) => ({ default: m.ProjectDocs }))
 );
+const ProjectAutomation = lazy(() =>
+  import('./pages/ProjectAutomation').then((m) => ({ default: m.ProjectAutomation }))
+);
 const Timesheets = lazy(() =>
   import('./pages/Timesheets').then((m) => ({ default: m.Timesheets }))
 );
@@ -163,6 +166,7 @@ export function App() {
                 <Route path="projects/:projectId/phases" element={<ProjectPhases />} />
                 <Route path="projects/:projectId/reports" element={<ProjectReports />} />
                 <Route path="projects/:projectId/docs" element={<ProjectDocs />} />
+                <Route path="projects/:projectId/automation" element={<ProjectAutomation />} />
                 <Route path="timesheets" element={<Timesheets />} />
                 <Route path="my-tasks" element={<MyTasks />} />
                 <Route path="tasks" element={<MyTasks />} />

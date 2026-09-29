@@ -17,9 +17,9 @@ import {
 
 const MANAGE = requirePermission('automation.manage');
 
-/** Project automation routes — /v1/projects/:projectId/automation-rules/* */
+/** Project automation routes — /v1/projects/:id/automation-rules/* */
 export const projectAutomationRoutes = new Elysia({
-  prefix: '/projects/:projectId/automation-rules',
+  prefix: '/projects/:id/automation-rules',
   tags: ['ProjectAutomations'],
 })
   .use(authPlugin)
@@ -28,7 +28,7 @@ export const projectAutomationRoutes = new Elysia({
     '/',
     async ({ params, user, set }) => {
       try {
-        return await listProjectRules(db, user.organizationId, params.projectId);
+        return await listProjectRules(db, user.organizationId, params.id);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -53,13 +53,7 @@ export const projectAutomationRoutes = new Elysia({
           maxBytes: 150_000,
           maxKeys: 400,
         });
-        return await createProjectRule(
-          db,
-          user.organizationId,
-          params.projectId,
-          body,
-          user.userId
-        );
+        return await createProjectRule(db, user.organizationId, params.id, body, user.userId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -80,7 +74,7 @@ export const projectAutomationRoutes = new Elysia({
     '/:ruleId',
     async ({ params, user, set }) => {
       try {
-        return await getProjectRule(db, user.organizationId, params.projectId, params.ruleId);
+        return await getProjectRule(db, user.organizationId, params.id, params.ruleId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -93,13 +87,7 @@ export const projectAutomationRoutes = new Elysia({
     async ({ params, body, user, set }) => {
       try {
         assertBoundedJson(body, { maxBytes: 200_000, maxKeys: 500 });
-        return await updateProjectRule(
-          db,
-          user.organizationId,
-          params.projectId,
-          params.ruleId,
-          body
-        );
+        return await updateProjectRule(db, user.organizationId, params.id, params.ruleId, body);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -120,7 +108,7 @@ export const projectAutomationRoutes = new Elysia({
     '/:ruleId',
     async ({ params, user, set }) => {
       try {
-        return await deleteProjectRule(db, user.organizationId, params.projectId, params.ruleId);
+        return await deleteProjectRule(db, user.organizationId, params.id, params.ruleId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -135,7 +123,7 @@ export const projectAutomationRoutes = new Elysia({
         return await toggleProjectRule(
           db,
           user.organizationId,
-          params.projectId,
+          params.id,
           params.ruleId,
           body.isEnabled
         );
@@ -153,7 +141,7 @@ export const projectAutomationRoutes = new Elysia({
     '/:ruleId/runs',
     async ({ params, query, user, set }) => {
       try {
-        return await listRuleRuns(db, user.organizationId, params.projectId, params.ruleId, {
+        return await listRuleRuns(db, user.organizationId, params.id, params.ruleId, {
           page: query.page ? Number(query.page) : 1,
           limit: query.limit ? Number(query.limit) : 20,
           status: query.status,
@@ -176,13 +164,7 @@ export const projectAutomationRoutes = new Elysia({
     '/:ruleId/test',
     async ({ params, body, user, set }) => {
       try {
-        return await dryRunRule(
-          db,
-          user.organizationId,
-          params.projectId,
-          params.ruleId,
-          body.cardId
-        );
+        return await dryRunRule(db, user.organizationId, params.id, params.ruleId, body.cardId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -193,9 +175,9 @@ export const projectAutomationRoutes = new Elysia({
     }
   );
 
-/** Builder context — /v1/projects/:projectId/automation-context (one call, no N+1). */
+/** Builder context — /v1/projects/:id/automation-context (one call, no N+1). */
 export const projectAutomationContextRoutes = new Elysia({
-  prefix: '/projects/:projectId/automation-context',
+  prefix: '/projects/:id/automation-context',
   tags: ['ProjectAutomations'],
 })
   .use(authPlugin)
@@ -206,7 +188,7 @@ export const projectAutomationContextRoutes = new Elysia({
         return await getAutomationContext(
           db,
           user.organizationId,
-          params.projectId,
+          params.id,
           query.memberPage ? Number(query.memberPage) : 1,
           query.memberLimit ? Number(query.memberLimit) : 20
         );

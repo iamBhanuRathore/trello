@@ -33,6 +33,7 @@ import {
   Flame,
   Workflow,
   BarChart3,
+  Zap,
   Shield,
   Crown,
   Trash2,
@@ -496,6 +497,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                                 location.pathname === `/projects/${proj.id}/phases`;
                               const isReportsActive =
                                 location.pathname === `/projects/${proj.id}/reports`;
+                              const isAutomationActive =
+                                location.pathname === `/projects/${proj.id}/automation`;
 
                               return (
                                 <div key={proj.id} className="space-y-0.5">
@@ -607,6 +610,20 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                                       >
                                         <BarChart3 className="w-3 h-3 text-purple-500 shrink-0" />
                                         <span>Reports</span>
+                                      </Link>
+
+                                      {/* Automation */}
+                                      <Link
+                                        to={`/projects/${proj.id}/automation`}
+                                        onClick={handleNavClick}
+                                        className={`flex items-center gap-2 px-2 py-1 rounded-md text-[11px] transition-colors ${
+                                          isAutomationActive
+                                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium'
+                                            : 'text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent'
+                                        }`}
+                                      >
+                                        <Zap className="w-3 h-3 text-amber-500 shrink-0" />
+                                        <span>Automation</span>
                                       </Link>
                                     </div>
                                   )}
