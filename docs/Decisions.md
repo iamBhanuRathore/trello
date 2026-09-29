@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-09-29 — Project Automation Engine (project-scoped WHEN/IF/THEN)
+
+**Context:** Per-project autonomous routing was needed (front-end label → frontend dev, entry into Testing → round-robin tester subtask). Board Butler-style rules are board-scoped with fixed assignees; static `assignment_rules` only fire on creation. Benchmark: Jira Automation (project scope, WHEN/IF/THEN, audit log) for architecture, Trello Butler for configuration ease.
+
+**Decision:** Project scope, event-driven (`card.moved/created/labeled` → hydrate → enabled-rules lookup → trigger on event+list-name → label-name conditions → ordered actions). Hardening: (1) bounce guard as a partial unique index `(parent, rule, action) WHERE open` — DB-enforced so same-millisecond duplicates are impossible (loser gets 23505 → OPEN_SUBTASK skip); (2) RR cursor per (rule, action), locked via `INSERT … ON CONFLICT DO NOTHING` + `SELECT … FOR UPDATE`, pool re-resolved from live membership each fire; (3) loop protection in two layers — `AsyncLocalStorage` depth (abort past 3) + chain for A→B→A, plus `automation:{ruleId}` system actors whose events never retrigger; (4) every execution incl. skips logged to `automation_rule_runs` with reason codes (CONDITION_UNMET, OPEN_SUBTASK, LOOP_GUARD, EMPTY_POOL, ALREADY_ASSIGNED, DUPLICATE_EVENT); (5) `needs_attention` flag set when a referenced role/user is deleted (wired into role-delete + member-deactivate); (6) assignment is fill-if-unassigned unless `overrideExisting`; automation writes use the system actor (FK columns coerced to NULL) with `🤖 Rule 'X'` history lines under the rule creator. Legacy board `automations` kept; its routes were auth-only and now require `automation.manage`. Caps: 50 rules/project, 10 actions/rule, shared Zod unions backend+builder.
+
+**Alternatives considered:** App-level check-then-insert for the bounce guard (rejected — races); in-memory locks (rejected — don't survive multi-instance); single cursor per rule (rejected — two pool actions would steal turns); label IDs in conditions (rejected — labels are board-scoped rows, name is the only cross-board identity).
+
+**Consequences:** Builder UI (Phase 3: WHEN/IF/THEN page, templates, dry-run preview, coverage auto-fix) reads CRUD/toggle/runs/test/context APIs. Parked post-v1: least-loaded assignment, SLA/escalation, webhook actions, import/export.
+
 ### 2026-09-28 — Monotonic Change Cursor, Hot-Path Indexes, Log Retention (5.3)
 
 **Context:** (1) The reconnect feed paged on `updated_at`, but a batched rewrite (position rebalance) stamps every row with the same millisecond — `updated_at > cursor` silently dropped the tail of the batch. (2) `audit_log`/`activity_log` were primary-key-only, so each audit page seq-scanned twice (rows + `count(*)`). (3) Chat message enrichment was per-row (~150 queries for a 50-message page). (4) Several list endpoints returned unbounded row sets; append-only logs grew forever.

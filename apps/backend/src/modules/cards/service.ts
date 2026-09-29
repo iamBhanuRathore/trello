@@ -1,4 +1,5 @@
 import { eq, and, isNull, max, desc, or, ilike, inArray, sql, type SQL } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import type { Database } from '../../db/index';
 import {
   cards,
@@ -64,6 +65,9 @@ export interface CreateCardInput {
   watcherIds?: string[];
   checklist?: { title?: string; items?: string[] };
   actorId?: string;
+  /** Project-automation provenance (bounce guard). Backward-compatible optional. */
+  sourceRuleId?: string;
+  sourceActionId?: string;
 }
 
 async function verifyListAccess(db: Database, listId: string, organizationId: string) {
@@ -295,7 +299,11 @@ export async function createCard(db: Database, organizationId: string, input: Cr
       description: input.description,
       position,
       parentCardId: input.parentCardId,
-      createdBy: input.actorId,
+      // Automation system actors (automation:{ruleId}) are not users rows —
+      // coerce FK columns to NULL, the event payload below keeps provenance.
+      createdBy: isValidUuid(input.actorId) ? input.actorId : undefined,
+      sourceRuleId: isValidUuid(input.sourceRuleId) ? input.sourceRuleId : undefined,
+      sourceActionId: isValidUuid(input.sourceActionId) ? input.sourceActionId : undefined,
       dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
       stageId: input.stageId,
       priorityId:
@@ -317,7 +325,7 @@ export async function createCard(db: Database, organizationId: string, input: Cr
       .values({
         cardId: card.id,
         userId: input.assigneeId,
-        assignedBy: input.actorId,
+        assignedBy: isValidUuid(input.actorId) ? input.actorId : undefined,
       })
       .onConflictDoNothing();
   } else if (card) {
@@ -338,7 +346,11 @@ export async function createCard(db: Database, organizationId: string, input: Cr
     if (resolved.userId) {
       await db
         .insert(cardAssignees)
-        .values({ cardId: card.id, userId: resolved.userId, assignedBy: input.actorId })
+        .values({
+          cardId: card.id,
+          userId: resolved.userId,
+          assignedBy: isValidUuid(input.actorId) ? input.actorId : undefined,
+        })
         .onConflictDoNothing();
     } else {
       const policy = await getAssignmentPolicy(db, organizationId);
@@ -398,7 +410,12 @@ export async function createCard(db: Database, organizationId: string, input: Cr
   eventBus.broadcast(`board:${boardInfo!.boardId}`, 'card.created', card);
   eventBus.emit('internal', {
     event: 'card.created',
-    payload: { cardId: card!.id, listId: input.listId, boardId: boardInfo!.boardId },
+    payload: {
+      cardId: card!.id,
+      listId: input.listId,
+      boardId: boardInfo!.boardId,
+      eventId: randomUUID(),
+    },
     actorId: 'system',
     organizationId: boardInfo!.organizationId,
   });
@@ -1227,7 +1244,7 @@ export async function moveCard(
     eventBus.broadcast(`board:${boardId}`, 'card.moved', card);
     eventBus.emit('internal', {
       event: 'card.moved',
-      payload: { cardId: id, listId: newListId, boardId },
+      payload: { cardId: id, listId: newListId, boardId, eventId: randomUUID() },
       actorId: actorId || 'system',
       organizationId,
     });
@@ -1674,7 +1691,7 @@ export async function attachLabelToCard(
     if (board) {
       eventBus.emit('internal', {
         event: 'card.labeled',
-        payload: { cardId, labelId },
+        payload: { cardId, labelId, boardId, eventId: randomUUID() },
         actorId: actorId || 'system',
         organizationId: board.organizationId,
       });
@@ -1725,7 +1742,12 @@ export async function assignUserToCard(
   await db.delete(cardAssignees).where(eq(cardAssignees.cardId, cardId));
   await db
     .insert(cardAssignees)
-    .values({ cardId, userId, assignedBy: actorId })
+    .values({
+      cardId,
+      userId,
+      // Automation system actors are not users rows — coerce to NULL.
+      assignedBy: isValidUuid(actorId) ? actorId : undefined,
+    })
     .onConflictDoNothing();
   await logCardHistory(
     db,

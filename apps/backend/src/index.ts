@@ -24,7 +24,12 @@ import { searchRoutes } from './modules/search/routes';
 import { webhookRoutes } from './modules/webhooks/routes';
 import { setupWebhookDispatcher } from './modules/webhooks/service';
 import { automationRoutes } from './modules/automations/routes';
+import {
+  projectAutomationRoutes,
+  projectAutomationContextRoutes,
+} from './modules/automations/project-routes';
 import { setupAutomationEngine } from './modules/automations/service';
+import { setupProjectAutomationEngine } from './modules/automations/project-engine';
 import { integrationsRoutes } from './modules/integrations/routes';
 import { reportsRoutes } from './modules/reports/routes';
 import { timeTrackingRoutes } from './modules/timetracking/routes';
@@ -65,6 +70,7 @@ db.execute(
 setupNotificationListeners(db);
 setupWebhookDispatcher(db);
 setupAutomationEngine(db);
+setupProjectAutomationEngine(db);
 
 // Initialize Redis Pub/Sub cluster connection
 await connectRedis();
@@ -222,6 +228,8 @@ export const app = new Elysia()
       .use(searchRoutes)
       .use(webhookRoutes)
       .use(automationRoutes)
+      .use(projectAutomationRoutes)
+      .use(projectAutomationContextRoutes)
       .use(integrationsRoutes)
       .use(reportsRoutes)
       .use(timeTrackingRoutes)

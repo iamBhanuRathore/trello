@@ -22,7 +22,7 @@
 
 ## Current State
 
-**Last updated:** 2026-09-24
+**Last updated:** 2026-09-29
 **Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED; 4.1 Calendar substantially done (views, time-blocking, Google 2-way sync, overlays; Outlook deferred). Next: 4.3 Git automations.
 
 ### What exists
@@ -42,6 +42,7 @@
   - Structured logging with `org_id` context propagation for CloudWatch tenant filtering.
   - Automated CI/CD workflow (`.github/workflows/docker-build.yml`) for immutable SHA tagging and ArgoCD deployment.
   - RBAC permission guards (`requirePermission`) & JWT authentication with Redis-cached `planTier` resolution.
+  - Project Automation Engine backend (5.6): project-scoped WHEN/IF/THEN rules (`project_automation_rules`, per-(rule,action) RR `automation_rule_cursors`, `automation_rule_runs` skip audit log, migration 0032), locked round-robin Testing-handoff subtasks, label router, loop guard + `automation:{ruleId}` system actors, CRUD/toggle/runs/dry-run/context APIs under `automation.manage` (builder UI pending).
 - ✅ `apps/dashboard` — Vite + React + TypeScript + Tailwind v4 + Shadcn/UI
   - Boardly App Marketplace & Power-Ups Catalog (`/marketplace`) with category filtering, verified badges, and custom config modals
   - Public Developer API Keys manager (`/admin/developer`) with scope selection and secret token generator
@@ -108,6 +109,13 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - Tests added:
 - What's next:
 ```
+
+### 2026-09-29 — Project Automation Engine backend (5.6)
+
+- What was done: project-scoped WHEN/IF/THEN rule engine — migration 0032 (`project_automation_rules`, `automation_rule_cursors`, `automation_rule_runs`, `cards.source_rule_id/action_id` + partial bounce-guard unique index), engine (`project-engine.ts`: trigger/condition matchers, locked RR, ALS loop guard + system actors, redelivery idempotency, fill-if-unassigned), APIs (`project-routes.ts`: CRUD/toggle/paged runs/dry-run/context, all `automation.manage`), `eventId` on card created/moved/labeled emitters, legacy board-automation routes backfilled to `automation.manage`, stale-reference flagging on role-delete/member-deactivate.
+- Decisions made: see Decisions.md (DB-enforced bounce guard, per-(rule,action) cursors, skip audit log, project scope; builder UI + least-loaded/SLA/webhooks parked).
+- Tests added: `project-automation.test.ts` — 13 tests (matchers, label router + ALREADY_ASSIGNED, RR order, parallel-move single subtask, deactivation mid-rotation, empty pool, role pool, LOOP_GUARD, DUPLICATE_EVENT, nesting→FAILED, CONDITION_UNMET, disabled-silent). Backend typecheck/lint clean; cards/automations/roles/orgs/boards suites green (43 tests).
+- What's next: Phase 3 builder page (Project → Automation: WHEN/IF/THEN, templates, dry-run preview, coverage auto-fix, run-history drawer).
 
 ### 2026-08-10 — Session 1 (Phase 0 Scaffold)
 

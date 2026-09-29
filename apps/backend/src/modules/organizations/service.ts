@@ -709,6 +709,10 @@ export async function deactivateMember(
     }
   })();
 
+  // Flag project automation rules that pool this user (needs_attention).
+  const { flagStaleRules } = await import('../automations/project-engine');
+  await flagStaleRules(db, orgId, 'user', member.userId).catch(() => {});
+
   return updated;
 }
 

@@ -283,6 +283,11 @@ export async function deleteCustomRole(db: Database, organizationId: string, rol
   await db.delete(organizationRoleMembers).where(eq(organizationRoleMembers.roleId, roleId));
   const [deleted] = await db.delete(roles).where(eq(roles.id, roleId)).returning();
 
+  // Project automation rules referencing this role announce themselves instead
+  // of silently dying (best-effort, never breaks the deletion).
+  const { flagStaleRules } = await import('../automations/project-engine');
+  await flagStaleRules(db, organizationId, 'role', roleId).catch(() => {});
+
   return deleted;
 }
 

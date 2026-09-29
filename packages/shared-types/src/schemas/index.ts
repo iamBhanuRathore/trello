@@ -358,3 +358,121 @@ export type EditChatMessageInput = z.infer<typeof EditChatMessageSchema>;
 export type ToggleReactionInput = z.infer<typeof ToggleReactionSchema>;
 export type UpdateWorkingHoursInput = z.infer<typeof UpdateWorkingHoursSchema>;
 export type SetPresenceOverrideInput = z.infer<typeof SetPresenceOverrideSchema>;
+
+// ─── Project Automation Engine (project-scoped WHEN/IF/THEN rules) ──────────
+// Shared verbatim by backend validation and the dashboard rule builder so the
+// two can never disagree on shape. Backend re-validates at the route boundary.
+export const AutomationEventSchema = z.enum(['card.moved', 'card.created', 'card.labeled']);
+
+export const AutomationTriggerSchema = z.object({
+  event: AutomationEventSchema,
+  /** Destination/current list name (case-insensitive). Cross-board identity — enables "Testing" on every board. */
+  listName: z.string().min(1).max(255).trim().optional(),
+});
+
+export const AutomationConditionSchema = z.object({
+  /** Card must carry ANY of these labels (case-insensitive; labels are board-scoped rows so name is the only cross-board identity). */
+  labelNames: z.array(z.string().min(1).max(100)).max(20).optional().default([]),
+});
+
+const AutomationActionBase = z.object({
+  /** Stable client-generated id — keys the per-(rule, action) round-robin cursor. */
+  id: UuidSchema,
+});
+
+export const AssignUserActionSchema = AutomationActionBase.extend({
+  type: z.literal('assign_user'),
+  userId: UuidSchema.optional(),
+  roleId: UuidSchema.optional(),
+  /** Default false = fill-if-unassigned (first match wins, no fighting). True = overwrite. */
+  overrideExisting: z.boolean().optional().default(false),
+});
+
+export const CreateSubtaskActionSchema = AutomationActionBase.extend({
+  type: z.literal('create_subtask'),
+  /** Supports {{parentTitle}} placeholder. */
+  titleTemplate: z.string().min(1).max(500).default('Test: {{parentTitle}}'),
+  pool: z.union([
+    z.object({ kind: z.literal('role'), roleId: UuidSchema }),
+    z.object({ kind: z.literal('users'), userIds: z.array(UuidSchema).min(1).max(50) }),
+  ]),
+});
+
+export const AddLabelActionSchema = AutomationActionBase.extend({
+  type: z.literal('add_label'),
+  labelName: z.string().min(1).max(100).trim(),
+});
+
+export const AutomationActionSchema = z.discriminatedUnion('type', [
+  AssignUserActionSchema,
+  CreateSubtaskActionSchema,
+  AddLabelActionSchema,
+]);
+
+export const CreateProjectAutomationRuleSchema = z
+  .object({
+    name: z.string().min(1).max(200).trim(),
+    isEnabled: z.boolean().optional().default(true),
+    trigger: AutomationTriggerSchema,
+    condition: AutomationConditionSchema.optional().default({}),
+    actions: z.array(AutomationActionSchema).min(1).max(10),
+  })
+  .superRefine((v, ctx) => {
+    // Action ids key the per-(rule, action) RR cursors — duplicates would share a turn.
+    const ids = v.actions.map((a) => a.id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'action ids must be unique' });
+    }
+    for (const a of v.actions) {
+      if (a.type === 'assign_user' && !a.userId && !a.roleId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'assign_user needs userId or roleId',
+        });
+      }
+    }
+  });
+
+export const UpdateProjectAutomationRuleSchema = z
+  .object({
+    name: z.string().min(1).max(200).trim().optional(),
+    isEnabled: z.boolean().optional(),
+    trigger: AutomationTriggerSchema.optional(),
+    condition: AutomationConditionSchema.optional(),
+    actions: z.array(AutomationActionSchema).min(1).max(10).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (!v.actions) return;
+    const ids = v.actions.map((a) => a.id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'action ids must be unique' });
+    }
+    for (const a of v.actions) {
+      if (a.type === 'assign_user' && !a.userId && !a.roleId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'assign_user needs userId or roleId',
+        });
+      }
+    }
+  });
+
+export const AutomationRunStatusSchema = z.enum(['executed', 'skipped', 'failed']);
+export const AutomationSkipReasonSchema = z.enum([
+  'CONDITION_UNMET',
+  'TRIGGER_UNMET',
+  'OPEN_SUBTASK',
+  'LOOP_GUARD',
+  'EMPTY_POOL',
+  'ALREADY_ASSIGNED',
+  'DUPLICATE_EVENT',
+  'LABEL_NOT_FOUND',
+  'ASSIGNEE_NOT_FOUND',
+  'RULE_DISABLED',
+]);
+
+export type AutomationTrigger = z.infer<typeof AutomationTriggerSchema>;
+export type AutomationCondition = z.infer<typeof AutomationConditionSchema>;
+export type AutomationAction = z.infer<typeof AutomationActionSchema>;
+export type CreateProjectAutomationRuleInput = z.infer<typeof CreateProjectAutomationRuleSchema>;
+export type UpdateProjectAutomationRuleInput = z.infer<typeof UpdateProjectAutomationRuleSchema>;

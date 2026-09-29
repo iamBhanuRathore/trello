@@ -121,6 +121,7 @@ Checkable version of the Build Order from `trello-clone-architecture.md` §12. A
 - [x] 5.3 DB perf: hot-path composite indexes, batched chat enrichment (153→6 queries/page), `clampLimit` pagination caps, audit/activity/notification retention (partitioning deferred — see Decisions)
 - [x] 5.4 Frontend: column virtualization (>20 cards, @tanstack/react-virtual), immutable feed merge, leaf-memo cards, stable column callbacks, auth-store selectors; drag path renders in full + e2e-verified (windowing/scroll/drag/empty-state/short-column)
 - [ ] 5.5 Media: unified request-upload/confirm flow, presigned-GET reads, virus-scan gate
+- [x] 5.6 Project Automation Engine backend: project-scoped WHEN/IF/THEN rules (label router, Testing-handoff RR subtask), locked round-robin, loop guard, skip audit log, CRUD/toggle/runs/dry-run/context APIs (builder UI pending)
 
 - [ ] AI Copilot assistant for task summarization, sprint velocity forecasting, and PR description generation
 - [ ] Virtual Office 2D interactive floor plan with avatar desk presence

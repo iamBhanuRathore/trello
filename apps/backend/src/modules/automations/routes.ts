@@ -1,9 +1,13 @@
 import Elysia, { t } from 'elysia';
-import { authPlugin } from '../../middleware/auth';
+import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
 import { assertBoundedJson } from '../../lib/bounded-json';
 import { listAutomations, createAutomation, updateAutomation, deleteAutomation } from './service';
+
+// Board-scoped legacy automations were auth-only: any org member could rewrite
+// them. Same-permission family as project rules (automation.manage).
+const MANAGE = requirePermission('automation.manage');
 
 export const automationRoutes = new Elysia({
   prefix: '/boards/:id/automations',
@@ -11,13 +15,17 @@ export const automationRoutes = new Elysia({
 })
   .use(authPlugin)
 
-  .get('/', async ({ params, set }) => {
-    try {
-      return await listAutomations(db, params.id);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  })
+  .get(
+    '/',
+    async ({ params, set }) => {
+      try {
+        return await listAutomations(db, params.id);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: MANAGE }
+  )
 
   .post(
     '/',
@@ -31,6 +39,7 @@ export const automationRoutes = new Elysia({
       }
     },
     {
+      beforeHandle: MANAGE,
       body: t.Object({
         name: t.String({ minLength: 1, maxLength: 200 }),
         triggerJson: t.Any(),
@@ -55,6 +64,7 @@ export const automationRoutes = new Elysia({
       }
     },
     {
+      beforeHandle: MANAGE,
       body: t.Object({
         name: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
         triggerJson: t.Optional(t.Any()),
@@ -64,10 +74,14 @@ export const automationRoutes = new Elysia({
     }
   )
 
-  .delete('/:automationId', async ({ params, set }) => {
-    try {
-      return await deleteAutomation(db, params.id, params.automationId);
-    } catch (err: unknown) {
-      return handleRouteError(err, set);
-    }
-  });
+  .delete(
+    '/:automationId',
+    async ({ params, set }) => {
+      try {
+        return await deleteAutomation(db, params.id, params.automationId);
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { beforeHandle: MANAGE }
+  );

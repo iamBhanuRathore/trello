@@ -509,6 +509,11 @@ export const cards = pgTable(
     isArchived: boolean('is_archived').notNull().default(false),
     isPrivate: boolean('is_private').notNull().default(false),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    // Project automation provenance: which (rule, action) created this subtask.
+    // Nullable + backward-compatible; the bounce guard lives in a partial unique
+    // index below so duplication is physically impossible (no check-then-insert race).
+    sourceRuleId: uuid('source_rule_id'),
+    sourceActionId: uuid('source_action_id'),
     // OCC guard for concurrent moves — clients send the version they saw.
     version: integer('version').notNull().default(1),
     // Global monotonic feed cursor (shared sequence w/ lists) — see 0029.
@@ -532,6 +537,14 @@ export const cards = pgTable(
     index('cards_list_position_active_idx')
       .on(t.listId, t.position)
       .where(sql`is_archived = false AND deleted_at IS NULL`),
+    // Automation bounce guard: one open subtask per (parent, rule, action).
+    // Partial so ordinary cards (NULL source) are unaffected; the loser of a
+    // same-millisecond race gets 23505, recorded as an OPEN_SUBTASK skip.
+    uniqueIndex('cards_automation_bounce_idx')
+      .on(t.parentCardId, t.sourceRuleId, t.sourceActionId)
+      .where(
+        sql`parent_card_id IS NOT NULL AND source_rule_id IS NOT NULL AND source_action_id IS NOT NULL AND is_archived = false AND deleted_at IS NULL`
+      ),
   ]
 );
 
@@ -1565,3 +1578,90 @@ export const userPresenceOverrides = pgTable('user_presence_overrides', {
   expiresAt: timestamp('expires_at'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
+// ─── Project Automation Engine (project-scoped WHEN/IF/THEN rules) ──────────
+// One configuration point per project that behaves differently per project.
+// The legacy board-scoped `automations` table is untouched (backward compat).
+export const projectAutomationRules = pgTable(
+  'project_automation_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 200 }).notNull(),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    schemaVersion: integer('schema_version').notNull().default(1),
+    triggerJson: jsonb('trigger_json').notNull(),
+    conditionJson: jsonb('condition_json').notNull().default('{}'),
+    actionJson: jsonb('action_json').notNull().default('[]'),
+    // Set when a referenced role/user/list is deleted — broken rules announce
+    // themselves instead of silently dying.
+    needsAttention: boolean('needs_attention').notNull().default(false),
+    attentionReason: text('attention_reason'),
+    // Execution health for the rule list (enable toggle / last-run / count).
+    lastExecutedAt: timestamp('last_executed_at'),
+    executionCount: integer('execution_count').notNull().default(0),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    ...timestamps,
+  },
+  (t) => [
+    index('project_auto_rules_org_idx').on(t.organizationId),
+    index('project_auto_rules_project_idx').on(t.projectId),
+    // Event matching is one indexed lookup over enabled rules of the project.
+    index('project_auto_rules_enabled_idx')
+      .on(t.projectId)
+      .where(sql`is_enabled = true`),
+  ]
+);
+
+// Round-robin position per (rule, action) — NOT per rule: a rule can hold two
+// pool actions (test subtask + review subtask) and a single cursor column
+// would make them steal each other's turn.
+export const automationRuleCursors = pgTable(
+  'automation_rule_cursors',
+  {
+    ruleId: uuid('rule_id')
+      .notNull()
+      .references(() => projectAutomationRules.id, { onDelete: 'cascade' }),
+    actionId: uuid('action_id').notNull(),
+    position: integer('position').notNull().default(0),
+    lastUserId: uuid('last_user_id').references(() => users.id, { onDelete: 'set null' }),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.ruleId, t.actionId] })]
+);
+
+// Audit log (Jira pattern): EVERY execution including skips with reason codes,
+// so "why didn't my rule fire?" is answerable from day one.
+export const automationRuleRuns = pgTable(
+  'automation_rule_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ruleId: uuid('rule_id')
+      .notNull()
+      .references(() => projectAutomationRules.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    cardId: uuid('card_id').references(() => cards.id, { onDelete: 'set null' }),
+    // Redelivery idempotency: the originating card event's id.
+    eventId: varchar('event_id', { length: 100 }),
+    status: varchar('status', { length: 16 }).notNull().default('executed'),
+    reason: varchar('reason', { length: 32 }),
+    details: jsonb('details').notNull().default('{}'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('auto_runs_rule_created_idx').on(t.ruleId, t.createdAt),
+    index('auto_runs_project_created_idx').on(t.projectId, t.createdAt),
+    // Same event redelivered to the same rule → second is a DUPLICATE_EVENT skip.
+    uniqueIndex('auto_runs_rule_event_idx').on(t.ruleId, t.eventId),
+  ]
+);
