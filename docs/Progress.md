@@ -2198,3 +2198,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Correctness:** rank writes are one `reorderMutation` (optimistic `['priorities']` reorder, sequential rank PATCHes, rollback + error toast) — the old code fired two parallel single-rank swaps that could race and had no rollback.
 - **Follow-up fix:** Project Defaults builder in `AutomationsModal` restacked from gappy IF/THEN prefix columns to labeled full-width fields (Project / New cards are assigned to + User-Role toggle), matching Jira's default-assignee form.
 - Tests & Validation: dashboard `tsc` clean.
+
+### 2026-09-29 — Quick Subtask Handoff in Task View
+
+- **What:** the Subtasks card in `TaskDetailView` gains an inline "Hand off a subtask" row: title input + assignee picker + Add Subtask. Parent is locked to the current task, so a dev can spin off e.g. "Test the login flow" assigned to the tester without leaving the task — and the tester never creates a separate task. Enter submits, Esc clears.
+- **Behavior:** `POST /cards` with `{listId, title, assigneeId?, parentCardId}` — explicit assignee wins over project/org defaults (existing `createCard` precedence); backend still enforces max 2 nesting levels. Optimistic append to `['card', cardId]` with rollback + error-only toast; settles by invalidating the card and the board full payload. Full composer kept via the Add button for dates/labels/checklists. "Mine" filter now shows an empty hint.
+- Tests & Validation: dashboard `tsc` clean.

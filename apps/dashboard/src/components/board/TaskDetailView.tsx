@@ -75,6 +75,7 @@ import {
   DropdownMenuSeparator,
 } from '@boardly/ui/dropdown-menu';
 import { MemberPicker } from './MemberPicker';
+import { AsyncMemberSearchableSelect } from '../ui/AsyncMemberSelect';
 import { LabelPicker } from './LabelPicker';
 import { GitDevSection } from './GitDevSection';
 import { TaskChatPane } from './TaskChatPane';
@@ -149,6 +150,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const [addingItemText, setAddingItemText] = useState<string>('');
     const [showSubtaskComposer, setShowSubtaskComposer] = useState<boolean>(false);
     const [subtaskFilter, setSubtaskFilter] = useState<'all' | 'mine'>('all');
+    // Quick handoff: title + assignee inline, no full composer needed.
+    const [quickSubTitle, setQuickSubTitle] = useState('');
+    const [quickSubAssignee, setQuickSubAssignee] = useState('');
 
     // Popover refs for click outside
     const assigneePickerRef = useRef<HTMLDivElement>(null);
@@ -735,6 +739,56 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     // Subtask creation always goes through the full composer popup.
     const handleCreateSubtask = () => {
       setShowSubtaskComposer(true);
+    };
+
+    // Quick handoff: "tester needs a piece of this task" — title + person,
+    // parent locked to this task. Optimistic append with rollback; the tester
+    // never creates a separate task for themselves.
+    const quickSubtaskMutation = useMutation({
+      mutationFn: async (input: { title: string; assigneeId?: string }) => {
+        const res = await api.post('/cards', {
+          listId: card?.listId,
+          title: input.title,
+          assigneeId: input.assigneeId || undefined,
+          parentCardId: cardId,
+        });
+        return res.data;
+      },
+      onMutate: async (input) => {
+        await queryClient.cancelQueries({ queryKey: ['card', cardId] });
+        const prev = queryClient.getQueryData<any>(['card', cardId]);
+        const tempSub = {
+          id: `temp-sub-${Date.now()}`,
+          title: input.title,
+          assignee: null,
+          assignees: [],
+          listName: card?.listName || 'To Do',
+        };
+        queryClient.setQueryData<any>(['card', cardId], (old: any) =>
+          old ? { ...old, subtasks: [...(old.subtasks ?? []), tempSub] } : old
+        );
+        return { prev };
+      },
+      onError: (err, _input, ctx) => {
+        if (ctx?.prev) queryClient.setQueryData(['card', cardId], ctx.prev);
+        toast.error(getApiErrorMessage(err, 'Failed to create subtask. Please try again.'));
+      },
+      onSuccess: () => {
+        setQuickSubTitle('');
+        setQuickSubAssignee('');
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+        if (card?.boardId) {
+          queryClient.invalidateQueries({ queryKey: ['board', 'full', card.boardId] });
+        }
+      },
+    });
+
+    const submitQuickSubtask = () => {
+      const title = quickSubTitle.trim();
+      if (!title || !card?.listId || quickSubtaskMutation.isPending) return;
+      quickSubtaskMutation.mutate({ title, assigneeId: quickSubAssignee || undefined });
     };
 
     // ─── START & COMPLETE ACTIONS ───
@@ -2077,6 +2131,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
 
                   <button
                     type="button"
+                    title="Open full subtask composer (dates, labels, checklist…)"
                     className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer ml-1"
                     onClick={handleCreateSubtask}
                   >
@@ -2131,6 +2186,60 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                     </div>
                   );
                 })}
+                {filteredSubtasks.length === 0 && subtasks.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground text-center py-2">
+                    No subtasks assigned to you yet.
+                  </p>
+                )}
+              </div>
+
+              {/* Quick handoff: hand the tester (or anyone) a piece of this task
+                  without leaving it and without them creating their own task. */}
+              <div className="pt-3 border-t border-border/50">
+                <p className="text-[11px] font-semibold text-muted-foreground mb-2">
+                  Hand off a subtask — this task stays the parent
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    value={quickSubTitle}
+                    onChange={(e) => setQuickSubTitle(e.target.value)}
+                    placeholder="e.g. Test the login flow…"
+                    aria-label="Subtask title"
+                    className="h-9 text-xs flex-1"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        submitQuickSubtask();
+                      } else if (e.key === 'Escape') {
+                        setQuickSubTitle('');
+                        setQuickSubAssignee('');
+                      }
+                    }}
+                  />
+                  <div className="sm:w-52 shrink-0">
+                    {orgId ? (
+                      <AsyncMemberSearchableSelect
+                        orgId={orgId}
+                        currentUser={user}
+                        value={quickSubAssignee}
+                        onChange={setQuickSubAssignee}
+                        placeholder="Assign to…"
+                        pinnedIds={quickSubAssignee ? [quickSubAssignee] : []}
+                      />
+                    ) : null}
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={submitQuickSubtask}
+                    disabled={
+                      !quickSubTitle.trim() || !card?.listId || quickSubtaskMutation.isPending
+                    }
+                    title="Create subtask under this task"
+                    className="h-9 text-xs px-4 shrink-0 cursor-pointer"
+                  >
+                    {quickSubtaskMutation.isPending ? 'Adding…' : 'Add Subtask'}
+                  </Button>
+                </div>
               </div>
             </div>
 
