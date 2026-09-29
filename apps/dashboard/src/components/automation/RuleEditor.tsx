@@ -554,23 +554,35 @@ export function RuleEditor({
 
 function AddActionRow({ onAdd, disabled }: { onAdd: (k: ActionKind) => void; disabled: boolean }) {
   const [kind, setKind] = useState<ActionKind>('assign_user');
+  const selected = ACTION_OPTIONS.find((o) => o.value === kind);
   return (
-    <div className="flex flex-col sm:flex-row gap-2">
-      <div className="flex-1 min-w-0">
-        <SearchableSelect
-          options={ACTION_OPTIONS}
-          value={kind}
-          onChange={(v) => setKind(v as ActionKind)}
-        />
+    <div className="space-y-2 rounded-lg border border-dashed border-border p-3">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Action type">
+        {ACTION_OPTIONS.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => setKind(o.value)}
+            aria-pressed={kind === o.value}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium min-h-[36px] cursor-pointer transition-colors border ${
+              kind === o.value
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
       </div>
+      {selected && <p className="text-xs text-muted-foreground">{selected.sublabel}.</p>}
       <Button
         type="button"
         variant="outline"
         disabled={disabled}
         onClick={() => onAdd(kind)}
-        className="shrink-0 cursor-pointer"
+        className="w-full sm:w-auto cursor-pointer"
       >
-        <Plus className="h-4 w-4 mr-1" /> Add action
+        <Plus className="h-4 w-4 mr-1" /> Add {selected?.label.toLowerCase()}
       </Button>
     </div>
   );
