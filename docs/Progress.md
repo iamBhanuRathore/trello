@@ -2191,3 +2191,10 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 - **Fixes (bugs visible in report screenshot):** WHEN dropdown showed a raw list UUID and THEN showed raw `assign_user` — replaced Base UI `Select` with proven `ListSearchableSelect` (real names + card counts) and labeled action options. Select User was empty — it fetched nonexistent `GET /users`; now uses server-side `AsyncMemberSearchableSelect` (`GET /orgs/:id/members`, paginated, no full-directory download per 2026-09-09 rule).
 - **Standards:** close path via `useDialogClose` (first Esc collapses an open builder instead of discarding it); error-only toasts; tab/toggle targets ≥36px; Save disabled when pristine; rule rows resolve list names instead of raw IDs. `BoardView` passes `projectId` (`board.projectId`) + `orgId` through.
 - Tests & Validation: dashboard `tsc` clean. Resize to 390px before commit (pickers stack full-width).
+
+### 2026-09-29 — Task Priorities Admin UX Overhaul
+
+- **What:** rewrote `pages/admin/Priorities.tsx` to Linear/Jira settings parity. Drag-to-reorder rows (dnd-kit grip handle, touch + keyboard sensors) replace the 14px stacked chevrons; the 4-icon action soup collapses into one overflow menu (Set as default / Rename / Move up-down / Delete) with the default star kept visible; delete uses `ConfirmDialog` naming the fallback level instead of inline "Confirm?"; color editing is preset swatches + custom well with a live `PriorityBadge` preview in both add and rename forms; skeletons + empty state added; all touch targets ≥36px.
+- **Correctness:** rank writes are one `reorderMutation` (optimistic `['priorities']` reorder, sequential rank PATCHes, rollback + error toast) — the old code fired two parallel single-rank swaps that could race and had no rollback.
+- **Follow-up fix:** Project Defaults builder in `AutomationsModal` restacked from gappy IF/THEN prefix columns to labeled full-width fields (Project / New cards are assigned to + User-Role toggle), matching Jira's default-assignee form.
+- Tests & Validation: dashboard `tsc` clean.

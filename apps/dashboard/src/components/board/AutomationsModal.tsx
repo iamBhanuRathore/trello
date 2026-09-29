@@ -553,100 +553,98 @@ function ProjectDefaultsPanel(props: {
         More specific scopes still win: component → board → project → org.
       </div>
 
-      <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
-          <span className="font-bold text-primary shrink-0 w-14">IF</span>
-          <span className="text-muted-foreground shrink-0">project is</span>
-          <div className="flex-1 min-w-0">
-            <SearchableSelect
-              options={projectOptions}
-              value={selectedProjectId}
-              onChange={(v) => {
-                setSelectedProjectId(v);
-                setSelectedUserId('');
-                setSelectedRoleId('');
-              }}
-              placeholder={projects.length ? 'Select project...' : 'Loading projects...'}
-              searchPlaceholder="Search projects..."
-              emptyText="No matching projects"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
-          <span className="font-bold text-primary shrink-0 w-14">THEN</span>
-          <span className="text-muted-foreground shrink-0">assign</span>
-          <div
-            role="group"
-            aria-label="Assignee type"
-            className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5 shrink-0"
-          >
-            <button
-              type="button"
-              onClick={() => setTargetKind('user')}
-              aria-pressed={targetKind === 'user'}
-              className={`flex items-center gap-1 px-2.5 h-8 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
-                targetKind === 'user'
-                  ? 'bg-primary/15 text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <UserIcon className="h-3 w-3" /> User
-            </button>
-            <button
-              type="button"
-              onClick={() => setTargetKind('role')}
-              aria-pressed={targetKind === 'role'}
-              className={`flex items-center gap-1 px-2.5 h-8 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
-                targetKind === 'role'
-                  ? 'bg-primary/15 text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <ShieldCheck className="h-3 w-3" /> Role
-            </button>
-          </div>
-          <div className="flex-1 min-w-0">
-            {targetKind === 'user' ? (
-              orgId ? (
-                <AsyncMemberSearchableSelect
-                  orgId={orgId}
-                  currentUser={currentUser}
-                  value={selectedUserId}
-                  onChange={setSelectedUserId}
-                  allowUnassigned={false}
-                  placeholder="Select user..."
-                  pinnedIds={selectedUserId ? [selectedUserId] : []}
-                />
-              ) : (
-                <p className="text-[11px] text-muted-foreground">
-                  Member search is unavailable for this session.
-                </p>
-              )
-            ) : (
-              <SearchableSelect
-                options={roleOptions}
-                value={selectedRoleId}
-                onChange={setSelectedRoleId}
-                placeholder={teamRoles.length ? 'Select team role...' : 'Loading roles...'}
-                searchPlaceholder="Search roles..."
-                emptyText="No team roles yet — create Lead/Developer/Tester under Admin → Roles"
-              />
+      <div className="space-y-4 rounded-xl border border-border bg-muted/30 p-4">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs font-semibold text-foreground">Project</label>
+            {selectedRule && (
+              <span className="text-[10px] text-muted-foreground">
+                Current default:{' '}
+                <span className="font-semibold text-foreground">
+                  {selectedRule.defaultUserId
+                    ? 'a specific user'
+                    : roleNameById.get(selectedRule.defaultRoleId) || 'a team role'}
+                </span>
+              </span>
             )}
           </div>
+          <SearchableSelect
+            options={projectOptions}
+            value={selectedProjectId}
+            onChange={(v) => {
+              setSelectedProjectId(v);
+              setSelectedUserId('');
+              setSelectedRoleId('');
+            }}
+            placeholder={projects.length ? 'Select project...' : 'Loading projects...'}
+            searchPlaceholder="Search projects..."
+            emptyText="No matching projects"
+          />
         </div>
 
-        {selectedRule && (
-          <p className="text-[11px] text-muted-foreground">
-            Current default:{' '}
-            <span className="font-semibold text-foreground">
-              {selectedRule.defaultUserId
-                ? 'a specific user'
-                : roleNameById.get(selectedRule.defaultRoleId) || 'a team role'}
-            </span>{' '}
-            — saving replaces it.
-          </p>
-        )}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs font-semibold text-foreground">
+              New cards are assigned to
+            </label>
+            <div
+              role="group"
+              aria-label="Assignee type"
+              className="flex items-center gap-1 rounded-lg border border-border bg-background p-0.5 shrink-0"
+            >
+              <button
+                type="button"
+                onClick={() => setTargetKind('user')}
+                aria-pressed={targetKind === 'user'}
+                className={`flex items-center gap-1 px-2.5 h-8 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                  targetKind === 'user'
+                    ? 'bg-primary/15 text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <UserIcon className="h-3 w-3" /> User
+              </button>
+              <button
+                type="button"
+                onClick={() => setTargetKind('role')}
+                aria-pressed={targetKind === 'role'}
+                className={`flex items-center gap-1 px-2.5 h-8 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                  targetKind === 'role'
+                    ? 'bg-primary/15 text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <ShieldCheck className="h-3 w-3" /> Role
+              </button>
+            </div>
+          </div>
+          {targetKind === 'user' ? (
+            orgId ? (
+              <AsyncMemberSearchableSelect
+                orgId={orgId}
+                currentUser={currentUser}
+                value={selectedUserId}
+                onChange={setSelectedUserId}
+                allowUnassigned={false}
+                placeholder="Select user..."
+                pinnedIds={selectedUserId ? [selectedUserId] : []}
+              />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                Member search is unavailable for this session.
+              </p>
+            )
+          ) : (
+            <SearchableSelect
+              options={roleOptions}
+              value={selectedRoleId}
+              onChange={setSelectedRoleId}
+              placeholder={teamRoles.length ? 'Select team role...' : 'Loading roles...'}
+              searchPlaceholder="Search roles..."
+              emptyText="No team roles yet — create Lead/Developer/Tester under Admin → Roles"
+            />
+          )}
+        </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t border-border/50">
           <Button
