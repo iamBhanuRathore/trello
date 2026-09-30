@@ -56,6 +56,38 @@ interface AppSidebarProps {
   onOpenShortcuts?: () => void;
 }
 
+/**
+ * Sidebar nav count pill (Slack/Linear convention): hidden at zero, capped at
+ * 99+, announced to screen readers. Same unit everywhere — a plain backlog
+ * count; urgency detail lives in the tooltip/label, never in a second number.
+ */
+function NavCountBadge({ count, label }: { count: number; label: string }) {
+  if (!count || count <= 0) return null;
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      title={label}
+      className="px-1.5 py-0.2 rounded-full bg-primary text-primary-foreground text-[10px] font-bold shrink-0 tabular-nums"
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+/** Collapsed-rail dot: presence without a number (mirrors Chat's pattern). */
+function NavCountDot({ visible, label }: { visible: boolean; label: string }) {
+  if (!visible) return null;
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      title={label}
+      className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-destructive"
+    />
+  );
+}
+
 export const AppSidebar: React.FC<AppSidebarProps> = ({
   onOpenTrash,
   onOpenAppearance,
@@ -95,6 +127,28 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     () => chatChannels.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
     [chatChannels]
   );
+
+  // Open assigned-task count for the My Tasks badge. Same query key as the
+  // My Tasks page summary (limit=1 envelope) — shared cache, no extra fetch
+  // once the page has loaded; covered by the same ['my-tasks'] invalidations.
+  const { data: tasksSummary } = useQuery({
+    queryKey: ['my-tasks', 'summary'],
+    queryFn: async () => {
+      const res = await api.get('/cards/my-tasks?limit=1');
+      return res.data?.summary;
+    },
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
+  });
+
+  const openTasksCount = tasksSummary?.openAssignedCount ?? 0;
+  const overdueTasksCount = tasksSummary?.overdueCount ?? 0;
+  const tasksBadgeLabel =
+    openTasksCount > 0
+      ? `${openTasksCount} open ${openTasksCount === 1 ? 'task' : 'tasks'}${
+          overdueTasksCount > 0 ? `, ${overdueTasksCount} overdue` : ''
+        }`
+      : 'My Tasks';
 
   // Track expanded state for workspaces and projects
   const [expandedWorkspaces, setExpandedWorkspaces] = useState<Record<string, boolean>>({});
@@ -263,8 +317,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                     onClick={handleNavClick}
                     title={isCollapsed ? 'My Tasks' : undefined}
                   >
-                    <CheckSquare className="w-4 h-4 text-emerald-500 shrink-0" />
-                    {!isCollapsed && <span>My Tasks</span>}
+                    <div className="relative shrink-0 flex items-center justify-center">
+                      <CheckSquare className="w-4 h-4 text-emerald-500 shrink-0" />
+                      {isCollapsed && (
+                        <NavCountDot visible={openTasksCount > 0} label={tasksBadgeLabel} />
+                      )}
+                    </div>
+                    {!isCollapsed && (
+                      <div className="flex items-center justify-between w-full">
+                        <span>My Tasks</span>
+                        <NavCountBadge count={openTasksCount} label={tasksBadgeLabel} />
+                      </div>
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -325,18 +389,20 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                   >
                     <div className="relative shrink-0 flex items-center justify-center">
                       <MessageSquare className="w-4 h-4 text-blue-500 shrink-0" />
-                      {chatUnreadCount > 0 && isCollapsed && (
-                        <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-destructive" />
+                      {isCollapsed && (
+                        <NavCountDot
+                          visible={chatUnreadCount > 0}
+                          label={`${chatUnreadCount} unread chat messages`}
+                        />
                       )}
                     </div>
                     {!isCollapsed && (
                       <div className="flex items-center justify-between w-full">
                         <span>Chat</span>
-                        {chatUnreadCount > 0 && (
-                          <span className="px-1.5 py-0.2 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
-                            {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-                          </span>
-                        )}
+                        <NavCountBadge
+                          count={chatUnreadCount}
+                          label={`${chatUnreadCount} unread chat messages`}
+                        />
                       </div>
                     )}
                   </Link>

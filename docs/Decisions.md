@@ -863,3 +863,11 @@ Short log of significant technical decisions: what was decided, why, and what al
 **Alternatives considered:** arming the existing 500ms pass-through-click guard around the sync effect (rejected — patches one interleaving, the dual-source race class remains); debouncing the sync effect (rejected — same class, plus delayed deep-link opens).
 
 **Decision:** `selectedCardId` derives directly from `searchParams.get('card')` — no local state, no sync effect. Open = set param, close = delete param (atomic by construction). The 500ms tile-click guard stays (still needed for genuine mid-gesture pass-through). Companion fixes in `CardModal`: `useDialogClose` moved above the `if (!cardId) return null` early return (Rules-of-Hooks violation, live in MyTasks/Calendar where the modal stays mounted with null id), and the unsaved-prompt Discard/Save actions deliberately keep the RAW closer — routing them through `requestClose` re-reads the not-yet-flushed dirty flag and re-shows the prompt in a loop. Benchmark: Linear/Notion drive modal state from the route; matched.
+
+## 2026-10-01 — Sidebar Count Badges: My Tasks Joins Chat (Slack Convention)
+
+**Context:** only Chat had a sidebar count pill. Request: badges "on the others" per industrial standard.
+
+**Alternatives considered:** a pill on every nav row (rejected — badges without an actionable signal are noise; Linear/Jira/Slack badge only attention queues, never navigation chrome); deriving My Tasks from the full list fetch (rejected — heavy for a badge); reusing `totalAssigned` (rejected — includes done-stage cards, a wrong number users would catch).
+
+**Decision:** `GET /v1/cards/my-tasks` summary gains `openAssignedCount` (assigned, not archived/deleted, stage not `done`; zero-query when unassigned). Sidebar shows one pill per row max: My Tasks = open count, Chat = unread (existing). Shared `NavCountBadge`/`NavCountDot` (hidden at zero, 99+ cap, `role=status` + tooltip/label incl. overdue detail, collapsed rail keeps the dot pattern). No badges on Timesheets/Calendar/Power-Ups/Workspaces — no well-defined actionable signal exists there; adding one would invent semantics. The badge reuses the page's `['my-tasks','summary']` key (shared cache, same invalidations, `placeholderData` against flashes).

@@ -23,6 +23,7 @@ import {
   getCardParticipants,
   getCardChecklists,
   assignUserToCard,
+  getMyTasks,
 } from './service';
 
 const TEST_DB_URL =
@@ -409,5 +410,71 @@ describe('Cards Service', () => {
     await expect(assignUserToCard(db, card!.id, orgA.id, userB.id, userA.id)).rejects.toMatchObject(
       { status: 403 }
     );
+  });
+
+  it('reports openAssignedCount excluding done-stage cards (sidebar badge slice)', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { organization, user } = await signUp(db, {
+      name: 'Owner',
+      email: `owner_${id}@card.com`,
+      password: 'pass',
+      orgName: `Card Org ${id}`,
+      orgSlug: `card-org-${id}`,
+    });
+
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board 1',
+    });
+    const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
+
+    const [tmpl] = await db
+      .insert(schema.stageTemplates)
+      .values({ organizationId: organization.id, name: 'Flow', isDefault: true })
+      .returning();
+    const [todo] = await db
+      .insert(schema.stages)
+      .values({
+        templateId: tmpl!.id,
+        name: 'To Do',
+        color: '#3b82f6',
+        position: 1,
+        category: 'not_started',
+      })
+      .returning();
+    const [done] = await db
+      .insert(schema.stages)
+      .values({
+        templateId: tmpl!.id,
+        name: 'Done',
+        color: '#22c55e',
+        position: 2,
+        category: 'done',
+      })
+      .returning();
+
+    await createCard(db, organization.id, {
+      listId: list!.id,
+      title: 'Open work',
+      stageId: todo!.id,
+      assigneeId: user.id,
+    });
+    await createCard(db, organization.id, {
+      listId: list!.id,
+      title: 'Finished work',
+      stageId: done!.id,
+      assigneeId: user.id,
+    });
+
+    const res = await getMyTasks(db, organization.id, user.id, { filter: 'assigned', limit: 1 });
+    expect(res.summary.totalAssigned).toBe(2);
+    expect(res.summary.openAssignedCount).toBe(1);
   });
 });

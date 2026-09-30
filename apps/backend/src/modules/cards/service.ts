@@ -1,4 +1,4 @@
-import { eq, and, isNull, max, desc, or, ilike, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, and, isNull, max, desc, ne, or, ilike, inArray, sql, type SQL } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { Database } from '../../db/index';
 import {
@@ -2493,6 +2493,7 @@ export async function getMyTasks(
         totalObserving: watchingCardIds.size,
         totalParticipating: participatingCardIds.size,
         totalCreated: createdCardIds.size,
+        openAssignedCount: 0,
         overdueCount: 0,
         dueSoonCount: 0,
       },
@@ -2703,6 +2704,32 @@ export async function getMyTasks(
     };
   });
 
+  // Open assigned: the sidebar badge slice. Assigned to me, not
+  // archived/deleted, stage not done (or unstaged). Separate aggregate from
+  // the counts above, which are scoped to the active filter union — the badge
+  // needs the assigned slice on every tab.
+  let openAssignedCount = 0;
+  if (assignedCardIds.size > 0) {
+    const [openRow] = await db
+      .select({ n: sql<number>`count(distinct ${cards.id})::int` })
+      .from(cards)
+      .innerJoin(lists, eq(lists.id, cards.listId))
+      .innerJoin(boards, eq(boards.id, lists.boardId))
+      .innerJoin(projects, eq(projects.id, boards.projectId))
+      .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+      .leftJoin(stages, eq(stages.id, cards.stageId))
+      .where(
+        and(
+          inArray(cards.id, Array.from(assignedCardIds)),
+          eq(workspaces.organizationId, organizationId),
+          isNull(cards.deletedAt),
+          eq(cards.isArchived, false),
+          or(isNull(stages.category), ne(stages.category, 'done'))
+        )
+      );
+    openAssignedCount = openRow?.n ?? 0;
+  }
+
   return {
     tasks,
     summary: {
@@ -2710,6 +2737,7 @@ export async function getMyTasks(
       totalObserving: watchingCardIds.size,
       totalParticipating: participatingCardIds.size,
       totalCreated: createdCardIds.size,
+      openAssignedCount,
       overdueCount: counts?.overdue ?? 0,
       dueSoonCount: counts?.dueSoon ?? 0,
     },
