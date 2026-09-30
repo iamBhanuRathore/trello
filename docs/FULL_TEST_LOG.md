@@ -8,7 +8,7 @@ Severity: S = showstopper (data loss / core flow broken), M = major (workaround 
 m = minor (annoyance/polish).
 
 Environment: local dev (backend :3001, dashboard :5173, super-admin :5174),
-Acme seed (52 users), personas Alex/Elena/Leo/Raymond (`Password123!`).
+Acme seed (~50 demo users), personas Alex/Elena/Leo/Raymond (`Password123!`).
 
 ## Baseline
 

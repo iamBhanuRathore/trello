@@ -1,5 +1,7 @@
 # Boardly End-to-End (E2E) Comprehensive Testing & Defect Report
 
+> **Point-in-time snapshot (2026-08-26) — historical.** Findings below describe the tree as of that date; most defects were resolved in later sessions (see `docs/Progress.md` 2026-08-26→29 entries and `docs/FULL_TEST_LOG.md` for current status). Absolute `/Users/...` screenshot paths below are dead on other machines. Do not action items from this file without re-verifying against the current tree.
+
 **Date:** August 26, 2026  
 **Environment:** Local Development (`http://localhost:5173`, Backend: `http://localhost:3001`)  
 **Test Coverage:** Happy Flows, Core Business Logic, Edge Cases, Permission/RBAC Controls, UI/UX & Responsive Views, API & Database Constraints.

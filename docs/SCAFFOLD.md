@@ -1,5 +1,7 @@
 # SCAFFOLD.md — Phase 0 Bootstrap Guide
 
+> **Historical — Phase 0 is complete.** This file bootstrapped the empty monorepo and is kept for provenance only. Do NOT follow it top-to-bottom on the current tree: exact commands, paths (`packages/config` layout, `.env` keys, CI jobs), and job names below describe the Day-0 scaffold, not the repo as it exists. For current setup see `README.md` + `.env.example`; for what's built see `docs/Progress.md`.
+
 Exact, copy-paste commands to go from empty directory to a working monorepo shell.
 An AI agent starting Phase 0 should follow this file in order, top to bottom.
 Mark each step ✅ in `PROGRESS.md` as you complete it — do not skip steps or reorder them.

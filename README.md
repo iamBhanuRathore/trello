@@ -12,19 +12,20 @@ Start all services (PostgreSQL, Redis, Migrations, Seeds, Backend API, and Web D
 bun dev
 ```
 
-*(or `./scripts/dev.sh`)*
+_(or `./scripts/dev.sh`)_
 
 ### 🔗 Service Endpoints
+
 Once started, the following services are available:
 
-| Service | URL | Description |
-|---|---|---|
-| **🌐 Web Dashboard** | [http://localhost:5173](http://localhost:5173) | Vite + React Frontend |
-| **⚡ Backend API** | [http://localhost:3001](http://localhost:3001) | Bun + Elysia REST & WebSocket API |
-| **📚 Swagger API Docs** | [http://localhost:3001/docs](http://localhost:3001/docs) | Interactive API Explorer |
-| **🩺 Health Check** | [http://localhost:3001/health](http://localhost:3001/health) | API & DB Health check |
-| **💾 PostgreSQL** | `localhost:5432` | Dev DB: `boardly_dev` (user: `boardly`) |
-| **⚡ Redis** | `localhost:6379` | Cache, Realtime Pub/Sub & Rates |
+| Service                 | URL                                                          | Description                             |
+| ----------------------- | ------------------------------------------------------------ | --------------------------------------- |
+| **🌐 Web Dashboard**    | [http://localhost:5173](http://localhost:5173)               | Vite + React Frontend                   |
+| **⚡ Backend API**      | [http://localhost:3001](http://localhost:3001)               | Bun + Elysia REST & WebSocket API       |
+| **📚 Swagger API Docs** | [http://localhost:3001/docs](http://localhost:3001/docs)     | Interactive API Explorer                |
+| **🩺 Health Check**     | [http://localhost:3001/health](http://localhost:3001/health) | API & DB Health check                   |
+| **💾 PostgreSQL**       | `localhost:5432`                                             | Dev DB: `boardly_dev` (user: `boardly`) |
+| **⚡ Redis**            | `localhost:6379`                                             | Cache, Realtime Pub/Sub & Rates         |
 
 ---
 
@@ -33,12 +34,14 @@ Once started, the following services are available:
 All necessary scripts are pre-configured in `package.json` and in `./scripts/`:
 
 ### 🚀 Application Lifecyle
+
 - **`bun dev`** (or **`./scripts/dev.sh`**): Start the full stack development environment with auto-provisioned databases, migrations, and seeds.
 - **`bun run setup`** (or **`./scripts/setup.sh`**): First-time project setup (generates `.env` with strong JWT keys, installs dependencies, initializes DB).
 - **`bun run stop`** (or **`./scripts/stop.sh`**): Gracefully stop all development processes and database containers.
 - **`bun run doctor`** (or **`./scripts/doctor.sh`**): Run environment diagnostics (checks Bun, Docker, ports, `.env`, and DB connectivity).
 
 ### 🗄️ Database Management
+
 - **`bun run db:up`**: Start PostgreSQL and Redis Docker containers.
 - **`bun run db:down`**: Stop database Docker containers.
 - **`bun run db:status`**: View container health and status.
@@ -49,6 +52,7 @@ All necessary scripts are pre-configured in `package.json` and in `./scripts/`:
 - **`bun run db:logs`**: Tail live database logs.
 
 ### 🧪 Quality & Testing
+
 - **`bun run build`**: Build all monorepo workspaces using Turborepo.
 - **`bun run test`**: Run test suites across apps and packages.
 - **`bun run typecheck`**: Run TypeScript compiler checks.
@@ -65,13 +69,11 @@ All necessary scripts are pre-configured in `package.json` and in `./scripts/`:
 │   ├── dashboard/      # React + Vite + Tailwind v4 + Shadcn Kanban Dashboard (:5173)
 │   ├── mobile/         # React Native (Expo) mobile client
 │   ├── super-admin/    # Standalone Platform Super Admin SPA (:5174)
-│   └── website/        # Marketing & landing website
 ├── packages/
 │   ├── config/         # Shared TypeScript, ESLint, & Tailwind presets
 │   ├── shared-types/   # Shared schemas, DTOs, enums & permissions
 │   ├── test-fixtures/  # Mock factories for tests
 │   ├── ui/             # Shared React UI component library
-│   └── ui-native/      # Shared React Native component library
 ├── docs/               # System architecture, schemas, and specifications
 ├── scripts/            # Development, setup, and database CLI scripts
 ├── graphify-out/       # Knowledge graph index and interactive visualizer
@@ -83,7 +85,7 @@ All necessary scripts are pre-configured in `package.json` and in `./scripts/`:
 
 ## ⚙️ Environment Variables
 
-A `.env` file is generated automatically when running `./setup.sh` or `./start.sh`. Key variables:
+A `.env` file is generated automatically when running `bun run setup` (or `./scripts/setup.sh`). Key variables:
 
 ```ini
 PORT=3001

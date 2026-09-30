@@ -23,9 +23,9 @@ Use this at the start of every session to orient the agent:
 
 ```
 Read these files before starting:
-1. markdowns/Progresss.md — current project state and what was done last session
-2. markdowns/Roadmap.md — pick the first unchecked item (or I'll tell you which one)
-3. markdowns/Agents.md — coding conventions you must follow
+1. docs/Progress.md — current project state and what was done last session
+2. docs/Roadmap.md — pick the first unchecked item (or I'll tell you which one)
+3. AGENTS.md (repo root) — coding conventions you must follow
 
 Current task: [describe the task]
 
@@ -41,10 +41,10 @@ Template for asking an agent to build a new Elysia route module (e.g. cards, boa
 ```
 Build the `[module name]` backend module at `apps/backend/src/modules/[name]/`.
 
-Follow the exact module structure from Agents.md §5:
+Follow the exact module structure from AGENTS.md (root) §5 and docs/project-tech-stack.md §5:
 - routes.ts — Elysia route handlers only, no business logic
 - service.ts — all business logic and DB queries via Drizzle
-- schema.ts — Zod/TypeBox schemas for request/response validation
+- validation schemas live at the route boundary (only modules/importers keeps a dedicated schema.ts; shared shapes belong in packages/shared-types)
 
 Rules to follow:
 - Every mutating route must call requirePermission('[permission.key]') — see PERMISSIONS_MATRIX.md for the correct key
@@ -71,7 +71,7 @@ Build the `[ComponentName]` component at `apps/dashboard/src/components/[path]/[
 Design tokens to use (from DESIGN_TOKENS.md):
 - Colors: [list relevant tokens, e.g. "surface-raised for background, brand-500 for interactive elements"]
 - Typography: [e.g. "text-sm font-medium for labels"]
-- Spacing: use Tailwind tokens from packages/config/tailwind-preset.ts — no hardcoded px values
+- Spacing: use Tailwind tokens from packages/config/tailwind/preset.ts — no hardcoded px values
 
 UI component library: use shadcn/ui components from @boardly/ui where possible (Button, Input, Dialog, etc.)
 
@@ -80,9 +80,10 @@ Behavior:
 - [list props/state it needs]
 - [list interactions — hover, click, keyboard nav]
 
-Tests: write a Vitest + React Testing Library test at [ComponentName].test.tsx
-- Test component behavior (what the user sees/clicks), NOT implementation internals
-- Mock backend calls with MSW
+Tests: add a Playwright flow in apps/dashboard/e2e/smoke/ (see e2e/helpers.ts personas + e2e/README.md).
+There is no dashboard unit-test setup (no Vitest) — test component behavior
+through the UI, NOT implementation internals. Backend logic gets `bun test`
+service tests co-located as [name].test.ts.
 
 Code-splitting (mandatory for every new page/route — see Decisions.md 2026-09-09):
 - NEVER static-import a page into `App.tsx`. Register it as a `React.lazy` chunk:
@@ -166,13 +167,13 @@ When asking specifically for tests:
 
 Write tests for [feature/function] in [file path].
 
-Test tool: [bun test / Vitest / Playwright — match the app]
+Test tool: [bun test (backend, hits the test Postgres via DATABASE_TEST_URL — no testcontainers) / Playwright (dashboard e2e, apps/dashboard/e2e) — match the app]
 
 Test pyramid priority:
 
-1. Unit tests for business logic in service.ts — these should be fast and not hit the DB
-2. Integration tests for DB queries — use the test Postgres instance (DATABASE_TEST_URL env var) via testcontainers or Docker
-3. E2E only if this is a critical user flow from Playwright's 15-25 designated flows
+1. Unit tests for business logic in service.ts — `bun test`, co-located `[name].test.ts`
+2. Integration tests for DB queries — same `bun test` setup against the test Postgres instance (DATABASE_TEST_URL env var)
+3. E2E only if this is a critical user flow (see apps/dashboard/e2e/README.md for the smoke/full tiers)
 
 Non-negotiable test cases to include (see project-tech-stack.md §8.3):
 
@@ -200,7 +201,7 @@ Verify:
 
 1. Is organization_id present in the WHERE clause at the application layer?
 2. Does the Drizzle query use the organization_id variable from the authenticated user's session, NOT from a URL param that could be spoofed?
-3. Is there a corresponding Postgres RLS policy on this table? (RLS is the last line of defense per Agents.md §7)
+3. App-layer scoping is the enforcement (Postgres RLS is deliberately unenforced — accepted risk, see docs/Decisions.md 2026-09-28 Security entry). Do NOT assume an RLS policy backs the table.
 4. Write an integration test that creates two separate orgs (Org A and Org B), seeds data in both, makes an API call authenticated as Org A, and asserts that Org B's data is NEVER returned.
 
 Flag any issue as a security concern, not a bug.
@@ -264,16 +265,16 @@ Always end a session with this prompt:
 
 We're wrapping up this session. Please update the following files:
 
-1. markdowns/Progresss.md:
+1. docs/Progress.md:
    - Update "Current State" → "What exists" to reflect what was built today
    - Append a log entry for today's session using the template in that file
    - Update "What's in progress" and "What's explicitly NOT started"
 
-2. markdowns/Roadmap.md:
+2. docs/Roadmap.md:
    - Check off any tasks completed today (use [x])
    - Mark any in-progress tasks with [/] if partially done
 
-3. markdowns/Decisions.md:
+3. docs/Decisions.md:
    - Add an entry for any non-trivial technical decisions made today (use today's date, follow the template at the top of that file)
 
 Do these updates in order. Summarize what was done in one paragraph after updating.
@@ -290,8 +291,8 @@ Do these updates in order. Summarize what was done in one paragraph after updati
 | Agent invents a new permission key | Didn't check PERMISSIONS_MATRIX.md | Explicitly say "check PERMISSIONS_MATRIX.md — do not invent a new key" |
 | Agent skips writing tests | Not explicitly instructed | Include "write failing tests first" in every build prompt |
 | Agent hardcodes hex colors | Didn't know about design tokens | Include "use tokens from DESIGN_TOKENS.md" in every UI prompt |
-| Agent forgets organization_id scoping | Didn't read Agents.md §5 | Include "every query must be scoped by organization_id" in every backend prompt |
-| Agent makes up a file structure | Didn't read Agents.md §2 | Reference "follow the monorepo layout in Agents.md §2" |
+| Agent forgets organization_id scoping | Didn't read the backend practices | Include "every query must be scoped by organization_id" in every backend prompt (see docs/project-tech-stack.md §5) |
+| Agent makes up a file structure | Didn't read the monorepo layout (AGENTS.md §2) | Reference "follow the monorepo layout in AGENTS.md §2" |
 | Agent writes E2E tests for simple logic | Default preference for high-level tests | Specify the test level explicitly: "write unit tests only for this" |
 | Progress.md goes stale | Session ends without update | Make session-end doc updates a non-negotiable final step (use prompt pattern #11) |
 
@@ -301,8 +302,8 @@ Do these updates in order. Summarize what was done in one paragraph after updati
 
 Quick prompts for small tasks:
 
-- **"Did we already build X?"** → `"Check Progresss.md and Roadmap.md. Has [feature] been built yet? If yes, where is it? If no, confirm it's in the Roadmap."`
-- **"What's next?"** → `"Read Progresss.md and Roadmap.md. What is the next unchecked task in priority order? Describe what building it will involve before starting."`
+- **"Did we already build X?"** → `"Check docs/Progress.md and docs/Roadmap.md. Has [feature] been built yet? If yes, where is it? If no, confirm it's in the Roadmap."`
+- **"What's next?"** → `"Read docs/Progress.md and docs/Roadmap.md. What is the next unchecked task in priority order? Describe what building it will involve before starting."`
 - **"Is this type safe?"** → `"Run tsc --noEmit across the whole monorepo and report any type errors. Fix them without weakening strictness."`
 - **"Clean up this PR"** → `"Run the code audit from PROMPT_PATTERNS.md §9 on all changed files. Fix every issue found."`
 ```

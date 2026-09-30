@@ -3,7 +3,7 @@
 ## 1. Codebase Knowledge Graph & Navigation (MANDATORY)
 
 - **Primary Architecture Reference**: Always inspect [`graphify-out/GRAPH_REPORT.md`](file:///Users/bhanurathore/projects/trello/graphify-out/GRAPH_REPORT.md) **first** before performing broad multi-file searches or code modifications.
-- **Community Hubs**: Consult the 140 community clusters in `graphify-out/GRAPH_REPORT.md` to locate exact dependency trees, module entrypoints, database models, and service interfaces.
+- **Community Hubs**: Consult the community clusters in `graphify-out/GRAPH_REPORT.md` to locate exact dependency trees, module entrypoints, database models, and service interfaces.
 - **Token Efficiency**: Rely on the Knowledge Graph index rather than repeatedly reading unindexed directories.
 
 ## 2. Project Architecture & Stack

@@ -19,7 +19,7 @@ Final technology decisions across all apps/services. Pairs with `trello-clone-ar
 | Infra                                                | Docker + Kubernetes                         |
 | Observability                                        | OpenTelemetry + Grafana/Prometheus + Sentry |
 
-**Guiding principle:** one language (TypeScript) across dashboard, website, mobile, and backend. Shared validation schemas (Zod), shared types, faster hiring, faster iteration on a feature-heavy product. Revisit Rust later only for isolated hot paths (e.g. a dedicated realtime fan-out service or search-indexing pipeline) once real scale problems appear — not by default.
+**Guiding principle:** one language (TypeScript) across dashboard, mobile, super-admin, and backend. Shared validation schemas (Zod), shared types, faster hiring, faster iteration on a feature-heavy product. Revisit Rust later only for isolated hot paths (e.g. a dedicated realtime fan-out service or search-indexing pipeline) once real scale problems appear — not by default.
 
 ---
 
@@ -120,31 +120,31 @@ Keep this as a **separate app/repo** from the dashboard — different deploy cad
 
 ## 6. Data & Infra Layer
 
-| Concern                   | Choice                                                                                                                               | Why                                                                                                                  |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| Primary DB                | **PostgreSQL**                                                                                                                       | Row-Level Security for tenant isolation, JSONB for custom fields/stage configs, mature ecosystem                     |
-| Cache                     | **Redis**                                                                                                                            | Sessions, rate limiting, WebSocket pub/sub backbone, BullMQ job queue                                                |
-| Search                    | **OpenSearch** (or Elasticsearch)                                                                                                    | Global search, saved searches/JQL-style query DSL, wiki full-text search                                             |
-| Object storage            | S3-compatible (AWS S3, Cloudflare R2, or MinIO self-hosted)                                                                          | Attachments, avatars, exported reports                                                                               |
-| Analytics/reporting store | Start with Postgres materialized views; move to **ClickHouse** once event volume (cycle time/CFD/portfolio dashboards) outgrows OLTP | Keep it simple until you actually need it — don't pre-build an OLAP pipeline before Phase 3 reporting features exist |
-| Containers/orchestration  | Docker + Kubernetes                                                                                                                  | Standard, supports multi-AZ, autoscaling per service                                                                 |
-| CI/CD                     | GitHub Actions                                                                                                                       | Native GitHub integration, good Bun/Docker support, matrix testing across dashboard/backend/mobile                   |
-| Observability             | OpenTelemetry (tracing) + Prometheus/Grafana (metrics) + Sentry (errors)                                                             | Standard modern stack, works across Bun/Node-based services                                                          |
-| Billing                   | Stripe Billing                                                                                                                       | Subscriptions, metered seats, invoicing                                                                              |
-| Enterprise SSO            | WorkOS                                                                                                                               | SAML/OIDC/SCIM without building it in-house                                                                          |
+| Concern                   | Choice                                                                                                                               | Why                                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| Primary DB                | **PostgreSQL**                                                                                                                       | Row-Level Security for tenant isolation, JSONB for custom fields/stage configs, mature ecosystem                            |
+| Cache                     | **Redis**                                                                                                                            | Sessions, rate limiting, WebSocket pub/sub backbone (no BullMQ installed — digest dispatch is inline/scheduled, not queued) |
+| Search                    | **Postgres FTS** (deliberate; see `docs/Progress.md` 2026-08-10 Session 12)                                                          | Global search, saved searches, wiki full-text search without operating a separate index (OpenSearch/ES never adopted)       |
+| Object storage            | S3-compatible (AWS S3, Cloudflare R2, or MinIO self-hosted)                                                                          | Attachments, avatars, exported reports                                                                                      |
+| Analytics/reporting store | Start with Postgres materialized views; move to **ClickHouse** once event volume (cycle time/CFD/portfolio dashboards) outgrows OLTP | Keep it simple until you actually need it — don't pre-build an OLAP pipeline before Phase 3 reporting features exist        |
+| Containers/orchestration  | Docker + Kubernetes                                                                                                                  | Standard, supports multi-AZ, autoscaling per service                                                                        |
+| CI/CD                     | GitHub Actions                                                                                                                       | Native GitHub integration, good Bun/Docker support, matrix testing across dashboard/backend/mobile                          |
+| Observability             | OpenTelemetry (tracing) + Prometheus/Grafana (metrics) + Sentry (errors)                                                             | Standard modern stack, works across Bun/Node-based services                                                                 |
+| Billing                   | Stripe Billing                                                                                                                       | Subscriptions, metered seats, invoicing                                                                                     |
+| Enterprise SSO            | WorkOS                                                                                                                               | SAML/OIDC/SCIM without building it in-house                                                                                 |
 
 ---
 
 ## 7. Monorepo Structure (recommended)
 
-Since dashboard, website, mobile, and backend all share TypeScript + Zod/TypeBox schemas, a monorepo avoids type drift:
+Since dashboard, mobile, super-admin, and backend all share TypeScript + Zod/TypeBox schemas, a monorepo avoids type drift:
 
 ```
 /apps
   /dashboard      (Vite + React + TS)
-  /website        (Next.js)
   /mobile         (Expo)
   /backend        (Bun + Elysia)
+  /super-admin    (standalone Vite SPA, platform ops)
 /packages
   /shared-types   (Zod/TypeBox schemas, shared enums, permission keys)
   /ui             (shared design-system components, optional)
@@ -194,21 +194,18 @@ Given this app's specific risk areas, these categories should never ship without
 
 **Backend (Bun + Elysia)**
 
-- `bun test` for unit tests on services/validators/permission logic — fast enough to run on every save.
-- Integration tests spin up a throwaway Postgres (via `testcontainers` or a Docker Compose test profile) and run real Drizzle queries — critical for the multi-tenant isolation tests above.
+- `bun test` for unit + integration tests on services/validators/permission logic — fast enough to run on every save. Tests hit the test Postgres directly (`DATABASE_TEST_URL`); there is no testcontainers setup.
 - Elysia's `.handle()` test client for route-level tests without a running server.
 - Target: **fast unit suite runs in seconds**, integration suite in CI runs in a couple minutes.
 
 **Dashboard (Vite + React)**
 
-- Vitest + React Testing Library, written against component _behavior_ (what the user sees/clicks), not implementation details — this keeps tests useful through refactors instead of breaking on every internal change.
-- Mock the backend via MSW (Mock Service Worker) so component tests don't depend on a live API.
-- Playwright E2E covers the ~15-25 critical flows: sign up → create org → create board → drag card across stages → invite teammate → assign/watch a card → permission-denied states for a Viewer role.
+- No unit-test harness is installed (no Vitest/RTL/MSW). Component behavior is covered through Playwright E2E (`apps/dashboard/e2e/`, smoke + full tiers — see `e2e/README.md`).
+- Playwright E2E covers the critical flows: sign up → create org → create board → drag card across stages → invite teammate → assign/watch a card → permission-denied states for a Viewer role.
 
 **Mobile (Expo)**
 
-- Jest + RN Testing Library for components/hooks.
-- Maestro for the handful of critical mobile flows (login, view board, comment, push notification tap-through).
+- `bun test` (only `apps/mobile/src/lib/offlineQueue.test.ts` today). No Jest/RN Testing Library, no Maestro flows — aspirational until installed.
 
 ### 8.5 CI gates
 
@@ -235,7 +232,7 @@ Beyond the core stack, these practices matter for long-term stability, complianc
 ### 9.3 Preview/Ephemeral Environments per PR
 
 - Spin up a full ephemeral environment (DB + backend + dashboard) per pull request so the "E2E suite passes on PR" CI gate (§8.5) is testing something real, not theoretical.
-- Vercel handles this natively for the website/dashboard. For backend + DB, use a Docker Compose stack in CI, or a platform like Railway/Render with PR environment support.
+- No PR-preview environments are wired today. For backend + DB, use a Docker Compose stack in CI, or a platform like Railway/Render with PR environment support.
 
 ### 9.4 Storybook for the Design System
 
@@ -259,7 +256,7 @@ Beyond the core stack, these practices matter for long-term stability, complianc
 
 ### 9.8 Architecture Decision Records (ADRs)
 
-- Keep a lightweight `docs/adr/` folder — one short markdown file per major technical decision (context, decision, consequences), e.g. "Why Elysia over NestJS," "Why TypeScript over Rust for the backend," "Why event-sourcing for reporting."
+- Decisions live as dated entries in `docs/Decisions.md` (context, alternatives, decision) — no `docs/adr/` folder; update it per the push-gate rule.
 - Cheap to maintain now, saves significant "why did we choose X?" archaeology once more engineers join the team.
 
 ### 9.9 Cost Guardrails
@@ -271,35 +268,35 @@ Beyond the core stack, these practices matter for long-term stability, complianc
 
 ## 10. Summary Table (quick reference)
 
-| Layer                               | Technology                                                   |
-| ----------------------------------- | ------------------------------------------------------------ |
-| Dashboard                           | Vite + TypeScript + Bun + React + Tailwind + TanStack Query  |
-| Dashboard unit tests                | Vitest                                                       |
-| Dashboard E2E tests                 | Playwright                                                   |
-| Website                             | Next.js                                                      |
-| Mobile                              | Expo (React Native)                                          |
-| Mobile unit tests                   | Jest + RN Testing Library                                    |
-| Mobile E2E tests                    | Maestro                                                      |
-| Backend runtime                     | Bun                                                          |
-| Backend framework                   | Elysia                                                       |
-| Backend ORM                         | Drizzle ORM                                                  |
-| Backend tests                       | `bun test` + Elysia test client                              |
-| Database                            | PostgreSQL (RLS for multi-tenancy)                           |
-| Cache/Queue                         | Redis + BullMQ                                               |
-| Search                              | OpenSearch                                                   |
-| Realtime                            | Bun native WebSockets + Redis Pub/Sub                        |
-| Auth                                | JWT/Lucia + WorkOS (enterprise SSO/SCIM)                     |
-| Storage                             | S3-compatible                                                |
-| Infra                               | Docker + Kubernetes                                          |
-| CI/CD                               | GitHub Actions                                               |
-| Monitoring                          | OpenTelemetry + Grafana/Prometheus + Sentry                  |
-| Monorepo tooling                    | Turborepo                                                    |
-| Migrations                          | Drizzle Kit (additive-first discipline)                      |
-| Secrets management                  | Doppler / AWS Secrets Manager / Vault                        |
-| PR preview environments             | Vercel (web) + Docker Compose or Railway/Render (backend+DB) |
-| Design system / component isolation | Storybook + Chromatic (visual regression)                    |
-| Accessibility testing               | axe-core (`@axe-core/playwright`, `vitest-axe`)              |
-| Test fixtures                       | Shared `packages/test-fixtures` factory/seeder layer         |
-| API versioning                      | `/v1/` prefix + deprecation window policy                    |
-| Decision tracking                   | `docs/adr/` — Architecture Decision Records                  |
-| Cost monitoring                     | Cloud billing alerts + per-service cost dashboards           |
+| Layer                               | Technology                                                  |
+| ----------------------------------- | ----------------------------------------------------------- |
+| Dashboard                           | Vite + TypeScript + Bun + React + Tailwind + TanStack Query |
+| Dashboard unit tests                | Vitest                                                      |
+| Dashboard E2E tests                 | Playwright                                                  |
+| Website                             | Next.js                                                     |
+| Mobile                              | Expo (React Native)                                         |
+| Mobile unit tests                   | Jest + RN Testing Library                                   |
+| Mobile E2E tests                    | Maestro                                                     |
+| Backend runtime                     | Bun                                                         |
+| Backend framework                   | Elysia                                                      |
+| Backend ORM                         | Drizzle ORM                                                 |
+| Backend tests                       | `bun test` + Elysia test client                             |
+| Database                            | PostgreSQL (RLS for multi-tenancy)                          |
+| Cache/Queue                         | Redis (no BullMQ — inline dispatch)                         |
+| Search                              | Postgres FTS (OpenSearch never adopted)                     |
+| Realtime                            | Bun native WebSockets + Redis Pub/Sub                       |
+| Auth                                | JWT/Lucia + WorkOS (enterprise SSO/SCIM)                    |
+| Storage                             | S3-compatible                                               |
+| Infra                               | Docker + Kubernetes                                         |
+| CI/CD                               | GitHub Actions                                              |
+| Monitoring                          | OpenTelemetry + Grafana/Prometheus + Sentry                 |
+| Monorepo tooling                    | Turborepo                                                   |
+| Migrations                          | Drizzle Kit (additive-first discipline)                     |
+| Secrets management                  | Doppler / AWS Secrets Manager / Vault                       |
+| PR preview environments             | Docker Compose or Railway/Render (backend+DB)               |
+| Design system / component isolation | Playwright screenshot diffing (no Storybook/Chromatic)      |
+| Accessibility testing               | Not wired yet (no axe-core) — aspirational                  |
+| Test fixtures                       | Shared `packages/test-fixtures` factory/seeder layer        |
+| API versioning                      | `/v1/` prefix + deprecation window policy                   |
+| Decision tracking                   | Dated entries in `docs/Decisions.md`                        |
+| Cost monitoring                     | Cloud billing alerts + per-service cost dashboards          |

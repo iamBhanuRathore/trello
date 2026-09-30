@@ -1,6 +1,6 @@
-# PROGRESS.md — Boardly Project State
+# Progress.md — Boardly Project State
 
-**Read this file first, every session, before writing any code.** This is the single source of truth for what's actually been built vs. planned. Update it at the end of every work session — an out-of-date PROGRESS.md is worse than none, since it actively misleads the next session.
+**Read this file first, every session, before writing any code.** This is the single source of truth for what's actually been built vs. planned. Update it at the end of every work session — an out-of-date Progress.md is worse than none, since it actively misleads the next session.
 
 - Focus on Phase 2 polish items (Admin Panels).
 
@@ -9,21 +9,21 @@
 ## How to use this file (for the agent)
 
 1. Read this file top to bottom before starting work.
-2. Check `ROADMAP.md` for the next unchecked task in priority order.
+2. Check `docs/Roadmap.md` for the next unchecked task in priority order.
 3. Do the work.
 4. Before ending the session, update:
    - The **Current State** section (what changed)
    - The **Log** section (append, don't overwrite — this is a history)
-   - `ROADMAP.md` (check off completed items)
-   - `DECISIONS.md` if any non-trivial technical choice was made
+   - `docs/Roadmap.md` (check off completed items)
+   - `docs/Decisions.md` if any non-trivial technical choice was made
 5. Never mark something "done" here unless it has passing tests (per `project-tech-stack.md` §8) — "done" means tested and working, not "code written."
 
 ---
 
 ## Current State
 
-**Last updated:** 2026-09-29
-**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED; 4.1 Calendar substantially done (views, time-blocking, Google 2-way sync, overlays; Outlook deferred). Next: 4.3 Git automations.
+**Last updated:** 2026-10-01
+**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED; 4.1 Calendar substantially done (views, time-blocking, Google 2-way sync, overlays; Outlook deferred); 4.3 Git automations DONE. Recent: sliding refresh-token families, URL-synced task dialog fix, My Tasks sidebar badge, automation builder UI. Next: 4.4 CRDT docs / 4.5 huddles / 4.6 triage inbox (see Roadmap), plus check-docs follow-ups below.
 
 ### What exists
 
@@ -33,7 +33,7 @@
 - ✅ `packages/test-fixtures` — factory/seeder functions (createOrgWithUsers, createBoardWithCards, etc.)
 - ✅ `packages/ui` — shared UI component library (`@boardly/ui`): Button, Card, Dialog, Input, Label, Avatar, DropdownMenu, Switch + `cn()` utility.
 - ✅ `apps/backend` — Bun + Elysia on :3001
-  - Full Drizzle ORM schema with 42+ tables with RLS (`0012_enable_row_level_security.sql`) and `withOrgContext()` tenant context isolation.
+  - Full Drizzle ORM schema with ~76 tables. Tenant isolation is app-layer (explicit `organization_id` predicates + membership checks); Postgres RLS is deliberately unenforced (accepted risk — see Decisions.md 2026-09-28). `withOrgContext()` exists for future adoption.
   - Multi-tenant token bucket rate limiter (`rateLimiter.ts`) with Redis Lua `EVALSHA` and fail-open policy (`rate_limiter_fail_open_total`).
   - Fleet-wide heavy endpoint concurrency semaphore (`tenantQuota.ts`) with 300s TTL safety net.
   - Graceful shutdown with 25-second in-flight request draining and connection cleanup.
@@ -42,11 +42,11 @@
   - Structured logging with `org_id` context propagation for CloudWatch tenant filtering.
   - Automated CI/CD workflow (`.github/workflows/docker-build.yml`) for immutable SHA tagging and ArgoCD deployment.
   - RBAC permission guards (`requirePermission`) & JWT authentication with Redis-cached `planTier` resolution.
-  - Project Automation Engine backend (5.6): project-scoped WHEN/IF/THEN rules (`project_automation_rules`, per-(rule,action) RR `automation_rule_cursors`, `automation_rule_runs` skip audit log, migration 0032), locked round-robin Testing-handoff subtasks, label router, loop guard + `automation:{ruleId}` system actors, CRUD/toggle/runs/dry-run/context APIs under `automation.manage` (builder UI pending).
+  - Project Automation Engine backend (5.6): project-scoped WHEN/IF/THEN rules (`project_automation_rules`, per-(rule,action) RR `automation_rule_cursors`, `automation_rule_runs` skip audit log, migration 0032), locked round-robin Testing-handoff subtasks, label router, loop guard + `automation:{ruleId}` system actors, CRUD/toggle/runs/dry-run/context APIs under `automation.manage` (builder UI shipped 2026-09-29).
 - ✅ `apps/dashboard` — Vite + React + TypeScript + Tailwind v4 + Shadcn/UI
   - Boardly App Marketplace & Power-Ups Catalog (`/marketplace`) with category filtering, verified badges, and custom config modals
   - Public Developer API Keys manager (`/admin/developer`) with scope selection and secret token generator
-  - Dedicated-Instance & DB-per-tenant isolation manager (`/super-admin/tenants`)
+  - Dedicated-Instance & DB-per-tenant isolation manager (standalone Super Admin SPA on :5174, `/tenants`)
   - Kanban board with drag-and-drop (`@dnd-kit`), real-time synchronization, rich CardModal, and live viewer presence halos (`PresenceAvatars.tsx`)
   - Enterprise Single Sign-On (SSO) & SCIM Directory Sync Admin Portal (`/admin/sso`) with IdP presets (Okta, Azure AD, Google SAML, OIDC), SCIM token generator, and connection tester
   - Board Intake Forms & SLA Manager (`FormBuilderModal.tsx`) with instant link sharing
@@ -81,7 +81,7 @@
 
 ### What's explicitly NOT started
 
-- `apps/website` (Next.js marketing site)
+- Marketing website (no `apps/website` — not on the Roadmap; would be a new app, see AGENTS.md §2)
 
 ### Known issues / blockers
 
@@ -105,7 +105,7 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 ```
 ### YYYY-MM-DD — Session N
 - What was done:
-- Decisions made (also add to DECISIONS.md if significant):
+- Decisions made (also add to docs/Decisions.md if significant):
 - Tests added:
 - What's next:
 ```
@@ -767,7 +767,7 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - Agent coding conventions: `Agents.md`
 - Task list: `ROADMAP.md`
 - Domain terminology: `GLOSSARY.md`
-- Technical decision history: `DECISIONS.md`
+- Technical decision history: `docs/Decisions.md`
 
 ---
 
@@ -2249,3 +2249,9 @@ Perform a complete End-to-End test across all features, personas, backend APIs, 
 
 - **What:** `My Tasks` nav row gains the same count pill as `Chat` (open assigned tasks; hidden at zero, 99+ cap, collapsed rail shows a dot, `role=status` label includes overdue detail). Backend: `openAssignedCount` added to the `my-tasks` summary envelope (excludes done-stage/archived/deleted; no extra query when the user has no assignments). Shared `NavCountBadge`/`NavCountDot` components; Chat migrated onto them (gains the missing aria-labels, zero visual change). Timesheets/Calendar/Power-Ups intentionally badgeless — no actionable signal (see Decisions.md).
 - **Tests & Validation:** new `card.test.ts` case (2 assigned, 1 done-stage → `totalAssigned: 2`, `openAssignedCount: 1`); card suite 10/10. Live probe: seeded owner summary carries the field. Playwright screenshot verified pill alignment/overflow. Backend + dashboard `tsc` + `oxlint` clean.
+
+### 2026-10-01 — Docs Restructure & Accuracy Pass
+
+- **What:** full docs-vs-tree audit (35 findings) then fixes. Deleted superseded `docs/Agents.md` (stale shadow of root `AGENTS.md`); fixed copy-paste-breaking paths in `PROMPT_PATTERNS.md` (`markdowns/Progresss.md` → `docs/*`, Vitest/MSW → Playwright e2e + `bun test`, per-module `schema.ts` → routes+service, RLS claim → app-layer enforcement); corrected README (structure, `./scripts/setup.sh`), DESIGN_TOKENS (`packages/config/tailwind/preset.ts`, no website/ui-native), project-tech-stack (testing/search/queue/Storybook/axe/Vercel/ADR reality), project.md (historical banner, Bun+Elysia, RLS accepted-risk, no `usePermission`), PERMISSIONS_MATRIX (chat section, seed paths, label-only roles note, dropped two phantom keys), Glossary (automation engine, team roles), E2E report (point-in-time banner), SEED (`BOARDLY_SEED_PRODUCTION` gate, roster count hedge), `.env.example` (seed-gate var). `DATABASE_SCHEMA.md`: refresh-token families, billing-v2/invite/roles columns, cards+lists OCC/version columns, notifications `is_dispatched`, SSO WorkOS columns, fixed duplicate §15, added §§22–29 (priorities, components, automations, chat, calendar, git, billing-ext, misc), corrected migration workflow. Code fix: deduped `'org.delete'` in `ALL_PERMISSION_KEYS` (one literal, two scopes — seeds were conflict-safe, array lied about length).
+- **Tests & Validation:** backend `tsc` clean; card suite (incl. new `openAssignedCount` case) green; roles/permissions seed path unchanged in behavior (dedupe only removes the double-insert attempt).
+- **Follow-ups left as-is:** `apps/graphify-out/` (tracked graphify cache — purpose unclear, left untouched); remaining 10 backend suites' FK teardown rot; `graphify-out/GRAPH_REPORT.md` behind HEAD (needs `graphify update`); FULL_TEST_LOG smoke baseline (9 pass/1 skip) predates the dialog-close spec.

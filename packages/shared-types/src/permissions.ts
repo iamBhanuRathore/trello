@@ -1,5 +1,6 @@
 /**
- * Permission keys registry — all RBAC permission keys used in requirePermission() and usePermission().
+ * Permission keys registry — all RBAC permission keys used in requirePermission()
+ * (backend) and surfaced to the dashboard via GET /roles/permissions.
  * See PERMISSIONS_MATRIX.md for the full role → permission mapping.
  *
  * Rule: Never invent a permission key inline. Add it here first, then to seed data.
@@ -142,13 +143,18 @@ export type PermissionKey =
   | (typeof CARD_PERMISSIONS)[keyof typeof CARD_PERMISSIONS]
   | (typeof CHAT_PERMISSIONS)[keyof typeof CHAT_PERMISSIONS];
 
-// All keys as a flat array — useful for seed data
+// All keys as a flat array — useful for seed data.
+// NOTE: 'org.delete' intentionally appears in both PLATFORM_PERMISSIONS
+// (delete ANY org) and ORG_PERMISSIONS (delete own org) — one literal, two
+// scopes. The Set below keeps the seeded namespace duplicate-free.
 export const ALL_PERMISSION_KEYS: PermissionKey[] = [
-  ...Object.values(PLATFORM_PERMISSIONS),
-  ...Object.values(ORG_PERMISSIONS),
-  ...Object.values(WORKSPACE_PERMISSIONS),
-  ...Object.values(PROJECT_PERMISSIONS),
-  ...Object.values(BOARD_PERMISSIONS),
-  ...Object.values(CARD_PERMISSIONS),
-  ...Object.values(CHAT_PERMISSIONS),
+  ...new Set([
+    ...Object.values(PLATFORM_PERMISSIONS),
+    ...Object.values(ORG_PERMISSIONS),
+    ...Object.values(WORKSPACE_PERMISSIONS),
+    ...Object.values(PROJECT_PERMISSIONS),
+    ...Object.values(BOARD_PERMISSIONS),
+    ...Object.values(CARD_PERMISSIONS),
+    ...Object.values(CHAT_PERMISSIONS),
+  ]),
 ];

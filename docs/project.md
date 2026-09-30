@@ -1,5 +1,7 @@
 # Enterprise Trello-Like App — Full Architecture
 
+> **Design-era snapshot — partially superseded.** This doc drafted the system before it was built. Where it conflicts with the tree, the tree + `docs/project-tech-stack.md` + `docs/Decisions.md` win. Known stale spots: §7 stack table (NestJS/ES/BullMQ never adopted — actual: Bun + Elysia, Postgres FTS, inline dispatch), §11.7 wiki tables (actual: `documents` + `document_cards`), RLS presented as active (deliberately unenforced — accepted risk, see `docs/Decisions.md` 2026-09-28 Security entry). Aspirational-only (no tables/code): Epics, Scrum-team entity, Custom Fields.
+
 A multi-tenant, board/list/card project management platform ("Boardly") with three panel types: **Super Admin (platform owner)**, **Company Admin (client org)**, and **User (end-user workspace)**.
 
 ---
@@ -56,7 +58,7 @@ Pick based on scale/isolation needs:
 | **Shared DB, schema-per-tenant**                | One Postgres schema per company.                                                     | Mid-size enterprise, easier per-tenant backup                                                                        |
 | **DB-per-tenant**                               | Fully isolated database per company                                                  | Large enterprise clients with strict compliance (finance, healthcare) — offer as a premium "dedicated instance" tier |
 
-Recommendation: start with **shared DB + `organization_id` on every row + Postgres Row-Level Security (RLS)** so a bug can never leak data across tenants at the DB layer. Offer dedicated-instance as an enterprise upsell later.
+Recommendation: start with **shared DB + `organization_id` on every row** so a bug can never leak data across tenants at the DB layer. (This doc once recommended Postgres RLS as the second layer; RLS is deliberately unenforced — accepted risk, app-layer scoping is the enforcement. See `docs/Decisions.md` 2026-09-28.) Offer dedicated-instance as an enterprise upsell later.
 
 ---
 
@@ -235,7 +237,7 @@ This is the same "config-driven, not hardcoded" principle used for Custom Fields
 - Build a **permission matrix** per role (seed data), but let **Org Admins define custom roles** at the company level for enterprise flexibility (e.g., "Client-Facing Editor" role with only comment + attach permissions).
 - Enforce checks at **three layers**:
   1. **API/middleware layer** — every request checks `can(user, permission, resource)`.
-  2. **Database layer** — Postgres RLS policies keyed on `organization_id` as a last line of defense.
+  2. **Database layer** — Postgres RLS policies keyed on `organization_id` as a last line of defense. (NOT adopted — deliberately unenforced, accepted risk; app-layer scoping enforces. See `docs/Decisions.md` 2026-09-28.)
   3. **UI layer** — hide/disable actions the user can't perform (UX only, never trust this alone).
 - For enterprise: support **custom roles**, **permission overrides at board level** (e.g., a normally read-only guest given edit on one specific board), and **group-based permissions** (assign a role to an AD/SSO group, not just individual users).
 
@@ -293,7 +295,7 @@ This is the same "config-driven, not hardcoded" principle used for Custom Fields
 | Layer         | Recommendation                                                                                       |
 | ------------- | ---------------------------------------------------------------------------------------------------- |
 | Frontend      | React + TypeScript, state via Redux Toolkit/Zustand, drag-and-drop via `dnd-kit`, Tailwind CSS       |
-| Backend       | Node.js (NestJS) or alternatively Django/Rails — NestJS gives clean modular RBAC + DI                |
+| Backend       | Bun + Elysia (this doc once suggested NestJS/Django — not adopted)                                   |
 | API           | REST + GraphQL (GraphQL is nice for card/board nested fetching)                                      |
 | Real-time     | WebSockets (Socket.IO) or GraphQL Subscriptions for live board updates                               |
 | Database      | PostgreSQL (primary), Redis (cache, sessions, rate limiting), Elasticsearch/OpenSearch (search)      |
@@ -379,7 +381,7 @@ You can start as a **modular monolith** (all "services" above as modules in one 
 
 To keep this genuinely easy to extend later:
 
-1. **Permission-driven UI**: every button/menu checks a permission key from a central `usePermission('card.delete')` hook — new roles never require UI code changes.
+1. **Permission-driven UI**: every button/menu checks a permission key from the `GET /roles/permissions` payload — new roles never require UI code changes. (This doc once named a `usePermission` hook; none exists.)
 2. **Config-driven custom fields**: let Org Admins define custom fields (text/number/dropdown/date) per board via JSON schema, rendered dynamically — no schema migration needed per client.
 3. **Plugin/Power-up architecture**: define a manifest format (name, iframe URL, permissions requested) so third-party or internal mini-apps can attach to a card/board without touching core code.
 4. **Feature flags** (e.g., LaunchDarkly or a simple `feature_flags` table) so Super Admin can turn features on per org without deploys.

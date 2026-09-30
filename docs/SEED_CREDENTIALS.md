@@ -2,7 +2,7 @@
 
 Welcome to the **Acme Technologies** (`acme-corp`) enterprise demo environment!
 
-This environment is pre-loaded with **50 realistic team members**, **5 department workspaces**, **8 projects**, **4 sprints**, **120+ cards**, **115+ time tracking entries**, **checklists**, **comments**, and **60 days of historical activity**.
+This environment is pre-loaded with a full demo roster (see the catalog below), **5 department workspaces**, **8 projects**, **4 sprints**, **120+ cards**, **115+ time tracking entries**, **checklists**, **comments**, and **60 days of historical activity**.
 
 ---
 
@@ -11,6 +11,7 @@ This environment is pre-loaded with **50 realistic team members**, **5 departmen
 - **Standard Password for ALL Accounts**: `Password123!`
 - **Organization**: `Acme Technologies` (`acme-corp`)
 - **Plan**: `Enterprise Tier` (All enterprise features & unlimited seats enabled)
+- **Production guard**: seeding refuses to run with `NODE_ENV=production` unless `BOARDLY_SEED_PRODUCTION=1` is set explicitly (demo credentials must never land in prod — see `apps/backend/src/db/seedOrganization.ts`).
 
 ---
 

@@ -1,14 +1,14 @@
 # ROADMAP.md — Boardly Task List
 
-Checkable version of the Build Order from `trello-clone-architecture.md` §12. An agent should pick the **first unchecked item, in order**, unless `PROGRESS.md` notes a reason to deviate (e.g. a blocker). Check items off only when they meet the Definition of Done below — not just "code written."
+Checkable version of the Build Order from `docs/project-tech-stack.md` §5 + `docs/project.md` §12. An agent should pick the **first unchecked item, in order**, unless `docs/Progress.md` notes a reason to deviate (e.g. a blocker). Check items off only when they meet the Definition of Done below — not just "code written."
 
 ## Definition of Done (applies to every item)
 
 - [x] Tests written test-first per `project-tech-stack.md` §8 (unit + integration/E2E as appropriate)
-- [x] Passes lint/typecheck (`Agents.md` §3)
-- [x] Permission checks in place if the feature touches tenant data (`Agents.md` §5, §7)
-- [x] `PROGRESS.md` updated with what was done
-- [x] `DECISIONS.md` updated if a non-trivial technical choice was made along the way
+- [x] Passes lint/typecheck (oxlint + `tsc --noEmit` per app, `bun run typecheck`)
+- [x] Permission checks in place if the feature touches tenant data (see `docs/PERMISSIONS_MATRIX.md`)
+- [x] `docs/Progress.md` updated with what was done
+- [x] `docs/Decisions.md` updated if a non-trivial technical choice was made along the way
 
 ---
 
