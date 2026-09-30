@@ -239,6 +239,13 @@
       "when": 1790900205000,
       "tag": "0033_refresh_token_families",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790900206000,
+      "tag": "0034_notification_center",
+      "breakpoints": true
     }
   ]
 }

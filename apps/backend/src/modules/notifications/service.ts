@@ -4,36 +4,512 @@ import {
   notificationPreferences,
   organizationMembers,
   pushDevices,
+  users,
+  cards,
+  lists,
+  boards,
+  chatChannels,
 } from '../../db/schema';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, or, desc, inArray, count, lt, sql } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import { eventBus } from '../../lib/event-bus';
 import { logger } from '../../lib/logger';
 import { cachedTTL, invalidateTTL } from '../../lib/cache';
 
+// ─── Notification Center: filter vocabulary ──────────────────────────────────
+
+/** Event types that auto-qualify an unread row as important (hybrid rule). */
+export const IMPORTANT_EVENT_TYPES = [
+  'card.mentioned',
+  'card.assigned',
+  'card.due_soon',
+  'card.overdue',
+  'chat.mentioned',
+] as const;
+
+/** Event types accepted by the `types[]` list filter. */
+export const FILTERABLE_EVENT_TYPES = [
+  'card.mentioned',
+  'card.assigned',
+  'card.commented',
+  'card.due_soon',
+  'card.overdue',
+  'chat.mentioned',
+] as const;
+
+export type NotificationArchivedFilter = 'exclude' | 'only' | 'include';
+
+export interface ListNotificationsOptions {
+  limit?: number;
+  /** Opaque keyset cursor from a previous page (`createdAt|id`, base64url). */
+  cursor?: string | null;
+  unreadOnly?: boolean;
+  starredOnly?: boolean;
+  importantOnly?: boolean;
+  archived?: NotificationArchivedFilter;
+  types?: string[];
+  /** Substring search over the precomputed search_text column. */
+  q?: string;
+}
+
+export interface NotificationPage {
+  items: Array<Record<string, unknown>>;
+  nextCursor: string | null;
+}
+
+/** Server-computed hybrid importance: starred, or unread + actionable type. */
+export function computeIsImportant(row: {
+  isStarred?: boolean | null;
+  isRead?: boolean | null;
+  eventType?: string | null;
+}): boolean {
+  if (row.isStarred) return true;
+  if (row.isRead) return false;
+  return (IMPORTANT_EVENT_TYPES as readonly string[]).includes(row.eventType ?? '');
+}
+
+function withImportance<
+  T extends { isStarred?: boolean | null; isRead?: boolean | null; eventType?: string | null },
+>(row: T): T & { isImportant: boolean } {
+  return { ...row, isImportant: computeIsImportant(row) };
+}
+
+/** Escape LIKE wildcards so user search text matches literally. */
+export function escapeLikeTerm(term: string): string {
+  return term.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+export function encodeCursor(createdAt: Date | string, id: string): string {
+  const iso = createdAt instanceof Date ? createdAt.toISOString() : createdAt;
+  return Buffer.from(`${iso}|${id}`, 'utf8').toString('base64url');
+}
+
+export function decodeCursor(cursor: string): { createdAt: Date; id: string } | null {
+  try {
+    const raw = Buffer.from(cursor, 'base64url').toString('utf8');
+    const sep = raw.lastIndexOf('|');
+    if (sep < 0) return null;
+    const createdAt = new Date(raw.slice(0, sep));
+    const id = raw.slice(sep + 1);
+    if (Number.isNaN(createdAt.getTime()) || !id) return null;
+    return { createdAt, id };
+  } catch {
+    return null;
+  }
+}
+
+/** Strip markdown formatting down to plain readable text. */
+export function stripMarkdown(input: string): string {
+  return input
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(`{1,3})([^`]*)\1/g, '$2')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Lowercased search blob mirroring the `search_text` column (and the 0034
+ * backfill). Keep the field list in sync in both places.
+ */
+export function buildSearchText(payload: Record<string, unknown>, eventType: string): string {
+  const pick = (v: unknown) => (typeof v === 'string' ? v : '');
+  return [
+    pick(payload['cardTitle']),
+    pick(payload['cardKey']),
+    pick(payload['boardTitle']),
+    pick(payload['actorName']),
+    pick(payload['commentText']),
+    pick(payload['commentSnippet']),
+    pick(payload['messagePreview']),
+    eventType,
+  ]
+    .join(' ')
+    .toLowerCase();
+}
+
+/** Plain-text snippet for list rows — truncated server-side. */
+export function buildSnippet(payload: Record<string, unknown>, maxLen = 200): string {
+  const raw =
+    (typeof payload['commentText'] === 'string' && payload['commentText']) ||
+    (typeof payload['commentSnippet'] === 'string' && payload['commentSnippet']) ||
+    (typeof payload['messagePreview'] === 'string' && payload['messagePreview']) ||
+    (typeof payload['cardTitle'] === 'string' && payload['cardTitle']) ||
+    '';
+  const plain = stripMarkdown(raw);
+  return plain.length > maxLen ? `${plain.slice(0, maxLen - 1).trimEnd()}…` : plain;
+}
+
 // ─── Service Functions ───────────────────────────────────────────────────────
 
-export async function listNotifications(db: Database, userId: string, organizationId: string) {
-  // Inbox poll — short TTL only (writes fan out per comment/assign).
-  const { data } = await cachedTTL(`n:${userId}:${organizationId}`, 20, () =>
+const MAX_LIST_LIMIT = 100;
+const DEFAULT_LIST_LIMIT = 30;
+
+function clampLimit(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
+  if (!Number.isFinite(n)) return DEFAULT_LIST_LIMIT;
+  return Math.min(Math.max(Math.floor(n), 1), MAX_LIST_LIMIT);
+}
+
+async function invalidateInbox(userId: string, organizationId: string): Promise<void> {
+  await invalidateTTL(`n:${userId}:${organizationId}`);
+  await invalidateTTL(unreadCountKey(userId, organizationId));
+}
+
+/**
+ * Paginated, filterable inbox list. Keyset on (createdAt, id) so inserts
+ * during scrolling neither duplicate nor skip rows.
+ */
+export async function listNotifications(
+  db: Database,
+  userId: string,
+  organizationId: string,
+  opts: ListNotificationsOptions = {}
+): Promise<NotificationPage> {
+  const limit = clampLimit(opts.limit);
+  const archived = opts.archived ?? 'exclude';
+
+  const conditions: SQL[] = [
+    eq(notifications.userId, userId),
+    eq(notifications.organizationId, organizationId),
+  ];
+  if (archived === 'exclude') conditions.push(sql`${notifications.archivedAt} IS NULL`);
+  else if (archived === 'only') conditions.push(sql`${notifications.archivedAt} IS NOT NULL`);
+  if (opts.unreadOnly) conditions.push(eq(notifications.isRead, false));
+  if (opts.starredOnly) conditions.push(eq(notifications.isStarred, true));
+  if (opts.importantOnly) {
+    conditions.push(
+      or(
+        eq(notifications.isStarred, true),
+        and(
+          eq(notifications.isRead, false),
+          inArray(notifications.eventType, [...IMPORTANT_EVENT_TYPES])
+        )
+      )!
+    );
+  }
+  if (opts.types && opts.types.length > 0) {
+    const valid = opts.types.filter((t) =>
+      (FILTERABLE_EVENT_TYPES as readonly string[]).includes(t)
+    );
+    if (valid.length === 0) return { items: [], nextCursor: null };
+    conditions.push(inArray(notifications.eventType, valid));
+  }
+  const q = typeof opts.q === 'string' ? opts.q.trim().slice(0, 100) : '';
+  if (q.length >= 2) {
+    conditions.push(
+      sql`${notifications.searchText} LIKE ${`%${escapeLikeTerm(q.toLowerCase())}%`} ESCAPE '\\'`
+    );
+  }
+  if (opts.cursor) {
+    const decoded = decodeCursor(opts.cursor);
+    if (decoded) {
+      conditions.push(
+        or(
+          lt(notifications.createdAt, decoded.createdAt),
+          and(eq(notifications.createdAt, decoded.createdAt), lt(notifications.id, decoded.id))
+        )!
+      );
+    }
+  }
+
+  // Filters are user-controlled — bypass the short-TTL list cache.
+  const rows = await db
+    .select()
+    .from(notifications)
+    .where(and(...conditions))
+    .orderBy(desc(notifications.createdAt), desc(notifications.id))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const last = page[page.length - 1] as { createdAt?: Date; id?: string } | undefined;
+  const nextCursor =
+    hasMore && last?.createdAt && last?.id ? encodeCursor(last.createdAt, last.id) : null;
+  return { items: page.map((r) => withImportance(r as Record<string, unknown>)), nextCursor };
+}
+
+/**
+ * Needs-action strip: newest unread important rows + total count, independent
+ * of the list query so it spans all pages.
+ */
+export async function getNeedsAction(
+  db: Database,
+  userId: string,
+  organizationId: string,
+  limit = 5
+): Promise<{ items: Array<Record<string, unknown>>; total: number }> {
+  const safeLimit = clampLimit(limit);
+  const important = or(
+    eq(notifications.isStarred, true),
+    and(
+      eq(notifications.isRead, false),
+      inArray(notifications.eventType, [...IMPORTANT_EVENT_TYPES])
+    )
+  )!;
+  const base = and(
+    eq(notifications.userId, userId),
+    eq(notifications.organizationId, organizationId),
+    sql`${notifications.archivedAt} IS NULL`,
+    important
+  );
+  const [items, totalRows] = await Promise.all([
     db
       .select()
       .from(notifications)
+      .where(base)
+      .orderBy(desc(notifications.createdAt), desc(notifications.id))
+      .limit(safeLimit),
+    db
+      .select({ n: count() })
+      .from(notifications)
       .where(
-        and(eq(notifications.userId, userId), eq(notifications.organizationId, organizationId))
-      )
-      .orderBy(desc(notifications.createdAt))
-      .limit(50)
-  );
-  return data;
+        and(
+          eq(notifications.userId, userId),
+          eq(notifications.organizationId, organizationId),
+          sql`${notifications.archivedAt} IS NULL`,
+          eq(notifications.isRead, false),
+          inArray(notifications.eventType, [...IMPORTANT_EVENT_TYPES])
+        )
+      ),
+  ]);
+  return {
+    items: items.map((r) => withImportance(r as Record<string, unknown>)),
+    total: totalRows[0]?.n ?? 0,
+  };
 }
 
-export async function markAsRead(db: Database, notificationId: string, userId: string) {
+export function unreadCountKey(userId: string, organizationId: string): string {
+  return `n:unread:${userId}:${organizationId}`;
+}
+
+/** Cheap badge count — excludes archived rows the user can't see. */
+export async function getUnreadCount(
+  db: Database,
+  userId: string,
+  organizationId: string
+): Promise<number> {
+  const { data } = await cachedTTL(unreadCountKey(userId, organizationId), 15, async () => {
+    const [row] = await db
+      .select({ n: count() })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.userId, userId),
+          eq(notifications.organizationId, organizationId),
+          eq(notifications.isRead, false),
+          sql`${notifications.archivedAt} IS NULL`
+        )
+      );
+    return { n: row?.n ?? 0 };
+  });
+  return (data as { n: number }).n;
+}
+
+/**
+ * Payload enrichment for rich inbox rows (actor, task, board, channel names).
+ * Read-only lookups, best-effort — a miss returns what it has, never throws,
+ * so enrichment can never break fan-out. Shared by the event listener and the
+ * direct-insert mention path in cards/service.ts.
+ */
+export async function enrichNotificationPayload(
+  db: Database,
+  input: { actorId?: string | null; cardId?: string | null; channelId?: string | null }
+): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  try {
+    if (input.actorId) {
+      const [actor] = await db
+        .select({ name: users.name, avatarUrl: users.avatarUrl })
+        .from(users)
+        .where(eq(users.id, input.actorId))
+        .limit(1);
+      out.actorName = actor?.name ?? null;
+      out.actorAvatarUrl = actor?.avatarUrl ?? null;
+    }
+    if (input.cardId) {
+      const [card] = await db
+        .select({
+          title: cards.title,
+          key: cards.key,
+          boardId: lists.boardId,
+          boardName: boards.name,
+        })
+        .from(cards)
+        .innerJoin(lists, eq(lists.id, cards.listId))
+        .innerJoin(boards, eq(boards.id, lists.boardId))
+        .where(eq(cards.id, input.cardId))
+        .limit(1);
+      out.cardTitle = card?.title ?? null;
+      out.cardKey = card?.key ?? null;
+      out.boardId = card?.boardId ?? null;
+      out.boardTitle = card?.boardName ?? null;
+    }
+    if (input.channelId) {
+      const [channel] = await db
+        .select({ name: chatChannels.name, type: chatChannels.type })
+        .from(chatChannels)
+        .where(eq(chatChannels.id, input.channelId))
+        .limit(1);
+      out.channelName = channel?.name ?? null;
+      out.channelType = channel?.type ?? null;
+    }
+  } catch (err) {
+    logger.warn({ err: String(err) }, 'Notification payload enrichment failed');
+  }
+  return out;
+}
+
+export async function markAsRead(
+  db: Database,
+  notificationId: string,
+  userId: string,
+  organizationId?: string
+) {
+  const conditions: SQL[] = [
+    eq(notifications.id, notificationId),
+    eq(notifications.userId, userId),
+  ];
+  if (organizationId) conditions.push(eq(notifications.organizationId, organizationId));
   const res = await db
     .update(notifications)
     .set({ isRead: true, readAt: new Date() })
-    .where(and(eq(notifications.id, notificationId), eq(notifications.userId, userId)))
+    .where(and(...conditions))
     .returning();
+  if (res.length > 0) {
+    const orgId = organizationId ?? (res[0] as { organizationId?: string })?.organizationId;
+    if (orgId) await invalidateInbox(userId, orgId);
+  }
   return res;
+}
+
+export async function markUnread(
+  db: Database,
+  notificationId: string,
+  userId: string,
+  organizationId?: string
+) {
+  const conditions: SQL[] = [
+    eq(notifications.id, notificationId),
+    eq(notifications.userId, userId),
+  ];
+  if (organizationId) conditions.push(eq(notifications.organizationId, organizationId));
+  const res = await db
+    .update(notifications)
+    .set({ isRead: false, readAt: null })
+    .where(and(...conditions))
+    .returning();
+  if (res.length > 0) {
+    const orgId = organizationId ?? (res[0] as { organizationId?: string })?.organizationId;
+    if (orgId) await invalidateInbox(userId, orgId);
+  }
+  return res;
+}
+
+export async function setStarred(
+  db: Database,
+  notificationId: string,
+  userId: string,
+  organizationId: string,
+  starred: boolean
+) {
+  const res = await db
+    .update(notifications)
+    .set({ isStarred: starred })
+    .where(
+      and(
+        eq(notifications.id, notificationId),
+        eq(notifications.userId, userId),
+        eq(notifications.organizationId, organizationId)
+      )
+    )
+    .returning();
+  if (res.length > 0) await invalidateInbox(userId, organizationId);
+  return res;
+}
+
+const BULK_CAP = 100;
+
+function capIds(ids: string[]): string[] {
+  return [...new Set(ids)].slice(0, BULK_CAP);
+}
+
+export async function bulkMarkRead(
+  db: Database,
+  ids: string[],
+  userId: string,
+  organizationId: string
+): Promise<{ affected: number }> {
+  const capped = capIds(ids);
+  if (capped.length === 0) return { affected: 0 };
+  const res = await db
+    .update(notifications)
+    .set({ isRead: true, readAt: new Date() })
+    .where(
+      and(
+        inArray(notifications.id, capped),
+        eq(notifications.userId, userId),
+        eq(notifications.organizationId, organizationId)
+      )
+    )
+    .returning({ id: notifications.id });
+  await invalidateInbox(userId, organizationId);
+  return { affected: res.length };
+}
+
+/** Archiving also marks read so archived rows never inflate the badge. */
+export async function bulkArchive(
+  db: Database,
+  ids: string[],
+  userId: string,
+  organizationId: string
+): Promise<{ affected: number }> {
+  const capped = capIds(ids);
+  if (capped.length === 0) return { affected: 0 };
+  const res = await db
+    .update(notifications)
+    .set({ archivedAt: new Date(), isRead: true, readAt: new Date() })
+    .where(
+      and(
+        inArray(notifications.id, capped),
+        eq(notifications.userId, userId),
+        eq(notifications.organizationId, organizationId),
+        sql`${notifications.archivedAt} IS NULL`
+      )
+    )
+    .returning({ id: notifications.id });
+  await invalidateInbox(userId, organizationId);
+  return { affected: res.length };
+}
+
+export async function bulkUnarchive(
+  db: Database,
+  ids: string[],
+  userId: string,
+  organizationId: string
+): Promise<{ affected: number }> {
+  const capped = capIds(ids);
+  if (capped.length === 0) return { affected: 0 };
+  const res = await db
+    .update(notifications)
+    .set({ archivedAt: null })
+    .where(
+      and(
+        inArray(notifications.id, capped),
+        eq(notifications.userId, userId),
+        eq(notifications.organizationId, organizationId),
+        sql`${notifications.archivedAt} IS NOT NULL`
+      )
+    )
+    .returning({ id: notifications.id });
+  await invalidateInbox(userId, organizationId);
+  return { affected: res.length };
 }
 
 export async function markAllAsRead(db: Database, userId: string, organizationId: string) {
@@ -44,11 +520,12 @@ export async function markAllAsRead(db: Database, userId: string, organizationId
       and(
         eq(notifications.userId, userId),
         eq(notifications.organizationId, organizationId),
-        eq(notifications.isRead, false)
+        eq(notifications.isRead, false),
+        sql`${notifications.archivedAt} IS NULL`
       )
     )
     .returning();
-  await invalidateTTL(`n:${userId}:${organizationId}`);
+  await invalidateInbox(userId, organizationId);
   return res;
 }
 
@@ -151,6 +628,14 @@ export function setupNotificationListeners(db: Database) {
 
           if (usersToNotify.length === 0) return;
 
+          // Enrich once per fan-out (actor/task/board/channel names) so inbox
+          // rows render richly without per-row lookups. Best-effort.
+          const enriched = await enrichNotificationPayload(db, {
+            actorId,
+            cardId,
+            channelId: (payload as any).channelId,
+          });
+
           // Fetch preferences for these users
           const prefs = await db
             .select()
@@ -211,24 +696,38 @@ export function setupNotificationListeners(db: Database) {
               logger.info({ event, userId }, 'Sending instant email (default prefs)');
             }
 
+            const payloadOut = {
+              cardId,
+              commentText,
+              actorId,
+              channelId: (payload as any).channelId,
+              messageId: (payload as any).messageId,
+              messagePreview: (payload as any).messagePreview,
+              ...enriched,
+            };
             notifData.push({
               userId,
               organizationId,
               eventType: event,
-              payload: {
-                cardId,
-                commentText,
-                actorId,
-                channelId: (payload as any).channelId,
-                messageId: (payload as any).messageId,
-                messagePreview: (payload as any).messagePreview,
-              },
+              payload: payloadOut,
+              searchText: buildSearchText(payloadOut as Record<string, unknown>, event),
               isDispatched,
             });
           }
 
           if (notifData.length > 0) {
-            await db.insert(notifications).values(notifData);
+            const inserted = await db.insert(notifications).values(notifData).returning({
+              id: notifications.id,
+              userId: notifications.userId,
+            });
+            // Live inbox bump per recipient (fire-and-forget; broadcast never rejects).
+            for (const row of inserted) {
+              void eventBus.broadcast(`user:inbox:${row.userId}`, 'notifications:new', {
+                id: row.id,
+                eventType: event,
+              });
+              await invalidateTTL(unreadCountKey(row.userId, organizationId));
+            }
           }
         }
       } catch (err) {

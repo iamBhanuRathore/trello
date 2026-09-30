@@ -73,6 +73,9 @@ const NotificationSettings = lazy(() =>
     default: m.NotificationSettings,
   }))
 );
+const Notifications = lazy(() =>
+  import('./pages/Notifications').then((m) => ({ default: m.Notifications }))
+);
 
 // Admin routes
 const Users = lazy(() => import('./pages/admin/Users').then((m) => ({ default: m.Users })));
@@ -170,6 +173,7 @@ export function App() {
                 <Route path="timesheets" element={<Timesheets />} />
                 <Route path="my-tasks" element={<MyTasks />} />
                 <Route path="tasks" element={<MyTasks />} />
+                <Route path="notifications" element={<Notifications />} />
                 <Route path="chat" element={<ChatPage />} />
                 <Route path="chat/:channelId" element={<ChatPage />} />
                 <Route path="calendar" element={<Calendar />} />

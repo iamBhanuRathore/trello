@@ -123,19 +123,8 @@ export async function uploadToPresignedUrl(
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
 }
 
-// Notifications
-export const getNotifications = async () => {
-  return api.get('/notifications');
-};
-
-export const markNotificationAsRead = (notificationId: string) => {
-  return api.patch(`/notifications/${notificationId}/read`);
-};
-
-export const markAllNotificationsAsRead = () => {
-  return api.post('/notifications/read-all');
-};
-
+// Notifications — list/triage client lives in ./notifications.ts (paginated
+// envelope, optimistic mutations). Preferences stay here with settings UI.
 export const getNotificationPreferences = async () => {
   const { data } = await api.get('/notifications/preferences');
   return data;

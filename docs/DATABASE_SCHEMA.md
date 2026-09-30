@@ -893,9 +893,14 @@ export const notifications = pgTable('notifications', {
   isRead: boolean('is_read').notNull().default(false),
   readAt: timestamp('read_at'),
   isDispatched: boolean('is_dispatched').notNull().default(false), // digest worker claim flag
+  isStarred: boolean('is_starred').notNull().default(false), // manual important pin
+  archivedAt: timestamp('archived_at'), // NULL = visible; set = dismissed from inbox
+  searchText: text('search_text').notNull().default(''), // lowercased triage blob (card/board/actor/snippet), pg_trgm GIN
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 ```
+
+Indexes: `notifications_inbox_idx (user_id, organization_id, created_at DESC, id DESC) WHERE archived_at IS NULL` (keyset list), `notifications_unread_idx (user_id, organization_id) WHERE is_read = false AND archived_at IS NULL` (badge + needs-action), `notifications_search_trgm_idx GIN (search_text gin_trgm_ops)`. `isImportant` is computed per row (`is_starred OR (unread AND type IN mentioned/assigned/due/overdue)`), never stored. Retention exempts unread AND starred; archived rows follow the normal read window (migration `0034_notification_center`).
 
 ---
 

@@ -108,15 +108,16 @@ export async function pruneLogs(
     config.batchSize,
     'activity_log'
   );
-  // Unread notifications are the user's inbox — never prune them.
+  // Unread and starred notifications are the user's inbox — never prune them.
+  // Archived rows follow the normal read retention window.
   const notificationsDeleted = await deleteInBatches(
     db,
     notifications,
     notificationCutoff,
     config.batchSize,
     'notifications',
-    // Unread = still in the user's inbox. Never disposable.
-    eq(notifications.isRead, true)
+    // Unread or starred = still in the user's inbox. Never disposable.
+    and(eq(notifications.isRead, true), eq(notifications.isStarred, false))
   );
   return { audit, activity, notifications: notificationsDeleted };
 }

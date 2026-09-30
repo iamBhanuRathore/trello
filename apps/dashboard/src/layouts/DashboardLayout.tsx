@@ -47,6 +47,8 @@ export function DashboardLayout() {
     if (path === '/') return [{ label: 'Workspaces', to: '/' }];
     if (path === '/my-tasks' || path === '/tasks')
       return [{ label: 'Workspaces', to: '/' }, { label: 'My Tasks' }];
+    if (path === '/notifications')
+      return [{ label: 'Workspaces', to: '/' }, { label: 'Notifications' }];
     if (path === '/timesheets') return [{ label: 'Workspaces', to: '/' }, { label: 'Timesheets' }];
     if (path === '/marketplace')
       return [{ label: 'Workspaces', to: '/' }, { label: 'Power-Ups & Apps' }];

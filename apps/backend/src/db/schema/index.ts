@@ -836,9 +836,20 @@ export const notifications = pgTable(
     isRead: boolean('is_read').notNull().default(false),
     readAt: timestamp('read_at'),
     isDispatched: boolean('is_dispatched').notNull().default(false), // For digest and queue logic
+    isStarred: boolean('is_starred').notNull().default(false),
+    archivedAt: timestamp('archived_at'),
+    searchText: text('search_text').notNull().default(''),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
-  (t) => [index('notifications_user_org_created_idx').on(t.userId, t.organizationId, t.createdAt)]
+  (t) => [
+    index('notifications_user_org_created_idx').on(t.userId, t.organizationId, t.createdAt),
+    index('notifications_inbox_idx')
+      .on(t.userId, t.organizationId, t.createdAt, t.id)
+      .where(sql`${t.archivedAt} IS NULL`),
+    index('notifications_unread_idx')
+      .on(t.userId, t.organizationId)
+      .where(sql`${t.isRead} = false AND ${t.archivedAt} IS NULL`),
+  ]
 );
 
 // ─── Activity & Audit ─────────────────────────────────────────────────────────

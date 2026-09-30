@@ -24,6 +24,7 @@ import {
   LayoutDashboard,
   CheckSquare,
   Clock,
+  Bell,
   Sparkles,
   Briefcase,
   ChevronRight,
@@ -143,6 +144,20 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
   const openTasksCount = tasksSummary?.openAssignedCount ?? 0;
   const overdueTasksCount = tasksSummary?.overdueCount ?? 0;
+
+  // Notification Center badge — same key as the inbox hook, shared cache.
+  const { data: notifUnreadCount = 0 } = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: async () => {
+      const res = await api.get('/notifications/unread-count');
+      return res.data?.unreadCount ?? 0;
+    },
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    placeholderData: (prev) => prev,
+  });
+  const notifBadgeLabel =
+    notifUnreadCount > 0 ? `${notifUnreadCount} unread notifications` : 'Notifications';
   const tasksBadgeLabel =
     openTasksCount > 0
       ? `${openTasksCount} open ${openTasksCount === 1 ? 'task' : 'tasks'}${
@@ -327,6 +342,36 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                       <div className="flex items-center justify-between w-full">
                         <span>My Tasks</span>
                         <NavCountBadge count={openTasksCount} label={tasksBadgeLabel} />
+                      </div>
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {/* Notifications */}
+              <SidebarMenuItem className={isCollapsed ? 'flex justify-center' : ''}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location.pathname === '/notifications'}
+                  tooltip="Notifications"
+                  className={
+                    isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''
+                  }
+                >
+                  <Link
+                    to="/notifications"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? 'Notifications' : undefined}
+                  >
+                    <div className="relative shrink-0 flex items-center justify-center">
+                      <Bell className="w-4 h-4 text-rose-500 shrink-0" />
+                      {isCollapsed && (
+                        <NavCountDot visible={notifUnreadCount > 0} label={notifBadgeLabel} />
+                      )}
+                    </div>
+                    {!isCollapsed && (
+                      <div className="flex items-center justify-between w-full">
+                        <span>Notifications</span>
+                        <NavCountBadge count={notifUnreadCount} label={notifBadgeLabel} />
                       </div>
                     )}
                   </Link>

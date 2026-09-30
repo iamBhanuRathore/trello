@@ -1,180 +1,74 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button } from '@boardly/ui/button';
-import {
-  Bell,
-  Settings,
-  CheckCheck,
-  Check,
-  MessageSquare,
-  UserCheck,
-  AtSign,
-  Clock,
-  Sparkles,
-  ExternalLink,
-} from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ArrowRight, Bell, CheckCheck, Search, Settings, X } from 'lucide-react';
+import { Button } from '@boardly/ui/button';
+import { useDialogClose } from '../hooks/useDialogClose';
+import { NotificationRow } from './notifications/NotificationRow';
 import { QueryError } from './common/QueryError';
+import { notificationTarget, type NotificationItem } from '../lib/notifications';
+import {
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useNotifCrossTabSync,
+  useNotificationRealtime,
+  useNotificationsInfinite,
+  useUnreadCount,
+} from '../hooks/useNotifications';
+
+type Tab = 'all' | 'unread';
 
 export function NotificationDropdown() {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const queryClient = useQueryClient();
+  const [tab, setTab] = useState<Tab>('all');
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
   const navigate = useNavigate();
 
-  // Robust click outside & escape dismiss listener
+  const { requestClose, handleOverlayClick } = useDialogClose({
+    isOpen: open,
+    onClose: () => setOpen(false),
+  });
+
+  // Fetch only while open; server-filtered search keeps it cheap.
   useEffect(() => {
     if (!open) return;
+    const t = setTimeout(() => setDebounced(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search, open]);
 
-    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
+  useEffect(() => {
+    if (!open) {
+      setSearch('');
+      setDebounced('');
+    }
   }, [open]);
 
-  const {
-    data: notifications = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: async () => (await getNotifications()).data,
-  });
+  const filters = useMemo(
+    () => ({
+      unreadOnly: tab === 'unread' || undefined,
+      q: debounced ? debounced : undefined,
+    }),
+    [tab, debounced]
+  );
+  const listQuery = useNotificationsInfinite(filters, open);
+  const unreadQuery = useUnreadCount();
+  const markRead = useMarkNotificationRead();
+  const markAllRead = useMarkAllNotificationsRead();
 
-  const markAsReadMutation = useMutation({
-    mutationFn: async (id: string) => (await markNotificationAsRead(id)).data,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    },
-  });
+  useNotifCrossTabSync();
+  useNotificationRealtime(open);
 
-  const markAllAsReadMutation = useMutation({
-    mutationFn: async () => (await markAllNotificationsAsRead()).data,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    },
-  });
+  const unreadCount = unreadQuery.data ?? 0;
+  const items: NotificationItem[] = useMemo(
+    () => (listQuery.data?.pages ?? []).flatMap((p) => p.items).slice(0, 10),
+    [listQuery.data]
+  );
 
-  const unreadCount = notifications.filter((n: any) => !n.isRead).length;
-
-  const filteredNotifications = useMemo(() => {
-    if (activeTab === 'unread') {
-      return notifications.filter((n: any) => !n.isRead);
-    }
-    return notifications;
-  }, [notifications, activeTab]);
-
-  const handleNotificationClick = (notif: any) => {
-    // 1. Mark as read
-    if (!notif.isRead) {
-      markAsReadMutation.mutate(notif.id);
-    }
-
-    // 2. Navigate to relevant context
-    setOpen(false);
-    if (notif.payload?.channelId) {
-      navigate(`/chat/${notif.payload.channelId}`);
-    } else if (notif.payload?.boardId) {
-      if (notif.payload?.cardId) {
-        navigate(`/b/${notif.payload.boardId}?card=${notif.payload.cardId}`);
-      } else {
-        navigate(`/b/${notif.payload.boardId}`);
-      }
-    } else if (notif.payload?.cardId) {
-      navigate('/my-tasks');
-    }
-  };
-
-  const renderNotificationDetails = (notif: any) => {
-    const eventType = notif.eventType || '';
-    const payload = notif.payload || {};
-
-    if (eventType === 'card.mentioned') {
-      return {
-        title: 'Mentioned in a Comment',
-        body:
-          payload.commentSnippet ||
-          payload.commentText ||
-          'You were mentioned in a task discussion.',
-        icon: <AtSign className="h-4 w-4 text-indigo-500" />,
-        bg: 'bg-indigo-500/10',
-      };
-    }
-
-    if (eventType === 'chat.mentioned') {
-      return {
-        title: 'Mentioned in Chat',
-        body: payload.messagePreview
-          ? `"${payload.messagePreview}"`
-          : 'A teammate mentioned you in chat.',
-        icon: <AtSign className="h-4 w-4 text-indigo-500" />,
-        bg: 'bg-indigo-500/10',
-      };
-    }
-
-    if (eventType === 'card.assigned') {
-      return {
-        title: 'Assigned to Task',
-        body: payload.cardTitle
-          ? `You were assigned to "${payload.cardTitle}"`
-          : 'You were assigned to a new task.',
-        icon: <UserCheck className="h-4 w-4 text-emerald-500" />,
-        bg: 'bg-emerald-500/10',
-      };
-    }
-
-    if (eventType === 'card.commented') {
-      return {
-        title: 'New Comment',
-        body: payload.commentText ? `"${payload.commentText}"` : 'A teammate commented on a task.',
-        icon: <MessageSquare className="h-4 w-4 text-sky-500" />,
-        bg: 'bg-sky-500/10',
-      };
-    }
-
-    if (eventType === 'card.due_soon' || eventType === 'card.overdue') {
-      return {
-        title: eventType === 'card.overdue' ? 'Task Overdue' : 'Task Due Soon',
-        body: payload.cardTitle
-          ? `Task "${payload.cardTitle}" requires your attention.`
-          : 'A task is approaching its deadline.',
-        icon: <Clock className="h-4 w-4 text-amber-500" />,
-        bg: 'bg-amber-500/10',
-      };
-    }
-
-    // Default
-    return {
-      title: 'Workspace Update',
-      body:
-        payload.message ||
-        payload.commentText ||
-        payload.commentSnippet ||
-        'You have a new update in your workspace.',
-      icon: <Bell className="h-4 w-4 text-primary" />,
-      bg: 'bg-primary/10',
-    };
+  const openNotification = (n: NotificationItem) => {
+    if (!n.isRead) markRead.mutate(n.id);
+    requestClose();
+    const target = notificationTarget(n);
+    if (target) navigate(target);
   };
 
   return (
@@ -185,183 +79,175 @@ export function NotificationDropdown() {
         onClick={() => setOpen(!open)}
         className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
         title="Notifications"
+        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        aria-expanded={open}
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500 ring-2 ring-background"></span>
+          <span className="absolute top-1.5 right-1.5 flex h-2 w-2" aria-hidden>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500 ring-2 ring-background" />
           </span>
         )}
       </Button>
 
       {open && (
-        <div
-          ref={dropdownRef}
-          className="absolute right-0 mt-2 w-84 sm:w-96 rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl z-50 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150"
-        >
-          {/* Header */}
-          <div className="p-3.5 border-b border-border bg-muted/40 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-xs sm:text-sm text-foreground">Notifications</span>
-              {unreadCount > 0 && (
-                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary">
-                  {unreadCount} unread
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1">
-              {unreadCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground gap-1"
-                  onClick={() => markAllAsReadMutation.mutate()}
-                  disabled={markAllAsReadMutation.isPending}
-                  title="Mark all notifications as read"
-                >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  <span>Mark all read</span>
-                </Button>
-              )}
-
-              <Link to="/settings/notifications" onClick={() => setOpen(false)}>
+        <>
+          <div
+            className="fixed inset-0 z-40 cursor-default"
+            onClick={handleOverlayClick}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-label="Notifications"
+            className="absolute right-0 z-50 mt-2 w-[calc(100vw-2rem)] max-w-96 overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl animate-in fade-in-50 zoom-in-95 duration-150"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 p-3.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-foreground sm:text-sm">Notifications</span>
+                {unreadCount > 0 && (
+                  <span className="rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-primary">
+                    {unreadCount} unread
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {unreadCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                    onClick={() => markAllRead.mutate()}
+                    disabled={markAllRead.isPending}
+                    title="Mark every notification in this organization as read"
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    <span>Mark all read</span>
+                  </Button>
+                )}
+                <Link to="/settings/notifications" onClick={requestClose}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    title="Notification preferences"
+                    aria-label="Notification preferences"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </Button>
+                </Link>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                  title="Notification Preferences"
+                  onClick={requestClose}
+                  aria-label="Close notifications"
                 >
-                  <Settings className="h-3.5 w-3.5" />
+                  <X className="h-3.5 w-3.5" />
                 </Button>
-              </Link>
+              </div>
             </div>
-          </div>
 
-          {/* Filter Tabs */}
-          <div className="px-3.5 py-2 border-b border-border/60 bg-muted/20 flex items-center gap-1 text-xs">
-            <button
-              className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                activeTab === 'all'
-                  ? 'bg-primary/10 text-primary font-semibold'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-              }`}
-              onClick={() => setActiveTab('all')}
-            >
-              All ({notifications.length})
-            </button>
-            <button
-              className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
-                activeTab === 'unread'
-                  ? 'bg-primary/10 text-primary font-semibold'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-              }`}
-              onClick={() => setActiveTab('unread')}
-            >
-              Unread ({unreadCount})
-            </button>
-          </div>
-
-          {/* Notification List */}
-          <div className="max-h-[380px] overflow-y-auto divide-y divide-border/60 bg-popover">
-            {isLoading ? (
-              <div className="p-8 text-center text-xs text-muted-foreground">
-                Loading notifications...
-              </div>
-            ) : isError && notifications.length === 0 ? (
-              <QueryError
-                compact
-                message="Couldn't load notifications."
-                onRetry={() => refetch()}
-                className="p-4 justify-center"
+            {/* Search */}
+            <div className="relative border-b border-border/60 bg-muted/20 px-3.5 py-2">
+              <Search className="pointer-events-none absolute left-6 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search notifications…"
+                aria-label="Search notifications"
+                className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-3 text-xs outline-none placeholder:text-muted-foreground focus:border-primary"
               />
-            ) : filteredNotifications.length === 0 ? (
-              <div className="p-8 text-center space-y-2">
-                <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center mx-auto text-muted-foreground">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                </div>
-                <div className="text-xs font-semibold text-foreground">
-                  {activeTab === 'unread' ? 'No unread notifications' : 'No notifications yet'}
-                </div>
-                <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
-                  {activeTab === 'unread'
-                    ? 'You are completely caught up with all team activities.'
-                    : 'When teammates mention you, assign tasks, or comment, updates will appear here.'}
-                </p>
-              </div>
-            ) : (
-              filteredNotifications.map((notif: any) => {
-                const details = renderNotificationDetails(notif);
-                return (
-                  <div
-                    key={notif.id}
-                    className={`p-3 text-xs transition-colors flex items-start justify-between gap-2.5 group cursor-pointer ${
-                      !notif.isRead
-                        ? 'bg-primary/5 hover:bg-primary/10'
-                        : 'hover:bg-muted/40 opacity-90'
-                    }`}
-                    onClick={() => handleNotificationClick(notif)}
-                  >
-                    <div className="flex items-start gap-2.5 min-w-0">
-                      <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${details.bg}`}>
-                        {details.icon}
-                      </div>
-                      <div className="min-w-0 space-y-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-foreground truncate">
-                            {details.title}
-                          </span>
-                          {!notif.isRead && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                          )}
-                        </div>
-                        <p className="text-muted-foreground line-clamp-2 text-[11px] leading-relaxed">
-                          {details.body}
-                        </p>
-                        <div className="text-[10px] text-muted-foreground/80 pt-0.5">
-                          {formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true })}
-                        </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex items-center gap-1 border-b border-border/60 bg-muted/20 px-3.5 py-2 text-xs">
+              {(
+                [
+                  { id: 'all', label: 'All' },
+                  { id: 'unread', label: `Unread (${unreadCount})` },
+                ] as { id: Tab; label: string }[]
+              ).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  aria-pressed={tab === t.id}
+                  className={`cursor-pointer rounded-lg px-2.5 py-1 font-medium transition-all ${
+                    tab === t.id
+                      ? 'bg-primary/10 font-semibold text-primary'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* List */}
+            <div className="max-h-[380px] overflow-y-auto bg-popover">
+              {listQuery.isPending ? (
+                <div className="space-y-2 p-3" aria-label="Loading notifications">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="flex items-start gap-2.5">
+                      <div className="h-8 w-8 shrink-0 animate-pulse rounded-full bg-muted" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+                        <div className="h-2.5 w-full animate-pulse rounded bg-muted/60" />
                       </div>
                     </div>
+                  ))}
+                </div>
+              ) : listQuery.isError ? (
+                <QueryError
+                  compact
+                  message="Couldn't load notifications."
+                  onRetry={() => listQuery.refetch()}
+                  className="justify-center p-4"
+                />
+              ) : items.length === 0 ? (
+                <div className="space-y-1.5 p-8 text-center">
+                  <p className="text-xs font-semibold text-foreground">
+                    {debounced
+                      ? 'No matching notifications'
+                      : tab === 'unread'
+                        ? 'No unread notifications'
+                        : 'No notifications yet'}
+                  </p>
+                  <p className="mx-auto max-w-xs text-[11px] text-muted-foreground">
+                    {debounced || tab === 'unread'
+                      ? 'Try a different search or check back later.'
+                      : 'Mentions, assignments, and comments will appear here.'}
+                  </p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {items.map((n) => (
+                    <li key={n.id}>
+                      <NotificationRow
+                        variant="compact"
+                        notification={n}
+                        onOpen={openNotification}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
-                    {/* Quick Dismiss / Mark as Read */}
-                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {!notif.isRead ? (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-muted-foreground hover:text-primary"
-                          title="Mark as read"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            markAsReadMutation.mutate(notif.id);
-                          }}
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </Button>
-                      ) : (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-muted-foreground"
-                          title="Open"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })
-            )}
+            {/* Footer */}
+            <Link
+              to="/notifications"
+              onClick={requestClose}
+              className="flex items-center justify-center gap-1.5 border-t border-border bg-muted/30 p-2.5 text-[11px] font-medium text-primary hover:bg-muted/50"
+            >
+              View all notifications
+              <ArrowRight className="h-3 w-3" />
+            </Link>
           </div>
-
-          {/* Footer */}
-          <div className="p-2.5 border-t border-border bg-muted/30 text-center text-[10px] text-muted-foreground">
-            Click a notification to open the task details
-          </div>
-        </div>
+        </>
       )}
     </div>
   );

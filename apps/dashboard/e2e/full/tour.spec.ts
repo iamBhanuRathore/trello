@@ -24,6 +24,7 @@ const ROUTES: [string, RegExp][] = [
   ['/admin/integrations', /slack|github|integration/i],
   ['/profile', /profile|account/i],
   ['/settings/notifications', /notification/i],
+  ['/notifications', /notification|caught up|needs action/i],
   ['/my-tasks', /my tasks|assigned/i],
   ['/timesheets', /timesheet|time log|hours/i],
   ['/marketplace', /marketplace|power|app/i],
