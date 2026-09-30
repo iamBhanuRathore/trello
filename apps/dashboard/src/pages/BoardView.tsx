@@ -161,9 +161,12 @@ export function BoardView() {
   const listsData = full?.lists;
 
   const [lists, setLists] = useState<KanbanList[]>([]);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(
-    searchParams.get('card') || null
-  );
+  // Single source of truth: the ?card= URL param IS the dialog state. A
+  // previous dual (local state + param synced by effect) tore on close —
+  // setState committed before the router navigation landed, and the sync
+  // effect reopened from the stale param ("needs two closes"). Deriving
+  // directly from the URL makes close atomic: no torn pair can exist.
+  const selectedCardId = searchParams.get('card');
   const [activeCard, setActiveCard] = useState<KanbanCard | null>(null);
   const [clonedLists, setClonedLists] = useState<KanbanList[] | null>(null);
   // Timestamp of the last explicit modal close. Closing unmounts the dialog
@@ -174,14 +177,6 @@ export function BoardView() {
   // Initialize Realtime WebSocket Connection & Presence
   const { presenceUsers, emitCardFocus } = useRealtimeBoard(boardId);
 
-  useEffect(() => {
-    const cardParam = searchParams.get('card');
-    if (cardParam && cardParam !== selectedCardId) {
-      setSelectedCardId(cardParam);
-      emitCardFocus(cardParam);
-    }
-  }, [searchParams, emitCardFocus, selectedCardId]);
-
   const handleCardClick = useCallback(
     (cardId: string) => {
       // Optimistic tiles carry temp ids until the server responds — opening
@@ -191,18 +186,16 @@ export function BoardView() {
       // Swallow the pass-through click from the gesture that just closed the
       // modal (backdrop close unmounts mid-click; the click lands on the tile).
       if (Date.now() - lastModalCloseRef.current < 500) return;
-      setSelectedCardId(cardId);
-      emitCardFocus(cardId);
       // Replace: dialog state is ephemeral — pushing would make browser-Back
       // reopen the dialog (e.g. Back from /cards/:id lands on ?card=).
       setSearchParams({ card: cardId }, { replace: true });
+      emitCardFocus(cardId);
     },
     [emitCardFocus, setSearchParams]
   );
 
   const handleCloseModal = useCallback(() => {
     lastModalCloseRef.current = Date.now();
-    setSelectedCardId(null);
     emitCardFocus(null);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('card');

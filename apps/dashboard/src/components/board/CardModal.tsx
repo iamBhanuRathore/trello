@@ -17,8 +17,9 @@ export function CardModal({
   const taskDetailRef = useRef<TaskDetailViewHandle>(null);
   const [isDirty, setIsDirty] = useState(false);
 
-  if (!cardId) return null;
-
+  // Hooks before any early return: MyTasks/Calendar keep CardModal mounted
+  // with cardId=null while closed, so a conditional hook here would shift
+  // hook order (and corrupt useDialogClose's one-shot refs) on open/close.
   // One sanctioned close path (idempotent): overlay/Esc/X funnel here.
   // Dirty state lifts from the detail view; the prompt itself stays there.
   const { handleOpenChange } = useDialogClose({
@@ -27,6 +28,8 @@ export function CardModal({
     isDirty,
     onDirtyRequest: () => taskDetailRef.current?.requestClose(),
   });
+
+  if (!cardId) return null;
 
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -49,6 +52,10 @@ export function CardModal({
           ref={taskDetailRef}
           cardId={cardId}
           mode="modal"
+          // Raw closer on purpose: the unsaved-prompt actions (Discard /
+          // Save & Close) run in the same tick that clears the dirty flags,
+          // so routing them through requestClose would read the stale dirty
+          // flag and re-show the prompt instead of closing.
           onClose={() => onOpenChange(false)}
           onSelectCard={onSelectCard}
           onDirtyChange={setIsDirty}
