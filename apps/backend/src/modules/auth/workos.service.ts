@@ -9,6 +9,7 @@ import {
   ssoConfigurations,
 } from '../../db/schema/index';
 import { issueTokenPair, httpError } from './service';
+import type { RefreshContext } from './service';
 import { env } from '../../lib/env';
 
 let workosClient: WorkOS | null = null;
@@ -237,7 +238,11 @@ export async function verifyWorkOSCode(code: string): Promise<VerifiedWorkOSIden
  * Authenticates user from WorkOS authorization code, provisions account (JIT),
  * links organization, and issues Boardly access + refresh tokens.
  */
-export async function authenticateWithWorkOSCode(db: Database, code: string) {
+export async function authenticateWithWorkOSCode(
+  db: Database,
+  code: string,
+  ctx: RefreshContext = {}
+) {
   const { email, name, avatarUrl, workosOrgId } = await verifyWorkOSCode(code);
 
   if (!email) {
@@ -372,7 +377,10 @@ export async function authenticateWithWorkOSCode(db: Database, code: string) {
     .where(eq(organizations.id, targetOrgId))
     .limit(1);
 
-  const tokens = await issueTokenPair(db, user.id, targetOrgId, user.isPlatformAdmin ?? false);
+  const tokens = await issueTokenPair(db, user.id, targetOrgId, user.isPlatformAdmin ?? false, {
+    userAgent: ctx.userAgent,
+    ip: ctx.ip,
+  });
 
   return {
     ...tokens,

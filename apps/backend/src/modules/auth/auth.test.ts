@@ -11,7 +11,8 @@ import { signUp, signIn, refreshTokens, signOut, getMe } from './service';
 import { eq } from 'drizzle-orm';
 
 const TEST_DB_URL =
-  process.env['DATABASE_TEST_URL'] ?? 'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
+  process.env['DATABASE_TEST_URL'] ??
+  'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
 
 let client: ReturnType<typeof postgres>;
 let db: Database;
@@ -25,12 +26,35 @@ afterAll(async () => {
   await client.end();
 });
 
-// Clean test users between tests
+// Clean test users between tests (FK-safe order: seeded team roles,
+// subscriptions and audit rows reference the org without cascade).
 beforeEach(async () => {
   await db.delete(schema.refreshTokens);
-  await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, (await db.select().from(schema.organizations).where(eq(schema.organizations.slug, 'alice-corp')).then(r => r[0]?.id || '00000000-0000-0000-0000-000000000000'))));
-  await db.delete(schema.organizations).where(eq(schema.organizations.slug, 'alice-corp'));
-  await db.delete(schema.organizations).where(eq(schema.organizations.slug, 'alice-corp-2'));
+  for (const slug of ['alice-corp', 'alice-corp-2']) {
+    const [org] = await db
+      .select({ id: schema.organizations.id })
+      .from(schema.organizations)
+      .where(eq(schema.organizations.slug, slug))
+      .limit(1);
+    if (!org) continue;
+    const orgRoles = await db
+      .select({ id: schema.roles.id })
+      .from(schema.roles)
+      .where(eq(schema.roles.organizationId, org.id));
+    for (const r of orgRoles) {
+      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
+      await db.delete(schema.roles).where(eq(schema.roles.id, r.id));
+    }
+    await db
+      .delete(schema.organizationMembers)
+      .where(eq(schema.organizationMembers.organizationId, org.id));
+    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, org.id));
+    await db
+      .delete(schema.ssoConfigurations)
+      .where(eq(schema.ssoConfigurations.organizationId, org.id));
+    await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, org.id));
+    await db.delete(schema.organizations).where(eq(schema.organizations.id, org.id));
+  }
   await db.delete(schema.users).where(eq(schema.users.email, 'alice@test.example'));
   await db.delete(schema.users).where(eq(schema.users.email, 'alice2@test.example'));
 });
@@ -53,14 +77,23 @@ describe('signUp', () => {
     expect(result.organization.slug).toBe('alice-corp');
 
     // Verify DB records
-    const users = await db.select().from(schema.users).where(eq(schema.users.email, 'alice@test.example'));
+    const users = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.email, 'alice@test.example'));
     expect(users).toHaveLength(1);
     expect(users[0]!.passwordHash).not.toBe('SecurePass1'); // must be hashed
 
-    const orgs = await db.select().from(schema.organizations).where(eq(schema.organizations.slug, 'alice-corp'));
+    const orgs = await db
+      .select()
+      .from(schema.organizations)
+      .where(eq(schema.organizations.slug, 'alice-corp'));
     expect(orgs).toHaveLength(1);
 
-    const members = await db.select().from(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, result.organization.id));
+    const members = await db
+      .select()
+      .from(schema.organizationMembers)
+      .where(eq(schema.organizationMembers.organizationId, result.organization.id));
     expect(members).toHaveLength(1);
     expect(members[0]!.role).toBe('org_owner');
     expect(members[0]!.status).toBe('active');
@@ -73,9 +106,9 @@ describe('signUp', () => {
 
   it('returns 409 conflict for duplicate org slug', async () => {
     await signUp(db, validSignUp);
-    await expect(
-      signUp(db, { ...validSignUp, email: 'bob@test.example' })
-    ).rejects.toMatchObject({ status: 409 });
+    await expect(signUp(db, { ...validSignUp, email: 'bob@test.example' })).rejects.toMatchObject({
+      status: 409,
+    });
   });
 });
 
@@ -117,7 +150,9 @@ describe('refreshTokens', () => {
   });
 
   it('throws 401 for non-existent token', async () => {
-    await expect(refreshTokens(db, 'made-up-token-that-doesnt-exist')).rejects.toMatchObject({ status: 401 });
+    await expect(refreshTokens(db, 'made-up-token-that-doesnt-exist')).rejects.toMatchObject({
+      status: 401,
+    });
   });
 });
 

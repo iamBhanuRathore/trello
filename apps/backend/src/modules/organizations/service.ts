@@ -11,7 +11,6 @@ import {
   cardAssignees,
   timeLogs,
   invitations,
-  refreshTokens,
   auditLog,
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
@@ -23,6 +22,8 @@ import {
   renderAccountReactivatedEmail,
 } from '../../lib/emailTemplates';
 import { checkAndReserveSeatSlot } from '../billing/service';
+import { revokeAllUserSessions } from '../auth/service';
+import type { RefreshContext } from '../auth/service';
 import { httpError, errorMessage, errorStatus } from '../../lib/errors';
 export { httpError };
 
@@ -656,10 +657,7 @@ export async function deactivateMember(
     .returning();
 
   // Invalidate any active refresh tokens for this user so current sessions are revoked
-  await db
-    .update(refreshTokens)
-    .set({ revokedAt: new Date() })
-    .where(and(eq(refreshTokens.userId, member.userId), isNull(refreshTokens.revokedAt)));
+  await revokeAllUserSessions(db, member.userId);
 
   // Write to audit log
   await db.insert(auditLog).values({
@@ -831,10 +829,7 @@ export async function forceLogoutUser(
   if (!member) throw httpError(404, 'Member not found');
 
   // Invalidate all refresh tokens for this user
-  await db
-    .update(refreshTokens)
-    .set({ revokedAt: new Date() })
-    .where(and(eq(refreshTokens.userId, member.userId), isNull(refreshTokens.revokedAt)));
+  await revokeAllUserSessions(db, member.userId);
 
   await db.insert(auditLog).values({
     organizationId: orgId,
@@ -1038,7 +1033,8 @@ export async function acceptInvitation(
   db: Database,
   token: string,
   name?: string,
-  password?: string
+  password?: string,
+  ctx: RefreshContext = {}
 ) {
   const now = new Date();
 
@@ -1115,7 +1111,16 @@ export async function acceptInvitation(
 
   // Auto-issue tokens for immediate login
   const { issueTokenPair } = await import('../auth/service');
-  const tokens = await issueTokenPair(db, user.id, invite.organizationId);
+  const tokens = await issueTokenPair(
+    db,
+    user.id,
+    invite.organizationId,
+    user.isPlatformAdmin ?? false,
+    {
+      userAgent: ctx.userAgent,
+      ip: ctx.ip,
+    }
+  );
 
   return {
     accessToken: tokens.accessToken,

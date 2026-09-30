@@ -1,12 +1,12 @@
 import { eq, desc, and, isNull } from 'drizzle-orm';
 import type { Database } from '../../db/index';
+import { revokeAllUserSessions } from '../auth/service';
 import {
   organizations,
   plans,
   subscriptions,
   users,
   organizationMembers,
-  refreshTokens,
 } from '../../db/schema/index';
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
@@ -48,9 +48,16 @@ export async function listTenants(db: Database) {
     .from(organizationMembers)
     .where(isNull(organizationMembers.deletedAt));
 
-  const orgMemberCountMap = new Map<string, { total: number; active: number; deactivated: number }>();
+  const orgMemberCountMap = new Map<
+    string,
+    { total: number; active: number; deactivated: number }
+  >();
   for (const m of members) {
-    const existing = orgMemberCountMap.get(m.organizationId) || { total: 0, active: 0, deactivated: 0 };
+    const existing = orgMemberCountMap.get(m.organizationId) || {
+      total: 0,
+      active: 0,
+      deactivated: 0,
+    };
     existing.total += 1;
     if (m.status === 'active') existing.active += 1;
     if (m.status === 'deactivated') existing.deactivated += 1;
@@ -218,10 +225,7 @@ export async function getPlatformUser(db: Database, userId: string) {
 
 // ─── forceLogoutPlatformUser ──────────────────────────────────────────────────
 export async function forceLogoutPlatformUser(db: Database, userId: string, _actorId?: string) {
-  await db
-    .update(refreshTokens)
-    .set({ revokedAt: new Date() })
-    .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+  await revokeAllUserSessions(db, userId);
 
   return { success: true, message: 'All platform sessions for this user have been revoked.' };
 }

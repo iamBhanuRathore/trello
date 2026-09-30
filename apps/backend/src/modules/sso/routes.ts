@@ -30,9 +30,15 @@ export const ssoRoutes = new Elysia({ prefix: '/sso', tags: ['SSO'] })
 
   .post(
     '/callback',
-    async ({ body, set }) => {
+    async ({ body, set, request }) => {
       try {
-        return await processSSOCallback(db, body);
+        return await processSSOCallback(db, body, {
+          userAgent: request.headers.get('user-agent'),
+          ip:
+            request.headers.get('x-forwarded-for')?.split(',')[0]?.trim().slice(0, 64) ??
+            request.headers.get('x-real-ip')?.trim().slice(0, 64) ??
+            null,
+        });
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }

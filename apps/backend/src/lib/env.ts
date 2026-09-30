@@ -40,7 +40,19 @@ const envSchema = z.object({
     .min(32)
     .default('ayUfgRGoM07P8GvHIBN1Movg5hwx33/jZSQqYMC6luDz+9+84VG48EgbwT5HGX2v'),
   JWT_EXPIRES_IN: z.string().default('15m'),
+  // Legacy single-knob refresh lifetime — fallback for one release. Prefer the
+  // idle/absolute pair below; when those are unset the legacy value (or 30d)
+  // applies to both.
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('30d'),
+  // Sliding refresh windows: idle extends on every rotation, absolute never
+  // does (forces re-login). Super-admin overrides are optional and clamp to
+  // the main values when unset.
+  REFRESH_IDLE_EXPIRES_IN: z.string().optional(),
+  REFRESH_ABSOLUTE_EXPIRES_IN: z.string().optional(),
+  REFRESH_REUSE_GRACE_SECONDS: z.coerce.number().default(10),
+  REFRESH_GRACE_MAX_USES: z.coerce.number().default(2),
+  SUPERADMIN_REFRESH_IDLE_EXPIRES_IN: z.string().optional(),
+  SUPERADMIN_REFRESH_ABSOLUTE_EXPIRES_IN: z.string().optional(),
 
   // App URLs
   DASHBOARD_URL: z.string().default('http://localhost:5173'),
@@ -96,6 +108,55 @@ const envSchema = z.object({
 
 const parsed = envSchema
   .superRefine((val, ctx) => {
+    // Duration syntax shared with auth/service.ts durationToMs.
+    const toMs = (d: string): number | null => {
+      const m = d.match(/^(\d+)([smhd])$/);
+      if (!m) return null;
+      const mult: Record<string, number> = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+      return Number(m[1]) * (mult[m[2]!] ?? 0);
+    };
+    const issue = (path: string[], message: string) =>
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+
+    // Effective lifetimes must parse and satisfy idle <= absolute.
+    const idle = val.REFRESH_IDLE_EXPIRES_IN ?? val.REFRESH_TOKEN_EXPIRES_IN ?? '7d';
+    const absolute = val.REFRESH_ABSOLUTE_EXPIRES_IN ?? val.REFRESH_TOKEN_EXPIRES_IN ?? '30d';
+    const idleMs = toMs(idle);
+    const absMs = toMs(absolute);
+    if (idleMs === null) issue(['REFRESH_IDLE_EXPIRES_IN'], 'Must match /^(\\d+)([smhd])$/');
+    if (absMs === null) issue(['REFRESH_ABSOLUTE_EXPIRES_IN'], 'Must match /^(\\d+)([smhd])$/');
+    if (idleMs !== null && absMs !== null && idleMs > absMs) {
+      issue(['REFRESH_IDLE_EXPIRES_IN'], 'Idle lifetime must be <= absolute lifetime');
+    }
+    for (const [key, v] of [
+      ['SUPERADMIN_REFRESH_IDLE_EXPIRES_IN', val.SUPERADMIN_REFRESH_IDLE_EXPIRES_IN],
+      ['SUPERADMIN_REFRESH_ABSOLUTE_EXPIRES_IN', val.SUPERADMIN_REFRESH_ABSOLUTE_EXPIRES_IN],
+    ] as const) {
+      if (v !== undefined && toMs(v) === null) issue([key], 'Must match /^(\\d+)([smhd])$/');
+    }
+    const sIdle = val.SUPERADMIN_REFRESH_IDLE_EXPIRES_IN;
+    const sAbs = val.SUPERADMIN_REFRESH_ABSOLUTE_EXPIRES_IN;
+    if (sIdle !== undefined && sAbs !== undefined) {
+      const a = toMs(sIdle);
+      const b = toMs(sAbs);
+      if (a !== null && b !== null && a > b) {
+        issue(['SUPERADMIN_REFRESH_IDLE_EXPIRES_IN'], 'Idle lifetime must be <= absolute lifetime');
+      }
+    }
+    if (
+      !Number.isFinite(val.REFRESH_REUSE_GRACE_SECONDS) ||
+      val.REFRESH_REUSE_GRACE_SECONDS < 0 ||
+      val.REFRESH_REUSE_GRACE_SECONDS > 300
+    ) {
+      issue(['REFRESH_REUSE_GRACE_SECONDS'], 'Must be between 0 and 300 seconds');
+    }
+    if (
+      !Number.isInteger(val.REFRESH_GRACE_MAX_USES) ||
+      val.REFRESH_GRACE_MAX_USES < 1 ||
+      val.REFRESH_GRACE_MAX_USES > 10
+    ) {
+      issue(['REFRESH_GRACE_MAX_USES'], 'Must be an integer between 1 and 10');
+    }
     if (val.NODE_ENV === 'production') {
       for (const key of ['JWT_SECRET', 'REFRESH_TOKEN_SECRET'] as const) {
         const secret = val[key] as string;

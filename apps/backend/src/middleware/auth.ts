@@ -14,7 +14,7 @@ import {
 import { eq, and, or, isNull, sql, type SQL } from 'drizzle-orm';
 import { type PermissionKey, PlanTier } from '@boardly/shared-types';
 import { getDataClient, isRedisAvailable } from '../redis/client';
-import { getCachedAllow, setCachedAllow } from '../lib/cache';
+import { getCachedAllow, setCachedAllow, isFamilyBurned } from '../lib/cache';
 import { logger } from '../lib/logger';
 
 const JWT_SECRET = new TextEncoder().encode(env.JWT_SECRET);
@@ -25,6 +25,8 @@ export interface AuthContext {
   userId: string;
   organizationId: string;
   isPlatformAdmin: boolean;
+  /** Refresh-token family id — absent on pre-family (legacy) tokens. */
+  sid?: string;
 }
 
 /**
@@ -98,10 +100,11 @@ export async function verifyAccessToken(token: string): Promise<AuthContext> {
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE,
   });
-  const { userId, organizationId, isPlatformAdmin } = payload as {
+  const { userId, organizationId, isPlatformAdmin, sid } = payload as {
     userId?: unknown;
     organizationId?: unknown;
     isPlatformAdmin?: unknown;
+    sid?: unknown;
   };
   if (typeof userId !== 'string' || userId.length === 0) {
     throw new Error('Invalid token payload: userId');
@@ -109,10 +112,14 @@ export async function verifyAccessToken(token: string): Promise<AuthContext> {
   if (organizationId !== undefined && typeof organizationId !== 'string') {
     throw new Error('Invalid token payload: organizationId');
   }
+  if (sid !== undefined && (typeof sid !== 'string' || sid.length === 0)) {
+    throw new Error('Invalid token payload: sid');
+  }
   return {
     userId,
     organizationId: organizationId ?? '',
     isPlatformAdmin: isPlatformAdmin === true,
+    ...(typeof sid === 'string' ? { sid } : {}),
   };
 }
 
@@ -161,6 +168,20 @@ const PUBLIC_PATH_PREFIXES = [
   '/v1/realtime/ws',
 ];
 
+/**
+ * Routes where a burned refresh family kills the access token immediately.
+ * Everywhere else the ≤15m access-token expiry bounds the window (avoids an
+ * extra Redis RTT on the hot path).
+ */
+const SENSITIVE_PATH_PREFIXES = [
+  '/v1/auth/change-password',
+  '/v1/sso',
+  '/v1/billing',
+  '/v1/developer',
+  '/v1/organizations',
+  '/v1/superadmin',
+];
+
 export const authPlugin = new Elysia({ name: 'auth' })
   .use(bearer())
   .derive({ as: 'global' }, async ({ bearer, set, path }) => {
@@ -185,6 +206,15 @@ export const authPlugin = new Elysia({ name: 'auth' })
           throw Object.assign(new Error('Forbidden — no active membership in organization'), {
             status: 403,
           });
+        }
+      }
+      // Burned refresh families kill access tokens immediately, but only on
+      // sensitive routes — one extra Redis RTT per request everywhere would
+      // tax the hot path. Elsewhere the ≤15m access expiry bounds the window.
+      if (user.sid && SENSITIVE_PATH_PREFIXES.some((p) => path.startsWith(p))) {
+        if (await isFamilyBurned(user.sid)) {
+          set.status = 401;
+          throw Object.assign(new Error('Unauthorized — session revoked'), { status: 401 });
         }
       }
       const planTier = user.organizationId

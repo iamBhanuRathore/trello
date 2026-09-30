@@ -417,6 +417,38 @@ export async function bumpCardAndBoard(cardId: string, boardId: string | null): 
   await Promise.all([bumpCardCache(cardId), boardId ? bumpBoardCache(boardId) : Promise.resolve()]);
 }
 
+// ─── Refresh-family burn markers ────────────────────────────────────────────
+// A burned family's short-lived access tokens (≤ JWT_EXPIRES_IN) must die
+// immediately on sensitive routes. The marker is a best-effort Redis flag;
+// the DB revoked rows are canonical (refresh always consults them), so a
+// missing marker only weakens the fast path, never correctness.
+
+function familyBurnKey(familyId: string): string {
+  return `auth:famburn:${familyId}`;
+}
+
+/** Flag a refresh family as burned. Fail-open: never throws. */
+export async function markFamilyBurned(familyId: string, ttlSeconds = 86_400): Promise<void> {
+  const redis = redisOrNull();
+  if (!redis) return;
+  try {
+    await redis.set(familyBurnKey(familyId), '1', 'EX', Math.max(60, ttlSeconds));
+  } catch {
+    // Best-effort.
+  }
+}
+
+/** True when the family was burned (false on miss, error, or no Redis). */
+export async function isFamilyBurned(familyId: string): Promise<boolean> {
+  const redis = redisOrNull();
+  if (!redis) return false;
+  try {
+    return (await redis.get(familyBurnKey(familyId))) === '1';
+  } catch {
+    return false;
+  }
+}
+
 // ─── RBAC allow-marker cache ──────────────────────────────────────────────────
 
 const PERM_TTL_SECONDS = 60;

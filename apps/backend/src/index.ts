@@ -39,6 +39,7 @@ import { componentRoutes } from './modules/components/routes';
 import { priorityRoutes } from './modules/priorities/routes';
 import { auditRoutes } from './modules/audit/routes';
 import { startRetentionJob } from './modules/audit/retention';
+import { startRefreshTokenCleanup } from './modules/auth/cleanup';
 import { docRoutes } from './modules/docs/routes';
 import { formRoutes } from './modules/forms/routes';
 import { ssoRoutes } from './modules/sso/routes';
@@ -64,6 +65,27 @@ db.execute(
 ).catch(() => {});
 db.execute(
   sql`ALTER TABLE IF EXISTS "sso_configurations" ADD COLUMN IF NOT EXISTS "workos_connection_id" varchar(255)`
+).catch(() => {});
+
+// Sliding refresh families (0033): boot-time backstop so dev DBs that haven't
+// run `db:migrate` yet don't crash on missing columns. Migrations are canonical.
+for (const ddl of [
+  `ALTER TABLE IF EXISTS "refresh_tokens" ADD COLUMN IF NOT EXISTS "family_id" uuid`,
+  `ALTER TABLE IF EXISTS "refresh_tokens" ADD COLUMN IF NOT EXISTS "parent_hash" varchar(255)`,
+  `ALTER TABLE IF EXISTS "refresh_tokens" ADD COLUMN IF NOT EXISTS "replaced_by_hash" varchar(255)`,
+  `ALTER TABLE IF EXISTS "refresh_tokens" ADD COLUMN IF NOT EXISTS "absolute_expires_at" timestamp`,
+  `ALTER TABLE IF EXISTS "refresh_tokens" ADD COLUMN IF NOT EXISTS "last_used_at" timestamp`,
+  `ALTER TABLE IF EXISTS "refresh_tokens" ADD COLUMN IF NOT EXISTS "grace_uses" integer DEFAULT 0 NOT NULL`,
+  `ALTER TABLE IF EXISTS "refresh_tokens" ADD COLUMN IF NOT EXISTS "ua_hash" varchar(64)`,
+  `ALTER TABLE IF EXISTS "refresh_tokens" ADD COLUMN IF NOT EXISTS "ip_hash" varchar(64)`,
+]) {
+  db.execute(sql.raw(ddl)).catch(() => {});
+}
+db.execute(
+  sql`UPDATE "refresh_tokens" SET "family_id" = gen_random_uuid() WHERE "family_id" IS NULL`
+).catch(() => {});
+db.execute(
+  sql`UPDATE "refresh_tokens" SET "absolute_expires_at" = "expires_at" WHERE "absolute_expires_at" IS NULL`
 ).catch(() => {});
 
 // Setup event listeners
@@ -265,6 +287,9 @@ if (app.server) {
 // Append-only log retention (audit/activity/notifications) — see modules/audit/retention.ts
 const stopRetentionJob = startRetentionJob(db);
 
+// Expired refresh-token families — see modules/auth/cleanup.ts
+const stopRefreshTokenCleanup = startRefreshTokenCleanup(db);
+
 logger.info({ host: app.server?.hostname, port: app.server?.port }, '🚀 Boardly API is running');
 
 // ── Graceful Shutdown & Drain Handler ─────────────────────────────────────────
@@ -297,6 +322,7 @@ async function shutdown(signal: string) {
 
   // 3. Stop housekeeping timers, then close Redis + Database client pools
   stopRetentionJob();
+  stopRefreshTokenCleanup();
   await Promise.allSettled([disconnectRedis(), disconnectDb()]);
 
   logger.info({}, 'Clean shutdown completed. Exiting.');

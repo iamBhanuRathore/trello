@@ -208,17 +208,39 @@ export const invitations = pgTable('invitations', {
   ...timestamps,
 });
 
-// ─── Refresh Tokens ───────────────────────────────────────────────────────────
-export const refreshTokens = pgTable('refresh_tokens', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id),
-  tokenHash: varchar('token_hash', { length: 255 }).notNull().unique(),
-  expiresAt: timestamp('expires_at').notNull(),
-  revokedAt: timestamp('revoked_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+// ─── Refresh Tokens (sliding rotation families) ───────────────────────────────
+// A login creates a family; each rotation mints a child in the same family with
+// expiresAt = LEAST(now + idle, absoluteExpiresAt). absoluteExpiresAt never
+// extends — it forces re-login. revoked rows stay until expiry so reuse of an
+// old token is still detectable; a reuse inside the grace window (graceUses <
+// cap, UA match) mints a sibling child instead of burning the family (covers
+// 2-tab / StrictMode races). Real reuse burns only that family.
+export const refreshTokens = pgTable(
+  'refresh_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    tokenHash: varchar('token_hash', { length: 255 }).notNull().unique(),
+    expiresAt: timestamp('expires_at').notNull(),
+    revokedAt: timestamp('revoked_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    familyId: uuid('family_id').notNull(),
+    parentHash: varchar('parent_hash', { length: 255 }),
+    replacedByHash: varchar('replaced_by_hash', { length: 255 }),
+    absoluteExpiresAt: timestamp('absolute_expires_at').notNull(),
+    lastUsedAt: timestamp('last_used_at'),
+    graceUses: integer('grace_uses').notNull().default(0),
+    uaHash: varchar('ua_hash', { length: 64 }),
+    ipHash: varchar('ip_hash', { length: 64 }),
+  },
+  (t) => [
+    index('refresh_tokens_family_idx').on(t.familyId),
+    index('refresh_tokens_user_idx').on(t.userId),
+    index('refresh_tokens_expires_idx').on(t.expiresAt),
+  ]
+);
 
 // ─── Subscriptions ────────────────────────────────────────────────────────────
 export const subscriptions = pgTable('subscriptions', {

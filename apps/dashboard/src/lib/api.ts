@@ -511,6 +511,72 @@ api.interceptors.request.use((config) => {
 // shows one toast instead of stacking one per request.
 let lastUnreachableToastAt = 0;
 
+// Single-flight refresh: concurrent 401s (multi-tab bursts, StrictMode,
+// query stampedes) share one POST /auth/refresh instead of racing each other
+// into the server's reuse detector. navigator.locks extends the single-flight
+// across tabs when available; in-memory dedup is the fallback.
+let refreshPromise: Promise<{ accessToken: string; refreshToken: string }> | null = null;
+
+function doRefresh(staleRefreshToken: string) {
+  return axios
+    .post(
+      `${API_URL}/auth/refresh`,
+      { refreshToken: staleRefreshToken },
+      { headers: { 'Content-Type': 'application/json' }, withCredentials: true }
+    )
+    .then(({ data }) => {
+      localStorage.setItem('boardly_access_token', data.accessToken);
+      localStorage.setItem('boardly_refresh_token', data.refreshToken);
+      return data as { accessToken: string; refreshToken: string };
+    });
+}
+
+function singleFlightRefresh(): Promise<{ accessToken: string; refreshToken: string }> {
+  if (refreshPromise) return refreshPromise;
+  // Capture per attempt: after winning the cross-tab lock, a changed token
+  // means another tab already rotated — reuse it instead of refreshing again.
+  const attempt = async () => {
+    const failedAccess = localStorage.getItem('boardly_access_token');
+    const run = async () => {
+      const currentAccess = localStorage.getItem('boardly_access_token');
+      const currentRefresh = localStorage.getItem('boardly_refresh_token');
+      if (!currentRefresh) throw new Error('No refresh token');
+      if (currentAccess !== failedAccess && failedAccess !== null) {
+        // Another tab refreshed while we waited: its tokens are current.
+        return {
+          accessToken: currentAccess ?? '',
+          refreshToken: currentRefresh,
+        };
+      }
+      return doRefresh(currentRefresh);
+    };
+    const locks =
+      typeof navigator !== 'undefined' &&
+      typeof (navigator as Navigator & { locks?: { request: Function } }).locks?.request ===
+        'function'
+        ? (
+            navigator as Navigator & {
+              locks: { request<T>(name: string, cb: () => Promise<T>): Promise<T> };
+            }
+          ).locks
+        : null;
+    return locks ? locks.request('boardly-auth-refresh', run) : run();
+  };
+  const p = attempt();
+  refreshPromise = p;
+  // Reset in finally so failures don't pin a rejected promise; only clear our
+  // own slot (a newer attempt may have replaced it).
+  p.then(
+    () => {
+      if (refreshPromise === p) refreshPromise = null;
+    },
+    () => {
+      if (refreshPromise === p) refreshPromise = null;
+    }
+  );
+  return p;
+}
+
 // Interceptor to handle token refresh if 401 occurs
 api.interceptors.response.use(
   (response) => response,
@@ -544,18 +610,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest?._retry && !isAuthRoute) {
       originalRequest._retry = true;
       try {
-        const refreshToken = localStorage.getItem('boardly_refresh_token');
-        if (!refreshToken) throw new Error('No refresh token');
-        const { data } = await axios.post(
-          `${API_URL}/auth/refresh`,
-          { refreshToken },
-          {
-            headers: { 'Content-Type': 'application/json' },
-            withCredentials: true,
-          }
-        );
-        localStorage.setItem('boardly_access_token', data.accessToken);
-        localStorage.setItem('boardly_refresh_token', data.refreshToken);
+        const data = await singleFlightRefresh();
 
         // Update the original request's Authorization header
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;

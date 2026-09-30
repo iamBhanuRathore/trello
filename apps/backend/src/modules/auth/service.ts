@@ -4,8 +4,8 @@
  * All DB interactions accept an explicit `db` parameter so tests can inject
  * the test database without monkey-patching the module-level singleton.
  */
-import { eq, and, isNull, gt, or } from 'drizzle-orm';
-import { createHash, randomBytes } from 'crypto';
+import { eq, and, isNull, gt, or, sql } from 'drizzle-orm';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import type { Database } from '../../db/index';
 import {
   users,
@@ -19,7 +19,8 @@ import {
 } from '../../db/schema/index';
 import { signAccessToken } from '../../middleware/auth';
 import { env } from '../../lib/env';
-import { cachedTTL, userCacheKey, bumpUserCache } from '../../lib/cache';
+import { logger } from '../../lib/logger';
+import { cachedTTL, userCacheKey, bumpUserCache, markFamilyBurned } from '../../lib/cache';
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 export function httpError(status: number, message: string): Error & { status: number } {
@@ -33,8 +34,12 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-function parseExpiresIn(duration: string): Date {
-  const now = Date.now();
+/** Truncated sha256 for request metadata (UA / IP) — fixed 64-char column. */
+export function hashRequestMeta(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 64);
+}
+
+export function durationToMs(duration: string): number {
   const match = duration.match(/^(\d+)([smhd])$/);
   if (!match) throw new Error(`Invalid duration: ${duration}`);
   const [, amount, unit] = match;
@@ -44,26 +49,85 @@ function parseExpiresIn(duration: string): Date {
     h: 3_600_000,
     d: 86_400_000,
   };
-  return new Date(now + Number(amount) * (multipliers[unit!] ?? 0));
+  return Number(amount) * (multipliers[unit!] ?? 0);
+}
+
+/**
+ * Effective refresh windows. Super-admin caps override when set; otherwise the
+ * main idle/absolute pair applies, falling back to the legacy single knob.
+ */
+export function refreshLifetimes(isPlatformAdmin = false): { idle: string; absolute: string } {
+  if (isPlatformAdmin) {
+    return {
+      idle:
+        env.SUPERADMIN_REFRESH_IDLE_EXPIRES_IN ??
+        env.REFRESH_IDLE_EXPIRES_IN ??
+        env.REFRESH_TOKEN_EXPIRES_IN,
+      absolute:
+        env.SUPERADMIN_REFRESH_ABSOLUTE_EXPIRES_IN ??
+        env.REFRESH_ABSOLUTE_EXPIRES_IN ??
+        env.REFRESH_TOKEN_EXPIRES_IN,
+    };
+  }
+  return {
+    idle: env.REFRESH_IDLE_EXPIRES_IN ?? env.REFRESH_TOKEN_EXPIRES_IN,
+    absolute: env.REFRESH_ABSOLUTE_EXPIRES_IN ?? env.REFRESH_TOKEN_EXPIRES_IN,
+  };
+}
+
+export function refreshReuseWindow(): { graceSeconds: number; maxUses: number } {
+  return { graceSeconds: env.REFRESH_REUSE_GRACE_SECONDS, maxUses: env.REFRESH_GRACE_MAX_USES };
+}
+
+export interface TokenPairOptions {
+  /** Reuse on rotation; omitted on fresh login (a new family is created). */
+  familyId?: string;
+  /** Never extended on rotation — forces re-login at the absolute cap. */
+  absoluteExpiresAt?: Date;
+  /** Hash of the rotated (parent) token — omitted on fresh login. */
+  parentHash?: string;
+  userAgent?: string | null;
+  ip?: string | null;
+}
+
+export interface RefreshContext {
+  userAgent?: string | null;
+  ip?: string | null;
 }
 
 export async function issueTokenPair(
   db: Database,
   userId: string,
   organizationId: string,
-  isPlatformAdmin: boolean = false
+  isPlatformAdmin: boolean = false,
+  opts: TokenPairOptions = {}
 ) {
-  const accessToken = await signAccessToken({ userId, organizationId, isPlatformAdmin });
+  const { idle, absolute } = refreshLifetimes(isPlatformAdmin);
+  const nowMs = Date.now();
+  // Absolute cap is set once at login and never extended; idle expiry clamps
+  // to it so the last rotation before the cap yields a shortened window.
+  const absoluteExpiresAt = opts.absoluteExpiresAt ?? new Date(nowMs + durationToMs(absolute));
+  const expiresAt = new Date(Math.min(nowMs + durationToMs(idle), absoluteExpiresAt.getTime()));
+  const familyId = opts.familyId ?? randomUUID();
+  const accessToken = await signAccessToken({
+    userId,
+    organizationId,
+    isPlatformAdmin,
+    sid: familyId,
+  });
 
   // Opaque refresh token — store its hash in DB
   const rawRefreshToken = randomBytes(48).toString('hex');
-  const tokenHash = hashToken(rawRefreshToken);
-  const expiresAt = parseExpiresIn(env.REFRESH_TOKEN_EXPIRES_IN);
 
   await db.insert(refreshTokensTable).values({
     userId,
-    tokenHash,
+    tokenHash: hashToken(rawRefreshToken),
     expiresAt,
+    absoluteExpiresAt,
+    familyId,
+    parentHash: opts.parentHash ?? null,
+    uaHash: opts.userAgent ? hashRequestMeta(opts.userAgent) : null,
+    ipHash: opts.ip ? hashRequestMeta(opts.ip) : null,
   });
 
   return { accessToken, refreshToken: rawRefreshToken };
@@ -78,7 +142,7 @@ export interface SignUpInput {
   orgSlug: string;
 }
 
-export async function signUp(db: Database, input: SignUpInput) {
+export async function signUp(db: Database, input: SignUpInput, ctx: RefreshContext = {}) {
   const { name, email, password, orgName, orgSlug } = input;
 
   // Check duplicate email
@@ -156,7 +220,8 @@ export async function signUp(db: Database, input: SignUpInput) {
     db,
     result.user.id,
     result.organization.id,
-    result.user.isPlatformAdmin
+    result.user.isPlatformAdmin,
+    { userAgent: ctx.userAgent, ip: ctx.ip }
   );
 
   // Best-effort: seed Lead/Developer/Tester team roles. Never fails signup.
@@ -198,7 +263,7 @@ export interface SignInInput {
   password: string;
 }
 
-export async function signIn(db: Database, input: SignInInput) {
+export async function signIn(db: Database, input: SignInInput, ctx: RefreshContext = {}) {
   const { email, password } = input;
 
   const [user] = await db
@@ -257,7 +322,10 @@ export async function signIn(db: Database, input: SignInInput) {
   }
 
   const organizationId = membership?.organizationId ?? '';
-  const tokens = await issueTokenPair(db, user.id, organizationId, user.isPlatformAdmin);
+  const tokens = await issueTokenPair(db, user.id, organizationId, user.isPlatformAdmin, {
+    userAgent: ctx.userAgent,
+    ip: ctx.ip,
+  });
 
   return {
     ...tokens,
@@ -277,61 +345,189 @@ export async function signIn(db: Database, input: SignInInput) {
   };
 }
 
-// ─── refreshTokens ────────────────────────────────────────────────────────────
-export async function refreshTokens(db: Database, rawToken: string) {
+// ─── refreshTokens (sliding families) ─────────────────────────────────────────
+/**
+ * Sliding refresh rotation:
+ * - Fast path: atomic UPDATE revokes the presented token (iff live on both
+ *   idle and absolute clocks) and returns its family; a child in the same
+ *   family is minted with expiresAt = LEAST(now + idle, absolute).
+ * - Re-presenting a just-rotated token inside the grace window (time + uses +
+ *   UA match) mints a sibling child instead of burning — this is the 2-tab /
+ *   StrictMode race path. Only hashes are stored, so the existing head's
+ *   plaintext can never be re-returned; a sibling is equivalent.
+ * - Anything else (unknown, idle-expired, past-window reuse, UA mismatch,
+ *   cap exceeded) burns ONLY that family and returns a generic 401.
+ * - Absolute expiry burns the family (session is fully dead) + generic 401.
+ */
+export async function refreshTokens(db: Database, rawToken: string, ctx: RefreshContext = {}) {
   const tokenHash = hashToken(rawToken);
   const now = new Date();
+  const { graceSeconds, maxUses } = refreshReuseWindow();
+  const ctxUaHash = ctx.userAgent ? hashRequestMeta(ctx.userAgent) : null;
 
-  const [stored] = await db
-    .select()
-    .from(refreshTokensTable)
+  // Fast path: atomically revoke iff live. DB now() avoids app/DB clock skew.
+  const rotated = await db
+    .update(refreshTokensTable)
+    .set({ revokedAt: now, lastUsedAt: now })
     .where(
       and(
         eq(refreshTokensTable.tokenHash, tokenHash),
         isNull(refreshTokensTable.revokedAt),
-        gt(refreshTokensTable.expiresAt, now)
+        gt(refreshTokensTable.expiresAt, sql`now()`),
+        gt(refreshTokensTable.absoluteExpiresAt, sql`now()`)
       )
     )
+    .returning({
+      familyId: refreshTokensTable.familyId,
+      userId: refreshTokensTable.userId,
+      absoluteExpiresAt: refreshTokensTable.absoluteExpiresAt,
+    });
+
+  if (rotated.length > 0) {
+    const r = rotated[0]!;
+    const gate = await assertRefreshGate(db, r.userId, r.familyId);
+    const child = await mintRefreshChild(db, {
+      userId: r.userId,
+      familyId: r.familyId,
+      absoluteExpiresAt: r.absoluteExpiresAt,
+      parentHash: tokenHash,
+      isPlatformAdmin: gate.user.isPlatformAdmin ?? false,
+      userAgent: ctx.userAgent,
+      ip: ctx.ip,
+    });
+    // Informational link only — the sibling-grace design never needs it.
+    await db
+      .update(refreshTokensTable)
+      .set({ replacedByHash: hashToken(child.raw) })
+      .where(eq(refreshTokensTable.tokenHash, tokenHash))
+      .catch(() => {});
+    const accessToken = await signAccessToken({
+      userId: r.userId,
+      organizationId: gate.organizationId,
+      isPlatformAdmin: gate.user.isPlatformAdmin ?? false,
+      sid: r.familyId,
+    });
+    return { accessToken, refreshToken: child.raw };
+  }
+
+  // Slow path: the token wasn't live. Load it to distinguish expiry vs reuse.
+  const [row] = await db
+    .select()
+    .from(refreshTokensTable)
+    .where(eq(refreshTokensTable.tokenHash, tokenHash))
     .limit(1);
 
-  if (!stored) {
-    // Reuse detection: a revoked-but-unexpired token presented again means the
-    // token was compromised (or raced). Burn the whole token family.
-    const [compromised] = await db
-      .select({
-        id: refreshTokensTable.id,
-        userId: refreshTokensTable.userId,
-        expiresAt: refreshTokensTable.expiresAt,
-      })
-      .from(refreshTokensTable)
-      .where(eq(refreshTokensTable.tokenHash, tokenHash))
-      .limit(1);
-    if (compromised && compromised.expiresAt > now) {
-      await db
-        .update(refreshTokensTable)
-        .set({ revokedAt: now })
-        .where(eq(refreshTokensTable.userId, compromised.userId));
+  if (!row) throw httpError(401, 'Invalid or expired refresh token');
+
+  if (!row.revokedAt) {
+    // Live-flag failed but never revoked → idle- or absolute-expired.
+    if (row.absoluteExpiresAt.getTime() <= now.getTime()) {
+      await burnRefreshFamily(db, row.familyId);
+      await auditAuthEvent(db, row.userId, 'auth.absolute_expired', {
+        familyId: row.familyId,
+      });
+      logger.info({ user_id: row.userId }, 'Refresh absolute lifetime reached — family burned');
     }
     throw httpError(401, 'Invalid or expired refresh token');
   }
 
-  // Rotate: revoke old token
-  await db
-    .update(refreshTokensTable)
-    .set({ revokedAt: now })
-    .where(eq(refreshTokensTable.id, stored.id));
-
-  // Get user + org context
-  const [user] = await db.select().from(users).where(eq(users.id, stored.userId)).limit(1);
-
-  if (!user) {
-    throw httpError(401, 'User not found');
+  // Revoked: grace sibling or real reuse?
+  const ageMs = now.getTime() - row.revokedAt.getTime();
+  const uaOk = !row.uaHash || !ctxUaHash || row.uaHash === ctxUaHash;
+  if (ageMs <= graceSeconds * 1000 && (row.graceUses ?? 0) < maxUses && uaOk) {
+    // Atomic use-count bump — losers at the cap fall through to burn.
+    const claimed = await db
+      .update(refreshTokensTable)
+      .set({ graceUses: sql`${refreshTokensTable.graceUses} + 1`, lastUsedAt: now })
+      .where(
+        and(
+          eq(refreshTokensTable.tokenHash, tokenHash),
+          sql`${refreshTokensTable.graceUses} < ${maxUses}`
+        )
+      )
+      .returning({
+        familyId: refreshTokensTable.familyId,
+        userId: refreshTokensTable.userId,
+        absoluteExpiresAt: refreshTokensTable.absoluteExpiresAt,
+      });
+    if (claimed.length > 0) {
+      const c = claimed[0]!;
+      const gate = await assertRefreshGate(db, c.userId, c.familyId);
+      const sibling = await mintRefreshChild(db, {
+        userId: c.userId,
+        familyId: c.familyId,
+        absoluteExpiresAt: c.absoluteExpiresAt,
+        parentHash: tokenHash,
+        isPlatformAdmin: gate.user.isPlatformAdmin ?? false,
+        userAgent: ctx.userAgent,
+        ip: ctx.ip,
+      });
+      logger.info({ user_id: c.userId }, 'Refresh reuse within grace — sibling minted');
+      const accessToken = await signAccessToken({
+        userId: c.userId,
+        organizationId: gate.organizationId,
+        isPlatformAdmin: gate.user.isPlatformAdmin ?? false,
+        sid: c.familyId,
+      });
+      return { accessToken, refreshToken: sibling.raw };
+    }
   }
 
+  // Real reuse: burn only this family (other devices survive).
+  await burnRefreshFamily(db, row.familyId);
+  await auditAuthEvent(db, row.userId, 'auth.refresh_reuse_detected', {
+    familyId: row.familyId,
+    graceUses: row.graceUses ?? 0,
+    uaMatch: uaOk,
+  });
+  logger.warn({ user_id: row.userId }, 'Refresh token reuse detected — family burned');
+  throw httpError(401, 'Invalid or expired refresh token');
+}
+
+/** Mint a child refresh token in an existing family (clamped to absolute). */
+async function mintRefreshChild(
+  db: Database,
+  input: {
+    userId: string;
+    familyId: string;
+    absoluteExpiresAt: Date;
+    parentHash: string;
+    isPlatformAdmin: boolean;
+    userAgent?: string | null;
+    ip?: string | null;
+  }
+): Promise<{ raw: string; expiresAt: Date }> {
+  const { idle } = refreshLifetimes(input.isPlatformAdmin);
+  const nowMs = Date.now();
+  const expiresAt = new Date(
+    Math.min(nowMs + durationToMs(idle), input.absoluteExpiresAt.getTime())
+  );
+  const raw = randomBytes(48).toString('hex');
+  await db.insert(refreshTokensTable).values({
+    userId: input.userId,
+    tokenHash: hashToken(raw),
+    expiresAt,
+    absoluteExpiresAt: input.absoluteExpiresAt,
+    familyId: input.familyId,
+    parentHash: input.parentHash,
+    uaHash: input.userAgent ? hashRequestMeta(input.userAgent) : null,
+    ipHash: input.ip ? hashRequestMeta(input.ip) : null,
+  });
+  return { raw, expiresAt };
+}
+
+/**
+ * Gate every mint: the user must exist and not be deactivated, and their
+ * membership must not be deactivated. On gate failure the family burns so a
+ * removed user keeps no usable refresh chain.
+ */
+async function assertRefreshGate(db: Database, userId: string, familyId: string) {
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) throw httpError(401, 'Invalid or expired refresh token');
   if (user.deactivatedAt) {
+    await burnRefreshFamily(db, familyId);
     throw httpError(403, 'Your account has been deactivated.');
   }
-
   const [membership] = await db
     .select({
       organizationId: organizationMembers.organizationId,
@@ -340,13 +536,80 @@ export async function refreshTokens(db: Database, rawToken: string) {
     .from(organizationMembers)
     .where(and(eq(organizationMembers.userId, user.id), isNull(organizationMembers.deletedAt)))
     .limit(1);
-
   if (membership && membership.status === 'deactivated') {
+    await burnRefreshFamily(db, familyId);
     throw httpError(403, 'Your account in this organization has been deactivated.');
   }
+  return { user, organizationId: membership?.organizationId ?? '' };
+}
 
-  const organizationId = membership?.organizationId ?? '';
-  return issueTokenPair(db, user.id, organizationId, user.isPlatformAdmin);
+/** Revoke every live token in a family + flag it for the JWT fast path. */
+export async function burnRefreshFamily(db: Database, familyId: string): Promise<number> {
+  // Poison graceUses so a later reuse of a rotated parent can't mint a
+  // sibling after the burn — every burn site funnels through here or
+  // revokeAllUserSessions, so the grace claim's `< max` guard holds.
+  const { maxUses } = refreshReuseWindow();
+  const burned = await db
+    .update(refreshTokensTable)
+    .set({ revokedAt: new Date(), graceUses: maxUses })
+    .where(and(eq(refreshTokensTable.familyId, familyId), isNull(refreshTokensTable.revokedAt)))
+    .returning({ id: refreshTokensTable.id });
+  await markFamilyBurned(familyId);
+  return burned.length;
+}
+
+/**
+ * Revoke all live sessions for a user (password change, disable, force
+ * logout). Pass exceptFamilyId to keep the current session alive.
+ */
+export async function revokeAllUserSessions(
+  db: Database,
+  userId: string,
+  opts: { exceptFamilyId?: string } = {}
+): Promise<number> {
+  const { maxUses } = refreshReuseWindow();
+  const conditions = [eq(refreshTokensTable.userId, userId), isNull(refreshTokensTable.revokedAt)];
+  if (opts.exceptFamilyId) {
+    conditions.push(sql`${refreshTokensTable.familyId} != ${opts.exceptFamilyId}`);
+  }
+  const revoked = await db
+    .update(refreshTokensTable)
+    .set({ revokedAt: new Date(), graceUses: maxUses })
+    .where(and(...conditions))
+    .returning({ familyId: refreshTokensTable.familyId });
+  const families = new Set(revoked.map((r) => r.familyId));
+  await Promise.all([...families].map((f) => markFamilyBurned(f)));
+  if (revoked.length > 0) {
+    logger.info({ user_id: userId, sessions: revoked.length }, 'All user sessions revoked');
+  }
+  return revoked.length;
+}
+
+/** Best-effort audit write — resolves the actor's org, skips when none. */
+async function auditAuthEvent(
+  db: Database,
+  userId: string,
+  action: string,
+  metadata: Record<string, unknown>
+): Promise<void> {
+  try {
+    const [membership] = await db
+      .select({ organizationId: organizationMembers.organizationId })
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.userId, userId), isNull(organizationMembers.deletedAt)))
+      .limit(1);
+    if (!membership) return;
+    await db.insert(auditLog).values({
+      organizationId: membership.organizationId,
+      actorId: userId,
+      action,
+      target: userId,
+      targetId: userId,
+      metadata,
+    });
+  } catch (err: unknown) {
+    logger.warn({ err: String(err), action }, 'Auth audit write failed');
+  }
 }
 
 // ─── signOut ──────────────────────────────────────────────────────────────────
@@ -355,10 +618,14 @@ export async function signOut(db: Database, rawToken: string, userId: string) {
   // Malformed ids are a no-op (never let a UUID cast error become a 500).
   if (!/^[0-9a-fA-F-]{36}$/.test(userId)) return;
   const tokenHash = hashToken(rawToken);
-  await db
-    .update(refreshTokensTable)
-    .set({ revokedAt: new Date() })
-    .where(and(eq(refreshTokensTable.tokenHash, tokenHash), eq(refreshTokensTable.userId, userId)));
+  const [row] = await db
+    .select({ familyId: refreshTokensTable.familyId })
+    .from(refreshTokensTable)
+    .where(and(eq(refreshTokensTable.tokenHash, tokenHash), eq(refreshTokensTable.userId, userId)))
+    .limit(1);
+  // Logout burns its own family (all tabs/devices on this login), never the
+  // user's other families.
+  if (row) await burnRefreshFamily(db, row.familyId);
 }
 
 // ─── getMe ────────────────────────────────────────────────────────────────────
@@ -457,7 +724,12 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
-export async function changePassword(db: Database, userId: string, input: ChangePasswordInput) {
+export async function changePassword(
+  db: Database,
+  userId: string,
+  input: ChangePasswordInput,
+  opts: { keepFamilyId?: string } = {}
+) {
   const [user] = await db
     .select({ passwordHash: users.passwordHash })
     .from(users)
@@ -485,6 +757,9 @@ export async function changePassword(db: Database, userId: string, input: Change
     .update(users)
     .set({ passwordHash: newHash, updatedAt: new Date() })
     .where(eq(users.id, userId));
+  // A password change burns every other session — the caller's own family
+  // survives so they aren't logged out mid-flow.
+  await revokeAllUserSessions(db, userId, { exceptFamilyId: opts.keepFamilyId });
   return {
     success: true,
     message: hasExistingPassword ? 'Password updated successfully' : 'Password set successfully',
@@ -756,7 +1031,11 @@ export interface AcceptInvitationInput {
   password?: string;
 }
 
-export async function acceptInvitation(db: Database, input: AcceptInvitationInput) {
+export async function acceptInvitation(
+  db: Database,
+  input: AcceptInvitationInput,
+  ctx: RefreshContext = {}
+) {
   const { token, name, password } = input;
   if (!token || !token.trim()) {
     throw httpError(400, 'Invitation token is required.');
@@ -891,7 +1170,8 @@ export async function acceptInvitation(db: Database, input: AcceptInvitationInpu
     db,
     user.id,
     invitation.organizationId,
-    user.isPlatformAdmin ?? false
+    user.isPlatformAdmin ?? false,
+    { userAgent: ctx.userAgent, ip: ctx.ip }
   );
 
   return {

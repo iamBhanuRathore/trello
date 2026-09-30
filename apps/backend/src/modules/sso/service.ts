@@ -8,6 +8,7 @@ import {
   organizationMembers,
 } from '../../db/schema/index';
 import { issueTokenPair } from '../auth/service';
+import type { RefreshContext } from '../auth/service';
 import { getWorkOS, getRedirectUri, verifyWorkOSCode } from '../auth/workos.service';
 import { getDataClient, isRedisAvailable } from '../../redis/client';
 import { env } from '../../lib/env';
@@ -227,7 +228,8 @@ export async function processSSOCallback(
   input: {
     code: string;
     state?: string;
-  }
+  },
+  ctx: RefreshContext = {}
 ) {
   if (input.state) {
     const redis = getDataClient();
@@ -312,7 +314,10 @@ export async function processSSOCallback(
     .where(eq(organizations.id, config.organizationId))
     .limit(1);
 
-  const tokens = await issueTokenPair(db, user.id, config.organizationId, user.isPlatformAdmin);
+  const tokens = await issueTokenPair(db, user.id, config.organizationId, user.isPlatformAdmin, {
+    userAgent: ctx.userAgent,
+    ip: ctx.ip,
+  });
 
   return {
     user: {

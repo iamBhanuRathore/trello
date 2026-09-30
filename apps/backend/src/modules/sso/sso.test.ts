@@ -43,12 +43,24 @@ describe('Enterprise SSO & SCIM Service', () => {
   });
 
   afterAll(async () => {
-    await db
-      .delete(schema.ssoConfigurations)
-      .where(eq(schema.ssoConfigurations.organizationId, orgId));
+    // FK-safe order: seeded team roles, subscriptions and audit rows reference
+    // the org without cascade.
+    const orgRoles = await db
+      .select({ id: schema.roles.id })
+      .from(schema.roles)
+      .where(eq(schema.roles.organizationId, orgId));
+    for (const r of orgRoles) {
+      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
+      await db.delete(schema.roles).where(eq(schema.roles.id, r.id));
+    }
     await db
       .delete(schema.organizationMembers)
       .where(eq(schema.organizationMembers.organizationId, orgId));
+    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, orgId));
+    await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, orgId));
+    await db
+      .delete(schema.ssoConfigurations)
+      .where(eq(schema.ssoConfigurations.organizationId, orgId));
     await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
     await client.end();
   });
