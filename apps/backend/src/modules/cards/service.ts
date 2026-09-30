@@ -1388,6 +1388,9 @@ export async function createComment(
 
   // Auto-add mentioned users as observers / watchers if not already watching.
   // Only organization members can be pulled in — guessed cross-org UUIDs are ignored.
+  // Enrichment (actor/task names) is hoisted once — shared by every mention below.
+  const { enrichNotificationPayload } = await import('../notifications/service');
+  const mentionEnriched = await enrichNotificationPayload(db, { actorId: userId, cardId });
   for (const mentionedId of targetMentionIds) {
     if (mentionedId && mentionedId !== userId) {
       const [isMember] = await db
@@ -1423,6 +1426,7 @@ export async function createComment(
               commentId: comment?.id,
               actorId: userId,
               commentSnippet: body.slice(0, 150),
+              ...mentionEnriched,
             },
           })
           .catch(() => {});
