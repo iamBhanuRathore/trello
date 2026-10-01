@@ -49,6 +49,9 @@ test-results
 # Docker volumes (local)
 postgres_data
 
+# Local object storage (dev/test uploads + quarantine)
+apps/backend/uploads/
+
 # TypeScript build info
 *.tsbuildinfo
 

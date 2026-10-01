@@ -105,9 +105,9 @@ Checkable version of the Build Order from `docs/project-tech-stack.md` §5 + `do
 
 ### 4.6 Universal Triage Inbox & Inbound Email Integration
 
-- [ ] Unified Triage Inbox across task mentions, review requests, comments, and DMs
-- [ ] Inbound email processor (create cards via email forwarding, reply to comment via email)
-- [ ] Quick triage action keys (`E` to archive, `S` to snooze, `I` to create subtask)
+- [x] Unified Triage Inbox across task mentions, review requests, comments, and DMs
+- [x] Inbound email processor (create cards via email forwarding, reply to comment via email)
+- [x] Quick triage action keys (`E` to archive, `S` to snooze, `I` to create subtask)
 
 ---
 
@@ -120,7 +120,7 @@ Checkable version of the Build Order from `docs/project-tech-stack.md` §5 + `do
 - [x] 5.2 OCC ordering (version-guarded moves, rebalance job) + WS reconnect with `changes?since=` gap-fill
 - [x] 5.3 DB perf: hot-path composite indexes, batched chat enrichment (153→6 queries/page), `clampLimit` pagination caps, audit/activity/notification retention (partitioning deferred — see Decisions)
 - [x] 5.4 Frontend: column virtualization (>20 cards, @tanstack/react-virtual), immutable feed merge, leaf-memo cards, stable column callbacks, auth-store selectors; drag path renders in full + e2e-verified (windowing/scroll/drag/empty-state/short-column)
-- [ ] 5.5 Media: unified request-upload/confirm flow, presigned-GET reads, virus-scan gate
+- [x] 5.5 Media: unified request-upload/confirm flow, presigned-GET reads, virus-scan gate
 - [x] 5.6 Project Automation Engine: project-scoped WHEN/IF/THEN rules (label router, Testing-handoff RR subtask), locked round-robin, loop guard, skip audit log, CRUD/toggle/runs/dry-run/context APIs, dashboard builder page (Project → Automation) with templates, coverage auto-fix, run-history drawer
 
 - [ ] AI Copilot assistant for task summarization, sprint velocity forecasting, and PR description generation

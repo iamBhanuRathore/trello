@@ -20,6 +20,8 @@ import { useAuthStore } from '../../store/authStore';
 import { useChatStore, type ChatMessageLayout } from '../../store/chatStore';
 import { getInitials } from '../../utils/avatar';
 import { MessageContextMenu } from './MessageContextMenu';
+import { MediaStatusChip } from '../common/MediaStatus';
+import { isMediaReady, mediaReadHref } from '../../lib/api';
 
 interface ChatMessageCardProps {
   message: ChatMessageItem;
@@ -231,23 +233,25 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   const handleCopyMedia = async () => {
     const img = imageAttachments[0];
     if (!img) return;
+    const href = mediaReadHref(img as any);
     try {
-      const res = await fetch(img.fileUrl);
+      const res = await fetch(href);
       const blob = await res.blob();
       if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
         await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
         return;
       }
-      window.open(img.fileUrl, '_blank', 'noopener');
+      window.open(href, '_blank', 'noopener');
     } catch {
-      window.open(img.fileUrl, '_blank', 'noopener');
+      window.open(href, '_blank', 'noopener');
     }
   };
 
   const handleSaveAs = () => {
     for (const att of message.attachments || []) {
+      if (!isMediaReady(att as any)) continue;
       const a = document.createElement('a');
-      a.href = att.fileUrl;
+      a.href = mediaReadHref(att as any);
       a.download = att.fileName || 'attachment';
       a.target = '_blank';
       a.rel = 'noopener';
@@ -625,17 +629,27 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
 
           {message.attachments && message.attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 pt-1.5">
-              {message.attachments.map((att) => (
-                <a
-                  key={att.id}
-                  href={att.fileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-background/60 border border-border hover:bg-background text-xs text-foreground transition-colors"
-                >
-                  <span className="truncate max-w-[180px] font-medium">{att.fileName}</span>
-                </a>
-              ))}
+              {message.attachments.map((att) =>
+                isMediaReady(att as any) ? (
+                  <a
+                    key={att.id}
+                    href={mediaReadHref(att as any)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-background/60 border border-border hover:bg-background text-xs text-foreground transition-colors"
+                  >
+                    <span className="truncate max-w-[180px] font-medium">{att.fileName}</span>
+                  </a>
+                ) : (
+                  <span
+                    key={att.id}
+                    className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-background/60 border border-border text-xs text-muted-foreground"
+                  >
+                    <span className="truncate max-w-[180px] font-medium">{att.fileName}</span>
+                    <MediaStatusChip att={att as any} />
+                  </span>
+                )
+              )}
             </div>
           )}
 
@@ -957,17 +971,27 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
             {/* Attachments */}
             {message.attachments && message.attachments.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {message.attachments.map((att) => (
-                  <a
-                    key={att.id}
-                    href={att.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/60 border border-border hover:bg-muted text-xs text-foreground transition-colors"
-                  >
-                    <span className="truncate max-w-xs font-medium">{att.fileName}</span>
-                  </a>
-                ))}
+                {message.attachments.map((att) =>
+                  isMediaReady(att as any) ? (
+                    <a
+                      key={att.id}
+                      href={mediaReadHref(att as any)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/60 border border-border hover:bg-muted text-xs text-foreground transition-colors"
+                    >
+                      <span className="truncate max-w-xs font-medium">{att.fileName}</span>
+                    </a>
+                  ) : (
+                    <span
+                      key={att.id}
+                      className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/60 border border-border text-xs text-muted-foreground"
+                    >
+                      <span className="truncate max-w-xs font-medium">{att.fileName}</span>
+                      <MediaStatusChip att={att as any} />
+                    </span>
+                  )
+                )}
               </div>
             )}
 

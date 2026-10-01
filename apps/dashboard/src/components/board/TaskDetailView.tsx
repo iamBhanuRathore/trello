@@ -92,6 +92,8 @@ import { CardViewers } from './CardViewers';
 import { priorityService } from '../../lib/priorityService';
 import { ShareTaskModal } from './ShareTaskModal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { MediaStatusChip } from '../common/MediaStatus';
+import { isMediaReady, mediaReadHref } from '../../lib/api';
 import { Kbd } from '../ui/Kbd';
 import { toast } from 'sonner';
 import { useOptimisticMutation } from '../../lib/useOptimisticMutation';
@@ -644,21 +646,16 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
 
     const uploadAttachmentMutation = useMutation({
       mutationFn: async (file: File) => {
-        const res = await api.post(`/cards/${cardId}/attachments`, {
-          fileName: file.name,
-          fileType: file.type,
-          sizeBytes: file.size,
-        });
-        const { uploadUrl, attachment } = res.data;
-        if (uploadUrl) {
-          const { uploadToPresignedUrl } = await import('../../lib/api');
-          await uploadToPresignedUrl(uploadUrl, file, file.type || 'application/octet-stream');
-        }
-        return attachment;
+        const { uploadMediaFile } = await import('../../lib/api');
+        const { mediaId } = await uploadMediaFile('card', cardId, file);
+        return { id: mediaId, fileName: file.name } as any;
       },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId, 'attachments'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+      },
+      onError: (err: any) => {
+        toast.error(getApiErrorMessage(err, 'Upload failed. Please try again.'));
       },
     });
 
@@ -2936,10 +2933,11 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                       key={att.id}
                       className="flex items-center gap-3 p-2.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 transition-colors group"
                     >
-                      {att.fileType?.startsWith('image/') ||
-                      /\.(png|jpe?g|gif|webp|svg)$/i.test(att.fileName) ? (
+                      {isMediaReady(att) &&
+                      (att.fileType?.startsWith('image/') ||
+                        /\.(png|jpe?g|gif|webp)$/i.test(att.fileName)) ? (
                         <img
-                          src={att.url}
+                          src={mediaReadHref(att)}
                           alt={att.fileName}
                           className="w-10 h-10 rounded-lg object-cover bg-muted shrink-0 border border-border/60"
                         />
@@ -2949,20 +2947,28 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <a
-                          href={att.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-medium text-xs truncate hover:underline block text-foreground"
-                        >
-                          {att.fileName}
-                        </a>
-                        <span className="text-[10px] text-muted-foreground block mt-0.5">
+                        {isMediaReady(att) ? (
+                          <a
+                            href={mediaReadHref(att)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-xs truncate hover:underline block text-foreground"
+                          >
+                            {att.fileName}
+                          </a>
+                        ) : (
+                          <span className="font-medium text-xs truncate block text-foreground">
+                            {att.fileName}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
                           {att.sizeBytes ? `${(att.sizeBytes / 1024).toFixed(0)} KB` : ''}
+                          <MediaStatusChip att={att} />
                         </span>
                       </div>
                       <button
-                        className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity p-1 text-muted-foreground cursor-pointer"
+                        aria-label={`Delete ${att.fileName}`}
+                        className="opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-destructive transition-opacity p-1 min-h-[36px] min-w-[36px] inline-flex items-center justify-center text-muted-foreground cursor-pointer"
                         onClick={() => deleteAttachmentMutation.mutate(att.id)}
                       >
                         <Trash2 className="w-3.5 h-3.5" />

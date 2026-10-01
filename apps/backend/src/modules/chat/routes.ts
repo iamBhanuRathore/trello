@@ -23,12 +23,12 @@ import {
   togglePinChannel,
   linkChannelProject,
   unlinkChannelProject,
-  createChatAttachment,
   pinMessage,
   listPinnedMessages,
   forwardMessage,
   getMessageSeenBy,
 } from './service';
+import { requestUpload, findMedia } from '../../lib/storage';
 
 export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
   .use(authPlugin)
@@ -469,11 +469,33 @@ export const chatRoutes = new Elysia({ prefix: '/chat', tags: ['Chat'] })
   )
 
   // POST /v1/chat/channels/:channelId/attachments - Stage a file upload
+  // Thin wrapper over the unified media surface (5.5): same staged-row +
+  // 5-min PUT contract, now scan-gated. Response shape unchanged.
   .post(
     '/channels/:channelId/attachments',
     async ({ params: { channelId }, body, user, set }) => {
       try {
-        return await createChatAttachment(db, channelId, user.userId, user.organizationId, body);
+        const { uploadUrl, mediaId } = await requestUpload(db, user.organizationId, user.userId, {
+          kind: 'chat',
+          refId: channelId,
+          fileName: body.fileName,
+          declaredMime: body.fileType,
+          sizeBytes: body.fileSize,
+        });
+        const media = await findMedia(db, mediaId);
+        const attachment = media
+          ? {
+              id: media.mediaId,
+              channelId,
+              fileName: media.fileName,
+              fileUrl: media.url,
+              fileSize: media.sizeBytes,
+              fileType: media.mime,
+              status: media.status,
+              scanStatus: media.scanStatus,
+            }
+          : { id: mediaId };
+        return { uploadUrl, attachment };
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }

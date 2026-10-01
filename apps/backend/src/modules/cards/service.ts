@@ -1413,7 +1413,9 @@ export async function createComment(
         eventBus.broadcast(`board:${boardId}`, 'card.watched', { cardId, userId: mentionedId });
       }
 
-      // 3. Create notification for mentioned user
+      // 3. Create notification for mentioned user (+ threaded mention email, 4.6b:
+      //    its Reply-To carries the card's inbound capability so replying lands a
+      //    comment on this card).
       if (orgId) {
         await db
           .insert(notifications)
@@ -1430,6 +1432,24 @@ export async function createComment(
             },
           })
           .catch(() => {});
+        void (async () => {
+          try {
+            const { emailChannelAllowed, sendThreadedCardEmail } =
+              await import('../inbound/threading');
+            if (await emailChannelAllowed(db, orgId, mentionedId, 'card.mentioned')) {
+              await sendThreadedCardEmail(db, {
+                organizationId: orgId,
+                cardId,
+                recipientUserId: mentionedId,
+                actorId: userId,
+                commentText: body,
+                event: 'card.mentioned',
+              });
+            }
+          } catch {
+            // Never let mail break the comment write.
+          }
+        })();
       }
     }
   }

@@ -1,4 +1,4 @@
-import { api, uploadToPresignedUrl } from './api';
+import { api, uploadMediaFile } from './api';
 
 export interface ChatChannel {
   id: string;
@@ -49,6 +49,8 @@ export interface ChatAttachment {
   fileSize: number;
   fileType: string;
   createdAt: string;
+  status?: 'staged' | 'scanning' | 'ready' | 'blocked' | 'failed';
+  scanStatus?: 'pending' | 'clean' | 'infected' | 'error' | 'skipped';
 }
 
 export interface ChatReaction {
@@ -256,13 +258,23 @@ export const chatService = {
     channelId: string,
     file: File
   ): Promise<{ uploadUrl: string; attachment: ChatAttachment }> {
-    const res = await api.post(`/chat/channels/${channelId}/attachments`, {
-      fileName: file.name,
-      fileType: file.type || 'application/octet-stream',
-      fileSize: file.size,
-    });
-    const { uploadUrl, attachment } = res.data;
-    await uploadToPresignedUrl(uploadUrl, file, file.type || 'application/octet-stream');
-    return { uploadUrl, attachment };
+    // Unified media flow (5.5): request → PUT → confirm. Errors throw; the
+    // caller toasts (no success noise — the staged chip is the feedback).
+    const { uploadUrl, mediaId } = await uploadMediaFile('chat', channelId, file);
+    return {
+      uploadUrl,
+      attachment: {
+        id: mediaId,
+        messageId: null,
+        channelId,
+        fileName: file.name,
+        fileUrl: '',
+        fileSize: file.size,
+        fileType: file.type || 'application/octet-stream',
+        createdAt: new Date().toISOString(),
+        status: 'scanning',
+        scanStatus: 'pending',
+      },
+    };
   },
 };

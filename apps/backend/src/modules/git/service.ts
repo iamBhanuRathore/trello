@@ -11,6 +11,9 @@ import {
   stages,
   stageTemplates,
   projects,
+  notifications,
+  cardAssignees,
+  cardWatchers,
 } from '../../db/schema/index';
 import { eventBus } from '../../lib/event-bus';
 import { env } from '../../lib/env';
@@ -603,5 +606,55 @@ async function handleReview(
       body: `${icon} Review ${state.replace('_', ' ')} on PR [#${pr.number}](${pr.html_url || ''})${review.user?.login ? ` by **${review.user.login}**` : ''}`,
     }))
   );
+  // 4.6a: fan out review.requested to everyone triaging the card (assignees +
+  // watchers). GitHub logins don't map to Boardly users, so the card's own
+  // triage set is the recipient list; the inbox merges it as a `git` facet.
+  try {
+    const cardIds = found.map((c) => c.id);
+    const [assignees, watchers] = await Promise.all([
+      db
+        .select({ cardId: cardAssignees.cardId, userId: cardAssignees.userId })
+        .from(cardAssignees)
+        .where(inArray(cardAssignees.cardId, cardIds)),
+      db
+        .select({ cardId: cardWatchers.cardId, userId: cardWatchers.userId })
+        .from(cardWatchers)
+        .where(inArray(cardWatchers.cardId, cardIds)),
+    ]);
+    const meta = new Map(found.map((c) => [c.id, c]));
+    const seen = new Set<string>();
+    const rows: Array<{
+      userId: string;
+      organizationId: string;
+      eventType: string;
+      payload: Record<string, unknown>;
+      searchText: string;
+    }> = [];
+    for (const entry of [...assignees, ...watchers]) {
+      const k = `${entry.cardId}:${entry.userId}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const card = meta.get(entry.cardId);
+      if (!card) continue;
+      const payload = {
+        cardId: entry.cardId,
+        cardKey: card.key,
+        cardTitle: card.title,
+        actorName: review.user?.login || 'GitHub',
+        messagePreview: `Review ${state.replace('_', ' ')} on PR #${pr.number}: ${String(pr.title || '').slice(0, 120)}`,
+        prUrl: pr.html_url || '',
+        prNumber: pr.number,
+        reviewState: state,
+      };
+      rows.push({
+        userId: entry.userId,
+        organizationId: repoRow.organizationId,
+        eventType: 'review.requested',
+        payload,
+        searchText: `${card.title} ${card.key || ''} review requested`.toLowerCase(),
+      });
+    }
+    if (rows.length > 0) await db.insert(notifications).values(rows);
+  } catch {}
   return { delivery: 'review', matchedCards: found.length, linksCreated: 0 };
 }

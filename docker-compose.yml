@@ -49,6 +49,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # 5.5 media virus-scan sidecar (fail-closed). The backend streams staged
+  # bytes to clamd INSTREAM (see modules/media/scan.ts); nothing is servable
+  # until clean. Disabled by default in dev (SCAN_MODE=disabled → skipped);
+  # production sets SCAN_MODE=enabled and refuses to boot reads otherwise.
+  # StreamMaxLength sits above the 25 MB upload cap so the app limit trips
+  # first and the sidecar never truncates a scan.
+  clamav:
+    image: clamav/clamav:stable
+    container_name: boardly_clamav
+    ports:
+      - '127.0.0.1:3310:3310'
+    environment:
+      CLAMAV_NO_FRESHCLAMD: 'false'
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ['CMD-SHELL', 'clamdcheck.sh || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    profiles:
+      - scan
+
 volumes:
   postgres_data:
   redis_data:
+  clamav_data:

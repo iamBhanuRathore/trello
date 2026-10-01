@@ -123,6 +123,82 @@ export async function uploadToPresignedUrl(
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
 }
 
+// ─── Unified media (5.5: request → PUT → confirm, fail-closed reads) ─────────
+export type MediaStatus = 'staged' | 'scanning' | 'ready' | 'blocked' | 'failed';
+export type MediaScanStatus = 'pending' | 'clean' | 'infected' | 'error' | 'skipped';
+
+export interface MediaAttachment {
+  id: string;
+  fileName: string;
+  fileType?: string;
+  fileUrl?: string;
+  url?: string;
+  sizeBytes?: number;
+  fileSize?: number;
+  status?: MediaStatus;
+  scanStatus?: MediaScanStatus;
+}
+
+/** Servable only when the scan gate passed (clean) or dev-skipped. */
+export function isMediaReady(att: MediaAttachment): boolean {
+  if (!att.status && !att.scanStatus) return true; // pre-gate legacy row
+  return att.status === 'ready' && (att.scanStatus === 'clean' || att.scanStatus === 'skipped');
+}
+
+/** Gated read URL. Legacy direct URLs stay as fallback until bucket lockdown. */
+export function mediaReadHref(att: MediaAttachment): string {
+  if (att.id) return `${API_URL}/media/${att.id}/file`;
+  return att.url || att.fileUrl || '#';
+}
+
+export async function requestMediaUpload(
+  kind: 'card' | 'chat',
+  refId: string,
+  file: File
+): Promise<{ uploadUrl: string; mediaId: string }> {
+  const { data } = await api.post('/media/request-upload', {
+    kind,
+    refId,
+    fileName: file.name,
+    declaredMime: file.type || undefined,
+    sizeBytes: file.size,
+  });
+  return data;
+}
+
+export async function confirmMediaUpload(
+  mediaId: string
+): Promise<{ status: MediaStatus; scanStatus: MediaScanStatus }> {
+  const { data } = await api.post(`/media/${mediaId}/confirm`);
+  return data;
+}
+
+/**
+ * Full upload flow: request → PUT bytes → confirm (HEAD verify + scan enqueue).
+ * Throws with a readable message; callers toast errors only (no success noise).
+ */
+export async function uploadMediaFile(
+  kind: 'card' | 'chat',
+  refId: string,
+  file: File
+): Promise<{
+  uploadUrl: string;
+  mediaId: string;
+  status: MediaStatus;
+  scanStatus: MediaScanStatus;
+}> {
+  if (file.size > 25 * 1024 * 1024) throw new Error('File exceeds the 25 MB limit');
+  const { uploadUrl, mediaId } = await requestMediaUpload(kind, refId, file);
+  try {
+    await uploadToPresignedUrl(uploadUrl, file, file.type || 'application/octet-stream');
+  } catch (err) {
+    // Bytes never landed: the staged row is GC-owned (reaped after 24h).
+    throw err instanceof Error ? err : new Error('Upload failed');
+  }
+  const confirmed = await confirmMediaUpload(mediaId);
+  return { uploadUrl, mediaId, ...confirmed };
+}
+
 // Notifications — list/triage client lives in ./notifications.ts (paginated
 // envelope, optimistic mutations). Preferences stay here with settings UI.
 export const getNotificationPreferences = async () => {

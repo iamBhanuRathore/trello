@@ -46,6 +46,7 @@ import {
   MessageSquare,
   Keyboard,
   CalendarDays,
+  Inbox,
 } from 'lucide-react';
 import { chatService } from '../lib/chatService';
 import { UserProfileDropdown } from './UserProfileDropdown';
@@ -348,6 +349,31 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 </SidebarMenuButton>
               </SidebarMenuItem>
               {/* Notifications */}
+              <SidebarMenuItem className={isCollapsed ? 'flex justify-center' : ''}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={location.pathname === '/inbox'}
+                  tooltip="Inbox"
+                  className={
+                    isCollapsed ? 'w-8 h-8 p-0 flex items-center justify-center rounded-lg' : ''
+                  }
+                >
+                  <Link
+                    to="/inbox"
+                    onClick={handleNavClick}
+                    title={isCollapsed ? 'Inbox' : undefined}
+                  >
+                    <div className="relative shrink-0 flex items-center justify-center">
+                      <Inbox className="w-4 h-4 text-sky-500 shrink-0" />
+                    </div>
+                    {!isCollapsed && (
+                      <div className="flex items-center justify-between w-full">
+                        <span>Inbox</span>
+                      </div>
+                    )}
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem className={isCollapsed ? 'flex justify-center' : ''}>
                 <SidebarMenuButton
                   asChild

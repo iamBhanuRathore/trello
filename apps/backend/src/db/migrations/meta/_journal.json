@@ -246,6 +246,41 @@
       "when": 1790900206000,
       "tag": "0034_notification_center",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790900207000,
+      "tag": "0035_media_scan_gate",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790900208000,
+      "tag": "0036_inbox_federated",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790900209000,
+      "tag": "0037_inbound_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790900210000,
+      "tag": "0038_inbound_raw_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790900211000,
+      "tag": "0039_media_legacy_storage_key",
+      "breakpoints": true
     }
   ]
 }

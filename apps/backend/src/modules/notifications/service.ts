@@ -10,11 +10,12 @@ import {
   boards,
   chatChannels,
 } from '../../db/schema';
-import { eq, and, or, desc, inArray, count, lt, sql } from 'drizzle-orm';
+import { eq, and, or, desc, inArray, count, lt, lte, sql, isNull } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { eventBus } from '../../lib/event-bus';
 import { logger } from '../../lib/logger';
 import { cachedTTL, invalidateTTL } from '../../lib/cache';
+import { sendThreadedCardEmail } from '../inbound/threading';
 
 // ─── Notification Center: filter vocabulary ──────────────────────────────────
 
@@ -25,6 +26,7 @@ export const IMPORTANT_EVENT_TYPES = [
   'card.due_soon',
   'card.overdue',
   'chat.mentioned',
+  'review.requested',
 ] as const;
 
 /** Event types accepted by the `types[]` list filter. */
@@ -35,6 +37,7 @@ export const FILTERABLE_EVENT_TYPES = [
   'card.due_soon',
   'card.overdue',
   'chat.mentioned',
+  'review.requested',
 ] as const;
 
 export type NotificationArchivedFilter = 'exclude' | 'only' | 'include';
@@ -181,6 +184,10 @@ export async function listNotifications(
   ];
   if (archived === 'exclude') conditions.push(sql`${notifications.archivedAt} IS NULL`);
   else if (archived === 'only') conditions.push(sql`${notifications.archivedAt} IS NOT NULL`);
+  // Snoozed rows hide until they resurface (4.6a).
+  conditions.push(
+    or(isNull(notifications.snoozedUntil), lte(notifications.snoozedUntil, new Date()))!
+  );
   if (opts.unreadOnly) conditions.push(eq(notifications.isRead, false));
   if (opts.starredOnly) conditions.push(eq(notifications.isStarred, true));
   if (opts.importantOnly) {
@@ -686,6 +693,24 @@ export function setupNotificationListeners(db: Database) {
                 if (!suppressInstantEmail) {
                   isDispatched = true; // We will send it right now
                   logger.info({ event, userId }, 'Sending instant email');
+                  // Card mail is the entry point of the email->comment loop: it
+                  // replies through the card's inbound capability (4.6b). Best
+                  // effort — a mail failure must not break the fan-out.
+                  if (cardId && event === 'card.commented') {
+                    void sendThreadedCardEmail(db, {
+                      organizationId,
+                      cardId,
+                      recipientUserId: userId,
+                      actorId,
+                      commentText,
+                      event: 'card.commented',
+                    }).catch((err: unknown) =>
+                      logger.warn(
+                        { err: err instanceof Error ? err.message : String(err), userId },
+                        'Threaded card email failed'
+                      )
+                    );
+                  }
                 } else {
                   isDispatched = false; // Queue it because of DND
                 }

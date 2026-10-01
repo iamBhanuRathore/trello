@@ -9,6 +9,8 @@ export interface SendEmailOptions {
   subject: string;
   html: string;
   text: string;
+  /** Optional threading/identity headers (Reply-To, Message-ID, References). */
+  headers?: Record<string, string>;
 }
 
 // ─── Config detection ─────────────────────────────────────────────────────────
@@ -97,6 +99,7 @@ async function sendViaResend(opts: SendEmailOptions): Promise<boolean> {
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
+    ...(opts.headers ? { headers: opts.headers } : {}),
   });
 
   if (result.error) {
@@ -117,6 +120,7 @@ async function sendViaSES(opts: SendEmailOptions): Promise<boolean> {
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
+    ...(opts.headers ? { headers: opts.headers } : {}),
   });
 
   logger.info({ provider: 'ses', messageId: info.messageId, to: opts.to }, 'Email sent');
@@ -133,6 +137,7 @@ async function sendViaSMTP(opts: SendEmailOptions): Promise<boolean> {
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
+    ...(opts.headers ? { headers: opts.headers } : {}),
   });
 
   logger.info({ provider: 'smtp', messageId: info.messageId, to: opts.to }, 'Email sent');

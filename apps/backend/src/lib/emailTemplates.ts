@@ -38,7 +38,11 @@ function formatExpiry(date: Date): string {
   return `in ${diffDays} days`;
 }
 
-export function renderInviteEmail(opts: InviteEmailOptions): { subject: string; html: string; text: string } {
+export function renderInviteEmail(opts: InviteEmailOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const roleLabel = ROLE_LABELS[opts.role] ?? opts.role;
   const roleBadgeColor = ROLE_COLORS[opts.role] ?? '#6366f1';
   const expiryText = formatExpiry(opts.expiresAt);
@@ -209,7 +213,8 @@ export function renderAccountDeactivatedEmail(opts: DeactivatedEmailOptions): {
   html: string;
   text: string;
 } {
-  const displayName = opts.toName && opts.toName !== opts.toEmail.split('@')[0] ? opts.toName : 'there';
+  const displayName =
+    opts.toName && opts.toName !== opts.toEmail.split('@')[0] ? opts.toName : 'there';
   const reasonText = opts.reason?.trim() || 'Administrative policy or account review';
   const adminText = opts.adminName || 'an organization administrator';
   const subject = `Notice: Your access to ${opts.orgName} has been deactivated`;
@@ -370,7 +375,8 @@ export function renderAccountReactivatedEmail(opts: ReactivatedEmailOptions): {
   html: string;
   text: string;
 } {
-  const displayName = opts.toName && opts.toName !== opts.toEmail.split('@')[0] ? opts.toName : 'there';
+  const displayName =
+    opts.toName && opts.toName !== opts.toEmail.split('@')[0] ? opts.toName : 'there';
   const adminText = opts.adminName || 'An administrator';
   const loginUrl = opts.loginUrl || 'http://localhost:5173/sign-in';
   const subject = `Your access to ${opts.orgName} has been reactivated 🎉`;
@@ -498,7 +504,11 @@ export interface SubscriptionActivatedOptions {
   manageUrl: string;
 }
 
-export function renderSubscriptionActivatedEmail(opts: SubscriptionActivatedOptions): { subject: string; html: string; text: string } {
+export function renderSubscriptionActivatedEmail(opts: SubscriptionActivatedOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const subject = `🎉 Welcome to ${opts.planName}! Your subscription is active`;
   const html = `
 <!DOCTYPE html>
@@ -565,7 +575,11 @@ export interface SeatAddedOptions {
   manageUrl: string;
 }
 
-export function renderSeatAddedEmail(opts: SeatAddedOptions): { subject: string; html: string; text: string } {
+export function renderSeatAddedEmail(opts: SeatAddedOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const subject = `Seat Expansion Confirmed for ${opts.orgName}`;
   const html = `
 <!DOCTYPE html>
@@ -596,7 +610,11 @@ export interface SeatDecreaseOptions {
   manageUrl: string;
 }
 
-export function renderSeatDecreaseScheduledEmail(opts: SeatDecreaseOptions): { subject: string; html: string; text: string } {
+export function renderSeatDecreaseScheduledEmail(opts: SeatDecreaseOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const subject = `Seat Downsize Scheduled for ${opts.orgName}`;
   const html = `
 <!DOCTYPE html>
@@ -627,7 +645,11 @@ export interface GuestOverageOptions {
   upgradeUrl: string;
 }
 
-export function renderGuestOverageEmail(opts: GuestOverageOptions): { subject: string; html: string; text: string } {
+export function renderGuestOverageEmail(opts: GuestOverageOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const subject = `Guest Seat Allowance Exceeded for ${opts.orgName}`;
   const html = `
 <!DOCTYPE html>
@@ -658,7 +680,11 @@ export interface PaymentFailedOptions {
   gracePeriodDays: number;
 }
 
-export function renderPaymentFailedEmail(opts: PaymentFailedOptions): { subject: string; html: string; text: string } {
+export function renderPaymentFailedEmail(opts: PaymentFailedOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const subject = `⚠️ Action Required: Payment Failed for ${opts.orgName}`;
   const html = `
 <!DOCTYPE html>
@@ -689,7 +715,11 @@ export interface DowngradeBlockedOptions {
   manageUrl: string;
 }
 
-export function renderDowngradeBlockedEmail(opts: DowngradeBlockedOptions): { subject: string; html: string; text: string } {
+export function renderDowngradeBlockedEmail(opts: DowngradeBlockedOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const subject = `Action Required: Free Plan Downgrade Pending Member Reduction`;
   const html = `
 <!DOCTYPE html>
@@ -719,7 +749,11 @@ export interface SubscriptionCanceledOptions {
   renewUrl: string;
 }
 
-export function renderSubscriptionCanceledEmail(opts: SubscriptionCanceledOptions): { subject: string; html: string; text: string } {
+export function renderSubscriptionCanceledEmail(opts: SubscriptionCanceledOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const subject = `Subscription Cancellation Confirmed for ${opts.orgName}`;
   const html = `
 <!DOCTYPE html>
@@ -750,7 +784,11 @@ export interface EnterpriseInvoiceSentOptions {
   pdfUrl: string;
 }
 
-export function renderEnterpriseInvoiceSentEmail(opts: EnterpriseInvoiceSentOptions): { subject: string; html: string; text: string } {
+export function renderEnterpriseInvoiceSentEmail(opts: EnterpriseInvoiceSentOptions): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const subject = `Invoice ${opts.invoiceNumber} for ${opts.orgName}`;
   const html = `
 <!DOCTYPE html>
@@ -774,3 +812,85 @@ export function renderEnterpriseInvoiceSentEmail(opts: EnterpriseInvoiceSentOpti
   return { subject, html, text };
 }
 
+// ─── Inbound-email threading templates (4.6b) ────────────────────────────────
+// Comment + mention notifications sent with threading headers (Reply-To =
+// board+token capability address, Message-ID per card) so recipients can
+// reply-to-comment straight from their MUA. Keep the same dark visual
+// language as the other templates.
+
+export interface ThreadedEmailOptions {
+  cardKey: string | null;
+  cardTitle: string;
+  actorName: string;
+  cardUrl: string;
+  /** Pre-truncated plain-text body of the comment. */
+  commentText: string;
+  /** Fully-formed Reply-To carrying the inbound capability token. */
+  replyTo: string;
+  /** Per-card Message-ID so replies thread. */
+  messageId: string;
+}
+
+export function renderCommentEmail(opts: ThreadedEmailOptions): {
+  subject: string;
+  html: string;
+  text: string;
+  headers: Record<string, string>;
+} {
+  const subject = `Re: [${opts.cardKey || 'Task'}] ${opts.cardTitle}`;
+  const headers = {
+    'Reply-To': opts.replyTo,
+    'Message-ID': opts.messageId,
+    References: opts.messageId,
+  };
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>${subject}</title></head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:560px;background-color:#1e293b;border-radius:12px;border:1px solid rgba(255,255,255,0.08);padding:32px;">
+        <p style="color:#94a3b8;font-size:14px;margin-top:0;"><strong style="color:#e2e8f0">${opts.actorName}</strong> commented on <strong style="color:#e2e8f0">${opts.cardKey ? `${opts.cardKey} ` : ''}${opts.cardTitle}</strong></p>
+        <p style="color:#e2e8f0;font-size:14px;line-height:1.6;">${opts.commentText}</p>
+        <a href="${opts.cardUrl}" style="display:inline-block;margin-top:16px;padding:10px 20px;background:#6366f1;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;">Open task</a>
+        <p style="color:#64748b;font-size:12px;margin-top:16px;">Reply to this email to add another comment.</p>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  const text = `${opts.actorName} commented on ${opts.cardKey ? `${opts.cardKey} ` : ''}${opts.cardTitle}:\n\n${opts.commentText}\n\nOpen: ${opts.cardUrl}\n(Reply to this email to comment.)`;
+  return { subject, html, text, headers };
+}
+
+export function renderMentionEmail(opts: ThreadedEmailOptions): {
+  subject: string;
+  html: string;
+  text: string;
+  headers: Record<string, string>;
+} {
+  const subject = `${opts.actorName} mentioned you on [${opts.cardKey || 'Task'}] ${opts.cardTitle}`;
+  const headers = {
+    'Reply-To': opts.replyTo,
+    'Message-ID': opts.messageId,
+    References: opts.messageId,
+  };
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>${subject}</title></head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:560px;background-color:#1e293b;border-radius:12px;border:1px solid rgba(255,255,255,0.08);padding:32px;">
+        <p style="color:#94a3b8;font-size:14px;margin-top:0;"><strong style="color:#e2e8f0">${opts.actorName}</strong> mentioned you on <strong style="color:#e2e8f0">${opts.cardKey ? `${opts.cardKey} ` : ''}${opts.cardTitle}</strong></p>
+        <p style="color:#e2e8f0;font-size:14px;line-height:1.6;">${opts.commentText}</p>
+        <a href="${opts.cardUrl}" style="display:inline-block;margin-top:16px;padding:10px 20px;background:#6366f1;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;">Open task</a>
+        <p style="color:#64748b;font-size:12px;margin-top:16px;">Reply to this email to respond in the thread.</p>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  const text = `${opts.actorName} mentioned you on ${opts.cardKey ? `${opts.cardKey} ` : ''}${opts.cardTitle}:\n\n${opts.commentText}\n\nOpen: ${opts.cardUrl}\n(Reply to this email to respond.)`;
+  return { subject, html, text, headers };
+}

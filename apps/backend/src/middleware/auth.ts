@@ -161,6 +161,7 @@ const PUBLIC_PATH_PREFIXES = [
   '/v1/invite/',
   '/v1/calendar/google/callback',
   '/v1/git/webhooks/',
+  '/v1/inbound/email',
   // Realtime WebSocket: browsers can't send Authorization headers on the
   // upgrade handshake, so the token travels in ?token= and open() validates
   // it via verifyAccessToken (closing on failure). Rejecting here would kill

@@ -704,10 +704,22 @@ export const attachments = pgTable(
     url: varchar('url', { length: 2048 }).notNull(),
     fileType: varchar('file_type', { length: 100 }),
     sizeBytes: integer('size_bytes'),
+    // 5.5 scan gate (migration 0035). Fail-closed: servable only when
+    // status=ready AND scan_status=clean (or skipped in non-prod SCAN_MODE=disabled).
+    status: varchar('status', { length: 16 }).notNull().default('staged'),
+    scanStatus: varchar('scan_status', { length: 16 }).notNull().default('pending'),
+    scanAttempts: integer('scan_attempts').notNull().default(0),
+    scannedAt: timestamp('scanned_at'),
+    checksumSha256: varchar('checksum_sha256', { length: 64 }),
+    declaredMime: varchar('declared_mime', { length: 100 }),
+    storageKey: text('storage_key'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     deletedAt: timestamp('deleted_at'),
   },
-  (t) => [index('attachments_card_idx').on(t.cardId)]
+  (t) => [
+    index('attachments_card_idx').on(t.cardId),
+    index('attachments_status_created_idx').on(t.status, t.createdAt),
+  ]
 );
 
 // ─── Sprints & Phases ─────────────────────────────────────────────────────────
@@ -839,6 +851,9 @@ export const notifications = pgTable(
     isStarred: boolean('is_starred').notNull().default(false),
     archivedAt: timestamp('archived_at'),
     searchText: text('search_text').notNull().default(''),
+    // 4.6a federated inbox: per-user snooze + origin facet (notification|dm|task|git).
+    snoozedUntil: timestamp('snoozed_until'),
+    source: varchar('source', { length: 16 }).notNull().default('notification'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => [
@@ -849,7 +864,78 @@ export const notifications = pgTable(
     index('notifications_unread_idx')
       .on(t.userId, t.organizationId)
       .where(sql`${t.isRead} = false AND ${t.archivedAt} IS NULL`),
+    index('notifications_snooze_idx')
+      .on(t.userId, t.snoozedUntil)
+      .where(sql`${t.snoozedUntil} IS NOT NULL`),
   ]
+);
+
+// ─── Federated inbox triage state (4.6a) ─────────────────────────────────────
+// DMs/tasks/git have no per-user row to store snooze/dismiss, so watermarks
+// live here: snooze hides until snoozed_until; dismiss hides up to dismissed_at
+// (DM = watermark over message time, task = dismiss-only, git = dismiss until
+// the link's updated_at moves past dismissed_at).
+export const inboxItemState = pgTable(
+  'inbox_item_state',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    source: varchar('source', { length: 16 }).notNull(),
+    refId: text('ref_id').notNull(),
+    snoozedUntil: timestamp('snoozed_until'),
+    dismissedAt: timestamp('dismissed_at'),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.source, t.refId] }),
+    index('inbox_item_state_user_idx').on(t.userId),
+  ]
+);
+
+// ─── Inbound email (4.6b): capability tokens + receive log ───────────────────
+export const inboundEmailTokens = pgTable(
+  'inbound_email_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    scope: varchar('scope', { length: 16 }).notNull(),
+    refId: uuid('ref_id').notNull(),
+    tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    tokenPrefix: varchar('token_prefix', { length: 16 }).notNull(),
+    allowlist: text('allowlist'),
+    expiresAt: timestamp('expires_at'),
+    revokedAt: timestamp('revoked_at'),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('inbound_token_hash_idx').on(t.tokenHash),
+    index('inbound_token_scope_idx').on(t.organizationId, t.scope, t.refId),
+  ]
+);
+
+export const inboundEmails = pgTable(
+  'inbound_emails',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: varchar('message_id', { length: 1024 }).notNull(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    tokenId: uuid('token_id').references(() => inboundEmailTokens.id),
+    fromAddress: varchar('from_address', { length: 320 }),
+    toAddress: varchar('to_address', { length: 320 }),
+    subject: varchar('subject', { length: 500 }),
+    status: varchar('status', { length: 16 }).notNull().default('received'),
+    result: jsonb('result').notNull().default('{}'),
+    rawEmail: text('raw_email'),
+    rawTruncated: boolean('raw_truncated').notNull().default(false),
+    failedAt: timestamp('failed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('inbound_emails_message_idx').on(t.organizationId, t.messageId)]
 );
 
 // ─── Activity & Audit ─────────────────────────────────────────────────────────
@@ -1457,11 +1543,20 @@ export const chatAttachments = pgTable(
     fileUrl: varchar('file_url', { length: 2048 }).notNull(),
     fileSize: integer('file_size').notNull().default(0),
     fileType: varchar('file_type', { length: 100 }).notNull().default('application/octet-stream'),
+    // 5.5 scan gate (migration 0035) — same lifecycle as card attachments.
+    status: varchar('status', { length: 16 }).notNull().default('staged'),
+    scanStatus: varchar('scan_status', { length: 16 }).notNull().default('pending'),
+    scanAttempts: integer('scan_attempts').notNull().default(0),
+    scannedAt: timestamp('scanned_at'),
+    checksumSha256: varchar('checksum_sha256', { length: 64 }),
+    declaredMime: varchar('declared_mime', { length: 100 }),
+    storageKey: text('storage_key'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => [
     index('chat_attachments_msg_idx').on(t.messageId),
     index('chat_attachments_channel_idx').on(t.channelId),
+    index('chat_attachments_status_created_idx').on(t.status, t.createdAt),
   ]
 );
 

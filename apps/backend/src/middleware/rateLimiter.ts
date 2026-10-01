@@ -143,6 +143,11 @@ interface RateLimiterContext {
 // sign-up, refresh, SSO and invite endpoints can't be brute-forced without bound.
 const PRE_AUTH_LIMIT: RateLimitConfig = { rps: 2, burst: 30 };
 
+// Webhook receivers authenticate via signatures, not bearer tokens, and must
+// stay reachable when a provider retries a burst. Abuse is bounded by the
+// signature check + token capability + Message-ID dedupe instead.
+const RATE_LIMIT_EXEMPT_PREFIXES = ['/v1/inbound/'];
+
 function clientIp(request?: Request): string {
   if (!request) return 'unknown';
   const forwarded = request.headers.get('x-forwarded-for');
@@ -166,7 +171,10 @@ function clientIp(request?: Request): string {
  */
 export const rateLimiterMiddleware = () =>
   new Elysia({ name: 'rateLimiter' }).onBeforeHandle(
-    async ({ user, planTier, request, set }: RateLimiterContext) => {
+    async ({ user, planTier, request, set, path }: RateLimiterContext & { path?: string }) => {
+      if (path && RATE_LIMIT_EXEMPT_PREFIXES.some((p) => path === p || path.startsWith(p))) {
+        return undefined;
+      }
       const orgId = user?.organizationId;
       const userId = user?.userId;
 

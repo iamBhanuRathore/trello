@@ -17,7 +17,6 @@ import {
   updateComment,
   deleteComment,
   listAttachments,
-  createAttachmentRecord,
   deleteAttachment,
   getCardLabels,
   attachLabelToCard,
@@ -43,12 +42,8 @@ import {
   getCardViewers,
 } from './service';
 import path from 'path';
-import {
-  generatePresignedUploadUrl,
-  LOCAL_UPLOADS_DIR,
-  isLocalUploadKeyAllowed,
-  s3Client,
-} from '../../lib/s3';
+import { LOCAL_UPLOADS_DIR, isLocalUploadKeyAllowed } from '../../lib/s3';
+import { requestUpload, findMedia } from '../../lib/storage';
 import { env } from '../../lib/env';
 
 /** Local-dev upload buffer — disabled outside development/test (open write + world-readable). */
@@ -500,32 +495,29 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/:id/attachments',
     async ({ params, body, user, set }) => {
       try {
-        if (body.sizeBytes != null && body.sizeBytes > 25 * 1024 * 1024) {
-          set.status = 400;
-          return { error: 'File exceeds the 25 MB limit' };
-        }
-        // Local-dev buffer serves bytes back: reject non-allowlisted types here
-        // so the staged PUT can't 400 after the DB record is created.
-        if (!s3Client && !isLocalUploadKeyAllowed(body.fileName)) {
-          set.status = 400;
-          return { error: 'File type not allowed' };
-        }
-        const { uploadUrl, publicUrl } = await generatePresignedUploadUrl(
-          user.organizationId,
-          params.id,
-          body.fileName,
-          body.fileType
-        );
-        const attachment = await createAttachmentRecord(
-          db,
-          params.id,
-          user.organizationId,
-          user.userId,
-          publicUrl,
-          body.fileName,
-          body.fileType,
-          body.sizeBytes
-        );
+        // Thin wrapper over the unified media surface (5.5): same staged-row
+        // + 5-min PUT contract, now scan-gated. Response shape unchanged.
+        const { uploadUrl, mediaId } = await requestUpload(db, user.organizationId, user.userId, {
+          kind: 'card',
+          refId: params.id,
+          fileName: body.fileName,
+          declaredMime: body.fileType,
+          sizeBytes: body.sizeBytes,
+        });
+        const media = await findMedia(db, mediaId);
+        // Back-compat envelope: legacy clients expect `{ uploadUrl, attachment }`.
+        const attachment = media
+          ? {
+              id: media.mediaId,
+              cardId: params.id,
+              fileName: media.fileName,
+              url: media.url,
+              fileType: media.mime,
+              sizeBytes: media.sizeBytes,
+              status: media.status,
+              scanStatus: media.scanStatus,
+            }
+          : { id: mediaId };
         return { uploadUrl, attachment };
       } catch (err: unknown) {
         return handleRouteError(err, set);
