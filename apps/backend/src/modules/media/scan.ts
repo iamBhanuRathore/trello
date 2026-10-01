@@ -34,18 +34,21 @@ export const scanMetrics = {
   queueDepth: 0,
   /** Age of the oldest queued id — the p95-ish "how stale is the gate" signal. */
   oldestQueuedAt: null as Date | null,
-  /** Rolling counters so error *rate* (not lifetime count) is observable. */
-  windowEnqueued: 0,
-  windowErrors: 0,
 };
 
-const METRIC_WINDOW = [] as number[];
+interface MetricEvent {
+  at: number;
+  error: boolean;
+}
+
+const METRIC_WINDOW: MetricEvent[] = [];
 
 /** Queue depth, queue age, error rate, and sidecar health for /media/scan-metrics. */
 export function scanMetricsSnapshot(): Record<string, unknown> {
   const cutoff = Date.now() - 300_000;
-  while (METRIC_WINDOW.length > 0 && METRIC_WINDOW[0]! < cutoff) METRIC_WINDOW.shift();
-  const attempted = scanMetrics.windowEnqueued + scanMetrics.windowErrors;
+  while (METRIC_WINDOW.length > 0 && METRIC_WINDOW[0]!.at < cutoff) METRIC_WINDOW.shift();
+  const windowErrors = METRIC_WINDOW.reduce((n, e) => (e.error ? n + 1 : n), 0);
+  const attempted = METRIC_WINDOW.length;
   return {
     scanMode: scanMode(),
     queueDepth: scanMetrics.queueDepth,
@@ -64,8 +67,8 @@ export function scanMetricsSnapshot(): Record<string, unknown> {
     },
     window5m: {
       attempts: attempted,
-      errors: scanMetrics.windowErrors,
-      errorRate: attempted === 0 ? 0 : Number((scanMetrics.windowErrors / attempted).toFixed(3)),
+      errors: windowErrors,
+      errorRate: attempted === 0 ? 0 : Number((windowErrors / attempted).toFixed(3)),
     },
   };
 }
@@ -84,8 +87,7 @@ export function enqueueScan(mediaId: string): void {
   queuedSet.add(mediaId);
   queue.push({ id: mediaId, at: Date.now() });
   scanMetrics.enqueued++;
-  scanMetrics.windowEnqueued++;
-  METRIC_WINDOW.push(Date.now());
+  METRIC_WINDOW.push({ at: Date.now(), error: false });
   scanMetrics.queueDepth = queue.length;
   scanMetrics.oldestQueuedAt = new Date(queue[0]!.at);
 }
@@ -103,6 +105,17 @@ type ScanVerdict = 'clean' | 'infected';
 let transportOverride: ((bytes: Uint8Array) => Promise<ScanVerdict>) | null = null;
 
 /** Test hook: stub the ClamAV transport (null = real sidecar). */
+/**
+ * Test-only: widen the window between receiving the verdict and reading the
+ * checksum, so the cross-scan interleaving that a shared checksum variable was
+ * vulnerable to becomes deterministic instead of microtask-luck.
+ */
+export function __setVerdictSettleDelay(ms: number): void {
+  verdictSettleDelayMs = ms;
+}
+
+let verdictSettleDelayMs = 0;
+
 export function __setScanTransport(fn: ((bytes: Uint8Array) => Promise<ScanVerdict>) | null): void {
   transportOverride = fn;
 }
@@ -203,7 +216,9 @@ export async function clamavScanStream(source: AsyncIterable<Uint8Array>): Promi
     let out = '';
     socket.on('data', (data) => {
       out += data.toString('utf8');
-      if (out.includes('\n')) {
+      // clamd terminates command replies with a NUL byte (z-prefixed protocol);
+      // accept a newline too so non-framing proxies still terminate the read.
+      if (out.includes('\0') || out.includes('\n')) {
         if (done) return;
         done = true;
         clearTimeout(timer);
@@ -248,7 +263,9 @@ export async function sidecarHealth(): Promise<boolean> {
         resolve(false);
       });
       socket.on('connect', () => {
-        socket.write('PING', () => {});
+        // zPING\0 is the command form; bare PING is only the nmap-style
+        // handshake and clamd answers it with UNKNOWN COMMAND.
+        socket.write('zPING\0', () => {});
       });
       socket.on('data', (data) => {
         clearTimeout(timer);
@@ -365,14 +382,10 @@ async function bumpError(db: Database, mediaId: string, kind: 'card' | 'chat'): 
     }
   }
   scanMetrics.errors++;
-  scanMetrics.windowErrors++;
-  METRIC_WINDOW.push(Date.now());
+  METRIC_WINDOW.push({ at: Date.now(), error: true });
 }
 
-let computedChecksum: string | null = null;
-
 export async function scanOne(db: Database, mediaId: string): Promise<void> {
-  computedChecksum = null;
   const media = await findMedia(db, mediaId);
   if (!media) return;
   // ready/pending is the pre-gate legacy pair — the throttled rescan is the only
@@ -391,7 +404,13 @@ export async function scanOne(db: Database, mediaId: string): Promise<void> {
       await bumpError(db, mediaId, media.kind);
       return;
     }
-    await runVerdict(db, mediaId, media, sha256Hex(bytes), () => transportOverride!(bytes));
+    await runVerdict(
+      db,
+      mediaId,
+      media,
+      () => sha256Hex(bytes),
+      () => transportOverride!(bytes)
+    );
     return;
   }
   const source = await openObjectStream(media.storageKey, maxBytes);
@@ -400,30 +419,42 @@ export async function scanOne(db: Database, mediaId: string): Promise<void> {
     return;
   }
   const hash = createHash('sha256');
-  await runVerdict(db, mediaId, media, null, async () => {
-    const hashing = (async function* (): AsyncGenerator<Uint8Array> {
-      for await (const chunk of source) {
-        hash.update(chunk);
-        yield chunk;
-      }
-    })();
-    const verdict = await clamavScanStream(hashing);
-    computedChecksum = hash.digest('hex');
-    return verdict;
-  });
+  // Per-scan local: scanOne runs up to SCAN_CONCURRENCY at a time, so this
+  // must not be shared across scans or rows get each other's checksum.
+  let localChecksum: string | null = null;
+  await runVerdict(
+    db,
+    mediaId,
+    media,
+    () => localChecksum,
+    async () => {
+      const hashing = (async function* (): AsyncGenerator<Uint8Array> {
+        for await (const chunk of source) {
+          hash.update(chunk);
+          yield chunk;
+        }
+      })();
+      const verdict = await clamavScanStream(hashing);
+      localChecksum = hash.digest('hex');
+      return verdict;
+    }
+  );
 }
 
 async function runVerdict(
   db: Database,
   mediaId: string,
   media: { kind: 'card' | 'chat'; storageKey: string | null },
-  bufferedChecksum: string | null,
+  checksumFn: () => string | null,
   verdictFn: () => Promise<'clean' | 'infected'>
 ): Promise<void> {
   try {
     const verdict = await verdictFn();
+    if (verdictSettleDelayMs > 0) {
+      await new Promise((r) => setTimeout(r, verdictSettleDelayMs));
+    }
     scanMetrics.lastScanAt = new Date();
-    const checksum = bufferedChecksum ?? computedChecksum;
+    const checksum = checksumFn();
     if (verdict === 'clean') {
       await markRow(db, mediaId, media.kind, {
         status: 'ready',

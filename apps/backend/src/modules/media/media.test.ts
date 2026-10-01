@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { createHash } from 'node:crypto';
+import { createServer } from 'node:net';
+import type { Server } from 'node:net';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
@@ -20,7 +23,15 @@ import {
   isS3Enabled,
   findMedia,
 } from '../../lib/storage';
-import { scanOne, __setScanTransport, enqueueScan, backoffMs, scanMetricsSnapshot } from './scan';
+import {
+  scanOne,
+  __setScanTransport,
+  __setVerdictSettleDelay,
+  enqueueScan,
+  backoffMs,
+  scanMetricsSnapshot,
+  clamavScanStream,
+} from './scan';
 import { runMediaGC } from './gc';
 
 const TEST_DB_URL =
@@ -64,6 +75,59 @@ async function setupTenant(suffix: string) {
     name: `media-${suffix}`,
   });
   return { user, organization, card, channel };
+}
+
+/** Minimal ClamAV INSTREAM stub: consumes the stream, replies with a verdict. */
+async function startClamavStub(
+  verdict: 'clean' | 'infected'
+): Promise<{ port: number; close: () => Promise<void> }> {
+  const sockets = new Set<import('node:net').Socket>();
+  const server: Server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on('error', () => {});
+    socket.on('data', () => {});
+    // INSTREAM framing ends with a zero-length chunk.
+    socket.on('end', () => {});
+    const reply = () => {
+      if (!socket.destroyed)
+        socket.write(`stream: ${verdict === 'clean' ? 'OK' : 'Eicar-Test-Signature FOUND'}\0`);
+    };
+    let seen = Buffer.alloc(0);
+    const onData = (chunk: Buffer) => {
+      seen = Buffer.concat([seen, chunk]);
+      // zINSTREAM\0 is 10 bytes; then 4-byte length + payload until a 0 length.
+      let off = 10;
+      while (seen.length - off >= 4) {
+        const len = seen.readUInt32BE(off);
+        if (len === 0) {
+          socket.off('data', onData);
+          reply();
+          return;
+        }
+        if (seen.length - off - 4 < len) return;
+        off += 4 + len;
+      }
+    };
+    socket.on('data', onData);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const prevHost = process.env['CLAMAV_HOST'];
+  const prevPort = process.env['CLAMAV_PORT'];
+  process.env['CLAMAV_HOST'] = '127.0.0.1';
+  process.env['CLAMAV_PORT'] = String(port);
+  return {
+    port,
+    close: async () => {
+      if (prevHost === undefined) delete process.env['CLAMAV_HOST'];
+      else process.env['CLAMAV_HOST'] = prevHost;
+      if (prevPort === undefined) delete process.env['CLAMAV_PORT'];
+      else process.env['CLAMAV_PORT'] = prevPort;
+      for (const sock of sockets) sock.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
 }
 
 beforeAll(async () => {
@@ -179,6 +243,75 @@ describe('Media scan gate (5.5)', () => {
     } finally {
       await deleteObject(storageKey);
       await db.delete(schema.attachments).where(eq(schema.attachments.id, mediaId));
+    }
+  });
+
+  it('reads clamd NUL-terminated verdicts instead of waiting for a newline', async () => {
+    // The z-protocol terminates replies with \0, not \n. Waiting for a newline
+    // meant every production scan sat until the 60s timeout and then retried.
+    const stub = await startClamavStub('clean');
+    try {
+      const verdict = await clamavScanStream(
+        (async function* () {
+          yield new Uint8Array(2048);
+        })()
+      );
+      expect(verdict).toBe('clean');
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('flags an infected stream', async () => {
+    const stub = await startClamavStub('infected');
+    try {
+      expect(
+        await clamavScanStream(
+          (async function* () {
+            yield new Uint8Array(512);
+          })()
+        )
+      ).toBe('infected');
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('keeps per-scan checksums correct when scans run concurrently', async () => {
+    // The streaming path computes the checksum while piping to clamd, then reads
+    // it back after awaiting the verdict. A shared module-level value crossed
+    // those awaits, so concurrent scans persisted each other's checksums.
+    const stub = await startClamavStub('clean');
+    // Widen the verdict->read window so any shared-state bug shows up every run
+    // rather than only under microtask luck.
+    __setVerdictSettleDelay(40);
+    try {
+      const contents = Array.from({ length: 6 }, (_, i) =>
+        Buffer.concat([png(), Buffer.alloc(1024 * (i + 1), 65 + i)])
+      );
+      const ids: string[] = [];
+      for (const [i] of contents.entries()) {
+        const { mediaId, storageKey } = await requestUpload(db, orgId, userId, {
+          kind: 'card',
+          refId: cardId,
+          fileName: `concurrent-${i}.png`,
+          declaredMime: 'image/png',
+        });
+        await putObjectBytes(storageKey, contents[i]!, 'image/png');
+        await confirmUpload(db, orgId, mediaId);
+        ids.push(mediaId);
+      }
+
+      await Promise.all(ids.map((mediaId) => scanOne(db, mediaId)));
+
+      for (const [i, mediaId] of ids.entries()) {
+        const media = await findMedia(db, mediaId);
+        expect(media?.scanStatus).toBe('clean');
+        expect(media?.checksumSha256).toBe(createHash('sha256').update(contents[i]!).digest('hex'));
+      }
+    } finally {
+      __setVerdictSettleDelay(0);
+      await stub.close();
     }
   });
 
