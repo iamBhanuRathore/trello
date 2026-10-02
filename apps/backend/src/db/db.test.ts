@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'bun:test';
-import { withOrgContext, rawWriteDb, rawReadDb } from './index';
+import { rawWriteDb, rawReadDb } from './index';
 import { resolveOrgPlanTier } from '../middleware/auth';
 
-describe('Database Multi-Tenant Isolation & Context', () => {
-  it('exports withOrgContext and raw client handles', () => {
-    expect(typeof withOrgContext).toBe('function');
+describe('Database client handles', () => {
+  it('exports the raw client handles', () => {
     expect(rawWriteDb).toBeDefined();
     expect(rawReadDb).toBeDefined();
   });

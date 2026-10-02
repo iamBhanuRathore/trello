@@ -1,8 +1,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { sql } from 'drizzle-orm';
 import { env } from '../lib/env';
-import { getDataClient, isRedisAvailable } from '../redis/client';
 import * as schema from './schema/index';
 
 /**
@@ -39,56 +37,21 @@ export const readClient = postgres(replicaConnectionString, {
 export const rawWriteDb = drizzle(writeClient, { schema });
 export const rawReadDb = drizzle(readClient, { schema });
 
-// Shared db handle for system/platform routes, boot scripts, and tests
+// Shared db handle for system/platform routes, boot scripts, and tests.
+// All application traffic uses the write client; `rawReadDb` exists for
+// future read-replica routing and is closed by `disconnectDb`.
+//
+// TENANT ISOLATION: enforced by per-query `organizationId` filters in the
+// service layer, NOT by Postgres row-level security. Migration
+// `0012_enable_row_level_security.sql` created `app.current_org_id` policies on
+// workspaces/boards/cards, but those policies are inert — the app connects as
+// the table owner and RLS does not apply to the owner without
+// `FORCE ROW LEVEL SECURITY`. Enabling it properly requires a least-privilege
+// application role plus an org-context transaction on every tenant query, and
+// is tracked as a future defense-in-depth option, not a current guarantee.
+// See docs/Decisions.md (2026-10-03, per-query org filters).
 export const db = rawWriteDb;
 export type Database = typeof rawWriteDb;
-
-/**
- * Enforces tenant isolation via Row Level Security (RLS) and read-after-write routing.
- * Sets `app.current_org_id` in transaction session context for RLS policies.
- * Writes record a 3-second Redis TTL marker so subsequent reads from the same org
- * route to the primary database to guarantee monotonic read consistency.
- */
-export async function withOrgContext<T>(
-  orgId: string,
-  mode: 'read' | 'write',
-  fn: (txDb: Database) => Promise<T>
-): Promise<T> {
-  const redis = getDataClient();
-  const redisAvailable = isRedisAvailable() && redis !== null;
-
-  if (mode === 'write') {
-    return rawWriteDb.transaction(async (tx) => {
-      await tx.execute(sql`SET LOCAL app.current_org_id = ${orgId}`);
-      const result = await fn(tx as unknown as Database);
-
-      if (redisAvailable && redis) {
-        try {
-          await redis.set(`recent-write:org:${orgId}`, '1', 'EX', 3);
-        } catch {
-          // Non-blocking write-marker failure
-        }
-      }
-      return result;
-    });
-  }
-
-  // Read path: route to primary if recent write occurred within the 3s window
-  let preferPrimary = false;
-  if (redisAvailable && redis) {
-    try {
-      preferPrimary = (await redis.exists(`recent-write:org:${orgId}`)) === 1;
-    } catch {
-      preferPrimary = true; // Fall back to primary if check fails
-    }
-  }
-
-  const selectedDb = preferPrimary ? rawWriteDb : rawReadDb;
-  return selectedDb.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL app.current_org_id = ${orgId}`);
-    return fn(tx as unknown as Database);
-  });
-}
 
 /**
  * Gracefully terminates all postgres connections.
