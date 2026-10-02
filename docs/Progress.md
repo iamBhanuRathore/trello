@@ -2299,3 +2299,11 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   2. **DialogOverlay Backdrop Opacity:** Increased `DialogOverlay` backdrop from faint `bg-black/10` to standard `bg-black/60 backdrop-blur-xs` so background data grid rows and action buttons no longer shine through or cause visual artifact overlap around modal borders.
   3. **PlatformUsers Dialog State Transition:** Updated `PlatformUsers.tsx` to close the inspection modal (`selectedUser`) before opening the destructive `ConfirmDialog` (`userToLogout`), preventing modal stacking.
 - **Tests & Validation:** Monorepo typecheck clean (`tsc -b --noEmit`); production Vite build for `apps/super-admin` succeeded with 0 errors.
+
+### 2026-10-03 — System Bot Safeguards & Super Admin UI Clarity
+
+- **What:** Addressed confusion where the Super Admin session termination action (`POST /superadmin/users/:id/force-logout`) appeared as a destructive delete button next to `GitHub Bot`:
+  1. **System Account Identification & Badging (`apps/super-admin/src/pages/PlatformUsers.tsx`):** Added `isSystemBot()` helper to detect automation service accounts (`@boardly.internal` domain or bot names). Rendered a dedicated `[System Bot]` pill badge and bot icon in the data grid and inspect modal.
+  2. **Disabled Session Revocation with Explanatory Tooltips:** Since system automation actors have no interactive sessions or refresh tokens, the session termination button is disabled (`disabled={isBot}`, `opacity-30 cursor-not-allowed`) with a clear tooltip: `"System automation account; has no active interactive sessions"`.
+  3. **Enterprise Inspection Advisory:** Injected an informational callout banner into the inspection modal explaining the service account's role in Git/webhook automation and clarifying that its records cannot be deleted to safeguard relational database integrity.
+- **Tests & Validation:** Super-admin typecheck (`bun run --cwd apps/super-admin typecheck`) and Vite build clean (0 errors, 224ms).

@@ -18,8 +18,18 @@ import {
   Layers,
   X,
   RotateCcw,
+  Bot,
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+export function isSystemBot(
+  user?: { email?: string | null; name?: string | null } | null
+): boolean {
+  if (!user) return false;
+  const email = (user.email || '').toLowerCase();
+  const name = (user.name || '').toLowerCase();
+  return email.endsWith('@boardly.internal') || email.includes('bot') || name.includes('bot');
+}
 
 function formatRelativeTime(dateStr?: string | null): string {
   if (!dateStr) return 'Never';
@@ -120,30 +130,49 @@ export const PlatformUsers: React.FC = () => {
         sortable: true,
         accessorFn: (u) => u.name || u.email,
         exportValue: (u) => `${u.name} (${u.email})`,
-        cell: ({ row }) => (
-          <div
-            className="flex items-center gap-3 cursor-pointer group"
-            onClick={() => setSelectedUser(row)}
-          >
-            <Avatar className="h-9 w-9 ring-1 ring-border group-hover:ring-purple-500 transition-all">
-              <AvatarImage src={row.avatarUrl || ''} />
-              <AvatarFallback className="text-xs font-bold bg-purple-500/10 text-purple-400">
-                {row.name ? row.name.substring(0, 2).toUpperCase() : 'U'}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <div className="font-semibold text-xs text-white flex items-center gap-2 group-hover:text-purple-400 transition-colors">
-                <span>{row.name}</span>
-                {row.isPlatformAdmin && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                    Platform Admin
-                  </span>
-                )}
+        cell: ({ row }) => {
+          const isBot = isSystemBot(row);
+          return (
+            <div
+              className="flex items-center gap-3 cursor-pointer group"
+              onClick={() => setSelectedUser(row)}
+            >
+              <Avatar className="h-9 w-9 ring-1 ring-border group-hover:ring-purple-500 transition-all">
+                <AvatarImage src={row.avatarUrl || ''} />
+                <AvatarFallback
+                  className={`text-xs font-bold ${
+                    isBot ? 'bg-sky-500/10 text-sky-400' : 'bg-purple-500/10 text-purple-400'
+                  }`}
+                >
+                  {isBot ? (
+                    <Bot className="w-4 h-4" />
+                  ) : row.name ? (
+                    row.name.substring(0, 2).toUpperCase()
+                  ) : (
+                    'U'
+                  )}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="font-semibold text-xs text-white flex items-center gap-2 group-hover:text-purple-400 transition-colors">
+                  <span>{row.name}</span>
+                  {isBot && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30 flex items-center gap-1">
+                      <Bot className="w-2.5 h-2.5" />
+                      <span>System Bot</span>
+                    </span>
+                  )}
+                  {row.isPlatformAdmin && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                      Platform Admin
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] text-muted-foreground">{row.email}</div>
               </div>
-              <div className="text-[11px] text-muted-foreground">{row.email}</div>
             </div>
-          </div>
-        ),
+          );
+        },
       },
       {
         id: 'companyReach',
@@ -236,28 +265,40 @@ export const PlatformUsers: React.FC = () => {
         align: 'right',
         sortable: false,
         filterable: false,
-        cell: ({ row }) => (
-          <div className="flex items-center justify-end gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs gap-1 cursor-pointer hover:border-purple-500 hover:text-purple-400"
-              onClick={() => setSelectedUser(row)}
-            >
-              <Layers className="w-3 h-3" />
-              <span>Inspect</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-destructive hover:bg-destructive/10 cursor-pointer"
-              title="Terminate all platform sessions"
-              onClick={() => setUserToLogout(row)}
-            >
-              <LogOut className="w-3 h-3" />
-            </Button>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const isBot = isSystemBot(row);
+          return (
+            <div className="flex items-center justify-end gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1 cursor-pointer hover:border-purple-500 hover:text-purple-400"
+                onClick={() => setSelectedUser(row)}
+              >
+                <Layers className="w-3 h-3" />
+                <span>Inspect</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={isBot}
+                className={
+                  isBot
+                    ? 'h-7 text-xs text-muted-foreground/30 cursor-not-allowed opacity-30 hover:bg-transparent'
+                    : 'h-7 text-xs text-destructive hover:bg-destructive/10 cursor-pointer'
+                }
+                title={
+                  isBot
+                    ? 'System automation account; has no active interactive sessions'
+                    : 'Terminate all platform sessions'
+                }
+                onClick={() => !isBot && setUserToLogout(row)}
+              >
+                <LogOut className="w-3 h-3" />
+              </Button>
+            </div>
+          );
+        },
       },
     ],
     []
@@ -475,20 +516,55 @@ export const PlatformUsers: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <Avatar className="h-12 w-12 ring-2 ring-purple-500/30">
                     <AvatarImage src={selectedUser.avatarUrl || ''} />
-                    <AvatarFallback className="text-base font-bold bg-purple-500/10 text-purple-400">
-                      {selectedUser.name ? selectedUser.name.substring(0, 2).toUpperCase() : 'U'}
+                    <AvatarFallback
+                      className={`text-base font-bold ${
+                        isSystemBot(selectedUser)
+                          ? 'bg-sky-500/10 text-sky-400'
+                          : 'bg-purple-500/10 text-purple-400'
+                      }`}
+                    >
+                      {isSystemBot(selectedUser) ? (
+                        <Bot className="w-6 h-6" />
+                      ) : selectedUser.name ? (
+                        selectedUser.name.substring(0, 2).toUpperCase()
+                      ) : (
+                        'U'
+                      )}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <DialogTitle className="text-base font-bold text-white">
-                      {selectedUser.name}
-                    </DialogTitle>
+                    <div className="flex items-center gap-2">
+                      <DialogTitle className="text-base font-bold text-white">
+                        {selectedUser.name}
+                      </DialogTitle>
+                      {isSystemBot(selectedUser) && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30 flex items-center gap-1">
+                          <Bot className="w-3 h-3" />
+                          <span>System Bot</span>
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-0.5">{selectedUser.email}</p>
                   </div>
                 </div>
               </DialogHeader>
 
               <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                {isSystemBot(selectedUser) && (
+                  <div className="p-3.5 rounded-xl bg-sky-500/10 border border-sky-500/25 flex items-start gap-2.5 text-xs text-sky-200">
+                    <Bot className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-sky-300">System Automation Account</div>
+                      <div className="text-[11px] text-sky-300/80 mt-0.5 leading-relaxed">
+                        This internal service account is used by automated platform integrations
+                        (e.g. GitHub/Git sync) to author task comments and activity logs. It cannot
+                        be deleted or forced out, and its records are preserved to protect database
+                        referential integrity.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border text-xs">
                   <div>
                     <span className="text-muted-foreground">Global Account Created:</span>
@@ -559,11 +635,23 @@ export const PlatformUsers: React.FC = () => {
                 <Button
                   variant="destructive"
                   size="sm"
-                  className="text-xs gap-1.5 cursor-pointer"
+                  disabled={isSystemBot(selectedUser)}
+                  className={`text-xs gap-1.5 ${
+                    isSystemBot(selectedUser)
+                      ? 'opacity-40 cursor-not-allowed hover:bg-destructive'
+                      : 'cursor-pointer'
+                  }`}
+                  title={
+                    isSystemBot(selectedUser)
+                      ? 'System automation accounts have no interactive sessions to revoke'
+                      : 'Terminate all platform sessions'
+                  }
                   onClick={() => {
-                    const target = selectedUser;
-                    setSelectedUser(null);
-                    setUserToLogout(target);
+                    if (!isSystemBot(selectedUser)) {
+                      const target = selectedUser;
+                      setSelectedUser(null);
+                      setUserToLogout(target);
+                    }
                   }}
                 >
                   <LogOut className="w-3.5 h-3.5" />
