@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
-import { authPlugin } from '../../middleware/auth';
+import { authPlugin, requirePermission } from '../../middleware/auth';
 import {
   listSprints,
   getSprint,
@@ -24,6 +24,7 @@ export const sprintRoutes = new Elysia({ prefix: '/sprints' })
     },
     {
       params: t.Object({ projectId: t.String() }),
+      beforeHandle: requirePermission('project.read'),
     }
   )
 
@@ -46,6 +47,7 @@ export const sprintRoutes = new Elysia({ prefix: '/sprints' })
         endDate: t.String(),
         goal: t.Optional(t.String()),
       }),
+      beforeHandle: requirePermission('sprint.create'),
     }
   )
 
@@ -56,6 +58,7 @@ export const sprintRoutes = new Elysia({ prefix: '/sprints' })
     },
     {
       params: t.Object({ id: t.String() }),
+      beforeHandle: requirePermission('project.read'),
     }
   )
 
@@ -83,6 +86,7 @@ export const sprintRoutes = new Elysia({ prefix: '/sprints' })
           t.Union([t.Literal('planned'), t.Literal('active'), t.Literal('completed')])
         ),
       }),
+      beforeHandle: requirePermission('sprint.update'),
     }
   )
 
@@ -93,6 +97,7 @@ export const sprintRoutes = new Elysia({ prefix: '/sprints' })
     },
     {
       params: t.Object({ id: t.String() }),
+      beforeHandle: requirePermission('sprint.delete'),
     }
   )
 
@@ -103,6 +108,7 @@ export const sprintRoutes = new Elysia({ prefix: '/sprints' })
     },
     {
       params: t.Object({ id: t.String() }),
+      beforeHandle: requirePermission('project.read'),
     }
   )
 
@@ -114,6 +120,7 @@ export const sprintRoutes = new Elysia({ prefix: '/sprints' })
     {
       params: t.Object({ id: t.String() }),
       body: t.Object({ cardId: t.String() }),
+      beforeHandle: requirePermission('sprint.update'),
     }
   )
 
@@ -124,5 +131,6 @@ export const sprintRoutes = new Elysia({ prefix: '/sprints' })
     },
     {
       params: t.Object({ id: t.String(), cardId: t.String() }),
+      beforeHandle: requirePermission('sprint.update'),
     }
   );

@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
-import { authPlugin } from '../../middleware/auth';
+import { authPlugin, requirePermission } from '../../middleware/auth';
 import {
   listPhases,
   getPhase,
@@ -22,6 +22,7 @@ export const phaseRoutes = new Elysia({ prefix: '/phases' })
     },
     {
       params: t.Object({ projectId: t.String() }),
+      beforeHandle: requirePermission('project.read'),
     }
   )
 
@@ -38,6 +39,7 @@ export const phaseRoutes = new Elysia({ prefix: '/phases' })
         startDate: t.Optional(t.String()),
         endDate: t.Optional(t.String()),
       }),
+      beforeHandle: requirePermission('phase.create'),
     }
   )
 
@@ -48,6 +50,7 @@ export const phaseRoutes = new Elysia({ prefix: '/phases' })
     },
     {
       params: t.Object({ id: t.String() }),
+      beforeHandle: requirePermission('project.read'),
     }
   )
 
@@ -72,6 +75,7 @@ export const phaseRoutes = new Elysia({ prefix: '/phases' })
           ])
         ),
       }),
+      beforeHandle: requirePermission('phase.update'),
     }
   )
 
@@ -82,6 +86,7 @@ export const phaseRoutes = new Elysia({ prefix: '/phases' })
     },
     {
       params: t.Object({ id: t.String() }),
+      beforeHandle: requirePermission('phase.delete'),
     }
   )
 
@@ -92,6 +97,7 @@ export const phaseRoutes = new Elysia({ prefix: '/phases' })
     },
     {
       params: t.Object({ id: t.String() }),
+      beforeHandle: requirePermission('project.read'),
     }
   )
 
@@ -103,6 +109,7 @@ export const phaseRoutes = new Elysia({ prefix: '/phases' })
     {
       params: t.Object({ id: t.String() }),
       body: t.Object({ cardId: t.String() }),
+      beforeHandle: requirePermission('phase.update'),
     }
   )
 
@@ -113,5 +120,6 @@ export const phaseRoutes = new Elysia({ prefix: '/phases' })
     },
     {
       params: t.Object({ id: t.String(), cardId: t.String() }),
+      beforeHandle: requirePermission('phase.update'),
     }
   );

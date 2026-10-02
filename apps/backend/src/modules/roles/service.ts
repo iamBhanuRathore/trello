@@ -8,12 +8,29 @@ import {
   organizationRoleMembers,
 } from '../../db/schema/index';
 import {
+  ALL_PERMISSION_KEYS,
   ORG_PERMISSIONS,
   WORKSPACE_PERMISSIONS,
   PROJECT_PERMISSIONS,
   BOARD_PERMISSIONS,
   CARD_PERMISSIONS,
 } from '@boardly/shared-types';
+import { bumpUserCache, bumpOrgPermVersion } from '../../lib/cache';
+
+/** Drop cached profiles + perm epoch for every holder of a custom role. */
+async function bumpRoleHolders(db: Database, organizationId: string, roleId: string) {
+  const holders = await db
+    .select({ userId: organizationRoleMembers.userId })
+    .from(organizationRoleMembers)
+    .where(
+      and(
+        eq(organizationRoleMembers.organizationId, organizationId),
+        eq(organizationRoleMembers.roleId, roleId)
+      )
+    );
+  await Promise.all(holders.map((h) => bumpUserCache(h.userId)));
+  await bumpOrgPermVersion(organizationId);
+}
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -21,43 +38,13 @@ export function httpError(status: number, message: string): Error & { status: nu
   return err;
 }
 
-const DEFAULT_SYSTEM_PERMISSIONS = [
-  { key: 'org.read', description: 'View organization details and members' },
-  { key: 'org.update', description: 'Update organization settings' },
-  { key: 'org.delete', description: 'Delete or archive organization' },
-  { key: 'org.member.invite', description: 'Invite new members to organization' },
-  { key: 'org.member.remove', description: 'Remove members from organization' },
-  { key: 'workspace.create', description: 'Create new workspaces' },
-  { key: 'workspace.read', description: 'View workspaces and projects' },
-  { key: 'workspace.update', description: 'Update workspace settings' },
-  { key: 'workspace.delete', description: 'Delete workspaces' },
-  { key: 'project.create', description: 'Create projects within workspaces' },
-  { key: 'project.read', description: 'View project boards and tasks' },
-  { key: 'project.update', description: 'Update project configuration' },
-  { key: 'project.delete', description: 'Delete projects' },
-  { key: 'board.create', description: 'Create boards' },
-  { key: 'board.read', description: 'View boards and task columns' },
-  { key: 'board.update', description: 'Update board layout and properties' },
-  { key: 'board.delete', description: 'Delete boards' },
-  { key: 'card.create', description: 'Create cards/tasks' },
-  { key: 'card.read', description: 'View cards, comments, and subtasks' },
-  { key: 'card.update', description: 'Edit cards, move lists, and change status' },
-  { key: 'card.delete', description: 'Archive or delete cards' },
-  { key: 'card.watch', description: 'Watch or unwatch cards for notifications' },
-  { key: 'card.time_log.create', description: 'Log time entries on tasks' },
-  { key: 'card.time_log.delete', description: 'Delete time entries' },
-  { key: 'reports.view', description: 'Access project analytics and burndown reports' },
-  { key: 'audit.view', description: 'Access organization compliance audit logs' },
-  { key: 'webhook.manage', description: 'Create and configure webhooks' },
-  { key: 'automation.manage', description: 'Create and configure automation rules' },
-  { key: 'docs.manage', description: 'Create and manage project wiki documents' },
-];
-
 export async function ensurePermissionsSeeded(db: Database) {
-  const existing = await db.select().from(permissions);
-  if (existing.length === 0) {
-    await db.insert(permissions).values(DEFAULT_SYSTEM_PERMISSIONS).onConflictDoNothing();
-  }
+  // Backfill from the registry — insert-only-if-empty would never add keys
+  // introduced after the first seed run. onConflictDoNothing keeps it idempotent.
+  await db
+    .insert(permissions)
+    .values(ALL_PERMISSION_KEYS.map((key) => ({ key, description: key })))
+    .onConflictDoNothing();
 }
 
 export async function getAvailablePermissions(db: Database) {
@@ -263,6 +250,8 @@ export async function updateCustomRole(
 
   const [updatedRole] = await db.select().from(roles).where(eq(roles.id, roleId));
 
+  await bumpRoleHolders(db, organizationId, roleId);
+
   return {
     ...updatedRole!,
     permissions: perms,
@@ -279,6 +268,17 @@ export async function deleteCustomRole(db: Database, organizationId: string, rol
   if (!role) throw httpError(404, 'Custom role not found');
   if (role.isSystemRole) throw httpError(403, 'Cannot delete system roles');
 
+  // Capture holders BEFORE the membership rows are deleted.
+  const holders = await db
+    .select({ userId: organizationRoleMembers.userId })
+    .from(organizationRoleMembers)
+    .where(
+      and(
+        eq(organizationRoleMembers.organizationId, organizationId),
+        eq(organizationRoleMembers.roleId, roleId)
+      )
+    );
+
   await db.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
   await db.delete(organizationRoleMembers).where(eq(organizationRoleMembers.roleId, roleId));
   const [deleted] = await db.delete(roles).where(eq(roles.id, roleId)).returning();
@@ -287,6 +287,9 @@ export async function deleteCustomRole(db: Database, organizationId: string, rol
   // of silently dying (best-effort, never breaks the deletion).
   const { flagStaleRules } = await import('../automations/project-engine');
   await flagStaleRules(db, organizationId, 'role', roleId).catch(() => {});
+
+  await Promise.all(holders.map((h) => bumpUserCache(h.userId)));
+  await bumpOrgPermVersion(organizationId);
 
   return deleted;
 }
@@ -439,6 +442,8 @@ export async function assignTeamRole(
     .values({ organizationId, roleId, userId, assignedBy: actorId })
     .onConflictDoNothing()
     .returning();
+  await bumpUserCache(userId);
+  await bumpOrgPermVersion(organizationId);
   return row ?? { organizationId, roleId, userId };
 }
 
@@ -457,6 +462,8 @@ export async function removeTeamRole(
         eq(organizationRoleMembers.userId, userId)
       )
     );
+  await bumpUserCache(userId);
+  await bumpOrgPermVersion(organizationId);
   return { success: true };
 }
 

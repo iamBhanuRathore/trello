@@ -1,4 +1,4 @@
-import { eq, and, isNull, or } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { users, organizationMembers } from '../../db/schema/index';
 import { cachedTTL, userCacheKey, bumpUserCache } from '../../lib/cache';
@@ -56,6 +56,14 @@ async function loadMe(db: Database, userId: string) {
 
   const hasPassword = Boolean(user.passwordHash && user.passwordHash.trim().length > 0);
 
+  // Effective permission set — single resolver shared with requirePermission().
+  // No active org membership → empty set (fail closed; backend still decides).
+  let permissionList: string[] = [];
+  if (membership?.organizationId) {
+    const { resolveUserPermissions } = await import('../../lib/permissions-resolver');
+    permissionList = [...(await resolveUserPermissions(db, userId, membership.organizationId))];
+  }
+
   return {
     id: user.id,
     email: user.email,
@@ -71,6 +79,7 @@ async function loadMe(db: Database, userId: string) {
     organizationId: membership?.organizationId ?? null,
     role: membership?.role ?? null,
     status: membership?.status ?? 'active',
+    permissions: permissionList,
   };
 }
 
@@ -183,63 +192,11 @@ export async function getMyPermissions(db: Database, userId: string, organizatio
           ? 'Viewer'
           : 'Member';
 
-  // 2. Ensure permissions are available and fetch
-  const { ensurePermissionsSeeded } = await import('../roles/service');
-  await ensurePermissionsSeeded(db);
-  const {
-    permissions: permsTable,
-    roles: rolesTable,
-    rolePermissions: rpTable,
-  } = await import('../../db/schema/index');
+  // 2-3. Granted set via the single shared resolver (same as requirePermission).
+  const { resolveUserPermissions } = await import('../../lib/permissions-resolver');
+  const grantedKeys = await resolveUserPermissions(db, userId, organizationId);
+  const { permissions: permsTable } = await import('../../db/schema/index');
   const allPerms = await db.select().from(permsTable);
-
-  // 3. If superadmin or org owner/admin, they have all permissions
-  let grantedKeys: Set<string>;
-  if (user.isPlatformAdmin || rawRole === 'org_owner' || rawRole === 'org_admin') {
-    grantedKeys = new Set(allPerms.map((p) => p.key));
-  } else {
-    // Look up rolePermissions for their role
-    const matchedRoleName =
-      rawRole === 'viewer'
-        ? 'Viewer'
-        : rawRole === 'billing_manager'
-          ? 'Billing Manager'
-          : rawRole === 'workspace_admin'
-            ? 'Workspace Admin'
-            : 'Member';
-    const roleRows = await db
-      .select({ permKey: permsTable.key })
-      .from(rpTable)
-      .innerJoin(rolesTable, eq(rolesTable.id, rpTable.roleId))
-      .innerJoin(permsTable, eq(permsTable.id, rpTable.permissionId))
-      .where(
-        and(
-          eq(rolesTable.name, matchedRoleName),
-          or(
-            eq(rolesTable.organizationId, organizationId),
-            and(eq(rolesTable.isSystemRole, true), isNull(rolesTable.organizationId))
-          )
-        )
-      );
-
-    grantedKeys = new Set(roleRows.map((r) => r.permKey));
-    if (rawRole === 'member') {
-      [
-        'card.create',
-        'card.read',
-        'card.update',
-        'card.watch',
-        'card.time_log.create',
-        'board.read',
-        'project.read',
-        'workspace.read',
-      ].forEach((k) => grantedKeys.add(k));
-    } else if (rawRole === 'viewer') {
-      ['card.read', 'board.read', 'project.read', 'workspace.read'].forEach((k) =>
-        grantedKeys.add(k)
-      );
-    }
-  }
 
   // 4. Group permissions into categories
   const categories: Record<

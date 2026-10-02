@@ -16,6 +16,7 @@ import { type PermissionKey, PlanTier } from '@boardly/shared-types';
 import { getDataClient, isRedisAvailable } from '../redis/client';
 import { getCachedAllow, setCachedAllow, isFamilyBurned } from '../lib/cache';
 import { logger } from '../lib/logger';
+import { PERMISSION_ALIASES, permissionDenied } from '../lib/permissions-resolver';
 
 const JWT_SECRET = new TextEncoder().encode(env.JWT_SECRET);
 const JWT_ISSUER = 'boardly';
@@ -245,7 +246,7 @@ export function requirePermission(permissionKey: PermissionKey) {
   }: {
     user?: AuthContext;
     set: { status?: number | string };
-  }): Promise<{ error: string } | undefined> => {
+  }): Promise<{ error: string; details?: { code: string; permission: string } } | undefined> => {
     if (!user) {
       set.status = 401;
       return { error: 'Unauthorized — missing Bearer token' };
@@ -256,14 +257,11 @@ export function requirePermission(permissionKey: PermissionKey) {
       return undefined;
     }
 
-    // Map alias keys if granular permission isn't directly seeded
+    // Alias-aware check — single source of truth in permissions-resolver.
+    const aliasKeys = PERMISSION_ALIASES[permissionKey];
     let permCondition: SQL | undefined = eq(permissions.key, permissionKey);
-    if (permissionKey === 'card.move') {
-      permCondition = or(eq(permissions.key, 'card.move'), eq(permissions.key, 'card.update'));
-    } else if (permissionKey === 'card.archive') {
-      permCondition = or(eq(permissions.key, 'card.archive'), eq(permissions.key, 'card.delete'));
-    } else if (permissionKey === 'board.archive') {
-      permCondition = or(eq(permissions.key, 'board.archive'), eq(permissions.key, 'board.delete'));
+    if (aliasKeys) {
+      permCondition = or(...aliasKeys.map((k) => eq(permissions.key, k)));
     }
 
     // If user.organizationId is undefined/null, look up their active organization membership
@@ -285,7 +283,10 @@ export function requirePermission(permissionKey: PermissionKey) {
 
     if (!orgId) {
       set.status = 403;
-      return { error: 'Forbidden — user does not belong to an active organization' };
+      return {
+        error: 'Forbidden — user does not belong to an active organization',
+        details: { code: 'PERMISSION_DENIED', permission: permissionKey },
+      };
     }
 
     const activeOrgId = orgId;
@@ -334,7 +335,7 @@ export function requirePermission(permissionKey: PermissionKey) {
 
       if (result.length === 0) {
         set.status = 403;
-        return { error: `Forbidden — missing permission: ${permissionKey}` };
+        return permissionDenied(permissionKey);
       }
 
       await setCachedAllow(activeOrgId, user.userId, permissionKey);

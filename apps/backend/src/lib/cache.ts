@@ -18,8 +18,9 @@ import { logger } from './logger';
  *   pv:{projectId}            project version (bumped on board mutation)
  *   cb:{cardId}               card -> boardId map (for cross-bumps, TTL 3600)
  *   r:v1:{scope}:{ver}:{rest} cached JSON payload, TTL 300 (or shorter per-call)
- *   perm:{org}:{user}:{perm}  RBAC allow marker '1', TTL 60
- *   u:{userId} / n:{user}:{org} / q:{org}:{hash} / misc TTL-only keys (see below)
+ *   perm:{org}:{ver}:{user}:{perm}  RBAC allow marker '1', TTL 60
+ *   permver:{org}             RBAC epoch, bumped on role/permission changes
+ *   u:v2:{userId} / n:{user}:{org} / q:{org}:{hash} / misc TTL-only keys (see below)
  *
  * Tenant-isolation rule: every board/card `rest` MUST start with `{orgId}:`
  * (e.g. `${orgId}:full`). Version keys are bare IDs, so an unprefixed rest
@@ -348,7 +349,9 @@ export async function invalidateTTL(key: string): Promise<void> {
 }
 
 export function userCacheKey(userId: string): string {
-  return `u:${userId}`;
+  // v2: payload includes permissions[] — pre-deploy entries lack the field and
+  // must never be served, so the version bump orphans them (TTL expiry cleans up).
+  return `u:v2:${userId}`;
 }
 
 export async function bumpUserCache(userId: string): Promise<void> {
@@ -453,8 +456,39 @@ export async function isFamilyBurned(familyId: string): Promise<boolean> {
 
 const PERM_TTL_SECONDS = 60;
 
-export function permCacheKey(orgId: string, userId: string, permKey: string): string {
-  return `perm:${orgId}:${userId}:${permKey}`;
+export function permVersionKey(orgId: string): string {
+  return `permver:${orgId}`;
+}
+
+/** Current permission epoch for an org (defaults to '1'). Bumped on role changes. */
+export async function getPermVersion(orgId: string): Promise<string> {
+  const redis = redisOrNull();
+  if (!redis) return '1';
+  try {
+    return (await redis.get(permVersionKey(orgId))) ?? '1';
+  } catch {
+    return '1';
+  }
+}
+
+/** O(1) atomic invalidation of every cached allow in the org. */
+export async function bumpOrgPermVersion(orgId: string): Promise<void> {
+  const redis = redisOrNull();
+  if (!redis) return;
+  try {
+    await redis.incr(permVersionKey(orgId));
+  } catch {
+    // Best-effort; TTL bounds staleness.
+  }
+}
+
+export async function permCacheKey(
+  orgId: string,
+  userId: string,
+  permKey: string
+): Promise<string> {
+  const ver = await getPermVersion(orgId);
+  return `perm:${orgId}:${ver}:${userId}:${permKey}`;
 }
 
 export async function getCachedAllow(
@@ -465,7 +499,7 @@ export async function getCachedAllow(
   const redis = redisOrNull();
   if (!redis) return false;
   try {
-    return (await redis.get(permCacheKey(orgId, userId, permKey))) === '1';
+    return (await redis.get(await permCacheKey(orgId, userId, permKey))) === '1';
   } catch {
     return false;
   }
@@ -480,7 +514,7 @@ export async function setCachedAllow(
   const redis = redisOrNull();
   if (!redis) return;
   try {
-    await redis.set(permCacheKey(orgId, userId, permKey), '1', 'EX', PERM_TTL_SECONDS);
+    await redis.set(await permCacheKey(orgId, userId, permKey), '1', 'EX', PERM_TTL_SECONDS);
   } catch {
     // Best-effort.
   }
@@ -488,10 +522,6 @@ export async function setCachedAllow(
 
 /** Drop all cached allows for an org (call after role/permission changes). */
 export async function clearOrgPermCache(orgId: string): Promise<void> {
-  const redis = redisOrNull();
-  if (!redis) return;
-  // Version-free exact keys can't be enumerated without SCAN; rely on 60s TTL.
-  // This hook exists so role-change call sites have a single place to extend
-  // (e.g. per-user DELs) if stricter revocation is ever required.
-  logger.debug({ org_id: orgId }, 'perm cache clear requested (TTL-bounded)');
+  await bumpOrgPermVersion(orgId);
+  logger.debug({ org_id: orgId }, 'perm cache version bumped');
 }

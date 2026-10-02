@@ -13,7 +13,7 @@ import {
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
 import { logger } from '../../lib/logger';
-import { cachedTTL } from '../../lib/cache';
+import { cachedTTL, bumpUserCache, bumpOrgPermVersion } from '../../lib/cache';
 import {
   renderAccountDeactivatedEmail,
   renderAccountReactivatedEmail,
@@ -157,6 +157,11 @@ export async function updateMemberRole(
     });
   }
 
+  // Role change alters the effective permission set — drop cached profile +
+  // bump the org permission epoch so stale allows die immediately (not in 60s).
+  await bumpUserCache(member.userId);
+  await bumpOrgPermVersion(orgId);
+
   return member;
 }
 
@@ -257,6 +262,9 @@ export async function deactivateMember(
   const { flagStaleRules } = await import('../automations/project-engine');
   await flagStaleRules(db, orgId, 'user', member.userId).catch(() => {});
 
+  await bumpUserCache(member.userId);
+  await bumpOrgPermVersion(orgId);
+
   return updated;
 }
 
@@ -294,6 +302,9 @@ export async function reactivateMember(
     target: member.userId,
     targetId: member.id,
   });
+
+  await bumpUserCache(member.userId);
+  await bumpOrgPermVersion(orgId);
 
   // Asynchronously dispatch reactivation notice email (fire-and-forget)
   (async () => {
@@ -506,6 +517,9 @@ export async function removeMember(
       targetId: member.id,
     });
   }
+
+  await bumpUserCache(member.userId);
+  await bumpOrgPermVersion(orgId);
 
   return member;
 }
