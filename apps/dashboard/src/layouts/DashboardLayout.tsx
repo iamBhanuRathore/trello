@@ -1,7 +1,6 @@
 import { Suspense, lazy, useState } from 'react';
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Button } from '@boardly/ui/button';
-import { Plus, ChevronRight, Home, FolderPlus, Layout } from 'lucide-react';
+import { Outlet, Link, useLocation } from 'react-router-dom';
+import { ChevronRight, Home } from 'lucide-react';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@boardly/ui/sidebar';
 import { AppSidebar } from '../components/AppSidebar';
 import { NotificationDropdown } from '../components/NotificationDropdown';
@@ -15,12 +14,6 @@ const AppearanceModal = lazy(() =>
   import('../components/AppearanceModal').then((m) => ({ default: m.AppearanceModal }))
 );
 import { RouteFallback } from '../components/common/RouteFallback';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@boardly/ui/dropdown-menu';
 import { GlobalChatDock } from '../components/chat/GlobalChatDock';
 import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal';
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts';
@@ -28,7 +21,6 @@ import { GlobalCreateWorkspaceDialog } from '../components/workspaces';
 
 export function DashboardLayout() {
   const location = useLocation();
-  const navigate = useNavigate();
 
   const [isTrashOpen, setIsTrashOpen] = useState(false);
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
@@ -132,45 +124,11 @@ export function DashboardLayout() {
             </nav>
           </div>
 
-          {/* Right: Search, Notifications, Fast Create, Avatar */}
+          {/* Right: Search, Notifications, Avatar */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <SearchPalette triggerContext="navbar" />
 
             <NotificationDropdown />
-
-            {/* Fast Create Action Button */}
-            <DropdownMenu>
-              <DropdownMenuTrigger>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 h-8 px-2.5 text-xs font-semibold cursor-pointer gap-1"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span className="hidden md:inline">Create</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                sideOffset={8}
-                className="w-52 min-w-[210px] p-1.5 rounded-xl border border-border/80 shadow-lg bg-popover/95 backdrop-blur-md"
-              >
-                <DropdownMenuItem
-                  className="cursor-pointer text-xs font-medium px-2.5 py-2 rounded-lg gap-2.5"
-                  onClick={() => navigate('/')}
-                >
-                  <FolderPlus className="w-4 h-4 text-primary shrink-0" />
-                  <span>Create Project</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="cursor-pointer text-xs font-medium px-2.5 py-2 rounded-lg gap-2.5"
-                  onClick={() => navigate('/')}
-                >
-                  <Layout className="w-4 h-4 text-primary shrink-0" />
-                  <span>Create Board</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
 
             {/* Profile Avatar Quick Menu */}
             <div className="hidden sm:flex items-center border-l pl-3 ml-1">

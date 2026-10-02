@@ -2506,3 +2506,9 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
 - **What:** Removed the "Create Workspace" item from the header `+ Create` dropdown (`DashboardLayout`) — workspace creation now lives only on the Workspaces page header button and the sidebar "+" (both permission-gated, both fixed in `22566fc`). Removed the now-unused `useOpenCreateWorkspace`/`usePermissions` wiring and `Briefcase` icon from the layout; `GlobalCreateWorkspaceDialog` stays mounted for the sidebar entry point.
 - **Files:** `apps/dashboard/src/layouts/DashboardLayout.tsx`.
 - **Tests & Validation:** dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on touched file.
+
+### 2026-10-03 — Remove Header Create Dropdown Entirely
+
+- **What:** Removed the whole header `+ Create` fast-create dropdown (`Create Project`/`Create Board` items that merely navigated to `/`) from `DashboardLayout` per review — workspace creation lives on the Workspaces page header button (fixed in `22566fc`) and the sidebar "+" via the still-mounted `GlobalCreateWorkspaceDialog`. Cleaned up now-unused `DropdownMenu`, `Button`, icon, and `useNavigate` imports.
+- **Files:** `apps/dashboard/src/layouts/DashboardLayout.tsx`.
+- **Tests & Validation:** dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on touched file.
