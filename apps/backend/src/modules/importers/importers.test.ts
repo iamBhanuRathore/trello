@@ -157,4 +157,59 @@ describe('Importers Service', () => {
     expect(result.stats.cardsCount).toBe(3);
     genericBoardId = result.board.id;
   });
+
+  it('should create and attach labels when task imports include label names', async () => {
+    const result = await importGenericTasks(db, orgId, projectId, {
+      boardName: 'Labeled Tasks Board',
+      lists: [
+        {
+          name: 'To Do',
+          tasks: [
+            { title: 'Tagged Alpha', labels: ['Frontend', 'Feature'] },
+            { title: 'Tagged Beta', labels: ['Frontend'] },
+            { title: 'Untagged Gamma' },
+          ],
+        },
+      ],
+    });
+    expect(result.stats.labelsCount).toBe(2);
+
+    const boardLabels = await db
+      .select()
+      .from(schema.labels)
+      .where(eq(schema.labels.boardId, result.board.id));
+    expect(boardLabels.length).toBe(2);
+
+    const boardCards = await db
+      .select()
+      .from(schema.cards)
+      .where(eq(schema.cards.organizationId, orgId));
+    const alpha = boardCards.find((c) => c.title === 'Tagged Alpha');
+    const links = await db
+      .select()
+      .from(schema.cardLabels)
+      .where(eq(schema.cardLabels.cardId, alpha!.id));
+    expect(links.length).toBe(2);
+
+    // Cleanup: this board is extra to the suite's tracked ids.
+    await db.delete(schema.cardLabels).where(
+      inArray(
+        schema.cardLabels.cardId,
+        boardCards
+          .filter((c) => ['Tagged Alpha', 'Tagged Beta', 'Untagged Gamma'].includes(c.title))
+          .map((c) => c.id)
+      )
+    );
+    await db.delete(schema.cards).where(
+      inArray(
+        schema.cards.id,
+        boardCards
+          .filter((c) => ['Tagged Alpha', 'Tagged Beta', 'Untagged Gamma'].includes(c.title))
+          .map((c) => c.id)
+      )
+    );
+    await db.delete(schema.lists).where(eq(schema.lists.boardId, result.board.id));
+    await db.delete(schema.labels).where(eq(schema.labels.boardId, result.board.id));
+    await db.delete(schema.boards).where(eq(schema.boards.id, result.board.id));
+  });
 });

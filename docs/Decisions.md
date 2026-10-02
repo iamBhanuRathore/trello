@@ -24,6 +24,14 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Task-list importer now honors per-task labels
+
+**Context:** Follow-up to the "missing tags" report: boards built through the structured-tasks importer always landed 100% tag-less — the schema had no labels field (`labelsCount: 0` hardcoded) while the Trello importer carried labels. Import parity gap, not a renderer bug.
+
+**Decision:** `ImportTasksBody` accepts optional `labels: string[]` per task; the service creates each distinct name once on the new board (palette-cycled colors) and attaches them. Frontend forwards user JSON untouched, so no UI change was needed. Covered by a new importer test (2 labels created, Alpha linked ×2).
+
+**Consequences:** Task imports can now carry tags; Trello path unchanged.
+
 ### 2026-10-03 — Board tags "missing" was missing data; fixed label cross-board hole
 
 **Context:** Board showed most cards without tags. Verified renderer (`KanbanCardView`), `getBoardFull` labels join, cache bumps (`bumpForCard` → card+board) all correct; DB truth was 11/14 cards with zero `card_labels` rows while the board's 8 labels were intact — the `[Cloud]` cards were created through a path that assigns no labels, so there was nothing to render. No rendering fix was needed.

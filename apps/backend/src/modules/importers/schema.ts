@@ -21,6 +21,8 @@ export const ImportTasksBodySchema = t.Object({
           description: t.Optional(t.String({ maxLength: 20000 })),
           storyPoints: t.Optional(t.Number({ minimum: 0, maximum: 1000 })),
           dueDate: t.Optional(t.String({ maxLength: 64 })),
+          // Label names — auto-created on the new board when missing.
+          labels: t.Optional(t.Array(t.String({ minLength: 1, maxLength: 100 }), { maxItems: 20 })),
         })
       ),
     }),

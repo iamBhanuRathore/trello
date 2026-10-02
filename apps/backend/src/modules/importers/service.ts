@@ -226,6 +226,48 @@ export async function importGenericTasks(
   let listsCount = 0;
   let cardsCount = 0;
 
+  // Labels are opt-in per task (`labels: ["Frontend", ...]`). Collect the
+  // distinct names first so each board label is created exactly once.
+  const labelNames: string[] = [];
+  {
+    const seen = new Set<string>();
+    for (const listData of input.lists) {
+      const tasks = Array.isArray(listData.tasks) ? listData.tasks : [];
+      for (const task of tasks) {
+        for (const raw of task.labels ?? []) {
+          const name = raw.trim();
+          if (name && !seen.has(name)) {
+            seen.add(name);
+            labelNames.push(name);
+          }
+        }
+      }
+    }
+  }
+  const LABEL_PALETTE = [
+    '#3b82f6',
+    '#10b981',
+    '#8b5cf6',
+    '#f97316',
+    '#ec4899',
+    '#06b6d4',
+    '#eab308',
+    '#ef4444',
+  ];
+  const labelIdByName = new Map<string, string>();
+  for (let i = 0; i < labelNames.length; i++) {
+    const [created] = await db
+      .insert(labels)
+      .values({
+        boardId: newBoard!.id,
+        name: labelNames[i]!,
+        color: LABEL_PALETTE[i % LABEL_PALETTE.length]!,
+      })
+      .returning();
+    if (created) labelIdByName.set(labelNames[i]!, created.id);
+  }
+  let labelsCount = labelNames.length;
+
   for (let i = 0; i < input.lists.length; i++) {
     const listData = input.lists[i]!;
     const [createdList] = await db
@@ -242,16 +284,30 @@ export async function importGenericTasks(
       const tasks = Array.isArray(listData.tasks) ? listData.tasks : [];
       for (let j = 0; j < tasks.length; j++) {
         const task = tasks[j]!;
-        await db.insert(cards).values({
-          organizationId,
-          listId: createdList.id,
-          title: task.title,
-          description: task.description || null,
-          storyPoints: task.storyPoints,
-          dueDate: task.dueDate ? new Date(task.dueDate) : null,
-          position: (j + 1) * 65536,
-        });
+        const [createdCard] = await db
+          .insert(cards)
+          .values({
+            organizationId,
+            listId: createdList.id,
+            title: task.title,
+            description: task.description || null,
+            storyPoints: task.storyPoints,
+            dueDate: task.dueDate ? new Date(task.dueDate) : null,
+            position: (j + 1) * 65536,
+          })
+          .returning();
         cardsCount++;
+        if (createdCard) {
+          for (const raw of task.labels ?? []) {
+            const labelId = labelIdByName.get(raw.trim());
+            if (labelId) {
+              await db
+                .insert(cardLabels)
+                .values({ cardId: createdCard.id, labelId })
+                .onConflictDoNothing();
+            }
+          }
+        }
       }
     }
   }
@@ -261,7 +317,7 @@ export async function importGenericTasks(
     stats: {
       listsCount,
       cardsCount,
-      labelsCount: 0,
+      labelsCount,
       checklistsCount: 0,
     },
   };

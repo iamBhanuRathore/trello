@@ -111,6 +111,12 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - What's next:
 ```
 
+### 2026-10-03 — Task importer label support (import parity fix)
+
+- What was done: `ImportTasksBody` tasks accept optional `labels: string[]`; `importGenericTasks` creates each distinct name once on the new board and attaches per card; `labelsCount` stat now real. Realtime merge and card/label caches re-verified (label/assignee events refetch by design — no live-staleness).
+- Tests: importer suite 3/3 (new labels case); backend typecheck/lint clean.
+- What's next: assign tags on existing untagged cards via task view.
+
 ### 2026-10-03 — Missing board tags diagnosis + label isolation fix
 
 - What was done: diagnosed "tags missing" as missing data (11/14 cards have zero `card_labels`; board labels intact; renderer/API/cache verified correct), not a rendering bug. Fixed adjacent real bug: `attachLabelToCard` never verified the label side, allowing cross-board/org attachments → stray tags. Now 400s unless same board.
