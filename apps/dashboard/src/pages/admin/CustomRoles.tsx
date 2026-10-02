@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getRoles, getPermissions, createRole, updateRole, deleteRole } from '../../lib/api';
+import {
+  getRoles,
+  getPermissions,
+  createRole,
+  updateRole,
+  deleteRole,
+  getApiErrorMessage,
+} from '../../lib/api';
 import { Shield, Plus, Trash2, Edit2, Check, Lock, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
@@ -13,6 +21,8 @@ import {
   DialogDescription,
 } from '@boardly/ui/dialog';
 import { QueryError } from '../../components/common/QueryError';
+import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 const CATEGORY_NAMES: Record<string, string> = {
   org: 'Organization & Members',
@@ -33,6 +43,12 @@ export function CustomRoles() {
   const [editingRole, setEditingRole] = useState<any>(null);
   const [roleName, setRoleName] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [roleToDelete, setRoleToDelete] = useState<any>(null);
+
+  const { handleOpenChange: handleDeleteDialogOpenChange } = useDialogClose({
+    isOpen: roleToDelete !== null,
+    onClose: () => setRoleToDelete(null),
+  });
 
   const {
     data: roles = [],
@@ -74,6 +90,10 @@ export function CustomRoles() {
     mutationFn: (id: string) => deleteRole(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] });
+      queryClient.invalidateQueries({ queryKey: ['teamRoles'] });
+    },
+    onError: (err: unknown) => {
+      toast.error(getApiErrorMessage(err, 'Failed to delete role'));
     },
   });
 
@@ -267,7 +287,7 @@ export function CustomRoles() {
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7 text-muted-foreground hover:text-rose-500"
-                        onClick={() => deleteMutation.mutate(role.id)}
+                        onClick={() => setRoleToDelete(role)}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -311,6 +331,20 @@ export function CustomRoles() {
           ))}
         </div>
       )}
+
+      {/* Delete confirmation — destructive, irreversible, never one click */}
+      <ConfirmDialog
+        open={roleToDelete !== null}
+        onOpenChange={handleDeleteDialogOpenChange}
+        title={`Delete role “${roleToDelete?.name ?? ''}”?`}
+        description={`Members assigned this role immediately lose its ${roleToDelete?.permissions?.length ?? 0} granted permission${(roleToDelete?.permissions?.length ?? 0) === 1 ? '' : 's'} and fall back to their base organization role. This cannot be undone.`}
+        confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete Role'}
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={async () => {
+          if (roleToDelete) await deleteMutation.mutateAsync(roleToDelete.id);
+        }}
+      />
 
       {/* Role Editor Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
