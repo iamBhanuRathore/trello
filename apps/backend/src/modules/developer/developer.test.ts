@@ -5,6 +5,7 @@ import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { eq } from 'drizzle-orm';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 import {
   generateApiKey,
   listApiKeys,
@@ -34,8 +35,8 @@ describe('Developer API Keys & Marketplace Service', () => {
     client = postgres(TEST_DB_URL, { max: 1 });
     db = drizzle(client, { schema }) as unknown as Database;
 
-    const email = `dev_admin_${Date.now()}@example.com`;
-    const slug = `dev-org-${Date.now()}`;
+    const email = uniqueTestEmail('dev_admin');
+    const slug = uniqueTestSlug('dev-org');
 
     const { organization } = await signUp(db, {
       name: 'Developer Admin',
@@ -50,8 +51,7 @@ describe('Developer API Keys & Marketplace Service', () => {
   afterAll(async () => {
     await db.delete(schema.installedApps).where(eq(schema.installedApps.organizationId, orgId));
     await db.delete(schema.apiKeys).where(eq(schema.apiKeys.organizationId, orgId));
-    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await deleteTestOrg(db, orgId);
     await client.end();
   });
 

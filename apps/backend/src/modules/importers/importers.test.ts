@@ -5,6 +5,7 @@ import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { eq, inArray } from 'drizzle-orm';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 import { createProject } from '../projects/service';
 import { importTrelloBoard, importGenericTasks } from './service';
 import { listLists } from '../lists/service';
@@ -26,8 +27,8 @@ describe('Importers Service', () => {
     client = postgres(TEST_DB_URL, { max: 1 });
     db = drizzle(client, { schema });
 
-    const email = `import_${Date.now()}@example.com`;
-    const slug = `import-org-${Date.now()}`;
+    const email = uniqueTestEmail('import');
+    const slug = uniqueTestSlug('import-org');
 
     const { organization } = await signUp(db, {
       name: 'Import Admin',
@@ -64,8 +65,7 @@ describe('Importers Service', () => {
     }
     await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
     await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
-    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await deleteTestOrg(db, orgId);
     await client.end();
   });
 

@@ -5,6 +5,7 @@ import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { eq } from 'drizzle-orm';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
 import { createList } from '../lists/service';
@@ -38,8 +39,8 @@ describe('Docs & Wiki Service', () => {
     client = postgres(TEST_DB_URL, { max: 1 });
     db = drizzle(client, { schema }) as unknown as Database;
 
-    const email = `docs_${Date.now()}@example.com`;
-    const slug = `docs-org-${Date.now()}`;
+    const email = uniqueTestEmail('docs');
+    const slug = uniqueTestSlug('docs-org');
 
     const { user, organization } = await signUp(db, {
       name: 'Docs Admin',
@@ -93,8 +94,7 @@ describe('Docs & Wiki Service', () => {
     await db.delete(schema.boards).where(eq(schema.boards.id, boardId));
     await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
     await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
-    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await deleteTestOrg(db, orgId);
     await client.end();
   });
 
