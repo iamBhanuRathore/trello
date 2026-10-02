@@ -1053,3 +1053,29 @@ Decomposed `service.ts` into 9 focused domain submodules under `apps/backend/src
 
 **Consequences:**
 Maintains 100% backwards compatibility with zero changes required in any route or test caller. All 31 backend integration tests across cards, boards, priorities, timetracking, and git pass with 0 errors. Backend typecheck passes with 0 warnings.
+
+---
+
+### 2026-10-03 — Kanban BoardView Component Decomposition (1,968 → 390 lines)
+
+**Context:** `apps/dashboard/src/pages/BoardView.tsx` had grown to nearly 2,000 lines (1,968 lines). It housed top-level board routing, aggregate data queries, drag-and-drop collision detection, optimistic list rebalancing, board rename and delete dialogs, list columns, `@tanstack/react-virtual` list virtualizer, inline add list form, card quick creation forms, sortable card wrappers, card view tiles with agile badges and assignees, and hover preview portal overlays all within a single file.
+
+**Alternatives considered:**
+
+- Keeping the file monolithic (rejected — high cognitive load, difficult to optimize re-renders during drag gestures).
+- Unstructured slicing (rejected — clean division into Kanban-specific subcomponents under `components/board/kanban/` keeps responsibilities clear).
+
+**Decision:**
+Decomposed `BoardView.tsx` into a lean coordinator (~390 lines) orchestrating specialized subcomponents in `apps/dashboard/src/components/board/kanban/`:
+
+1. `types.ts`: KanbanCard, KanbanList interfaces, constants (`CARD_ESTIMATED_HEIGHT`, `VIRTUALIZE_THRESHOLD`, `dropAnimation`).
+2. `CardHoverPreviewPortal.tsx`: Floating hover preview portal with agile task details.
+3. `KanbanCardView.tsx`: Memoized card tile rendering priority, story points, stage badges, due dates, assignees, subtasks, checklists, and comments.
+4. `SortableCard.tsx`: `@dnd-kit/sortable` wrapper handling CSS transitions and click forwarding.
+5. `AddListForm.tsx`: Dedicated list creator with dirty state and keyboard shortcuts (`Enter`/`Escape`).
+6. `ListColumn.tsx`: Memoized virtualized column (`@tanstack/react-virtual`) with dynamic height measurement, quick card composer, full task creator trigger, and rename/delete list dialogs (adhering to Rule 10 `useDialogClose`).
+7. `BoardHeader.tsx`: Title display, presence avatars, quick action triggers, and board rename/delete dialogs (adhering to Rule 10 `useDialogClose`).
+8. `index.ts`: Public barrel exports.
+
+**Consequences:**
+BoardView coordinator is reduced by ~80% (1,968 → 390 lines). Preserves 100% feature parity, URL search param synchronization (`?card=`), drag-and-drop animations, and dialog close contracts. Typecheck clean and dashboard Vite build passes in <600ms.

@@ -2357,3 +2357,17 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   9. **`card-crud.ts` (882 lines):** Primary card queries, subtask listings, creation, deletion, and patch mutations.
   10. **`service.ts` (24 lines):** Clean facade re-exporting all submodules with 100% backward compatibility for all backend routes and tests.
 - **Tests & Validation:** Full backend test suite for cards and dependent modules passes (31 pass / 0 fail); backend typecheck clean (`tsc --noEmit`).
+
+### 2026-10-03 — Kanban BoardView God-Component Decomposition (1,968 → 390 lines)
+
+- **What:** Refactored the monolithic 1,968-line `apps/dashboard/src/pages/BoardView.tsx` into modular Kanban subcomponents under `apps/dashboard/src/components/board/kanban/`:
+  1. **`types.ts`:** Domain interfaces (`KanbanCard`, `KanbanList`) and shared constants (`CARD_ESTIMATED_HEIGHT`, `VIRTUALIZE_THRESHOLD`, `dropAnimation`).
+  2. **`CardHoverPreviewPortal.tsx`:** Floating hover preview portal with agile task details (due date, priority, checklists, assignees).
+  3. **`KanbanCardView.tsx`:** Memoized card tile rendering priority, story points, stage badges, due dates, assignees, subtasks, checklists, and comments.
+  4. **`SortableCard.tsx`:** `@dnd-kit/sortable` wrapper handling CSS transitions and click forwarding.
+  5. **`AddListForm.tsx`:** Inline list creator with keyboard shortcuts (`Enter`/`Escape`).
+  6. **`ListColumn.tsx`:** Memoized virtualized column (`@tanstack/react-virtual`) with dynamic height measurement, quick card composer, full task creator trigger, and rename/delete list dialogs (adhering to Rule 10 `useDialogClose`).
+  7. **`BoardHeader.tsx`:** Title display, presence avatars, quick action triggers (Create Task, Intake Forms, Automations), and board rename/delete dialogs (adhering to Rule 10 `useDialogClose`).
+  8. **`index.ts`:** Public barrel exports.
+  9. **`BoardView.tsx` Coordinator (390 lines):** Coordinates dnd-kit collision detection, optimistic card movement, URL `?card=` dialog sync, and code-split heavy modal launchers.
+- **Tests & Validation:** Full dashboard typecheck (`tsc -b --noEmit`) passes with 0 errors; production Vite build succeeds in 599ms.
