@@ -2433,3 +2433,14 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   7. **`chat-telegram.ts`:** Message pinning, listPinnedMessages, and cross-channel message forwarding with attachments clone.
   8. **`service.ts` Facade (13 lines):** 100% backward-compatible re-exports of all submodule functions.
 - **Tests & Validation:** Backend typecheck (`tsc --noEmit`) clean; dashboard typecheck (`tsc -b --noEmit`) clean; all 21 chat integration tests pass (`chat.test.ts`), plus `inbox.test.ts` (9/9) and `media.test.ts` (28/28).
+
+### 2026-10-03 — Backend Auth Service Modularization (1,198 → 11 lines facade)
+
+- **What:** Refactored monolithic 1,198-line `apps/backend/src/modules/auth/service.ts` into modular domain submodules under `apps/backend/src/modules/auth/`:
+  1. **`auth-common.ts`:** Errors (`httpError`), cryptographic token hashing (`hashToken`, `hashRequestMeta`), string duration parsing (`durationToMs`), and lifetime configs (`refreshLifetimes`, `refreshReuseWindow`).
+  2. **`auth-tokens.ts`:** Access/refresh token pair minting (`issueTokenPair`), sliding refresh token families with grace-window concurrency handling (`refreshTokens`), family burning (`burnRefreshFamily`), and session revocations (`revokeAllUserSessions`, `signOut`).
+  3. **`auth-lifecycle.ts`:** User signup with transactional org creation, default subscription, and role seeding (`signUp`), plus credential verification and login tracking (`signIn`).
+  4. **`auth-user.ts`:** Cached user session profile (`getMe`), profile mutations (`updateProfile`), password modification with cross-session burn (`changePassword`), and RBAC permissions grouping (`getMyPermissions`).
+  5. **`auth-invitations.ts`:** Invitation token lookup (`getInvitationInfo`) and acceptance with account provisioning (`acceptInvitation`).
+  6. **`service.ts` Facade (11 lines):** 100% backward-compatible re-exports of all submodule functions.
+- **Tests & Validation:** Backend typecheck (`tsc --noEmit`) clean; dashboard typecheck (`tsc -b --noEmit`) clean; all 26 auth tests pass (`auth.test.ts`, `refresh.test.ts`, `workos.test.ts`).

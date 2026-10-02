@@ -24,6 +24,24 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Backend Auth Service Modularization (Domain Submodules Pattern)
+
+**Context:** `apps/backend/src/modules/auth/service.ts` reached 1,198 lines containing token pair generation, sliding refresh token families, grace window reuse handling, family burning, user signup/signin workflows, profile updates, password hashing, RBAC permissions categorization, and invitation acceptance.
+
+**Decision:**
+
+1. Decomposed into cohesive domain submodules under `apps/backend/src/modules/auth/`:
+   - `auth-common.ts`: Common error utility (`httpError`), cryptographic token hashing (`hashToken`, `hashRequestMeta`), duration converters (`durationToMs`), and lifetime configs (`refreshLifetimes`, `refreshReuseWindow`).
+   - `auth-tokens.ts`: Token pair issuance (`issueTokenPair`), sliding rotation with concurrency grace handling (`refreshTokens`), family burns (`burnRefreshFamily`), and session revocations (`revokeAllUserSessions`, `signOut`).
+   - `auth-lifecycle.ts`: Account registration with default subscription & team role seeding (`signUp`), credential verification & login history tracking (`signIn`).
+   - `auth-user.ts`: User self-profile query (`getMe`), profile updates (`updateProfile`), password management with cross-session burn (`changePassword`), and RBAC permission aggregation (`getMyPermissions`).
+   - `auth-invitations.ts`: Token validation (`getInvitationInfo`) and invitation acceptance transaction (`acceptInvitation`).
+2. Retained `service.ts` as a 100% backward-compatible facade re-exporting all submodules.
+
+**Alternatives considered:** Keeping all auth routines in one file — rejected due to high cognitive load, mixed responsibilities (token crypto vs user profile vs invite flow), and difficulty reviewing changes.
+
+**Consequences:** Clear separation of concerns, zero breaking changes to routes or tests, submodules cleanly sized (<350 lines), and 100% passing test suites.
+
 ### 2026-10-03 — Backend Chat Service Modularization (Domain Submodules Pattern)
 
 **Context:** `apps/backend/src/modules/chat/service.ts` expanded to 1,727 lines spanning 6 separate sub-domains: channel management, membership and permissions, message CRUD, reactions, file attachments, and Telegram-parity features (pinning, forward, seen-by).
