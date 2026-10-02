@@ -120,6 +120,14 @@ export async function attachLabelToCard(
     return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
   }
   await verifyCardAccess(db, cardId, organizationId);
+  // Labels are board-scoped: the label must belong to the card's own board in
+  // this org. Without this, a label from another board/org could be attached
+  // and would then render as a stray tag on the task.
+  const labelRow = await verifyLabelAccess(db, labelId, organizationId);
+  const cardBoardId = await getBoardIdForCard(db, cardId);
+  if (cardBoardId && labelRow.boardId !== cardBoardId) {
+    throw httpError(400, 'Label does not belong to the card’s board');
+  }
   await db.insert(cardLabels).values({ cardId, labelId }).onConflictDoNothing();
   const boardId = await getBoardIdForCard(db, cardId);
   if (actorId) {

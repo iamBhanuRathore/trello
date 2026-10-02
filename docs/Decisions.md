@@ -24,6 +24,14 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Board tags "missing" was missing data; fixed label cross-board hole
+
+**Context:** Board showed most cards without tags. Verified renderer (`KanbanCardView`), `getBoardFull` labels join, cache bumps (`bumpForCard` → card+board) all correct; DB truth was 11/14 cards with zero `card_labels` rows while the board's 8 labels were intact — the `[Cloud]` cards were created through a path that assigns no labels, so there was nothing to render. No rendering fix was needed.
+
+**Decision:** Fixed the adjacent real bug — `attachLabelToCard` verified the card but never the label, so a label from another board/org could be attached and render as a stray tag. It now enforces same-board via `verifyLabelAccess` + `getBoardIdForCard` (400 otherwise). Generic task import still creates label-less cards by design (`labelsCount: 0`) — bulk-labeling imports is parked, not built.
+
+**Consequences:** Cross-board label leaks are rejected at the API; existing valid attachments unaffected.
+
 ### 2026-10-03 — Permission-gated UI (global flat list, hide destructive / disable reversible)
 
 **Context:** Users without `board.update` saw Rename Board, submitted it, and got a 403 toast (screenshot). Frontend had no permission store — only ad-hoc `isAdmin` role checks; backend `requirePermission()` was the sole gate.

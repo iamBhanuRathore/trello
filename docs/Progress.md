@@ -111,6 +111,12 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - What's next:
 ```
 
+### 2026-10-03 — Missing board tags diagnosis + label isolation fix
+
+- What was done: diagnosed "tags missing" as missing data (11/14 cards have zero `card_labels`; board labels intact; renderer/API/cache verified correct), not a rendering bug. Fixed adjacent real bug: `attachLabelToCard` never verified the label side, allowing cross-board/org attachments → stray tags. Now 400s unless same board.
+- Tests: backend typecheck/lint clean; cards suite 10/10.
+- What's next: none required — assign labels via task view; bulk-label import support parked.
+
 ### 2026-10-03 — Permission-gated UI (hide destructive / disable reversible)
 
 - What was done: backend single resolver (`lib/permissions-resolver.ts`: aliases, `PERMISSION_DENIED` code, effective-set incl. team-role grants) shared by `requirePermission()`, `GET /auth/me` (new `permissions[]`, cache key `u:v2:`) and `getMyPermissions`; O(1) perm-epoch invalidation (`permver:`, `bumpUserCache` on all member/role mutations); `ensurePermissionsSeeded` backfills registry keys; phases/sprints routes now guarded (`project.read` reads, `sprint.*`/`phase.*` writes). Dashboard: `usePermissions` (pure Set lookup, fail-closed) + `<Can>`/`<CanAll>`, 403→`/me` refetch safety net (debounced, skips `/me`, permission-codes only), throttled focus revalidation, logout cache-clear fix. Gated P0–P2: BoardHeader, ListColumn, AddListForm, BoardView DnD (handler-level), CreateTaskModal, TaskDetailView (+header, label picker), Boards/Projects/Workspaces lists + create dialogs + sidebar entry.
