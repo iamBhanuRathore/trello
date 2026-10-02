@@ -1026,3 +1026,30 @@ Decomposed `TaskDetailView.tsx` into a lightweight coordinator (~1,200 lines) or
 
 **Consequences:**
 Retains 100% feature parity, API contracts, keyboard interactions, and responsive layouts. Dramatically improves testability and readability while keeping dashboard Vite builds fast (329ms) and typechecks clean.
+
+---
+
+### 2026-10-03 — Backend Cards Service Domain Submodule Decomposition
+
+**Context:** `apps/backend/src/modules/cards/service.ts` was the largest backend service file in the repository (2,942 lines). It encapsulated core card CRUD, subtask hierarchies, board-level and card-level labels, single-assignee and multi-collaborator membership models, watchers, card view counters, comments and markdown mention cascades, attachments, complex checklist item manipulation, optimistic concurrency column moves, list rebalancing algorithms, My Tasks multi-axis aggregation, and deep card cloning. Modifying any card aspect required traversing a massive monolithic file.
+
+**Alternatives considered:**
+
+- Keeping the service file monolithic (rejected — 3k lines in a backend service increases risk of unintentional side-effects and hampers IDE navigation).
+- Breaking route-level and service-level API contracts (rejected — 24+ external test suites and route controllers depend on `import { ... } from '../cards/service'`).
+
+**Decision:**
+Decomposed `service.ts` into 9 focused domain submodules under `apps/backend/src/modules/cards/`, turning `service.ts` into a lightweight 24-line master facade re-exporting all submodules:
+
+1. `card-helpers.ts` (200 lines): Shared tenancy verifications (`verifyListAccess`, `verifyCardAccess`, `requireOrgMember`), UUID validation, cache-bumping (`bumpForCard`, `bumpForChecklist`), and activity history logger.
+2. `card-labels.ts` (173 lines): Board label CRUD and card label associations.
+3. `card-members.ts` (325 lines): Card assignment, collaborator participation, watcher subscriptions, and real-time presence viewers.
+4. `card-activity.ts` (362 lines): Comment CRUD, markdown `@mention` parsing, notification dispatch, and attachment records.
+5. `card-checklists.ts` (392 lines): Checklist management, bulk item creation, progress tracking, and status toggles.
+6. `card-movement.ts` (204 lines): List transitions, optimistic concurrency versions (`409 VERSION_CONFLICT`), and fractional position rebalancing.
+7. `card-mytasks.ts` (347 lines): Personal cross-workspace task aggregation, filtering, search, and open task count calculation.
+8. `card-clone.ts` (183 lines): Deep copying cards with full checklist trees, labels, assignees, and subtasks.
+9. `card-crud.ts` (882 lines): Primary card queries, list card caching, subtask retrieval, creation, deletion, and patch mutations.
+
+**Consequences:**
+Maintains 100% backwards compatibility with zero changes required in any route or test caller. All 31 backend integration tests across cards, boards, priorities, timetracking, and git pass with 0 errors. Backend typecheck passes with 0 warnings.

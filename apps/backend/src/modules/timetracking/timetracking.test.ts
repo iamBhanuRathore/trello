@@ -85,8 +85,17 @@ describe('Time Tracking Service', () => {
     await db.delete(schema.boards).where(eq(schema.boards.id, boardId));
     await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
     await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
-    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await db
+      .delete(schema.organizationMembers)
+      .where(eq(schema.organizationMembers.organizationId, orgId));
+    await db
+      .delete(schema.roles)
+      .where(eq(schema.roles.organizationId, orgId))
+      .catch(() => {});
+    await db
+      .delete(schema.organizations)
+      .where(eq(schema.organizations.id, orgId))
+      .catch(() => {});
     await client.end();
   });
 

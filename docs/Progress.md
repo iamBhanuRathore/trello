@@ -2342,3 +2342,18 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   10. **`TaskRateModal.tsx` (92 lines):** Quality rating modal implementing the Rule 10 `useDialogClose` contract.
   11. **Type & Modal Fixes:** Standardized `ConfirmDialog` props (`open`, `onOpenChange`, `isLoading`) across all destructive confirmations in the coordinator.
 - **Tests & Validation:** Full dashboard typecheck (`tsc -b --noEmit`) passes with 0 errors; Vite build succeeds in 329ms; oxlint reports 0 warnings and 0 errors.
+
+### 2026-10-03 — Backend Cards Service Decomposition (2,942 → 24 lines)
+
+- **What:** Refactored the monolithic 2,942-line `apps/backend/src/modules/cards/service.ts` into 9 modular, decoupled domain submodules under `apps/backend/src/modules/cards/`:
+  1. **`card-helpers.ts` (200 lines):** Shared tenancy verification functions, UUID validators, cache invalidation helpers, and task activity history writers.
+  2. **`card-labels.ts` (173 lines):** Board label and card label associations and validations.
+  3. **`card-members.ts` (325 lines):** Single primary assignee, multiple collaborators, watcher subscriptions, and card viewer presence.
+  4. **`card-activity.ts` (362 lines):** Comments, markdown mention resolution, notifications, and file attachments.
+  5. **`card-checklists.ts` (392 lines):** Checklists, bulk items, item updates, progress meters, and item completions.
+  6. **`card-movement.ts` (204 lines):** Column transitions, optimistic concurrency versions (`409 VERSION_CONFLICT`), and position rebalancing.
+  7. **`card-mytasks.ts` (347 lines):** Cross-project personal task aggregator, multi-filter queries, and unread task count tracking.
+  8. **`card-clone.ts` (183 lines):** Deep copying cards including checklist hierarchies, labels, assignees, and subtasks.
+  9. **`card-crud.ts` (882 lines):** Primary card queries, subtask listings, creation, deletion, and patch mutations.
+  10. **`service.ts` (24 lines):** Clean facade re-exporting all submodules with 100% backward compatibility for all backend routes and tests.
+- **Tests & Validation:** Full backend test suite for cards and dependent modules passes (31 pass / 0 fail); backend typecheck clean (`tsc --noEmit`).
