@@ -11,6 +11,7 @@ import {
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import { eventBus } from '../../lib/event-bus';
+import { CardAccessStatus } from '@boardly/shared-types';
 
 export interface CardAccessRow {
   id: string;
@@ -127,11 +128,11 @@ export async function requestCardAccess(
     .from(cardAccessRequests)
     .where(and(eq(cardAccessRequests.cardId, cardId), eq(cardAccessRequests.userId, userId)))
     .limit(1);
-  if (existing?.status === 'pending') return existing;
+  if (existing?.status === CardAccessStatus.Pending) return existing;
   const [row] = existing
     ? await db
         .update(cardAccessRequests)
-        .set({ status: 'pending' })
+        .set({ status: CardAccessStatus.Pending })
         .where(eq(cardAccessRequests.id, existing.id))
         .returning()
     : await db.insert(cardAccessRequests).values({ cardId, userId }).returning();
