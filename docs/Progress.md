@@ -2494,3 +2494,9 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
 - **Fix:** each `Create*Dialog` now forwards Radix opens (`nextOpen=true`) directly to its open-state setter while close gestures stay on the single close path (`requestClose` — contract intact). `CreateWorkspaceDialog` also uses plain `open={dialogOpen}` again; controlled+denied renders a disabled trigger with `permissionReason` tooltip instead of a silent dead button. Added `toast.error` on create failures (previously silent) and pristine-disabled submit buttons.
 - **Files:** `apps/dashboard/src/components/workspaces/CreateWorkspaceDialog.tsx`, `CreateProjectDialog.tsx`, `CreateBoardDialog.tsx`.
 - **Tests & Validation:** dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on touched files.
+
+### 2026-10-03 — Hide Create Workspace Affordances Without Permission
+
+- **What:** `CreateWorkspaceDialog` now returns `null` whenever the user lacks `workspace.create` (previously rendered a disabled button in controlled mode) — the page-header button no longer appears for unauthorized users, matching `CreateProject`/`CreateBoard`. The header `+ Create` menu's "Create Workspace" item in `DashboardLayout` is likewise hidden without the permission (sidebar "+" was already gated), so no entry point can dead-click into a hidden dialog.
+- **Files:** `apps/dashboard/src/components/workspaces/CreateWorkspaceDialog.tsx`, `apps/dashboard/src/layouts/DashboardLayout.tsx`.
+- **Tests & Validation:** dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on touched files.

@@ -13,7 +13,7 @@ import { Label } from '@boardly/ui/label';
 import { Plus } from 'lucide-react';
 import { api, getApiErrorMessage } from '../../lib/api';
 import { useDialogClose } from '../../hooks/useDialogClose';
-import { usePermissions, permissionReason } from '../../hooks/usePermissions';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface CreateWorkspaceDialogProps {
   onSuccess: () => void;
@@ -72,21 +72,14 @@ export function CreateWorkspaceDialog({
     }
   };
 
-  // Hidden entirely when the create affordance itself isn't allowed. The
-  // controlled-open path (sidebar/header global create) is gated by its caller.
-  if (!canCreateWorkspace && !isControlled) return null;
-  // Controlled + denied: never a silent dead button — disabled with a reason.
-  const triggerDisabled = isControlled && !canCreateWorkspace;
+  // Hidden entirely when the user lacks workspace.create — a create button
+  // that can't act must not appear (same as CreateProject/CreateBoard).
+  if (!canCreateWorkspace) return null;
 
   return (
     <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
       <DialogTrigger asChild>
-        <Button
-          size="sm"
-          className="h-9 text-xs font-semibold gap-1.5 shadow-xs"
-          disabled={triggerDisabled}
-          title={triggerDisabled ? permissionReason('workspace.create') : undefined}
-        >
+        <Button size="sm" className="h-9 text-xs font-semibold gap-1.5 shadow-xs">
           <Plus className="h-4 w-4" /> Create Workspace
         </Button>
       </DialogTrigger>

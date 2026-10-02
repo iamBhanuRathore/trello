@@ -25,6 +25,7 @@ import { GlobalChatDock } from '../components/chat/GlobalChatDock';
 import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal';
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts';
 import { GlobalCreateWorkspaceDialog, useOpenCreateWorkspace } from '../components/workspaces';
+import { usePermissions } from '../hooks/usePermissions';
 
 export function DashboardLayout() {
   const location = useLocation();
@@ -34,6 +35,8 @@ export function DashboardLayout() {
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const openCreateWorkspace = useOpenCreateWorkspace();
+  const { can, isLoading: permsLoading } = usePermissions();
+  const canCreateWorkspace = permsLoading ? false : can('workspace.create');
 
   // Global hotkeys listener
   useGlobalShortcuts({
@@ -156,13 +159,15 @@ export function DashboardLayout() {
                 sideOffset={8}
                 className="w-52 min-w-[210px] p-1.5 rounded-xl border border-border/80 shadow-lg bg-popover/95 backdrop-blur-md"
               >
-                <DropdownMenuItem
-                  className="cursor-pointer text-xs font-medium px-2.5 py-2 rounded-lg gap-2.5"
-                  onClick={openCreateWorkspace}
-                >
-                  <Briefcase className="w-4 h-4 text-primary shrink-0" />
-                  <span>Create Workspace</span>
-                </DropdownMenuItem>
+                {canCreateWorkspace && (
+                  <DropdownMenuItem
+                    className="cursor-pointer text-xs font-medium px-2.5 py-2 rounded-lg gap-2.5"
+                    onClick={openCreateWorkspace}
+                  >
+                    <Briefcase className="w-4 h-4 text-primary shrink-0" />
+                    <span>Create Workspace</span>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   className="cursor-pointer text-xs font-medium px-2.5 py-2 rounded-lg gap-2.5"
                   onClick={() => navigate('/')}
