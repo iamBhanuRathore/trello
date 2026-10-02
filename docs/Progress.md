@@ -2512,3 +2512,8 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
 - **What:** Removed the whole header `+ Create` fast-create dropdown (`Create Project`/`Create Board` items that merely navigated to `/`) from `DashboardLayout` per review — workspace creation lives on the Workspaces page header button (fixed in `22566fc`) and the sidebar "+" via the still-mounted `GlobalCreateWorkspaceDialog`. Cleaned up now-unused `DropdownMenu`, `Button`, icon, and `useNavigate` imports.
 - **Files:** `apps/dashboard/src/layouts/DashboardLayout.tsx`.
 - **Tests & Validation:** dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on touched file.
+
+### 2026-10-03 — Destructive Menu Items Migrate to variant="destructive"
+
+- **What:** Removed all 8 hand-rolled `text-destructive focus:text-destructive focus:bg-destructive/10` class strings on dashboard `DropdownMenuItem`s (the editor-warning pattern from the screenshot) and switched them to the design system's canonical `variant="destructive"` API (`@boardly/ui` dropdown-menu, data-variant selectors) — visuals identical, plus the variant's dark-mode focus bg. Touched: `Workspaces` (Delete Workspace), `BoardsList`, `ProjectsList`, `BoardHeader` (Delete Board), `ListColumn` (Delete List), `TaskChecklistsCard` (Delete checklist), `Priorities` (Delete…), `memberColumns` (Remove User). Also includes a prior uncommitted tweak in `BoardHeader` (drops `cursor-pointer disabled:cursor-not-allowed` on the Create Task button).
+- **Tests & Validation:** `focus:text-destructive` now zero occurrences in `apps/`; dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on all touched files.

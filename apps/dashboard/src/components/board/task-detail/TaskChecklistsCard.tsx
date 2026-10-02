@@ -171,7 +171,8 @@ export const TaskChecklistsCard: React.FC<TaskChecklistsCardProps> = ({
                         <>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            className="text-xs gap-2 cursor-pointer font-medium text-destructive focus:text-destructive"
+                            variant="destructive"
+                            className="text-xs gap-2 cursor-pointer font-medium"
                             onClick={() =>
                               onRequestDeleteChecklist({
                                 id: cl.id,

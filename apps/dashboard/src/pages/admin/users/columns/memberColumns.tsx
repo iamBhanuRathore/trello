@@ -222,7 +222,8 @@ export function getMemberColumns({
 
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer text-xs gap-2"
+                variant="destructive"
+                className="cursor-pointer text-xs gap-2"
                 onClick={() => onRemoveMember(row)}
               >
                 <Trash2 className="w-3.5 h-3.5" /> Remove User

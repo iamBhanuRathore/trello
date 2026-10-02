@@ -98,7 +98,7 @@ export function BoardHeader({
         >
           <Button
             size="sm"
-            className="h-8 text-xs font-semibold gap-1.5 shadow-xs bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer disabled:cursor-not-allowed"
+            className="h-8 text-xs font-semibold gap-1.5 shadow-xs bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={onCreateTask}
             disabled={!canCreateTask}
             aria-describedby={!canCreateTask ? 'create-task-perm' : undefined}
@@ -171,7 +171,8 @@ export function BoardHeader({
               {canUpdateBoard && canDeleteBoard && <DropdownMenuSeparator />}
               {canDeleteBoard && (
                 <DropdownMenuItem
-                  className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                  variant="destructive"
+                  className="cursor-pointer gap-2 text-xs"
                   onClick={() => setIsDeletingBoard(true)}
                 >
                   <Trash2 className="w-3.5 h-3.5" /> Delete Board

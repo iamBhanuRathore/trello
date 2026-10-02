@@ -163,7 +163,8 @@ export function BoardsList({ projectId, initialBoards }: BoardsListProps) {
                     {canUpdateBoard && canDeleteBoard && <DropdownMenuSeparator />}
                     {canDeleteBoard && (
                       <DropdownMenuItem
-                        className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                        variant="destructive"
+                        className="cursor-pointer gap-2 text-xs"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();

@@ -562,7 +562,8 @@ function SortableRow(props: {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                variant="destructive"
+                className="cursor-pointer gap-2 text-xs"
                 onClick={props.onDelete}
               >
                 <Trash2 className="w-3.5 h-3.5" /> Delete…
