@@ -2500,3 +2500,9 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
 - **What:** `CreateWorkspaceDialog` now returns `null` whenever the user lacks `workspace.create` (previously rendered a disabled button in controlled mode) — the page-header button no longer appears for unauthorized users, matching `CreateProject`/`CreateBoard`. The header `+ Create` menu's "Create Workspace" item in `DashboardLayout` is likewise hidden without the permission (sidebar "+" was already gated), so no entry point can dead-click into a hidden dialog.
 - **Files:** `apps/dashboard/src/components/workspaces/CreateWorkspaceDialog.tsx`, `apps/dashboard/src/layouts/DashboardLayout.tsx`.
 - **Tests & Validation:** dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on touched files.
+
+### 2026-10-03 — Remove Create Workspace From Header Create Menu
+
+- **What:** Removed the "Create Workspace" item from the header `+ Create` dropdown (`DashboardLayout`) — workspace creation now lives only on the Workspaces page header button and the sidebar "+" (both permission-gated, both fixed in `22566fc`). Removed the now-unused `useOpenCreateWorkspace`/`usePermissions` wiring and `Briefcase` icon from the layout; `GlobalCreateWorkspaceDialog` stays mounted for the sidebar entry point.
+- **Files:** `apps/dashboard/src/layouts/DashboardLayout.tsx`.
+- **Tests & Validation:** dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on touched file.
