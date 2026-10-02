@@ -2454,3 +2454,17 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   4. **`org-invitations.ts`:** Single and bulk member invitations with seat quota verification (`inviteMember`, `bulkInviteMembers`), pending invitation management (`listPendingInvitations`, `resendInvitation`, `revokeInvitation`), token preview (`previewInvitation`), and invitation acceptance (`acceptInvitation`).
   5. **`service.ts` Facade (11 lines):** 100% backward-compatible re-exports of all submodule functions.
 - **Tests & Validation:** Backend typecheck (`tsc --noEmit`) clean; dashboard typecheck (`tsc -b --noEmit`) clean; all 13 organization tests pass (`org.test.ts`, `org.routes.test.ts`).
+
+### 2026-10-03 — Workspaces Page God-Component Decomposition (1,121 → 254 lines)
+
+- **What:** Refactored monolithic 1,121-line `apps/dashboard/src/pages/Workspaces.tsx` into modular domain subcomponents under `apps/dashboard/src/components/workspaces/`:
+  1. **`types.ts`:** Gradients palette and background resolution helper.
+  2. **`WorkspacesOverview.tsx`:** Quick KPI Overview tiles (workspaces, active projects, boards, My Tasks direct navigation).
+  3. **`CreateWorkspaceDialog.tsx`:** Workspace creation dialog wired with Rule 10 `useDialogClose`.
+  4. **`CreateProjectDialog.tsx`:** Project creation dialog wired with Rule 10 `useDialogClose`.
+  5. **`CreateBoardDialog.tsx`:** Board creation dialog wired with Rule 10 `useDialogClose`.
+  6. **`BoardsList.tsx`:** Grid presentation of boards with theme picker, rename/theme modal, and board delete confirmation modal with Rule 10 `useDialogClose`.
+  7. **`ProjectsList.tsx`:** Project cards with quick links (Docs, Reports, Phases, Sprints, Automation, Import), project rename/delete modals with Rule 10 `useDialogClose`, and embedded `BoardsList`.
+  8. **`index.ts`:** Public barrel export.
+  9. **`Workspaces.tsx` Coordinator (254 lines):** Coordinates tree queries, search param URL routing (`?createWorkspace=1`), workspace actions, and Rule 10 dialog closures.
+- **Tests & Validation:** Dashboard typecheck (`tsc -b --noEmit`) clean with 0 errors; Vite production build succeeds in 913ms.

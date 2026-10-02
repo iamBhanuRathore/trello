@@ -24,6 +24,27 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Workspaces Page God-Component Decomposition (Component Library Pattern)
+
+**Context:** `apps/dashboard/src/pages/Workspaces.tsx` grew into a 1,121-line monolithic component containing tree query orchestration, KPI metrics calculations, inline project list & board grid rendering, and 6 uncoordinated modal dialogs (create/rename/delete workspace, create/rename/delete project, create/rename/delete board). Additionally, several dialogs did not adhere to the Rule 10 `useDialogClose` contract.
+
+**Decision:**
+
+1. Modularized into domain components under `apps/dashboard/src/components/workspaces/`:
+   - `types.ts`: Color palette gradients (`BOARD_GRADIENTS`) and sanitized gradient resolution logic (`resolveBoardGradient`).
+   - `WorkspacesOverview.tsx`: Top KPI summary overview tiles (workspaces, active projects, boards, My Tasks direct navigation).
+   - `CreateWorkspaceDialog.tsx`: Workspace creation modal strictly adhering to Rule 10 `useDialogClose`.
+   - `CreateProjectDialog.tsx`: Project creation modal adhering to Rule 10 `useDialogClose`.
+   - `CreateBoardDialog.tsx`: Board creation modal with visual theme selection and Rule 10 `useDialogClose`.
+   - `BoardsList.tsx`: Grid display of boards, hover menus, theme rename modal, and board delete confirmation modal with Rule 10 `useDialogClose`.
+   - `ProjectsList.tsx`: Project container cards, action links (Docs, Reports, Phases, Sprints, Automation, Import), project rename/delete modals with Rule 10 `useDialogClose`, and embedded `BoardsList`.
+   - `index.ts`: Barrel export.
+2. Refactored `apps/dashboard/src/pages/Workspaces.tsx` into a lean coordinator (254 lines) managing tree queries, search param URL routing (`?createWorkspace=1`), workspace actions, and Rule 10 dialog closures.
+
+**Alternatives considered:** Keeping dialogs inline — rejected to eliminate monolithic file bloat and ensure centralized, idempotent dialog lifecycle management.
+
+**Consequences:** Clear modularity, cleaner re-render boundaries, 100% adherence to Rule 10 dialog close contract, and zero visual or functional regressions.
+
 ### 2026-10-03 — Backend Organizations Service Modularization (Domain Submodules Pattern)
 
 **Context:** `apps/backend/src/modules/organizations/service.ts` grew to 1,138 lines containing organization metadata updates, member query filtering & count caching, member lifecycle (roles, deactivation/reactivation, session invalidation), and the complete invitation subsystem (token hashing, email dispatch, seat reservation check, acceptance).
