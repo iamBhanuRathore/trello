@@ -2308,11 +2308,11 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   3. **Enterprise Inspection Advisory:** Injected an informational callout banner into the inspection modal explaining the service account's role in Git/webhook automation and clarifying that its records cannot be deleted to safeguard relational database integrity.
 - **Tests & Validation:** Super-admin typecheck (`bun run --cwd apps/super-admin typecheck`) and Vite build clean (0 errors, 224ms).
 
-### 2026-10-03 — TanStack Table Migration for EnterpriseDataGrid
+### 2026-10-03 — TanStack Table Migration for EnterpriseDataGrid (Native v9 API)
 
-- **What:** Replaced the hand-rolled data grid engine in `@boardly/ui` (`packages/ui/src/components/enterprise-data-grid.tsx`) with TanStack Table (`@tanstack/react-table`):
-  1. **Headless Engine Integration:** Wired `useLegacyTable` with `getCoreRowModel`, `getFilteredRowModel`, `getSortedRowModel`, `getPaginationRowModel`, `getFacetedRowModel`, and `getFacetedUniqueValues`.
+- **What:** Replaced the hand-rolled data grid engine in `@boardly/ui` (`packages/ui/src/components/enterprise-data-grid.tsx`) with modern, native TanStack Table v9 (`@tanstack/react-table`):
+  1. **Native v9 Engine Architecture:** Wired native `useTable` and modular `tableFeatures` (`columnFilteringFeature`, `rowSortingFeature`, `rowPaginationFeature`, `columnVisibilityFeature`, `columnFacetingFeature`, `globalFilteringFeature`) paired with tree-shakeable row model factories (`createFilteredRowModel`, `createSortedRowModel`, `createPaginatedRowModel`, `createFacetedRowModel`, `createFacetedUniqueValues`). Completely eliminated all deprecated imports from `@tanstack/react-table/legacy` (`useLegacyTable`, `get*RowModel`).
   2. **100% Backwards Compatibility:** Preserved `ColumnDef<T>` and `EnterpriseDataGridProps<T>` APIs so all existing consumers (`Tenants`, `PlatformUsers`, `Users`, `AuditLogs`, `Timesheets`) require zero prop changes.
   3. **New Capabilities Added:** Added column visibility dropdown toggle (`DropdownMenuCheckboxItem`), Shift-Click multi-column sorting, and automatic faceted unique value calculations for column filter popovers.
   4. **Optimized Exports & Performance:** Global search uses memoized column evaluator; CSV export streams all matching filtered rows via UTF-8 browser Blobs.
-- **Tests & Validation:** Monorepo typecheck clean across `apps/super-admin` and `apps/dashboard`; production Vite builds for both apps passed with 0 errors in ~280ms.
+- **Tests & Validation:** Monorepo typecheck clean across `apps/super-admin` and `apps/dashboard`; production Vite builds for both apps passed with 0 errors in ~300ms.

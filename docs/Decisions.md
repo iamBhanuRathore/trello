@@ -24,6 +24,21 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — EnterpriseDataGrid Migration to Modern TanStack Table v9 API
+
+**Context:** The previous `@boardly/ui` `EnterpriseDataGrid` component relied on hand-rolled sorting, manual pagination, and custom filtering logic. This was bug-prone across corner cases (multi-column sorting, facet calculations, column visibility toggle) and incurred maintenance overhead. An initial migration to TanStack Table imported deprecated functions (`useLegacyTable`, `get*RowModel`) from `@tanstack/react-table/legacy`, which triggered deprecation warnings and added unnecessary legacy bridge weight.
+
+**Decision:**
+
+1. Migrate `packages/ui/src/components/enterprise-data-grid.tsx` completely to native TanStack Table v9: `useTable` and modular `tableFeatures` (`columnFilteringFeature`, `rowSortingFeature`, `rowPaginationFeature`, `columnVisibilityFeature`, `columnFacetingFeature`, `globalFilteringFeature`).
+2. Pair features with tree-shakeable row model factories (`createFilteredRowModel`, `createSortedRowModel`, `createPaginatedRowModel`, `createFacetedRowModel`, `createFacetedUniqueValues`). Zero deprecated imports from `@tanstack/react-table/legacy`.
+3. Preserve 100% backwards-compatibility for existing consumer call-sites (`Tenants.tsx`, `PlatformUsers.tsx`, `Users.tsx`, `AuditLogs.tsx`, `Timesheets.tsx`) with zero breaking changes to prop interfaces or column definitions.
+4. Support column visibility toggle menus (`DropdownMenuCheckboxItem`), Shift-click multi-sorting, debounced global filtering, faceted unique values for column filter popovers, and client/server-mode toggles.
+
+**Alternatives considered:** Keeping hand-rolled table logic (rejected due to bug surface and missing enterprise capabilities); using `@tanstack/react-table/legacy` `useLegacyTable` (rejected due to deprecation warnings and future-proofing requirements).
+
+**Consequences:** Zero deprecation warnings, smaller tree-shaken bundle footprint, enterprise-grade multi-sort and column toggle capabilities out of the box, and full test/typecheck parity across all frontends.
+
 ### 2026-10-03 — Backend Entrypoint & Service Architecture Refactor (Singleton Redis & Modular Entrypoint)
 
 **Context:** `apps/backend/src/index.ts` had grown to 420 lines combining inline DDL schema backstops, verbose CORS headers and origin resolution, an unorganized chain of 37 domain routes, loose mutable Redis connection handles, and scattered background worker timers. This made the server entrypoint difficult to navigate, test, and maintain.

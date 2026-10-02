@@ -1,21 +1,27 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
+  useTable,
+  tableFeatures,
+  columnFilteringFeature,
+  rowSortingFeature,
+  rowPaginationFeature,
+  columnVisibilityFeature,
+  columnFacetingFeature,
+  globalFilteringFeature,
+  createFilteredRowModel,
+  createSortedRowModel,
+  createPaginatedRowModel,
+  createFacetedRowModel,
+  createFacetedUniqueValues,
+  filterFns,
+  sortFns,
   flexRender,
+  type ColumnDef as TanStackColumnDef,
   type SortingState,
   type ColumnFiltersState,
   type ColumnVisibilityState,
   type PaginationState,
 } from '@tanstack/react-table';
-import {
-  useLegacyTable,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
-  getFacetedRowModel,
-  getFacetedUniqueValues,
-  type LegacyColumnDef,
-} from '@tanstack/react-table/legacy';
 import { Button } from './button';
 import { Input } from './input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select';
@@ -168,7 +174,7 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
   }, []);
 
   // ─── Map to TanStack Table Column Definitions ────────────────────────────────
-  const tanstackColumns = useMemo<LegacyColumnDef<T, any>[]>(() => {
+  const tanstackColumns = useMemo<TanStackColumnDef<any, any>[]>(() => {
     return columns.map((col) => {
       const base: any = {
         id: col.id,
@@ -251,76 +257,93 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
     };
   }, [columns]);
 
-  // ─── TanStack Table Instance ────────────────────────────────────────────────
-  const table = useLegacyTable({
-    data,
-    columns: tanstackColumns,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getFacetedRowModel: getFacetedRowModel(),
-    getFacetedUniqueValues: getFacetedUniqueValues(),
-    globalFilterFn,
-    state: {
-      sorting,
-      globalFilter: debouncedSearch,
-      columnFilters,
-      columnVisibility,
-      pagination: {
-        pageIndex: serverSide && serverPageIndex ? serverPageIndex - 1 : pagination.pageIndex,
-        pageSize: serverSide && propPageSize ? propPageSize : pagination.pageSize,
+  // ─── TanStack Table v9 Feature Configuration ────────────────────────────────
+  const [features] = useState(() =>
+    tableFeatures({
+      columnFilteringFeature,
+      rowSortingFeature,
+      rowPaginationFeature,
+      columnVisibilityFeature,
+      columnFacetingFeature,
+      globalFilteringFeature,
+      filteredRowModel: createFilteredRowModel(),
+      sortedRowModel: createSortedRowModel(),
+      paginatedRowModel: createPaginatedRowModel(),
+      facetedRowModel: createFacetedRowModel(),
+      facetedUniqueValues: createFacetedUniqueValues(),
+      filterFns,
+      sortFns,
+    })
+  );
+
+  // ─── TanStack Table v9 Hook ─────────────────────────────────────────────────
+  const table = useTable(
+    {
+      features,
+      data,
+      columns: tanstackColumns,
+      globalFilterFn,
+      state: {
+        sorting,
+        globalFilter: debouncedSearch,
+        columnFilters,
+        columnVisibility,
+        pagination: {
+          pageIndex: serverSide && serverPageIndex ? serverPageIndex - 1 : pagination.pageIndex,
+          pageSize: serverSide && propPageSize ? propPageSize : pagination.pageSize,
+        },
       },
-    },
-    onSortingChange: (updaterOrValue) => {
-      setSorting((old: SortingState) => {
-        const next = typeof updaterOrValue === 'function' ? updaterOrValue(old) : updaterOrValue;
-        if (onSortingChange) {
-          onSortingChange(next.length > 0 ? { id: next[0].id, desc: next[0].desc } : null);
-        }
-        return next;
-      });
-    },
-    onGlobalFilterChange: setDebouncedSearch,
-    onColumnFiltersChange: (updaterOrValue) => {
-      setColumnFilters((old: ColumnFiltersState) => {
-        const next = typeof updaterOrValue === 'function' ? updaterOrValue(old) : updaterOrValue;
-        if (onFilterChange) {
-          const filterRecord: Record<string, string[]> = {};
-          for (const f of next) {
-            if (Array.isArray(f.value)) {
-              filterRecord[f.id] = f.value as string[];
+      onSortingChange: (updaterOrValue) => {
+        setSorting((old: SortingState) => {
+          const next = typeof updaterOrValue === 'function' ? updaterOrValue(old) : updaterOrValue;
+          if (onSortingChange) {
+            onSortingChange(next.length > 0 ? { id: next[0].id, desc: next[0].desc } : null);
+          }
+          return next;
+        });
+      },
+      onGlobalFilterChange: setDebouncedSearch,
+      onColumnFiltersChange: (updaterOrValue) => {
+        setColumnFilters((old: ColumnFiltersState) => {
+          const next = typeof updaterOrValue === 'function' ? updaterOrValue(old) : updaterOrValue;
+          if (onFilterChange) {
+            const filterRecord: Record<string, string[]> = {};
+            for (const f of next) {
+              if (Array.isArray(f.value)) {
+                filterRecord[f.id] = f.value as string[];
+              }
+            }
+            onFilterChange(filterRecord);
+          }
+          return next;
+        });
+        table.setPageIndex(0);
+      },
+      onColumnVisibilityChange: setColumnVisibility,
+      onPaginationChange: (updaterOrValue) => {
+        setPagination((old: PaginationState) => {
+          const next = typeof updaterOrValue === 'function' ? updaterOrValue(old) : updaterOrValue;
+          if (serverSide) {
+            if (onPageChange && next.pageIndex !== old.pageIndex) {
+              onPageChange(next.pageIndex + 1);
+            }
+            if (onPageSizeChange && next.pageSize !== old.pageSize) {
+              onPageSizeChange(next.pageSize);
             }
           }
-          onFilterChange(filterRecord);
-        }
-        return next;
-      });
-      table.setPageIndex(0);
+          return next;
+        });
+      },
+      manualPagination: serverSide,
+      manualSorting: serverSide,
+      manualFiltering: serverSide,
+      pageCount: serverSide
+        ? Math.ceil((serverTotalCount ?? 0) / (propPageSize || effectiveDefaultPageSize))
+        : undefined,
+      autoResetPageIndex: false,
     },
-    onColumnVisibilityChange: setColumnVisibility,
-    onPaginationChange: (updaterOrValue) => {
-      setPagination((old: PaginationState) => {
-        const next = typeof updaterOrValue === 'function' ? updaterOrValue(old) : updaterOrValue;
-        if (serverSide) {
-          if (onPageChange && next.pageIndex !== old.pageIndex) {
-            onPageChange(next.pageIndex + 1);
-          }
-          if (onPageSizeChange && next.pageSize !== old.pageSize) {
-            onPageSizeChange(next.pageSize);
-          }
-        }
-        return next;
-      });
-    },
-    manualPagination: serverSide,
-    manualSorting: serverSide,
-    manualFiltering: serverSide,
-    pageCount: serverSide
-      ? Math.ceil((serverTotalCount ?? 0) / (propPageSize || effectiveDefaultPageSize))
-      : undefined,
-    autoResetPageIndex: false,
-  });
+    (state) => state
+  );
 
   // ─── Filter & Search Counts ─────────────────────────────────────────────────
   const activeFilterCount = useMemo(() => {
@@ -360,8 +383,8 @@ export function EnterpriseDataGrid<T extends Record<string, any>>({
   }, [activeFilterColId, table, data]);
 
   // ─── Pagination Calculations ────────────────────────────────────────────────
-  const activePageIndex = table.getState().pagination.pageIndex + 1;
-  const activePageSize = table.getState().pagination.pageSize;
+  const activePageIndex = (table.state?.pagination?.pageIndex ?? 0) + 1;
+  const activePageSize = table.state?.pagination?.pageSize ?? effectiveDefaultPageSize;
   const totalItems = serverSide ? (serverTotalCount ?? 0) : table.getFilteredRowModel().rows.length;
   const totalPages = Math.max(1, table.getPageCount());
 
