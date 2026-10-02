@@ -15,6 +15,7 @@ import { logger } from '../../lib/logger';
 import { httpError } from '../organizations/service';
 import { resolveInboundToken, tokenAllowsSender, assertActiveMember } from './tokens';
 import { stripQuotedReply } from './parse';
+import { InboundEmailStatus } from '@boardly/shared-types';
 
 // ─── Inbound email processor (4.6b) ──────────────────────────────────────────
 // Public webhook (HMAC or SNS-verified) → capability token → SPF/DKIM-gated
@@ -170,7 +171,10 @@ export async function processInboundEmail(
 
   let logId: string | null = null;
   const duplicate = (row: typeof inboundEmails.$inferSelect | undefined): InboundResult =>
-    ({ ...((row?.result ?? {}) as Record<string, string>), status: 'duplicate' }) as InboundResult;
+    ({
+      ...((row?.result ?? {}) as Record<string, string>),
+      status: InboundEmailStatus.Duplicate,
+    }) as InboundResult;
 
   // Redelivery idempotency (unique per org+Message-ID). Rows that never reached a
   // terminal state (crashed/abandoned `received`, or `failed`) are resumed so a
@@ -187,14 +191,18 @@ export async function processInboundEmail(
     .limit(1);
   if (existing) {
     const resumable =
-      existing.status === 'failed' ||
-      (existing.status === 'received' &&
+      existing.status === InboundEmailStatus.Failed ||
+      (existing.status === InboundEmailStatus.Received &&
         Date.now() - existing.createdAt.getTime() > STALE_RECEIVE_MS);
     if (!resumable) return duplicate(existing);
     logId = existing.id;
     await db
       .update(inboundEmails)
-      .set({ status: 'received', failedAt: null, rawEmail: rawStored ?? existing.rawEmail })
+      .set({
+        status: InboundEmailStatus.Received,
+        failedAt: null,
+        rawEmail: rawStored ?? existing.rawEmail,
+      })
       .where(eq(inboundEmails.id, existing.id));
   } else {
     try {
@@ -207,7 +215,7 @@ export async function processInboundEmail(
           fromAddress: envelope.from.slice(0, 320),
           toAddress: envelope.to.slice(0, 320),
           subject: envelope.subject.slice(0, 500),
-          status: 'received',
+          status: InboundEmailStatus.Received,
           rawEmail: rawStored,
           rawTruncated,
         })
@@ -232,7 +240,7 @@ export async function processInboundEmail(
   }
 
   const finish = async (
-    status: string,
+    status: InboundEmailStatus,
     result: Record<string, unknown>
   ): Promise<InboundResult> => {
     if (logId) {
@@ -256,7 +264,7 @@ export async function processInboundEmail(
     const { isAutoMail } = await import('./parse');
     if (isAutoMail(headers, envelope.from)) {
       logger.info({ messageId }, 'Inbound email dropped by autoresponder loop-guard');
-      return finish('rejected', { reason: 'auto-mail' });
+      return finish(InboundEmailStatus.Rejected, { reason: 'auto-mail' });
     }
 
     // Trust: token is the capability; SPF+DKIM PASS additionally binds From to
@@ -331,7 +339,11 @@ export async function processInboundEmail(
         mentioned
       );
       if (!comment) throw httpError(500, 'Failed to record inbound comment');
-      return finish('commented', { cardId: card.id, commentId: comment.id, attachmentIds });
+      return finish(InboundEmailStatus.Commented, {
+        cardId: card.id,
+        commentId: comment.id,
+        attachmentIds,
+      });
     }
 
     // Forward path: new card in the token's list.
@@ -355,7 +367,7 @@ export async function processInboundEmail(
       ).catch(() => {});
     }
     await ingestAll(card!.id);
-    return finish('created', { cardId: card!.id, attachmentIds });
+    return finish(InboundEmailStatus.Created, { cardId: card!.id, attachmentIds });
   };
 
   try {
@@ -365,7 +377,7 @@ export async function processInboundEmail(
       await db
         .update(inboundEmails)
         .set({
-          status: 'failed',
+          status: InboundEmailStatus.Failed,
           failedAt: new Date(),
           result: { error: err instanceof Error ? err.message : String(err) },
         })
