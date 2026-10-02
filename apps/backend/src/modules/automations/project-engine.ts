@@ -30,6 +30,7 @@ import {
   isValidUuid,
 } from '../cards/service';
 import type { AutomationTrigger, AutomationAction } from '@boardly/shared-types';
+import { AutomationRunReason, AutomationRunStatus } from '@boardly/shared-types';
 
 // ─── System actor + loop-guard context ──────────────────────────────────────
 // Automation writes must not borrow the triggering user's permissions and must
@@ -335,7 +336,13 @@ export async function peekRoundRobinMember(
 // ─── Action results ─────────────────────────────────────────────────────────
 export type ActionResult =
   | { actionId: string; type: string; outcome: 'executed'; detail: string }
-  | { actionId: string; type: string; outcome: 'skipped'; reason: string; detail: string };
+  | {
+      actionId: string;
+      type: string;
+      outcome: 'skipped';
+      reason: AutomationRunReason;
+      detail: string;
+    };
 
 async function writeRuleHistory(
   db: Database,
@@ -370,7 +377,7 @@ async function runAssignAction(
     return {
       ...base,
       outcome: 'skipped',
-      reason: 'ALREADY_ASSIGNED',
+      reason: AutomationRunReason.AlreadyAssigned,
       detail: 'card already assigned',
     };
   }
@@ -386,7 +393,7 @@ async function runAssignAction(
     return {
       ...base,
       outcome: 'skipped',
-      reason: 'ASSIGNEE_NOT_FOUND',
+      reason: AutomationRunReason.AssigneeNotFound,
       detail: 'no live assignee',
     };
   }
@@ -420,7 +427,7 @@ async function runSubtaskAction(
     return {
       ...base,
       outcome: 'skipped',
-      reason: 'EMPTY_POOL',
+      reason: AutomationRunReason.EmptyPool,
       detail: 'pool has no active members',
     };
   }
@@ -429,7 +436,7 @@ async function runSubtaskAction(
     return {
       ...base,
       outcome: 'skipped',
-      reason: 'EMPTY_POOL',
+      reason: AutomationRunReason.EmptyPool,
       detail: 'pool has no active members',
     };
   }
@@ -452,7 +459,7 @@ async function runSubtaskAction(
     return {
       ...base,
       outcome: 'skipped',
-      reason: 'OPEN_SUBTASK',
+      reason: AutomationRunReason.OpenSubtask,
       detail: 'open subtask already exists',
     };
   }
@@ -480,7 +487,12 @@ async function runSubtaskAction(
     return { ...base, outcome: 'executed', detail: (sub as { id: string }).id };
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
-      return { ...base, outcome: 'skipped', reason: 'OPEN_SUBTASK', detail: 'race lost (23505)' };
+      return {
+        ...base,
+        outcome: 'skipped',
+        reason: AutomationRunReason.OpenSubtask,
+        detail: 'race lost (23505)',
+      };
     }
     throw err;
   }
@@ -504,7 +516,7 @@ async function runAddParticipantAction(
     return {
       ...base,
       outcome: 'skipped',
-      reason: 'ASSIGNEE_NOT_FOUND',
+      reason: AutomationRunReason.AssigneeNotFound,
       detail: 'no live collaborator',
     };
   }
@@ -517,7 +529,7 @@ async function runAddParticipantAction(
     return {
       ...base,
       outcome: 'skipped',
-      reason: 'ALREADY_ASSIGNED',
+      reason: AutomationRunReason.AlreadyAssigned,
       detail: 'already a participant',
     };
   }
@@ -550,7 +562,12 @@ async function runAddLabelAction(
     .where(eq(labels.boardId, card.boardId));
   const match = boardLabels.find((l) => l.name.toLowerCase() === action.labelName.toLowerCase());
   if (!match) {
-    return { ...base, outcome: 'skipped', reason: 'LABEL_NOT_FOUND', detail: action.labelName };
+    return {
+      ...base,
+      outcome: 'skipped',
+      reason: AutomationRunReason.LabelNotFound,
+      detail: action.labelName,
+    };
   }
   await attachLabelToCard(
     db,
@@ -612,20 +629,36 @@ export async function executeRuleForCard(
       .where(and(eq(automationRuleRuns.ruleId, rule.id), eq(automationRuleRuns.eventId, eventId)))
       .limit(1);
     if (seen) {
-      await recordRun(db, rule, card.cardId, null, 'skipped', 'DUPLICATE_EVENT', {
-        event,
-        duplicateOf: eventId,
-      });
+      await recordRun(
+        db,
+        rule,
+        card.cardId,
+        null,
+        AutomationRunStatus.Skipped,
+        AutomationRunReason.DuplicateEvent,
+        {
+          event,
+          duplicateOf: eventId,
+        }
+      );
       return;
     }
   }
 
   if (!matchCondition(condition, card.labelNames)) {
-    await recordRun(db, rule, card.cardId, eventId ?? null, 'skipped', 'CONDITION_UNMET', {
-      event,
-      labelNames: card.labelNames,
-      wanted: condition?.labelNames ?? [],
-    });
+    await recordRun(
+      db,
+      rule,
+      card.cardId,
+      eventId ?? null,
+      AutomationRunStatus.Skipped,
+      AutomationRunReason.ConditionUnmet,
+      {
+        event,
+        labelNames: card.labelNames,
+        wanted: condition?.labelNames ?? [],
+      }
+    );
     return;
   }
 
@@ -647,7 +680,7 @@ export async function executeRuleForCard(
             actionId: (action as { id: string }).id,
             type: 'unknown',
             outcome: 'skipped',
-            reason: 'CONDITION_UNMET',
+            reason: AutomationRunReason.ConditionUnmet,
             detail: 'unknown action type',
           });
       } catch (err) {
@@ -659,7 +692,7 @@ export async function executeRuleForCard(
           actionId: action.id,
           type: action.type,
           outcome: 'skipped',
-          reason: 'ERROR',
+          reason: AutomationRunReason.Error,
           detail: `failed: ${message}`.slice(0, 500),
         });
         logger.error({ err, ruleId: rule.id, actionId: action.id }, 'Automation action failed');
@@ -669,7 +702,12 @@ export async function executeRuleForCard(
 
   const executed = results.filter((r) => r.outcome === 'executed');
   const firstSkip = results.find((r) => r.outcome === 'skipped');
-  const status = executed.length > 0 ? 'executed' : threw ? 'failed' : 'skipped';
+  const status: AutomationRunStatus =
+    executed.length > 0
+      ? AutomationRunStatus.Executed
+      : threw
+        ? AutomationRunStatus.Failed
+        : AutomationRunStatus.Skipped;
   try {
     await db.insert(automationRuleRuns).values({
       ruleId: rule.id,
@@ -679,20 +717,28 @@ export async function executeRuleForCard(
       eventId: eventId ?? null,
       status,
       reason:
-        status === 'executed'
+        status === AutomationRunStatus.Executed
           ? null
           : firstSkip && 'reason' in firstSkip
             ? firstSkip.reason
-            : 'CONDITION_UNMET',
+            : AutomationRunReason.ConditionUnmet,
       details: { event, listName: card.listName, results },
     });
   } catch (err) {
     // Lost the redelivery race after executing: convert to DUPLICATE_EVENT note.
     if (eventId && isUniqueViolation(err)) {
-      await recordRun(db, rule, card.cardId, null, 'skipped', 'DUPLICATE_EVENT', {
-        event,
-        duplicateOf: eventId,
-      });
+      await recordRun(
+        db,
+        rule,
+        card.cardId,
+        null,
+        AutomationRunStatus.Skipped,
+        AutomationRunReason.DuplicateEvent,
+        {
+          event,
+          duplicateOf: eventId,
+        }
+      );
       return;
     }
     throw err;
@@ -712,8 +758,8 @@ async function recordRun(
   rule: { id: string; organizationId: string; projectId: string },
   cardId: string | null,
   eventId: string | null,
-  status: 'executed' | 'skipped' | 'failed',
-  reason: string | null,
+  status: AutomationRunStatus,
+  reason: AutomationRunReason | null,
   details: Record<string, unknown>
 ): Promise<void> {
   await db
@@ -788,20 +834,36 @@ export async function handleProjectAutomationEvent(
       if (!matchTrigger(trigger, event, card.listName)) continue; // silent: rule watches another event
       // Loop-guard layer: depth handles chains, chain handles A→B→A.
       if (store.depth >= AUTOMATION_MAX_DEPTH || store.chain.includes(rule.id)) {
-        await recordRun(db, rule, card.cardId, null, 'skipped', 'LOOP_GUARD', {
-          event,
-          depth: store.depth,
-          chain: store.chain,
-        });
+        await recordRun(
+          db,
+          rule,
+          card.cardId,
+          null,
+          AutomationRunStatus.Skipped,
+          AutomationRunReason.LoopGuard,
+          {
+            event,
+            depth: store.depth,
+            chain: store.chain,
+          }
+        );
         continue;
       }
       await executeRuleForCard(db, rule, card, event, eventId);
     } catch (err) {
       logger.error({ err, ruleId: rule.id }, 'Project automation rule failed');
-      await recordRun(db, rule, card.cardId, null, 'failed', 'ERROR', {
-        event,
-        error: err instanceof Error ? err.message : String(err),
-      }).catch(() => {});
+      await recordRun(
+        db,
+        rule,
+        card.cardId,
+        null,
+        AutomationRunStatus.Failed,
+        AutomationRunReason.Error,
+        {
+          event,
+          error: err instanceof Error ? err.message : String(err),
+        }
+      ).catch(() => {});
     }
   }
 }

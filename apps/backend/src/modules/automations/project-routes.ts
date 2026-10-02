@@ -3,6 +3,7 @@ import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
 import { assertBoundedJson } from '../../lib/bounded-json';
+import { AutomationRunStatus } from '@boardly/shared-types';
 import {
   listProjectRules,
   getProjectRule,
@@ -155,7 +156,7 @@ export const projectAutomationRoutes = new Elysia({
       query: t.Object({
         page: t.Optional(t.String()),
         limit: t.Optional(t.String()),
-        status: t.Optional(t.String()),
+        status: t.Optional(t.Enum(AutomationRunStatus)),
       }),
     }
   )

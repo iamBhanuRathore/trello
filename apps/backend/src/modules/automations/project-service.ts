@@ -12,6 +12,7 @@ import {
   organizationRoleMembers,
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
+import { AutomationRunReason, AutomationRunStatus } from '@boardly/shared-types';
 import {
   CreateProjectAutomationRuleSchema,
   UpdateProjectAutomationRuleSchema,
@@ -172,7 +173,7 @@ export async function listRuleRuns(
   orgId: string,
   projectId: string,
   ruleId: string,
-  opts: { page?: number; limit?: number; status?: string }
+  opts: { page?: number; limit?: number; status?: AutomationRunStatus }
 ) {
   await getProjectRule(db, orgId, projectId, ruleId);
   const page = Math.max(1, Number(opts.page) || 1);
@@ -181,7 +182,11 @@ export async function listRuleRuns(
     eq(automationRuleRuns.ruleId, ruleId),
     eq(automationRuleRuns.organizationId, orgId),
   ];
-  if (opts.status === 'executed' || opts.status === 'skipped' || opts.status === 'failed') {
+  if (
+    opts.status === AutomationRunStatus.Executed ||
+    opts.status === AutomationRunStatus.Skipped ||
+    opts.status === AutomationRunStatus.Failed
+  ) {
     conds.push(eq(automationRuleRuns.status, opts.status));
   }
   const where = and(...conds);
@@ -205,7 +210,7 @@ export interface DryRunPreview {
   actionId: string;
   type: string;
   outcome: 'would_execute' | 'would_skip';
-  reason?: string;
+  reason?: AutomationRunReason;
   detail: string;
 }
 
@@ -276,7 +281,7 @@ async function previewAction(
       return {
         ...base,
         outcome: 'would_skip',
-        reason: 'ALREADY_ASSIGNED',
+        reason: AutomationRunReason.AlreadyAssigned,
         detail: 'card already assigned',
       };
     }
@@ -302,7 +307,7 @@ async function previewAction(
       return {
         ...base,
         outcome: 'would_skip',
-        reason: 'ASSIGNEE_NOT_FOUND',
+        reason: AutomationRunReason.AssigneeNotFound,
         detail: 'no live assignee',
       };
     return {
@@ -320,7 +325,7 @@ async function previewAction(
       return {
         ...base,
         outcome: 'would_skip',
-        reason: 'EMPTY_POOL',
+        reason: AutomationRunReason.EmptyPool,
         detail: 'pool has no active members',
       };
     const next = await peekRoundRobinMember(db, ruleId, action.id, pool);
@@ -328,7 +333,7 @@ async function previewAction(
       return {
         ...base,
         outcome: 'would_skip',
-        reason: 'EMPTY_POOL',
+        reason: AutomationRunReason.EmptyPool,
         detail: 'pool has no active members',
       };
     return {
@@ -360,7 +365,7 @@ async function previewAction(
       return {
         ...base,
         outcome: 'would_skip',
-        reason: 'ASSIGNEE_NOT_FOUND',
+        reason: AutomationRunReason.AssigneeNotFound,
         detail: 'no live collaborator',
       };
     return {
@@ -373,7 +378,7 @@ async function previewAction(
     return {
       ...base,
       outcome: 'would_skip',
-      reason: 'CONDITION_UNMET',
+      reason: AutomationRunReason.ConditionUnmet,
       detail: 'unknown action type',
     };
   }
@@ -386,7 +391,7 @@ async function previewAction(
     return {
       ...base,
       outcome: 'would_skip',
-      reason: 'LABEL_NOT_FOUND',
+      reason: AutomationRunReason.LabelNotFound,
       detail: `board has no '${action.labelName}' label`,
     };
   return { ...base, outcome: 'would_execute', detail: `add label '${match.name}'` };
