@@ -28,6 +28,7 @@ import {
 } from '../../lib/emailTemplates';
 import { sendEmail } from '../../lib/email';
 import Stripe from 'stripe';
+import { SeatChangeDirection, SeatChangeStatus } from '@boardly/shared-types';
 
 export const BILLABLE_ROLES = [
   'org_owner',
@@ -444,9 +445,9 @@ export async function increaseSeats(
       .values({
         subscriptionId: sub.id,
         requestedQuantity: newQuantity,
-        direction: 'increase',
+        direction: SeatChangeDirection.Increase,
         stripeIdempotencyKey: idempotencyKey,
-        status: 'pending',
+        status: SeatChangeStatus.Pending,
       })
       .onConflictDoNothing();
 
@@ -520,9 +521,9 @@ export async function scheduleSeatDecrease(
       .values({
         subscriptionId: sub.id,
         requestedQuantity: targetSeatCount,
-        direction: 'decrease',
+        direction: SeatChangeDirection.Decrease,
         stripeIdempotencyKey: idempotencyKey,
-        status: 'pending',
+        status: SeatChangeStatus.Pending,
       })
       .onConflictDoNothing();
 
