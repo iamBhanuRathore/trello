@@ -22,8 +22,8 @@
 
 ## Current State
 
-**Last updated:** 2026-10-02
-**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED; 4.1 Calendar substantially done (views, time-blocking, Google 2-way sync, overlays; Outlook deferred); 4.3 Git automations DONE. Recent: sliding refresh-token families, URL-synced task dialog fix, My Tasks sidebar badge, automation builder UI, and 5.5 Media + 4.6 triage inbox / inbound email now COMPLETE (see Roadmap). Next: 4.4 CRDT docs / 4.5 huddles, plus check-docs follow-ups below.
+**Last updated:** 2026-10-03
+**Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED; 4.1 Calendar substantially done (views, time-blocking, Google 2-way sync, overlays; Outlook deferred); 4.3 Git automations DONE. Recent: sliding refresh-token families, URL-synced task dialog fix, My Tasks sidebar badge, automation builder UI, 5.5 Media + 4.6 triage inbox / inbound email, and backend entrypoint modularization + Redis/worker service singletons (see Roadmap). Next: 4.4 CRDT docs / 4.5 huddles, plus check-docs follow-ups below.
 
 ### What exists
 
@@ -2281,3 +2281,13 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   Tests use a minimal INSTREAM TCP stub (no ClamAV needed) plus a `__setVerdictSettleDelay` test hook that widens the verdict→read window, which makes the concurrency regression deterministic instead of microtask-dependent — verified to fail against the reintroduced shared-state bug.
 
 - **Follow-ups:** dashboard has no inbox token-management UI yet (`/v1/inbound/tokens` is API-only); S3 bucket lifecycle (abort incomplete PUTs, quarantine retention) remains infra-side; the pre-existing 11 fixture suites still need FK-safe teardown.
+
+### 2026-10-03 — Backend Entrypoint Modularization & Service Singletons
+
+- **What:** Refactored `apps/backend/src/index.ts` from a 420-line god file down to ~130 lines of clean server lifecycle orchestration:
+  1. **Singleton Redis & PubSub Services:** Converted loose module variables in `src/redis/client.ts` and `src/redis/pubsub.ts` into encapsulated `RedisService` and `PubSubService` singletons (`getInstance()`), maintaining 100% backward-compatible functional exports (`connectRedis`, `disconnectRedis`, `getDataClient`, `publishToRedis`, etc.).
+  2. **Worker Lifecycle Singleton (`src/lib/workers.ts`):** Encapsulated retention, refresh-token cleanup, media scanning, media GC intervals, and event listener setups (`setupNotificationListeners`, `setupWebhookDispatcher`, `setupAutomationEngine`, `setupProjectAutomationEngine`) behind a clean `WorkerService` singleton with `start(db)` and `stop()` lifecycle methods.
+  3. **Database Bootstrap Backstops (`src/db/bootstrap.ts`):** Extracted all startup DDL checks, enum migrations, and legacy column backstops out of `index.ts` into `runBootMigrations(db)`.
+  4. **CORS Middleware (`src/middleware/cors.ts`):** Extracted origin resolution, allowlist validation, and CORS header mutation into a dedicated middleware module with backwards-compatible re-exports from `index.ts`.
+  5. **Domain Route Aggregator (`src/routes/v1.ts`):** Grouped the 37 individual `/v1` domain routes into logical clusters (Auth/Identity, Workspaces/Projects, Boards/Tasks, Realtime/Communication, Automations/Webhooks, Platform/System).
+- **Tests & Validation:** Backend `redis` and `lib` suites pass (23 pass / 0 fail); full monorepo typecheck clean across `apps/backend`, `apps/dashboard`, and `apps/super-admin` (`tsc --noEmit`).

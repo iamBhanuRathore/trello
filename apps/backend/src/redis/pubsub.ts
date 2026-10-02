@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { env } from '../lib/env';
 import { logger } from '../lib/logger';
-import { getPubClient, getSubClient, isRedisAvailable } from './client';
+import { redisService } from './client';
 
 export interface RealtimeBroadcastMessage {
   topic: string;
@@ -13,96 +13,117 @@ export interface RealtimeBroadcastMessage {
 
 export const INSTANCE_ID = randomUUID();
 
-type MessageHandler = (message: RealtimeBroadcastMessage) => void;
-const messageHandlers = new Set<MessageHandler>();
-let isSubscribed = false;
+export type MessageHandler = (message: RealtimeBroadcastMessage) => void;
 
 /**
- * Initializes Redis Pub/Sub listener for distributed real-time events.
+ * Singleton PubSub service for distributed real-time messaging across cluster instances.
  */
-export async function initializeRedisPubSub(): Promise<void> {
-  const sub = getSubClient();
-  if (!sub || !isRedisAvailable()) {
-    return;
+export class PubSubService {
+  private static instance: PubSubService | null = null;
+  private messageHandlers = new Set<MessageHandler>();
+  private isSubscribed = false;
+  public readonly instanceId = INSTANCE_ID;
+
+  private constructor() {}
+
+  public static getInstance(): PubSubService {
+    if (!PubSubService.instance) {
+      PubSubService.instance = new PubSubService();
+    }
+    return PubSubService.instance;
   }
 
-  if (isSubscribed) {
-    return;
-  }
+  /**
+   * Initializes Redis Pub/Sub listener for distributed real-time events.
+   */
+  public async initialize(): Promise<void> {
+    const sub = redisService.getSubClient();
+    if (!sub || !redisService.isAvailable()) {
+      return;
+    }
 
-  try {
-    await sub.subscribe(env.REDIS_CHANNEL);
-    isSubscribed = true;
+    if (this.isSubscribed) {
+      return;
+    }
 
-    sub.on('message', (channel, messageStr) => {
-      if (channel !== env.REDIS_CHANNEL) return;
+    try {
+      await sub.subscribe(env.REDIS_CHANNEL);
+      this.isSubscribed = true;
 
-      try {
-        const message: RealtimeBroadcastMessage = JSON.parse(messageStr);
-        for (const handler of messageHandlers) {
-          try {
-            handler(message);
-          } catch (err) {
-            logger.error({ err }, 'Error in Redis PubSub message handler');
+      sub.on('message', (channel, messageStr) => {
+        if (channel !== env.REDIS_CHANNEL) return;
+
+        try {
+          const message: RealtimeBroadcastMessage = JSON.parse(messageStr);
+          for (const handler of this.messageHandlers) {
+            try {
+              handler(message);
+            } catch (err) {
+              logger.error({ err }, 'Error in Redis PubSub message handler');
+            }
           }
+        } catch (err) {
+          logger.warn({ err, messageStr }, 'Failed to parse Redis PubSub message');
         }
-      } catch (err) {
-        logger.warn({ err, messageStr }, 'Failed to parse Redis PubSub message');
-      }
-    });
+      });
 
-    logger.info(
-      { channel: env.REDIS_CHANNEL, instanceId: INSTANCE_ID },
-      'Subscribed to Redis Real-Time channel'
-    );
-  } catch (err) {
-    logger.warn({ err }, 'Failed to subscribe to Redis PubSub channel');
+      logger.info(
+        { channel: env.REDIS_CHANNEL, instanceId: this.instanceId },
+        'Subscribed to Redis Real-Time channel'
+      );
+    } catch (err) {
+      logger.warn({ err }, 'Failed to subscribe to Redis PubSub channel');
+    }
+  }
+
+  /**
+   * Registers a handler invoked when a broadcast message is received from any cluster instance.
+   */
+  public onBroadcast(handler: MessageHandler): () => void {
+    this.messageHandlers.add(handler);
+    return () => {
+      this.messageHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Publishes a broadcast event to the Redis cluster channel.
+   * Returns true if published to Redis, false if Redis is unavailable.
+   * Never hangs the caller: slow/hung Redis fails fast to the in-memory path.
+   */
+  public async publish(topic: string, event: string, payload: unknown): Promise<boolean> {
+    const pub = redisService.getPubClient();
+    if (!pub || !redisService.isAvailable()) {
+      return false;
+    }
+
+    const message: RealtimeBroadcastMessage = {
+      topic,
+      event,
+      payload,
+      instanceId: this.instanceId,
+      timestamp: Date.now(),
+    };
+
+    try {
+      await Promise.race([
+        pub.publish(env.REDIS_CHANNEL, JSON.stringify(message)),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Redis publish timeout')), 1500)
+        ),
+      ]);
+      return true;
+    } catch (err) {
+      logger.warn({ err, topic, event }, 'Failed to publish message to Redis');
+      return false;
+    }
   }
 }
 
-/**
- * Registers a handler invoked when a broadcast message is received from any cluster instance.
- */
-export function onRedisBroadcast(handler: MessageHandler): () => void {
-  messageHandlers.add(handler);
-  return () => {
-    messageHandlers.delete(handler);
-  };
-}
+export const pubSubService = PubSubService.getInstance();
 
-/**
- * Publishes a broadcast event to the Redis cluster channel.
- * Returns true if published to Redis, false if Redis is unavailable.
- * Never hangs the caller: slow/hung Redis fails fast to the in-memory path.
- */
-export async function publishToRedis(
-  topic: string,
-  event: string,
-  payload: unknown
-): Promise<boolean> {
-  const pub = getPubClient();
-  if (!pub || !isRedisAvailable()) {
-    return false;
-  }
-
-  const message: RealtimeBroadcastMessage = {
-    topic,
-    event,
-    payload,
-    instanceId: INSTANCE_ID,
-    timestamp: Date.now(),
-  };
-
-  try {
-    await Promise.race([
-      pub.publish(env.REDIS_CHANNEL, JSON.stringify(message)),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Redis publish timeout')), 1500)
-      ),
-    ]);
-    return true;
-  } catch (err) {
-    logger.warn({ err, topic, event }, 'Failed to publish message to Redis');
-    return false;
-  }
-}
+// Backward-compatible functional exports
+export const initializeRedisPubSub = () => pubSubService.initialize();
+export const onRedisBroadcast = (handler: MessageHandler) => pubSubService.onBroadcast(handler);
+export const publishToRedis = (topic: string, event: string, payload: unknown) =>
+  pubSubService.publish(topic, event, payload);

@@ -24,6 +24,23 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Backend Entrypoint & Service Architecture Refactor (Singleton Redis & Modular Entrypoint)
+
+**Context:** `apps/backend/src/index.ts` had grown to 420 lines combining inline DDL schema backstops, verbose CORS headers and origin resolution, an unorganized chain of 37 domain routes, loose mutable Redis connection handles, and scattered background worker timers. This made the server entrypoint difficult to navigate, test, and maintain.
+
+**Decision:**
+
+1. **Redis & PubSub Singletons (`src/redis/client.ts`, `src/redis/pubsub.ts`):** Encapsulated Redis connection state (`pubClient`, `subClient`, `dataClient`, `isAvailable`, `isConnecting`) and PubSub broadcast subscriptions in `RedisService` and `PubSubService` classes using `getInstance()`. Backward-compatible functional wrappers (`connectRedis`, `disconnectRedis`, `getDataClient`, etc.) are preserved for callers.
+2. **Worker Lifecycle Singleton (`src/lib/workers.ts`):** Created `WorkerService` to orchestrate background housekeeping jobs (audit retention, refresh token cleanup, media scanning, media GC) and event listener setup (`setupNotificationListeners`, `setupWebhookDispatcher`, `setupAutomationEngine`, `setupProjectAutomationEngine`) with unified `start(db)` and `stop()` lifecycle methods.
+3. **Database Bootstrap Backstops (`src/db/bootstrap.ts`):** Moved all startup DDL checks, enum migrations, and legacy column backstops out of `index.ts` into `runBootMigrations(db)`.
+4. **CORS Middleware (`src/middleware/cors.ts`):** Isolated origin allowlist resolution, W3C credentials validation, and PNA headers in a dedicated middleware module with re-exports from `index.ts` for backward compatibility.
+5. **Domain Route Aggregator (`src/routes/v1.ts`):** Modularized and grouped the 37 `/v1` domain routes into cohesive operational domains (Auth/Identity, Workspaces/Projects, Boards/Tasks, Realtime/Communication, Automations/Webhooks, Platform/System).
+6. **Streamlined `index.ts`:** Reduced `index.ts` from 420 lines to ~130 lines focused purely on server startup, middleware binding, and graceful draining/teardown.
+
+**Alternatives considered:** Heavy Dependency Injection (DI) framework (e.g. Inversify or TypeDI) — rejected as excessive complexity and runtime overhead for a Bun + Elysia codebase; module-level loose exports — rejected due to lack of encapsulation and state coordination.
+
+**Consequences:** Clear separation of concerns, encapsulated state, simplified testing and boot diagnostics, and zero breaking changes to external contracts or `@boardly/backend` Eden types.
+
 ### 2026-09-29 — Project Automation Engine (project-scoped WHEN/IF/THEN)
 
 **Context:** Per-project autonomous routing was needed (front-end label → frontend dev, entry into Testing → round-robin tester subtask). Board Butler-style rules are board-scoped with fixed assignees; static `assignment_rules` only fire on creation. Benchmark: Jira Automation (project scope, WHEN/IF/THEN, audit log) for architecture, Trello Butler for configuration ease.
