@@ -998,3 +998,31 @@ Short log of significant technical decisions: what was decided, why, and what al
 - Staying on custom hand-rolled grid (rejected — lacks multi-sort, column visibility, and battle-tested edge-case handling).
 
 **Consequences:** Sub-300ms production builds across dashboard and super-admin, zero breaking changes to existing admin grids, improved memory and render performance, and enterprise-grade table features.
+
+---
+
+### 2026-10-03 — Decomposition of Monolithic TaskDetailView Component
+
+**Context:** `apps/dashboard/src/components/board/TaskDetailView.tsx` had ballooned into the largest frontend component in the codebase (3,319 lines). It combined header rendering, markdown requirements editor, extensive agile/metadata form grids, custom fields, time-tracking worklogs, checklist management with keyboard navigation, attachment drag-and-drop, floating quick-actions ribbon, chat pane coordination, Bitrix24-style sticky bottom action bar, and rating modals into a single massive file. This hindered maintainability and slowed editor language server feedback.
+
+**Alternatives considered:**
+
+- Keeping the component monolithic (rejected — 3.3k lines creates friction and high cognitive overhead for small UI adjustments).
+- Splitting into generic unstructured sub-files (rejected — grouping domain concepts into dedicated components preserves strict typing and reusable boundaries).
+
+**Decision:**
+Decomposed `TaskDetailView.tsx` into a lightweight coordinator (~1,200 lines) orchestrating 10 domain subcomponents located in `apps/dashboard/src/components/board/task-detail/`:
+
+1. `TaskDetailHeader.tsx`: Title, status badges, breadcrumbs, copy actions, and mobile tab switchers.
+2. `TaskDescriptionCard.tsx`: Collapsible markdown requirements editor, dirty tracking, preview tabs, and character counts.
+3. `TaskMetadataGrid.tsx`: Priority, stage templates, sprints, phases, assignees, participants, watchers, and labels.
+4. `TaskSubtasksCard.tsx`: Subtask list, status toggling, quick creation input, and parent card linking.
+5. `TaskCustomFieldsCard.tsx`: Dynamic tenant custom field inputs and renderers.
+6. `TaskTimeTrackingCard.tsx`: Live session timer, logged time progress, worklog submission form, and history list.
+7. `TaskChecklistsCard.tsx`: Checklists, progress bars, drag reordering, bulk item entry, and completion stats.
+8. `TaskAttachmentsCard.tsx`: File upload dropzone, media previews, and attachment management.
+9. `TaskDetailBottomBar.tsx`: Sticky Bitrix24-style enterprise bottom action bar with task timer, start/pause/complete actions, more-options dropdown, and rating launcher.
+10. `TaskRateModal.tsx`: Quality scoring popover adhering to the Rule 10 `useDialogClose` contract.
+
+**Consequences:**
+Retains 100% feature parity, API contracts, keyboard interactions, and responsive layouts. Dramatically improves testability and readability while keeping dashboard Vite builds fast (329ms) and typechecks clean.

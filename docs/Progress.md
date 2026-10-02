@@ -2326,3 +2326,19 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   4. **Strict Dialog Close Contract Compliance:** Replaced loose `useEscapeKey` and scattered boolean flags with `useDialogClose` across all 5 dialogs and `MemberActivityDrawer`, adhering to Rule 10.
   5. **Zero Breaking Changes:** `Users.tsx` acts as a clean 2-line facade exporting `UsersPage`.
 - **Tests & Validation:** Dashboard typecheck (`bun run --cwd apps/dashboard typecheck`) and Vite build clean with 0 errors (306ms); oxlint 0 warnings/0 errors.
+
+### 2026-10-03 — TaskDetailView Monolith Decomposition (3,319 → 1,226 lines)
+
+- **What:** Decomposed the massive 3,319-line `TaskDetailView.tsx` into 10 modular, single-responsibility subcomponents under `apps/dashboard/src/components/board/task-detail/`:
+  1. **`TaskDetailHeader.tsx` (305 lines):** Breadcrumb navigation, title display, status badges, mobile tab switchers, and action triggers.
+  2. **`TaskDescriptionCard.tsx` (289 lines):** Expandable markdown requirements editor with unsaved changes tracking, preview/edit tabs, and character counts.
+  3. **`TaskMetadataGrid.tsx` (635 lines):** Comprehensive enterprise agile metadata inputs (lists, priorities, stage templates, sprints, phases, assignees, participants, watchers, labels) with click-outside popovers.
+  4. **`TaskSubtasksCard.tsx` (207 lines):** Hierarchical subtask list with completion toggling and quick creation affordance.
+  5. **`TaskCustomFieldsCard.tsx` (41 lines):** Dynamic custom fields renderer for tenant configurations.
+  6. **`TaskTimeTrackingCard.tsx` (220 lines):** Time-tracking progress bars, live timer status, manual worklog composer, and log history.
+  7. **`TaskChecklistsCard.tsx` (437 lines):** Checklist item management, drag-and-drop ordering, bulk item modal, and progress meters.
+  8. **`TaskAttachmentsCard.tsx` (102 lines):** File dropzone, mime-type badges, and attachment deletion/download.
+  9. **`TaskDetailBottomBar.tsx` (132 lines):** Sticky Bitrix24-style action footer with Start/Pause timer, Complete task, more options dropdown (clone, add subtask, archive, delete), and rating button.
+  10. **`TaskRateModal.tsx` (92 lines):** Quality rating modal implementing the Rule 10 `useDialogClose` contract.
+  11. **Type & Modal Fixes:** Standardized `ConfirmDialog` props (`open`, `onOpenChange`, `isLoading`) across all destructive confirmations in the coordinator.
+- **Tests & Validation:** Full dashboard typecheck (`tsc -b --noEmit`) passes with 0 errors; Vite build succeeds in 329ms; oxlint reports 0 warnings and 0 errors.
