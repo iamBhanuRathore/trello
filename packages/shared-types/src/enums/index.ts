@@ -151,3 +151,149 @@ export const UserPresenceStatus = {
   Offline: 'offline',
 } as const;
 export type UserPresenceStatus = (typeof UserPresenceStatus)[keyof typeof UserPresenceStatus];
+
+// ─── Media scan-gate lifecycle (varchar columns, TS-typed via .$type) ────────
+// Canonical sets reconciled in Phase 0 (code inventory + dev GROUP BY). `skipped`
+// is a real backend-written value (SCAN_MODE=disabled / legacy rescan, see
+// backend storage.ts), NOT dev-only — production can emit it, so it stays in.
+export const MediaStatus = {
+  Staged: 'staged',
+  Scanning: 'scanning',
+  Ready: 'ready',
+  Blocked: 'blocked',
+  Failed: 'failed',
+} as const;
+export type MediaStatus = (typeof MediaStatus)[keyof typeof MediaStatus];
+export const MediaStatusValues: readonly MediaStatus[] = [
+  'staged',
+  'scanning',
+  'ready',
+  'blocked',
+  'failed',
+];
+
+export const MediaScanStatus = {
+  Pending: 'pending',
+  Clean: 'clean',
+  Infected: 'infected',
+  Error: 'error',
+  Skipped: 'skipped',
+} as const;
+export type MediaScanStatus = (typeof MediaScanStatus)[keyof typeof MediaScanStatus];
+export const MediaScanStatusValues: readonly MediaScanStatus[] = [
+  'pending',
+  'clean',
+  'infected',
+  'error',
+  'skipped',
+];
+
+// ─── Git links (varchar kind/state, TS-typed via .$type) ─────────────────────
+// State covers commit links (pushed), PR lifecycle (open/merged/closed/updated)
+// and PR review outcomes persisted over the link (approved/changes_requested/
+// commented). Inbox triage filters on ['open', 'changes_requested'].
+export const GitLinkKind = {
+  Commit: 'commit',
+  PR: 'pr',
+} as const;
+export type GitLinkKind = (typeof GitLinkKind)[keyof typeof GitLinkKind];
+export const GitLinkKindValues: readonly GitLinkKind[] = ['commit', 'pr'];
+
+export const GitLinkState = {
+  Pushed: 'pushed',
+  Open: 'open',
+  Merged: 'merged',
+  Closed: 'closed',
+  Updated: 'updated',
+  Approved: 'approved',
+  ChangesRequested: 'changes_requested',
+  Commented: 'commented',
+} as const;
+export type GitLinkState = (typeof GitLinkState)[keyof typeof GitLinkState];
+export const GitLinkStateValues: readonly GitLinkState[] = [
+  'pushed',
+  'open',
+  'merged',
+  'closed',
+  'updated',
+  'approved',
+  'changes_requested',
+  'commented',
+];
+
+// ─── Card access requests ────────────────────────────────────────────────────
+export const CardAccessStatus = {
+  Pending: 'pending',
+  Approved: 'approved',
+  Dismissed: 'dismissed',
+} as const;
+export type CardAccessStatus = (typeof CardAccessStatus)[keyof typeof CardAccessStatus];
+export const CardAccessStatusValues: readonly CardAccessStatus[] = [
+  'pending',
+  'approved',
+  'dismissed',
+];
+
+// ─── Project automation runs ─────────────────────────────────────────────────
+export const AutomationRunStatus = {
+  Executed: 'executed',
+  Skipped: 'skipped',
+  Failed: 'failed',
+} as const;
+export type AutomationRunStatus = (typeof AutomationRunStatus)[keyof typeof AutomationRunStatus];
+export const AutomationRunStatusValues: readonly AutomationRunStatus[] = [
+  'executed',
+  'skipped',
+  'failed',
+];
+
+export const AutomationRunReason = {
+  AlreadyAssigned: 'ALREADY_ASSIGNED',
+  AssigneeNotFound: 'ASSIGNEE_NOT_FOUND',
+  EmptyPool: 'EMPTY_POOL',
+  ConditionUnmet: 'CONDITION_UNMET',
+  LabelNotFound: 'LABEL_NOT_FOUND',
+  OpenSubtask: 'OPEN_SUBTASK',
+  DuplicateEvent: 'DUPLICATE_EVENT',
+  Error: 'ERROR',
+} as const;
+export type AutomationRunReason = (typeof AutomationRunReason)[keyof typeof AutomationRunReason];
+export const AutomationRunReasonValues: readonly AutomationRunReason[] = [
+  'ALREADY_ASSIGNED',
+  'ASSIGNEE_NOT_FOUND',
+  'EMPTY_POOL',
+  'CONDITION_UNMET',
+  'LABEL_NOT_FOUND',
+  'OPEN_SUBTASK',
+  'DUPLICATE_EVENT',
+  'ERROR',
+];
+
+// ─── Seat change requests (only 'pending' written today; union is the ───────
+// documented contract for the confirm/fail transitions when they land) ───────
+export const SeatChangeStatus = {
+  Pending: 'pending',
+  Confirmed: 'confirmed',
+  Failed: 'failed',
+} as const;
+export type SeatChangeStatus = (typeof SeatChangeStatus)[keyof typeof SeatChangeStatus];
+export const SeatChangeStatusValues: readonly SeatChangeStatus[] = [
+  'pending',
+  'confirmed',
+  'failed',
+];
+
+export const SeatChangeDirection = {
+  Increase: 'increase',
+  Decrease: 'decrease',
+} as const;
+export type SeatChangeDirection = (typeof SeatChangeDirection)[keyof typeof SeatChangeDirection];
+export const SeatChangeDirectionValues: readonly SeatChangeDirection[] = ['increase', 'decrease'];
+
+// ─── Inbound email intake ────────────────────────────────────────────────────
+export const InboundEmailStatus = {
+  Received: 'received',
+  Failed: 'failed',
+} as const;
+export type InboundEmailStatus = (typeof InboundEmailStatus)[keyof typeof InboundEmailStatus];
+export const InboundEmailStatusValues: readonly InboundEmailStatus[] = ['received', 'failed'];
