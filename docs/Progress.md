@@ -2444,3 +2444,13 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   5. **`auth-invitations.ts`:** Invitation token lookup (`getInvitationInfo`) and acceptance with account provisioning (`acceptInvitation`).
   6. **`service.ts` Facade (11 lines):** 100% backward-compatible re-exports of all submodule functions.
 - **Tests & Validation:** Backend typecheck (`tsc --noEmit`) clean; dashboard typecheck (`tsc -b --noEmit`) clean; all 26 auth tests pass (`auth.test.ts`, `refresh.test.ts`, `workos.test.ts`).
+
+### 2026-10-03 — Backend Organizations Service Modularization (1,138 → 11 lines facade)
+
+- **What:** Refactored monolithic 1,138-line `apps/backend/src/modules/organizations/service.ts` into modular domain submodules under `apps/backend/src/modules/organizations/`:
+  1. **`org-common.ts`:** Centralized `httpError`, role types (`ALLOWED_ORG_ROLES`, `AllowedOrgRole`), and token hashing (`hashInviteToken`).
+  2. **`org-manage.ts`:** Organization query with plan details (`getOrg`, `loadOrg`) and updates with cache invalidation (`updateOrg`).
+  3. **`org-members.ts`:** Filtered member listing with compound cache keys (`listMembers`, `countMembers`), role modifications (`updateMemberRole`), soft-delete deactivation and reactivation with transactional session revocation & automated emails (`deactivateMember`, `reactivateMember`), force logout (`forceLogoutUser`), member activity metrics aggregation (`getMemberActivitySummary`), and removal (`removeMember`).
+  4. **`org-invitations.ts`:** Single and bulk member invitations with seat quota verification (`inviteMember`, `bulkInviteMembers`), pending invitation management (`listPendingInvitations`, `resendInvitation`, `revokeInvitation`), token preview (`previewInvitation`), and invitation acceptance (`acceptInvitation`).
+  5. **`service.ts` Facade (11 lines):** 100% backward-compatible re-exports of all submodule functions.
+- **Tests & Validation:** Backend typecheck (`tsc --noEmit`) clean; dashboard typecheck (`tsc -b --noEmit`) clean; all 13 organization tests pass (`org.test.ts`, `org.routes.test.ts`).

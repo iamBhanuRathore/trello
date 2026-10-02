@@ -24,6 +24,23 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Backend Organizations Service Modularization (Domain Submodules Pattern)
+
+**Context:** `apps/backend/src/modules/organizations/service.ts` grew to 1,138 lines containing organization metadata updates, member query filtering & count caching, member lifecycle (roles, deactivation/reactivation, session invalidation), and the complete invitation subsystem (token hashing, email dispatch, seat reservation check, acceptance).
+
+**Decision:**
+
+1. Decomposed into cohesive domain submodules under `apps/backend/src/modules/organizations/`:
+   - `org-common.ts`: Central re-export of `httpError` (used monorepo-wide), role enums (`ALLOWED_ORG_ROLES`, `AllowedOrgRole`), and invitation token hashing (`hashInviteToken`).
+   - `org-manage.ts`: Organization query with plan resolution (`getOrg`, `loadOrg`), cached updates with explicit column picking (`updateOrg`).
+   - `org-members.ts`: Filtered member listing with compound cache keys (`listMembers`, `countMembers`), role modifications (`updateMemberRole`), soft-delete deactivation and reactivation with transactional session revocation & automated emails (`deactivateMember`, `reactivateMember`), force logout (`forceLogoutUser`), member activity metrics aggregation (`getMemberActivitySummary`), and removal (`removeMember`).
+   - `org-invitations.ts`: Single and bulk member invitations with seat quota verification (`inviteMember`, `bulkInviteMembers`), pending invitation management (`listPendingInvitations`, `resendInvitation`, `revokeInvitation`), token preview (`previewInvitation`), and invitation acceptance (`acceptInvitation`).
+2. Retained `service.ts` as a 100% backward-compatible facade re-exporting all submodules.
+
+**Alternatives considered:** Keeping all organization code in a single file — rejected due to sprawl and risk of regressions across widespread callers of `httpError` and member queries.
+
+**Consequences:** Clean separation of concerns, zero breaking changes to existing routes or tests, submodules cleanly sized (<450 lines), and 100% passing test suites.
+
 ### 2026-10-03 — Backend Auth Service Modularization (Domain Submodules Pattern)
 
 **Context:** `apps/backend/src/modules/auth/service.ts` reached 1,198 lines containing token pair generation, sliding refresh token families, grace window reuse handling, family burning, user signup/signin workflows, profile updates, password hashing, RBAC permissions categorization, and invitation acceptance.
