@@ -2409,3 +2409,14 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
 - **Dashboard:** deleted hand mirrors (`api.ts`, `chatService.ts`) in favor of shared-types imports; added `@boardly/shared-types` workspace dep + tsconfig paths (new pattern — dashboard never depended on it before).
 - **Guards:** committed `status-enums.type-test.ts` (`@ts-expect-error` typo assertions, CI-enforced); negative check proven (`'readey'` → TS2820).
 - **Tests & Validation:** backend `tsc --noEmit` + `oxlint` clean (one pre-existing `chat/service.ts` unused-param warning); dashboard `tsc -b` + `oxlint` clean; suites: media 19 pass/1 skip, chat+inbox+inbound 46 pass, cards+automations+billing+inbound 53 pass. Commits: shared-types → media → (git/inbox swept into parallel TaskChatPane commit `aca1856`, content verified intact) → schema-base → cards → automations → billing → inbound. Never pushed.
+
+### 2026-10-03 — ChatFeed God-Component Decomposition (1,297 → 442 lines)
+
+- **What:** Refactored monolithic 1,297-line `apps/dashboard/src/components/chat/ChatFeed.tsx` into modular domain subcomponents under `apps/dashboard/src/components/chat/feed/`:
+  1. **`ChatFeedHeader.tsx`:** Channel header with metadata, direct message presence, layout toggle (classic/bubbles), search bar, and details toggle.
+  2. **`PinnedMessageBanner.tsx`:** Pinned message notification banner with jump button and unpin action.
+  3. **`SelectModeToolbar.tsx`:** Multi-select batch action toolbar (forward, delete, cancel).
+  4. **`ChatFeedComposer.tsx`:** Input textarea, mention autocomplete popup, attachment tray, formatting shortcuts, and send trigger.
+  5. **`index.ts`:** Public barrel export.
+  6. **`ChatFeed.tsx` Coordinator (442 lines):** Orchestrates message queries, scroll jumping, reactions, pinning, deletion modals, and forwarding.
+- **Tests & Validation:** Dashboard typecheck (`tsc -b --noEmit`) passes cleanly with 0 errors; Vite production build succeeds in 1.24s.

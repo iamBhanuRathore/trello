@@ -24,6 +24,25 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — ChatFeed God-Component Decomposition (Feed Subcomponents Pattern)
+
+**Context:** `apps/dashboard/src/components/chat/ChatFeed.tsx` grew into a 1,297-line monolithic component coordinating channel header and direct message presence, pinned message navigation banner, multi-select action toolbar, live virtualized message scroll management, and composer with rich attachments and mention autocompletion.
+
+**Decision:**
+
+1. Modularized into domain subcomponents under `apps/dashboard/src/components/chat/feed/`:
+   - `ChatFeedHeader.tsx`: Channel header with metadata, direct message presence, layout toggle (classic/bubbles), search bar, and details toggle.
+   - `PinnedMessageBanner.tsx`: Pinned message notification banner with jump button and unpin action.
+   - `SelectModeToolbar.tsx`: Multi-select batch action toolbar (forward, delete, cancel).
+   - `ChatFeedComposer.tsx`: Input textarea, mention autocomplete popup, attachment tray, formatting shortcuts, and send trigger.
+   - `index.ts`: Barrel export.
+2. Refactored `ChatFeed.tsx` into a lean coordinator (442 lines) managing queries, scroll restoration, reactions, pinning, and message deletion modals.
+3. Preserved 100% backward compatibility for all props, styles, and handlers.
+
+**Alternatives considered:** Keeping all sub-elements inline — rejected due to readability issues, coupled re-render cycles, and violation of monolithic file size standards.
+
+**Consequences:** Clear separation of concerns, faster Vite builds, maintainable subcomponents each under 400 lines, and zero UI regressions.
+
 ### 2026-10-03 — Varchar Status Columns: TS Typing via `.$type`, Not `pgEnum`
 
 **Context:** Eight `varchar` columns (media status/scanStatus ×2 tables, git_links kind/state, card access, automation run status/reason, seat changes, inbound email) carried closed lifecycles as raw string literals — no autocomplete, typos compile and fail silently (fail-open/closed risk in the media scan gate).
