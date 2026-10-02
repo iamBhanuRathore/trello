@@ -49,6 +49,7 @@ import {
   Inbox,
 } from 'lucide-react';
 import { chatService } from '../lib/chatService';
+import { useOpenCreateWorkspace } from './workspaces/GlobalCreateWorkspaceDialog';
 import { UserProfileDropdown } from './UserProfileDropdown';
 import { getInitials } from '../utils/avatar';
 
@@ -205,6 +206,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       setOpenMobile(false);
     }
   };
+
+  // Shell-level creator: same-location ?createWorkspace=1 (replace) — opens the
+  // global dialog without navigating or pushing a history entry.
+  const openCreateWorkspace = useOpenCreateWorkspace();
 
   const triggerSearchPalette = () => {
     // Dispatch on document (not window): the palette listens at document
@@ -512,14 +517,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
               <SidebarGroupLabel className="text-[11px] font-semibold text-muted-foreground/80 p-0">
                 Workspaces &amp; Teams
               </SidebarGroupLabel>
-              <Link
-                to="/?createWorkspace=1"
-                onClick={handleNavClick}
+              <button
+                type="button"
+                onClick={() => {
+                  handleNavClick();
+                  openCreateWorkspace();
+                }}
                 title="Create new workspace"
-                className="text-muted-foreground hover:text-foreground p-0.5 rounded-md hover:bg-sidebar-accent transition-colors"
+                aria-label="Create new workspace"
+                className="text-muted-foreground hover:text-foreground p-0.5 rounded-md hover:bg-sidebar-accent transition-colors cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-              </Link>
+              </button>
             </div>
           )}
 

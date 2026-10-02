@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button } from '@boardly/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@boardly/ui/dialog';
@@ -27,18 +27,9 @@ export function Workspaces() {
   const queryClient = useQueryClient();
   const [editingWs, setEditingWs] = useState<{ id: string; name: string } | null>(null);
   const [deletingWs, setDeletingWs] = useState<{ id: string; name: string } | null>(null);
-  const [searchParams, setSearchParams] = useSearchParams();
-  // Sidebar "+" deep-links here with ?createWorkspace=1 — consume on change
+  // Sidebar "+" / header Create menu open the shell-level GlobalCreateWorkspaceDialog
+  // (DashboardLayout) via ?createWorkspace=1 — no page-local param handling here.
   const [createOpen, setCreateOpen] = useState(false);
-
-  useEffect(() => {
-    if (searchParams.get('createWorkspace') === '1') {
-      setCreateOpen(true);
-      const next = new URLSearchParams(searchParams);
-      next.delete('createWorkspace');
-      setSearchParams(next, { replace: true });
-    }
-  }, [searchParams, setSearchParams]);
 
   const {
     data: workspaces,

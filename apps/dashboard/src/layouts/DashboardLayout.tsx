@@ -24,6 +24,7 @@ import {
 import { GlobalChatDock } from '../components/chat/GlobalChatDock';
 import { KeyboardShortcutsModal } from '../components/KeyboardShortcutsModal';
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts';
+import { GlobalCreateWorkspaceDialog, useOpenCreateWorkspace } from '../components/workspaces';
 
 export function DashboardLayout() {
   const location = useLocation();
@@ -32,6 +33,7 @@ export function DashboardLayout() {
   const [isTrashOpen, setIsTrashOpen] = useState(false);
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const openCreateWorkspace = useOpenCreateWorkspace();
 
   // Global hotkeys listener
   useGlobalShortcuts({
@@ -156,7 +158,7 @@ export function DashboardLayout() {
               >
                 <DropdownMenuItem
                   className="cursor-pointer text-xs font-medium px-2.5 py-2 rounded-lg gap-2.5"
-                  onClick={() => navigate('/')}
+                  onClick={openCreateWorkspace}
                 >
                   <Briefcase className="w-4 h-4 text-primary shrink-0" />
                   <span>Create Workspace</span>
@@ -215,6 +217,8 @@ export function DashboardLayout() {
         </Suspense>
       )}
       <KeyboardShortcutsModal open={isShortcutsOpen} onOpenChange={setIsShortcutsOpen} />
+      {/* Shell-level creator: opens from ?createWorkspace=1 on any route, no navigation */}
+      <GlobalCreateWorkspaceDialog />
     </SidebarProvider>
   );
 }
