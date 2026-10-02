@@ -1297,3 +1297,31 @@ Separately, `db/index.ts` exposed `withOrgContext()` (Postgres RLS `SET LOCAL ap
 **Consequences:** Nine negative tests (orgA reaching for orgB ids) fail against the pre-fix code and pass after — verified by stashing the fix and re-running. The property being relied on is now explicit and regression-tested rather than assumed.
 
 On `withOrgContext`: it is referenced only by `db/db.test.ts` — no migration or ops script depends on its replica routing or recent-write marker, so it is removed as dead code rather than relocated. Note that migration `0012_enable_row_level_security.sql` already created `USING (organization_id = current_setting('app.current_org_id', true)::uuid)` policies on `workspaces`, `boards` and `cards`, but those policies are **inert**: the app connects as the table owner, and RLS does not apply to the owner unless `FORCE ROW LEVEL SECURITY` is set. Enabling it without a least-privilege application role and a `withOrgContext` call on every tenant query would deny all traffic. That remains a future defense-in-depth option; `scripts/lint-raw-db.ts` already prevents new services from reaching for the raw clients directly.
+
+---
+
+### 2026-10-03 — Auth Failure Statuses Are Distinct; Empty-Org Fallback Stays Log-Only
+
+**Context:** The `authPlugin` derive in `apps/backend/src/middleware/auth.ts` wrapped token verification, the active-membership check, the burned-refresh-family check and plan-tier resolution in a single `catch { set.status = 401 }`. Three distinct outcomes therefore reported as "Unauthorized — invalid or expired token": a token whose membership was revoked (must not be fixed by re-login), a burned session (correctly 401), and a database or Redis failure during membership resolution (an outage, not an auth problem). The 403 branch inside the try block was unreachable because its own `catch` rewrote it.
+
+Separately, `requirePermission` resolved an empty `user.organizationId` by taking "the first active membership" with no ordering — for a multi-org user that grants whichever org the database returns first. Flipping that to a 400 was proposed as a fix.
+
+**Alternatives considered:**
+
+- Flip the empty-org fallback to a 400 in the same change (rejected — the caller check showed the degenerate state is reachable by a legitimately authenticated user, so this would have been a lockout, not a fix).
+- Delete the fallback outright (rejected — same lockout risk, with no signal about who is affected).
+- Keep the broad catch (rejected — it is the bug).
+
+**Decision:**
+
+1. Only a failed `verifyAccessToken` returns 401. A thrown error carrying a deliberate 401 or 403 propagates unchanged; anything else is logged with `path`/`user_id`/`organization_id` and returned as 503.
+2. The empty-organization fallback is **instrumented, not removed** (step 1 of two). `requirePermission` logs a warning with the resolved org id whenever the fallback fires, and `auth-lifecycle` login logs when it mints an empty-org token. Step 2 — returning 400 — is deferred until the logs are quiet.
+
+**Caller check behind deferring step 2:**
+
+- `auth-lifecycle.ts` login and `auth-tokens.ts` `assertRefreshGate` both produce `organizationId: ''` for a user with no active membership, so an empty-org token is reachable through normal login and refresh, not only through an unpatched client.
+- The dashboard and mobile app read the org from the token and have no org-selection UI, so there is no self-service path to pick a different org.
+- `developer/service.ts` `generateApiKey` would have written an `api_keys` row scoped to no tenant and now rejects an empty org. `verifyApiKey` has no route consumer yet, so this was latent.
+- Webhook and git-integration callers are HMAC-authed and never reach the JWT path.
+
+**Consequences:** `auth-status.test.ts` covers each failure mode separately; two cases fail against the pre-fix code with 401 where 403 is correct. Clients can now distinguish "your session ended" from "you were removed" from "we are having an outage". A known 60s window remains on membership revocation: `assertActiveOrgMembership` caches under `auth:membership:{orgId}:{userId}`, and `bumpUserCache` targets a different key, so nothing invalidates it early — deliberate, and bounded by the 60s TTL.

@@ -33,7 +33,7 @@
 - ✅ `packages/test-fixtures` — factory/seeder functions (createOrgWithUsers, createBoardWithCards, etc.)
 - ✅ `packages/ui` — shared UI component library (`@boardly/ui`): Button, Card, Dialog, Input, Label, Avatar, DropdownMenu, Switch + `cn()` utility.
 - ✅ `apps/backend` — Bun + Elysia on :3001
-  - Full Drizzle ORM schema with ~76 tables. Tenant isolation is app-layer (explicit `organization_id` predicates + membership checks); Postgres RLS is deliberately unenforced (accepted risk — see Decisions.md 2026-09-28). `withOrgContext()` exists for future adoption.
+  - Full Drizzle ORM schema with ~76 tables. Tenant isolation is app-layer (explicit `organization_id` predicates + membership checks); Postgres RLS is deliberately unenforced (accepted risk — see Decisions.md 2026-09-28). Migration `0012`'s RLS policies are **inert** (app connects as table owner; RLS needs `FORCE ROW LEVEL SECURITY`), and the unused `withOrgContext()` helper was removed on 2026-10-03 — see Decisions.md that date.
   - Multi-tenant token bucket rate limiter (`rateLimiter.ts`) with Redis Lua `EVALSHA` and fail-open policy (`rate_limiter_fail_open_total`).
   - Fleet-wide heavy endpoint concurrency semaphore (`tenantQuota.ts`) with 300s TTL safety net.
   - Graceful shutdown with 25-second in-flight request draining and connection cleanup.
@@ -2517,3 +2517,51 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
 
 - **What:** Removed all 8 hand-rolled `text-destructive focus:text-destructive focus:bg-destructive/10` class strings on dashboard `DropdownMenuItem`s (the editor-warning pattern from the screenshot) and switched them to the design system's canonical `variant="destructive"` API (`@boardly/ui` dropdown-menu, data-variant selectors) — visuals identical, plus the variant's dark-mode focus bg. Touched: `Workspaces` (Delete Workspace), `BoardsList`, `ProjectsList`, `BoardHeader` (Delete Board), `ListColumn` (Delete List), `TaskChecklistsCard` (Delete checklist), `Priorities` (Delete…), `memberColumns` (Remove User). Also includes a prior uncommitted tweak in `BoardHeader` (drops `cursor-pointer disabled:cursor-not-allowed` on the Create Task button).
 - **Tests & Validation:** `focus:text-destructive` now zero occurrences in `apps/`; dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on all touched files.
+
+### 2026-10-03 — P0 Security Pass: Cross-Tenant Sweep, Presence Scoping, Auth Statuses
+
+Fix-only pass (no new features). Started from a Phase 0 read-only audit, then one commit per item, all local.
+
+**Phase 0 — audit (read-only)**
+
+- Org-scope sweep for queries keyed by id alone across `apps/backend/src`. Produced the findings below plus a documented low-severity tail (guard-then-write services, `getBoardIdForCard`/`bumpForCard` helpers that feed cache/broadcast rather than gate access).
+- AuthZ gap list. Correction to an earlier assumption: **`phases/*` and `sprints/*` routes already have `requirePermission` guards** (8/8 each) — no gap there. Real gaps found: `chat/*` (24 handlers, service-level `requireChannelMembership` only), `notifications/*`, `inbox/*`, `calendar/*` (9 of 11 unguarded), and `presence/*`.
+- Access logs could not be checked for past cross-org id use: they do not record org + entity ids together. Noted in Decisions.md as a detection gap; adding that logging is folded into the remaining P0 work.
+- Tenancy harness: reused `test-utils.ts` (`deleteTestOrg`, unique email/slug helpers) rather than adding a new fixture layer.
+
+**Item 1 — trash cross-tenant hard delete** (`96d9f60`)
+
+- `hardDeleteItem('card')` called `deleteCardCascade([itemId])` with **no** `organizationId` filter, while the board/project/workspace cascades all scoped their terminal delete. `deleteCardCascade` now takes a mandatory org and re-derives deletable ids through `cards → lists → boards`; the other cascades assert ownership up front and 404 instead of cascading blindly.
+- `restoreItem` parent-reactivation writes were PK-only and unconditional — now org-scoped and only when the parent is actually soft-deleted.
+- New `trash-tenancy.test.ts`: 9 negative tests. **5 fail against pre-fix code, all 9 pass after** (verified by stashing the fix and re-running).
+
+**Item 3 — subtask parent escape** (same commit)
+
+- `createCard` and `cloneCard` resolved `parentCardId` by PK, permitting a cross-org subtask link and corrupting the foreign parent's `subtasksTotal`. Both now filter by `organizationId` in the same predicate; the 2-level nesting 400 is preserved.
+
+**Item 2 — presence leak** (`618dc31`)
+
+- Every socket subscribed to one global `org:presence` topic and every presence change broadcast to it, fanning one tenant's status to all tenants (4 occurrences). Topic is now `org:presence:{organizationId}`, org resolved from **active membership server-side**, never client input.
+- Legacy global topic is no longer published to but is still accepted as a subscribe target and remapped to the connection's own org topic. No dual-publish window was needed: the dashboard never names this topic.
+- Also closed a cross-tenant **read** found in the same sweep: `GET /v1/presence/users?ids=` resolved arbitrary user ids across orgs (presence + name oracle). Ids outside the caller's org are dropped; 400 when no org is selected.
+- Board subscribes re-check membership and close the socket on removal.
+- `presence-tenancy.test.ts`: 7 tests including a source-level guard that no module broadcasts to or subscribes to the bare global topic (matches all 4 pre-fix occurrences).
+
+**Item 4 — dead RLS context** (`552e410`)
+
+- Removed `withOrgContext()` and its test. It was referenced only by that test, so `app.current_org_id` was never set and migration `0012`'s RLS policies never applied.
+- Checked before removing: no migration or ops script depends on the replica routing or recent-write marker; `scripts/lint-raw-db.ts` only names the raw clients as _forbidden_ imports (a guard, not a dependency). `rawReadDb`/`readClient` kept — `disconnectDb` closes them.
+- Documented at the db handle that isolation is per-query `organization_id` filters, and why `0012` is inert. `scripts/lint-raw-db.ts` still passes.
+
+**Item 5 — auth status masking** (`c24706c`)
+
+- The derive's single `catch { 401 }` reported revoked-membership, burned-session and DB/Redis-outage all as "invalid or expired token", and made its own 403 branch unreachable. Now: only `verifyAccessToken` failure is 401; deliberate 401/403 propagate; everything else is logged and returned **503**.
+- Empty-`organizationId` handling is **instrumented, not flipped** (step 1 of two). `requirePermission` warns with the resolved org id when the first-active-membership fallback fires; login warns when minting an empty-org token. Step 2 (400) deferred pending quiet logs.
+- Caller check that drove that: login (`auth-lifecycle.ts`) and refresh (`assertRefreshGate`) both mint `organizationId: ''` for a user with no membership, so the state is reachable by a legitimately authenticated user; the dashboard has no org-selection UI, so a 400 would strand those accounts. `generateApiKey` now rejects an empty org (it would have written an org-less key row) — latent, since `verifyApiKey` has no route consumer.
+- `auth-status.test.ts`: 9 tests. **2 fail pre-fix with 401 where 403 is correct** (deactivated and soft-deleted membership). Burned-family case self-skips without Redis.
+
+**Validation:** backend `tsc --noEmit` clean; `oxlint` clean apart from the pre-existing `chat-messages.ts:610` unused-param warning; full backend suite **360 pass / 1 skip / 0 fail** across 48 files.
+
+**Rollback notes:** each commit is self-contained. Items 1 and 5 are behaviour-changing (404 instead of cross-org delete; 503/403 instead of blanket 401) — revert the commit to restore prior behaviour, no schema or response-shape change. Item 2's rollback also restores the global topic; the source guard test will fail loudly if the topic is reintroduced.
+
+**Next:** P0-6 (Stripe webhook 400/500 split + idempotency with a `processing` state and crash-between test), P0-7 (fail-open paths — in-memory rate-limit fallback, DB-backed SSO state, Redis retry, per-instance presence store, Redis/outbound timeouts), P0-8 (phases/sprints guard — already present, so verify parity rather than add).
