@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Varchar Status Columns: TS Typing via `.$type`, Not `pgEnum`
+
+**Context:** Eight `varchar` columns (media status/scanStatus ×2 tables, git_links kind/state, card access, automation run status/reason, seat changes, inbound email) carried closed lifecycles as raw string literals — no autocomplete, typos compile and fail silently (fail-open/closed risk in the media scan gate).
+
+**Decision:** Canonical const-object + union + `*_VALUES` tuple in `@boardly/shared-types` (existing erasableSyntaxOnly-safe pattern); Drizzle `.$type<Union>()` on columns; `Enum.Member` access at every site; `t.Enum` on the one true status-bearing input (runs-history query). Inputs strict, responses typed-but-non-throwing (one drifted row can't 500). `skipped` kept in `MediaScanStatus` (backend-written, prod-emittable); inbound union widened to 6 (column stores outcomes by design — split deferred); open-ended `action` fields stay `string`.
+
+**Alternatives considered:** Full `pgEnum` migration (DB-level rejection) — rejected: needs `ALTER TYPE ... USING` + backfill + new migration while value sets were still drifting; typing gives the typo-safety today at zero downtime. Future upgrade path: `CHECK ... NOT VALID` constraints after staging/prod data inventory.
+
+**Consequences:** Typos are compile errors (CI-gated type-tests); dashboard now depends on `@boardly/shared-types` (new edge); runs-history query returns 422 on unknown status instead of ignoring the filter.
+
 ### 2026-10-03 — Admin Users God-Component Decomposition (Domain Slice Pattern)
 
 **Context:** `apps/dashboard/src/pages/admin/Users.tsx` grew into a 1,548-line monolithic component containing 5 separate dialogs/drawers (single/bulk invites, role modification, deactivation reason form, removal confirmation, and member intelligence drawer) as well as two table column definitions inline. This led to cascading re-renders across the page on simple keystrokes, and violated Rule 10 by using loose `useEscapeKey` rather than the centralized `useDialogClose` contract.
