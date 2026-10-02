@@ -2420,3 +2420,16 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   5. **`index.ts`:** Public barrel export.
   6. **`ChatFeed.tsx` Coordinator (442 lines):** Orchestrates message queries, scroll jumping, reactions, pinning, deletion modals, and forwarding.
 - **Tests & Validation:** Dashboard typecheck (`tsc -b --noEmit`) passes cleanly with 0 errors; Vite production build succeeds in 1.24s.
+
+### 2026-10-03 — Backend Chat Service Modularization (1,727 → 13 lines facade)
+
+- **What:** Refactored monolithic 1,727-line `apps/backend/src/modules/chat/service.ts` into modular domain submodules under `apps/backend/src/modules/chat/`:
+  1. **`chat-common.ts`:** Shared `httpError`, `requireChannelMembership`, and `requireChannelAdmin`.
+  2. **`chat-channels.ts`:** Direct messaging, group creation, listUserChannels with batched queries, getChannelDetails, getSharedChannels, updateChannel, togglePinChannel, and project link/unlink operations.
+  3. **`chat-members.ts`:** Channel member invitation, role updates and owner transfer, leave/kick, and read receipts.
+  4. **`chat-messages.ts`:** Message sending with mention broadcasting, edits, soft deletions, cursor-based listMessages, thread replies, system messages, and seen-by tracking.
+  5. **`chat-reactions.ts`:** Reaction toggle and broadcast events.
+  6. **`chat-attachments.ts`:** Attachment staging, S3 presigned URL generation, and size validation.
+  7. **`chat-telegram.ts`:** Message pinning, listPinnedMessages, and cross-channel message forwarding with attachments clone.
+  8. **`service.ts` Facade (13 lines):** 100% backward-compatible re-exports of all submodule functions.
+- **Tests & Validation:** Backend typecheck (`tsc --noEmit`) clean; dashboard typecheck (`tsc -b --noEmit`) clean; all 21 chat integration tests pass (`chat.test.ts`), plus `inbox.test.ts` (9/9) and `media.test.ts` (28/28).

@@ -24,6 +24,26 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Backend Chat Service Modularization (Domain Submodules Pattern)
+
+**Context:** `apps/backend/src/modules/chat/service.ts` expanded to 1,727 lines spanning 6 separate sub-domains: channel management, membership and permissions, message CRUD, reactions, file attachments, and Telegram-parity features (pinning, forward, seen-by).
+
+**Decision:**
+
+1. Decomposed into cohesive domain submodules under `apps/backend/src/modules/chat/`:
+   - `chat-common.ts`: Shared error classes (`httpError`), membership assertions (`requireChannelMembership`), and channel admin guards (`requireChannelAdmin`).
+   - `chat-channels.ts`: Channel lifecycle, DM deduplication, group channels, user channel listing with batched unread counters, details, mutual channels, and project link/unlink operations.
+   - `chat-members.ts`: Member invite, role management, ownership transfers, leaving/kicking, and read receipts.
+   - `chat-messages.ts`: Message dispatch, edits, soft deletions, cursor-based streaming with batched enrichments (attachments, reactions, reply counts, quoted previews), thread replies, system messages, and project event fan-out.
+   - `chat-reactions.ts`: Reaction toggling and real-time event broadcasting.
+   - `chat-attachments.ts`: Attachment creation, S3 presigned URL generation, and file size/type validation.
+   - `chat-telegram.ts`: Message pinning, pinned messages query, and cross-channel message forwarding with provenance.
+2. Maintained `service.ts` as a 100% backward-compatible facade re-exporting all submodules.
+
+**Alternatives considered:** Keeping all operations in a single file — rejected because of code sprawling, coupled logic, and difficulty maintaining unit/integration test isolation.
+
+**Consequences:** Clear separation of concerns, zero breaking changes to routes or tests, submodules cleanly sized (<450 lines), and 100% passing test suites.
+
 ### 2026-10-03 — ChatFeed God-Component Decomposition (Feed Subcomponents Pattern)
 
 **Context:** `apps/dashboard/src/components/chat/ChatFeed.tsx` grew into a 1,297-line monolithic component coordinating channel header and direct message presence, pinned message navigation banner, multi-select action toolbar, live virtualized message scroll management, and composer with rich attachments and mention autocompletion.
