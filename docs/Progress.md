@@ -2487,3 +2487,10 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   8. **`index.ts`:** Public barrel export.
   9. **`Workspaces.tsx` Coordinator (254 lines):** Coordinates tree queries, search param URL routing (`?createWorkspace=1`), workspace actions, and Rule 10 dialog closures.
 - **Tests & Validation:** Dashboard typecheck (`tsc -b --noEmit`) clean with 0 errors; Vite production build succeeds in 913ms.
+
+### 2026-10-03 — Create Workspace/Project/Board Trigger Fix (dead DialogTrigger)
+
+- **What:** Fixed dead "Create Workspace" (page header), "+ Add Project", and "Create Board" buttons. Root cause: `useDialogClose.handleOpenChange` is close-only by contract (drops `open=true`), but all three self-opening `Create*Dialog` components passed it straight to `<Dialog onOpenChange>` — so `DialogTrigger` clicks were swallowed and the dialogs never opened (regression since the `useDialogClose` migration; permission-gating later double-broke workspace via `open={dialogOpen && canCreateWorkspace}`).
+- **Fix:** each `Create*Dialog` now forwards Radix opens (`nextOpen=true`) directly to its open-state setter while close gestures stay on the single close path (`requestClose` — contract intact). `CreateWorkspaceDialog` also uses plain `open={dialogOpen}` again; controlled+denied renders a disabled trigger with `permissionReason` tooltip instead of a silent dead button. Added `toast.error` on create failures (previously silent) and pristine-disabled submit buttons.
+- **Files:** `apps/dashboard/src/components/workspaces/CreateWorkspaceDialog.tsx`, `CreateProjectDialog.tsx`, `CreateBoardDialog.tsx`.
+- **Tests & Validation:** dashboard typecheck (`tsc -b --noEmit`) clean; `oxlint` clean on touched files.

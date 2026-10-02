@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Card } from '@boardly/ui/card';
 import { Button } from '@boardly/ui/button';
 import {
@@ -12,7 +13,7 @@ import {
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Plus, Check } from 'lucide-react';
-import { api } from '../../lib/api';
+import { api, getApiErrorMessage } from '../../lib/api';
 import { useDialogClose } from '../../hooks/useDialogClose';
 import { usePermissions } from '../../hooks/usePermissions';
 import { BOARD_GRADIENTS } from './types';
@@ -38,6 +39,13 @@ export function CreateBoardDialog({ projectId }: CreateBoardDialogProps) {
     },
   });
 
+  // Radix open events come only from the DialogTrigger — apply them directly.
+  // Close gestures stay on the single close path (idempotent requestClose).
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) setOpen(true);
+    else handleOpenChange(nextOpen);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || isSubmitting) return;
@@ -52,6 +60,8 @@ export function CreateBoardDialog({ projectId }: CreateBoardDialogProps) {
       setOpen(false);
       queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to create board. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -61,7 +71,7 @@ export function CreateBoardDialog({ projectId }: CreateBoardDialogProps) {
   if (!canCreateBoard) return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogTrigger asChild>
         <Card className="h-32 flex items-center justify-center border-dashed border-2 hover:border-primary cursor-pointer hover:bg-muted/40 transition-all rounded-2xl group">
           <div className="flex flex-col items-center text-muted-foreground group-hover:text-primary transition-colors">
@@ -120,7 +130,7 @@ export function CreateBoardDialog({ projectId }: CreateBoardDialogProps) {
             <Button type="button" variant="ghost" size="sm" onClick={requestClose}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={isSubmitting}>
+            <Button type="submit" size="sm" disabled={isSubmitting || !name.trim()}>
               {isSubmitting ? 'Creating...' : 'Create Board'}
             </Button>
           </div>

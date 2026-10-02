@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Button } from '@boardly/ui/button';
 import {
   Dialog,
@@ -11,7 +12,7 @@ import {
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Plus } from 'lucide-react';
-import { api } from '../../lib/api';
+import { api, getApiErrorMessage } from '../../lib/api';
 import { useDialogClose } from '../../hooks/useDialogClose';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -34,6 +35,13 @@ export function CreateProjectDialog({ workspaceId }: CreateProjectDialogProps) {
     },
   });
 
+  // Radix open events come only from the DialogTrigger — apply them directly.
+  // Close gestures stay on the single close path (idempotent requestClose).
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) setOpen(true);
+    else handleOpenChange(nextOpen);
+  };
+
   const createMutation = useMutation({
     mutationFn: async () => {
       await api.post('/projects', { workspaceId, name: name.trim() });
@@ -43,6 +51,9 @@ export function CreateProjectDialog({ workspaceId }: CreateProjectDialogProps) {
       queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setName('');
       setOpen(false);
+    },
+    onError: (err) => {
+      toast.error(getApiErrorMessage(err, 'Failed to create project. Please try again.'));
     },
   });
 
@@ -56,7 +67,7 @@ export function CreateProjectDialog({ workspaceId }: CreateProjectDialogProps) {
   if (!canCreateProject) return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="h-8 text-xs font-medium gap-1">
           <Plus className="h-3.5 w-3.5" /> Add Project
@@ -82,7 +93,7 @@ export function CreateProjectDialog({ workspaceId }: CreateProjectDialogProps) {
             <Button type="button" variant="ghost" size="sm" onClick={requestClose}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={createMutation.isPending}>
+            <Button type="submit" size="sm" disabled={createMutation.isPending || !name.trim()}>
               {createMutation.isPending ? 'Creating...' : 'Create Project'}
             </Button>
           </div>

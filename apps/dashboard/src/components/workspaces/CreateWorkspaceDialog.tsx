@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@boardly/ui/button';
 import {
   Dialog,
@@ -10,9 +11,9 @@ import {
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Plus } from 'lucide-react';
-import { api } from '../../lib/api';
+import { api, getApiErrorMessage } from '../../lib/api';
 import { useDialogClose } from '../../hooks/useDialogClose';
-import { usePermissions } from '../../hooks/usePermissions';
+import { usePermissions, permissionReason } from '../../hooks/usePermissions';
 
 interface CreateWorkspaceDialogProps {
   onSuccess: () => void;
@@ -47,6 +48,14 @@ export function CreateWorkspaceDialog({
     },
   });
 
+  // Radix open events come only from the DialogTrigger — apply them directly.
+  // Close gestures stay on the single close path (idempotent requestClose).
+  // handleOpenChange alone swallows opens, which left this button dead.
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) setDialogOpen(true);
+    else handleOpenChange(nextOpen);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || isSubmitting) return;
@@ -56,6 +65,8 @@ export function CreateWorkspaceDialog({
       setName('');
       setDialogOpen(false);
       onSuccess();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Failed to create workspace. Please try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -64,11 +75,18 @@ export function CreateWorkspaceDialog({
   // Hidden entirely when the create affordance itself isn't allowed. The
   // controlled-open path (sidebar/header global create) is gated by its caller.
   if (!canCreateWorkspace && !isControlled) return null;
+  // Controlled + denied: never a silent dead button — disabled with a reason.
+  const triggerDisabled = isControlled && !canCreateWorkspace;
 
   return (
-    <Dialog open={dialogOpen && canCreateWorkspace} onOpenChange={handleOpenChange}>
+    <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
       <DialogTrigger asChild>
-        <Button size="sm" className="h-9 text-xs font-semibold gap-1.5 shadow-xs">
+        <Button
+          size="sm"
+          className="h-9 text-xs font-semibold gap-1.5 shadow-xs"
+          disabled={triggerDisabled}
+          title={triggerDisabled ? permissionReason('workspace.create') : undefined}
+        >
           <Plus className="h-4 w-4" /> Create Workspace
         </Button>
       </DialogTrigger>
@@ -92,7 +110,7 @@ export function CreateWorkspaceDialog({
             <Button type="button" variant="ghost" size="sm" onClick={requestClose}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={isSubmitting}>
+            <Button type="submit" size="sm" disabled={isSubmitting || !name.trim()}>
               {isSubmitting ? 'Creating...' : 'Create Workspace'}
             </Button>
           </div>
