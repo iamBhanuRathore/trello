@@ -1,4 +1,4 @@
-import { eq, max, sql } from 'drizzle-orm';
+import { and, eq, max, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   cards,
@@ -47,11 +47,13 @@ export async function cloneCard(
     input.title || (input.parentCardId ? `Subtask: ${original.title}` : `${original.title} (Copy)`);
 
   // If cloning as a subtask, verify parentCard
+  // P0: scope the parent lookup to this org (a PK-only lookup allowed cloning a
+  // subtask onto another organization's parent and bumping its subtasksTotal).
   if (input.parentCardId) {
     const [parent] = await db
       .select({ id: cards.id, parentCardId: cards.parentCardId })
       .from(cards)
-      .where(eq(cards.id, input.parentCardId))
+      .where(and(eq(cards.id, input.parentCardId), eq(cards.organizationId, organizationId)))
       .limit(1);
 
     if (!parent) throw httpError(404, 'Parent card not found');
@@ -80,12 +82,12 @@ export async function cloneCard(
 
   if (!cloned) throw httpError(500, 'Failed to clone card');
 
-  // If parentCardId, update parent's subtasksTotal
+  // If parentCardId, update parent's subtasksTotal (org-scoped)
   if (input.parentCardId) {
     await db
       .update(cards)
       .set({ subtasksTotal: sql`${cards.subtasksTotal} + 1` })
-      .where(eq(cards.id, input.parentCardId));
+      .where(and(eq(cards.id, input.parentCardId), eq(cards.organizationId, organizationId)));
   }
 
   // 3. Clone Checklists & Items

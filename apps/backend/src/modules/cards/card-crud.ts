@@ -59,12 +59,15 @@ export async function createCard(db: Database, organizationId: string, input: Cr
     position = (result?.maxPos ?? 0) + 65536;
   }
 
-  // Enforce 2-level nesting limit if parentCardId is provided
+  // Enforce 2-level nesting limit if parentCardId is provided.
+  // P0: the parent must live in the SAME organization — a PK-only lookup let a
+  // foreign-org parent id create a cross-tenant subtask link and corrupt the
+  // foreign parent's subtasksTotal.
   if (input.parentCardId) {
     const [parentCard] = await db
       .select({ id: cards.id, parentCardId: cards.parentCardId })
       .from(cards)
-      .where(eq(cards.id, input.parentCardId))
+      .where(and(eq(cards.id, input.parentCardId), eq(cards.organizationId, organizationId)))
       .limit(1);
 
     if (!parentCard) throw httpError(404, 'Parent card not found');

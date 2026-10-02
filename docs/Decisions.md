@@ -1272,3 +1272,28 @@ Decomposed `TaskChatPane.tsx` into an isolated domain folder `apps/dashboard/src
 
 **Consequences:**
 Retains 100% backward compatibility for all props, types, and callbacks. Monorepo typechecks clean (`tsc -b --noEmit`) and Vite build completes in ~900ms.
+
+---
+
+### 2026-10-03 — Cross-Tenant Hardening: Per-Query Org Filters Are the Isolation Mechanism
+
+**Context:** A Phase 0 org-scope sweep across `apps/backend/src` found destructive paths keyed by primary key alone. The clearest was `trash/service.ts` `hardDeleteItem('card')`, which called `deleteCardCascade([itemId])` with no `organizationId` filter at all — board, project and workspace cascades all scoped their terminal delete, the card path did not. A second class was parent-card lookups in `card-crud.ts` (`createCard`) and `card-clone.ts` (`cloneCard`) that resolved `parentCardId` by PK, permitting a cross-org subtask link and corrupting the foreign parent's `subtasksTotal`.
+
+Separately, `db/index.ts` exposed `withOrgContext()` (Postgres RLS `SET LOCAL app.current_org_id`, read-replica routing, recent-write marker) that no service called — every service uses `db = rawWriteDb`. Its presence implied an isolation guarantee that did not exist.
+
+**Alternatives considered:**
+
+- Adopt `withOrgContext` + `FORCE RLS` now (rejected — that is a new isolation mechanism, i.e. a feature, and it requires a least-privilege DB role plus a migration; out of scope for a fix-only pass).
+- Leave the dead helper in place (rejected — it documents a security property the system does not have, which is worse than not having it).
+- Trust the guard-then-write services (rejected — several write PK-only after a scoped existence check; that is a TOCTOU pattern, and `card-crud.ts:76-87` trusted `boardInfo` without re-checking org at all).
+
+**Decision:**
+
+1. `deleteCardCascade` now takes a mandatory `organizationId` and re-derives the deletable id set through `cards → lists → boards` scoped to that org before any child-row delete. `deleteBoardCascade`, `deleteProjectCascade` and `deleteWorkspaceCascade` each assert ownership up front and 404 rather than cascade blindly. `hardDeleteItem('card')` pre-checks ownership and 404s.
+2. `restoreItem` parent-reactivation writes are now org-scoped and only fire when the parent is actually soft-deleted (`isNotNull(deletedAt)`) — previously they restored parents unconditionally by PK, over-restoring and crossing tenants.
+3. `createCard` and `cloneCard` resolve `parentCardId` with `organizationId` in the same predicate, so a foreign parent 404s and a parent that is itself a subtask still 400s.
+4. Isolation is enforced by **per-query org filters**, audited by the Phase 0 sweep and guarded by the committed two-tenant regression suite `apps/backend/src/modules/trash/trash-tenancy.test.ts`. Postgres RLS remains an available defense-in-depth option for a future pass.
+
+**Consequences:** Nine negative tests (orgA reaching for orgB ids) fail against the pre-fix code and pass after — verified by stashing the fix and re-running. The property being relied on is now explicit and regression-tested rather than assumed.
+
+On `withOrgContext`: it is referenced only by `db/db.test.ts` — no migration or ops script depends on its replica routing or recent-write marker, so it is removed as dead code rather than relocated. Note that migration `0012_enable_row_level_security.sql` already created `USING (organization_id = current_setting('app.current_org_id', true)::uuid)` policies on `workspaces`, `boards` and `cards`, but those policies are **inert**: the app connects as the table owner, and RLS does not apply to the owner unless `FORCE ROW LEVEL SECURITY` is set. Enabling it without a least-privilege application role and a `withOrgContext` call on every tenant query would deny all traffic. That remains a future defense-in-depth option; `scripts/lint-raw-db.ts` already prevents new services from reaching for the raw clients directly.

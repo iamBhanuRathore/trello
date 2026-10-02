@@ -199,11 +199,17 @@ export async function restoreItem(
       .returning();
     if (!restored) throw httpError(404, 'Project not found in trash');
 
-    // Also ensure parent workspace is active
+    // Also ensure parent workspace is active — only if it belongs to this org and is deleted
     await db
       .update(workspaces)
       .set({ deletedAt: null, updatedAt: new Date() })
-      .where(eq(workspaces.id, restored.workspaceId));
+      .where(
+        and(
+          eq(workspaces.id, restored.workspaceId),
+          eq(workspaces.organizationId, organizationId),
+          isNotNull(workspaces.deletedAt)
+        )
+      );
 
     await bumpOrgCache(organizationId);
     await bumpWorkspaceCache(restored.workspaceId);
@@ -219,11 +225,17 @@ export async function restoreItem(
       .returning();
     if (!restored) throw httpError(404, 'Board not found in trash');
 
-    // Also restore parent project if deleted
+    // Also restore parent project if deleted — only if it belongs to this org and is deleted
     await db
       .update(projects)
       .set({ deletedAt: null, updatedAt: new Date() })
-      .where(eq(projects.id, restored.projectId));
+      .where(
+        and(
+          eq(projects.id, restored.projectId),
+          eq(projects.organizationId, organizationId),
+          isNotNull(projects.deletedAt)
+        )
+      );
 
     await bumpOrgCache(organizationId);
     await bumpProjectCache(restored.projectId);
@@ -254,7 +266,17 @@ export async function hardDeleteItem(
   itemId: string
 ) {
   if (itemType === 'card') {
-    await deleteCardCascade(db, [itemId]);
+    // P0: verify card belongs to this org (via list->board) before any destructive write.
+    // Without this, a guessed UUID from another org would cascade-delete foreign rows.
+    const [owned] = await db
+      .select({ id: cards.id })
+      .from(cards)
+      .innerJoin(lists, eq(lists.id, cards.listId))
+      .innerJoin(boards, eq(boards.id, lists.boardId))
+      .where(and(eq(cards.id, itemId), eq(boards.organizationId, organizationId)))
+      .limit(1);
+    if (!owned) throw httpError(404, 'Card not found in trash');
+    await deleteCardCascade(db, [itemId], organizationId);
     await bumpCardCache(itemId);
     await bumpOrgCache(organizationId);
     return { success: true, id: itemId };
@@ -294,33 +316,54 @@ export async function emptyTrash(db: Database, organizationId: string) {
 }
 
 // ─── Cascade Helpers ──────────────────────────────────────────────────────────
-async function deleteCardCascade(db: Database, cardIds: string[]) {
+// `organizationId` is mandatory and enforced inside: callers that derive ids
+// from an already-scoped parent may pass it for defence in depth, and the
+// card delete filter is re-checked against the board's org via the list join.
+async function deleteCardCascade(db: Database, cardIds: string[], organizationId: string) {
   if (cardIds.length === 0) return;
 
-  await db.delete(cardAssignees).where(inArray(cardAssignees.cardId, cardIds));
-  await db.delete(cardParticipants).where(inArray(cardParticipants.cardId, cardIds));
-  await db.delete(cardWatchers).where(inArray(cardWatchers.cardId, cardIds));
-  await db.delete(cardLabels).where(inArray(cardLabels.cardId, cardIds));
-  await db.delete(cardSprints).where(inArray(cardSprints.cardId, cardIds));
-  await db.delete(cardPhase).where(inArray(cardPhase.cardId, cardIds));
-  await db.delete(timeLogs).where(inArray(timeLogs.cardId, cardIds));
-  await db.delete(comments).where(inArray(comments.cardId, cardIds));
-  await db.delete(attachments).where(inArray(attachments.cardId, cardIds));
+  // Only touch cards proven to live in this organization.
+  const ownedCardRows = await db
+    .select({ id: cards.id })
+    .from(cards)
+    .innerJoin(lists, eq(lists.id, cards.listId))
+    .innerJoin(boards, eq(boards.id, lists.boardId))
+    .where(and(inArray(cards.id, cardIds), eq(boards.organizationId, organizationId)));
+  const ownedCardIds = ownedCardRows.map((c) => c.id);
+  if (ownedCardIds.length === 0) return;
+
+  await db.delete(cardAssignees).where(inArray(cardAssignees.cardId, ownedCardIds));
+  await db.delete(cardParticipants).where(inArray(cardParticipants.cardId, ownedCardIds));
+  await db.delete(cardWatchers).where(inArray(cardWatchers.cardId, ownedCardIds));
+  await db.delete(cardLabels).where(inArray(cardLabels.cardId, ownedCardIds));
+  await db.delete(cardSprints).where(inArray(cardSprints.cardId, ownedCardIds));
+  await db.delete(cardPhase).where(inArray(cardPhase.cardId, ownedCardIds));
+  await db.delete(timeLogs).where(inArray(timeLogs.cardId, ownedCardIds));
+  await db.delete(comments).where(inArray(comments.cardId, ownedCardIds));
+  await db.delete(attachments).where(inArray(attachments.cardId, ownedCardIds));
 
   const checklistRows = await db
     .select({ id: checklists.id })
     .from(checklists)
-    .where(inArray(checklists.cardId, cardIds));
+    .where(inArray(checklists.cardId, ownedCardIds));
   const checklistIds = checklistRows.map((cl) => cl.id);
   if (checklistIds.length > 0) {
     await db.delete(checklistItems).where(inArray(checklistItems.checklistId, checklistIds));
     await db.delete(checklists).where(inArray(checklists.id, checklistIds));
   }
 
-  await db.delete(cards).where(inArray(cards.id, cardIds));
+  await db.delete(cards).where(inArray(cards.id, ownedCardIds));
 }
 
 async function deleteBoardCascade(db: Database, boardId: string, organizationId: string) {
+  // Scope the board by org up front; cascades below derive from this id only.
+  const [ownedBoard] = await db
+    .select({ id: boards.id })
+    .from(boards)
+    .where(and(eq(boards.id, boardId), eq(boards.organizationId, organizationId)))
+    .limit(1);
+  if (!ownedBoard) throw httpError(404, 'Board not found in trash');
+
   const listRows = await db.select({ id: lists.id }).from(lists).where(eq(lists.boardId, boardId));
   const listIds = listRows.map((l) => l.id);
 
@@ -331,7 +374,7 @@ async function deleteBoardCascade(db: Database, boardId: string, organizationId:
       .where(inArray(cards.listId, listIds));
     const cardIds = cardRows.map((c) => c.id);
     if (cardIds.length > 0) {
-      await deleteCardCascade(db, cardIds);
+      await deleteCardCascade(db, cardIds, organizationId);
     }
     await db.delete(lists).where(inArray(lists.id, listIds));
   }
@@ -347,6 +390,13 @@ async function deleteBoardCascade(db: Database, boardId: string, organizationId:
 }
 
 async function deleteProjectCascade(db: Database, projectId: string, organizationId: string) {
+  const [ownedProject] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+    .limit(1);
+  if (!ownedProject) throw httpError(404, 'Project not found in trash');
+
   const boardRows = await db
     .select({ id: boards.id })
     .from(boards)
@@ -366,6 +416,13 @@ async function deleteProjectCascade(db: Database, projectId: string, organizatio
 }
 
 async function deleteWorkspaceCascade(db: Database, workspaceId: string, organizationId: string) {
+  const [ownedWorkspace] = await db
+    .select({ id: workspaces.id })
+    .from(workspaces)
+    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.organizationId, organizationId)))
+    .limit(1);
+  if (!ownedWorkspace) throw httpError(404, 'Workspace not found in trash');
+
   const projectRows = await db
     .select({ id: projects.id })
     .from(projects)
