@@ -1079,3 +1079,33 @@ Decomposed `BoardView.tsx` into a lean coordinator (~390 lines) orchestrating sp
 
 **Consequences:**
 BoardView coordinator is reduced by ~80% (1,968 → 390 lines). Preserves 100% feature parity, URL search param synchronization (`?card=`), drag-and-drop animations, and dialog close contracts. Typecheck clean and dashboard Vite build passes in <600ms.
+
+---
+
+### 2026-10-03 — Calendar Component Decomposition (1,605 → 442 lines)
+
+**Context:** `apps/dashboard/src/pages/Calendar.tsx` had expanded to 1,605 lines, combining view state navigation, Google sync buttons, month calendar cells, time-blocking interactive grid calculations, union-find column packing algorithms, dragging/resizing state machines, now-indicator auto-scroll logic, external meeting blocks, task blocks, drag ghosts, and unscheduled tray panels into a single file.
+
+**Alternatives considered:**
+
+- Keeping the file monolithic (rejected — over 1.6k lines impedes readability and component maintainability).
+- Placing subcomponents in unrelated folders (rejected — `apps/dashboard/src/components/calendar/` already houses `EventPopover` and `QuickCreatePopover`, making it the natural home).
+
+**Decision:**
+Decomposed `Calendar.tsx` into a clean coordinator (~442 lines) delegating to modular domain subcomponents in `apps/dashboard/src/components/calendar/`:
+
+1. `types.ts`: `CalendarView`, `DragState`, `PendingPress`, constants (`HOUR_H = 56`, `SNAP_MIN = 15`).
+2. `calendar-utils.ts`: Snap arithmetic (`snapMinutes`, `atTime`, `toISO`), time formatting (`formatTimeRange`), CSS positioning (`blockStyle`, `columnStyle`), and greedy interval union-find column partitioning (`layoutDayColumns`).
+3. `GoogleSyncBadge.tsx`: Dedicated Google sync status badge and connect/disconnect/sync triggers.
+4. `UnscheduledTray.tsx`: Side panel displaying unblocked tasks with click-to-place toggle and empty states.
+5. `CalendarHeader.tsx`: Top bar navigation, Today button, timezone pill, view toggle buttons, sprint and milestone overlays.
+6. `MonthGrid.tsx`: Month calendar grid with date buttons, task blocks, due date badges, and external event badges.
+7. `TimeGrid.tsx`: Interactive week and day time-blocking grid with pointer capture and drag handling.
+8. `NowLine.tsx`: Live current-time indicator line with auto-scroll on entry.
+9. `BlockChip.tsx`: Draggable and resizable internal task time block.
+10. `ExternalBlockChip.tsx`: Draggable and resizable Google Calendar meeting block.
+11. `DragGhost.tsx`: Dashed drag preview bounding box.
+12. `index.ts`: Barrel export for the calendar component library.
+
+**Consequences:**
+Preserves 100% feature parity, keyboard shortcuts (`t`, `m`, `w`, `d`, arrows), Google 2-way sync, time-blocking interactions, and popovers. Vite production build passes in ~600ms with 0 type errors.

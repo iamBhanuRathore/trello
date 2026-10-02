@@ -2371,3 +2371,21 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   8. **`index.ts`:** Public barrel exports.
   9. **`BoardView.tsx` Coordinator (390 lines):** Coordinates dnd-kit collision detection, optimistic card movement, URL `?card=` dialog sync, and code-split heavy modal launchers.
 - **Tests & Validation:** Full dashboard typecheck (`tsc -b --noEmit`) passes with 0 errors; production Vite build succeeds in 599ms.
+
+### 2026-10-03 — Calendar Page God-Component Decomposition (1,605 → 442 lines)
+
+- **What:** Refactored the monolithic 1,605-line `apps/dashboard/src/pages/Calendar.tsx` into modular domain subcomponents under `apps/dashboard/src/components/calendar/`:
+  1. **`types.ts`:** Domain types (`CalendarView`, `DragState`, `PendingPress`) and shared constants (`HOUR_H = 56`, `SNAP_MIN = 15`).
+  2. **`calendar-utils.ts`:** Snap calculations (`snapMinutes`, `atTime`, `toISO`), time formatting (`formatTimeRange`), CSS positioning (`blockStyle`, `columnStyle`), and greedy interval union-find column partitioning (`layoutDayColumns`).
+  3. **`GoogleSyncBadge.tsx`:** Dedicated Google sync status badge with connect/disconnect/sync triggers.
+  4. **`UnscheduledTray.tsx`:** Side panel displaying unblocked tasks with click-to-place toggle and empty states.
+  5. **`CalendarHeader.tsx`:** Top navigation bar, Today button, timezone pill, view toggle buttons, sprint and milestone overlays.
+  6. **`MonthGrid.tsx`:** Month calendar grid with date buttons, task blocks, due date badges, and external event badges.
+  7. **`TimeGrid.tsx`:** Interactive week and day time-blocking grid with pointer capture and drag handling.
+  8. **`NowLine.tsx`:** Live current-time indicator line with auto-scroll on entry.
+  9. **`BlockChip.tsx`:** Draggable and resizable internal task time block.
+  10. **`ExternalBlockChip.tsx`:** Draggable and resizable Google Calendar meeting block.
+  11. **`DragGhost.tsx`:** Dashed drag preview bounding box.
+  12. **`index.ts`:** Public barrel export for the calendar component library.
+  13. **`Calendar.tsx` Coordinator (442 lines):** Orchestrates data queries (`calendarService.feed`), OAuth callback handling, Google sync mutations, time block mutations, keyboard navigation (`t`, `m`, `w`, `d`, arrows), and popovers.
+- **Tests & Validation:** Full dashboard typecheck (`tsc -b --noEmit`) passes with 0 errors; production Vite build succeeds in 601ms.
