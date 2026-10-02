@@ -14,6 +14,7 @@ import { Label } from '@boardly/ui/label';
 import { Plus, Check } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useDialogClose } from '../../hooks/useDialogClose';
+import { usePermissions } from '../../hooks/usePermissions';
 import { BOARD_GRADIENTS } from './types';
 
 interface CreateBoardDialogProps {
@@ -26,6 +27,8 @@ export function CreateBoardDialog({ projectId }: CreateBoardDialogProps) {
   const [selectedGradient, setSelectedGradient] = useState(BOARD_GRADIENTS[0].value);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const queryClient = useQueryClient();
+  const { can, isLoading: permsLoading } = usePermissions();
+  const canCreateBoard = permsLoading ? false : can('board.create');
 
   const { handleOpenChange, requestClose } = useDialogClose({
     isOpen: open,
@@ -53,6 +56,9 @@ export function CreateBoardDialog({ projectId }: CreateBoardDialogProps) {
       setIsSubmitting(false);
     }
   };
+
+  // Hidden entirely — a disabled "create" tile serves no purpose.
+  if (!canCreateBoard) return null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

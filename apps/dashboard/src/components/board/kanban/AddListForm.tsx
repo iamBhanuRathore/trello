@@ -5,6 +5,7 @@ import { Card } from '@boardly/ui/card';
 import { Plus } from 'lucide-react';
 import { useOptimisticMutation } from '../../../lib/useOptimisticMutation';
 import { api } from '../../../lib/api';
+import { usePermissions } from '../../../hooks/usePermissions';
 import type { KanbanList } from './types';
 
 interface AddListFormProps {
@@ -25,6 +26,8 @@ export function AddListForm({
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const pendingTempId = useRef<string | null>(null);
+  const { can, isLoading: permsLoading } = usePermissions();
+  const canCreateList = permsLoading ? false : can('list.create');
 
   const addListMutation = useOptimisticMutation<any, { name: string }>(
     async (payload) => (await api.post('/lists', { boardId, name: payload.name })).data,
@@ -57,11 +60,14 @@ export function AddListForm({
 
   const handleAdd = () => {
     const trimmed = name.trim();
-    if (!trimmed || addListMutation.isPending) return;
+    if (!canCreateList || !trimmed || addListMutation.isPending) return;
     addListMutation.mutate({ name: trimmed });
     setName('');
     setAdding(false);
   };
+
+  // Hidden entirely — a disabled "add list" affordance serves no purpose.
+  if (!canCreateList) return null;
 
   return (
     <div className="w-72 flex-shrink-0">

@@ -111,6 +111,13 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - What's next:
 ```
 
+### 2026-10-03 — Permission-gated UI (hide destructive / disable reversible)
+
+- What was done: backend single resolver (`lib/permissions-resolver.ts`: aliases, `PERMISSION_DENIED` code, effective-set incl. team-role grants) shared by `requirePermission()`, `GET /auth/me` (new `permissions[]`, cache key `u:v2:`) and `getMyPermissions`; O(1) perm-epoch invalidation (`permver:`, `bumpUserCache` on all member/role mutations); `ensurePermissionsSeeded` backfills registry keys; phases/sprints routes now guarded (`project.read` reads, `sprint.*`/`phase.*` writes). Dashboard: `usePermissions` (pure Set lookup, fail-closed) + `<Can>`/`<CanAll>`, 403→`/me` refetch safety net (debounced, skips `/me`, permission-codes only), throttled focus revalidation, logout cache-clear fix. Gated P0–P2: BoardHeader, ListColumn, AddListForm, BoardView DnD (handler-level), CreateTaskModal, TaskDetailView (+header, label picker), Boards/Projects/Workspaces lists + create dialogs + sidebar entry.
+- Decisions made: see Decisions.md (global-flat-list, one resolver, any/all, hide-vs-disable, accepted staleness window, inline-assignee stays `card.create`-only).
+- Tests added: `permissions-resolver.test.ts` 6/6 (aliases, any-of, fail-closed, code shape); `scripts/check-permissions.ts` registry lint green (98 keys); backend + dashboard typecheck/lint clean.
+- What's next: Playwright Viewer/Member zero-403 spec; per-field disabled states inside task subcomponents (handlers already guarded); replace remaining ad-hoc `isAdmin` sites with `can()`; admin/billing per-button gates (currently no-ops under route guard).
+
 ### 2026-09-29 — Project Automation Engine backend (5.6)
 
 - What was done: project-scoped WHEN/IF/THEN rule engine — migration 0032 (`project_automation_rules`, `automation_rule_cursors`, `automation_rule_runs`, `cards.source_rule_id/action_id` + partial bounce-guard unique index), engine (`project-engine.ts`: trigger/condition matchers, locked RR, ALS loop guard + system actors, redelivery idempotency, fill-if-unassigned), APIs (`project-routes.ts`: CRUD/toggle/paged runs/dry-run/context, all `automation.manage`), `eventId` on card created/moved/labeled emitters, legacy board-automation routes backfilled to `automation.manage`, stale-reference flagging on role-delete/member-deactivate.

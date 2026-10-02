@@ -24,6 +24,8 @@ import {
   copyTextToClipboard,
 } from '../../utils/taskIdentifier';
 import { toast } from 'sonner';
+import type { PermissionKey } from '@boardly/shared-types';
+import { usePermissions, permissionReason } from '../../hooks/usePermissions';
 
 // Extracted Domain Subcomponents
 import { TaskDetailHeader } from './task-detail/TaskDetailHeader';
@@ -629,8 +631,25 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       },
     });
 
+    // ─── Permission gates (handler level; button state derives from these) ──
+    const { can: canPerm, isLoading: permsLoading } = usePermissions();
+    const permsReady = !permsLoading;
+    /**
+     * Returns true when allowed. While /me is unresolved it blocks silently
+     * (fail closed without a misleading toast); once resolved it shows the
+     * missing-permission reason and blocks the action.
+     */
+    const need = (key: PermissionKey | PermissionKey[]): boolean => {
+      const keys = Array.isArray(key) ? key : [key];
+      if (!permsReady) return false;
+      const ok = keys.some((k) => canPerm(k));
+      if (!ok) toast.error(permissionReason(keys[0] as PermissionKey));
+      return ok;
+    };
+
     // Description Handlers
     const handleSaveDescription = async () => {
+      if (!need('card.update')) return;
       if (descriptionValue !== (card?.description || '')) {
         await updateCardMutation.mutateAsync({ description: descriptionValue });
       }
@@ -754,16 +773,19 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     ];
 
     const handleCloneTask = () => {
+      if (!need('card.create')) return;
       cloneCardMutation.mutate({
         title: `${card?.title || 'Task'} (Copy)`,
       });
     };
 
     const handleCreateSubtask = () => {
+      if (!need('card.create')) return;
       setShowSubtaskComposer(true);
     };
 
     const handleStartTask = async () => {
+      if (!need(['card.move', 'card.update'])) return;
       const inProgressList = lists.find(
         (l: any) => /progress|doing|dev|active/i.test(l.name) && l.id !== card?.listId
       );
@@ -789,6 +811,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     };
 
     const handleCompleteTask = async () => {
+      if (!need(['card.move', 'card.update'])) return;
       const doneList = lists.find((l: any) => /done|finish|complete|closed/i.test(l.name));
       if (doneList && doneList.id !== card?.listId) {
         await moveCardMutation.mutateAsync(doneList.id);
@@ -892,16 +915,26 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             toast.success('Git branch command copied');
           }}
           onOpenShareModal={() => setShowShareModal(true)}
-          onCloneTask={() => cloneCardMutation.mutate({ title: `${card.title || 'Task'} (Copy)` })}
-          onCreateSubtask={() => setShowSubtaskComposer(true)}
-          onCloneAsSubtask={() =>
-            cloneCardMutation.mutate({
-              parentCardId: cardId,
-              title: `Subtask: ${card.title || 'Task'}`,
-            })
-          }
-          onOpenArchiveConfirm={() => setShowArchiveConfirm(true)}
-          onOpenDeleteConfirm={() => setShowDeleteConfirm(true)}
+          onCloneTask={() => {
+            if (need('card.create'))
+              cloneCardMutation.mutate({ title: `${card.title || 'Task'} (Copy)` });
+          }}
+          onCreateSubtask={() => {
+            if (need('card.create')) setShowSubtaskComposer(true);
+          }}
+          onCloneAsSubtask={() => {
+            if (need('card.create'))
+              cloneCardMutation.mutate({
+                parentCardId: cardId,
+                title: `Subtask: ${card.title || 'Task'}`,
+              });
+          }}
+          onOpenArchiveConfirm={() => {
+            if (need('card.delete')) setShowArchiveConfirm(true);
+          }}
+          onOpenDeleteConfirm={() => {
+            if (need('card.delete')) setShowDeleteConfirm(true);
+          }}
           onAttemptAction={handleAttemptAction}
           onClose={onClose}
         />
@@ -941,7 +974,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               isDescExpanded={isDescExpanded}
               descTab={descTab}
               isPending={updateCardMutation.isPending}
-              onUpdateTitle={(title) => updateCardMutation.mutate({ title })}
+              onUpdateTitle={(title) => {
+                if (need('card.update')) updateCardMutation.mutate({ title });
+              }}
               onDescriptionChange={(val) => {
                 setDescriptionValue(val);
                 const dirty = val !== (card?.description || '');
@@ -966,17 +1001,37 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               orgId={orgId}
               currentUser={user}
               taskIdentifier={taskIdentifier}
-              onUpdateCard={(data) => updateCardMutation.mutate(data)}
-              onMoveCard={(listId) => moveCardMutation.mutate(listId)}
-              onAssignUser={(userId) => assignUserMutation.mutate(userId)}
-              onRemoveUser={(userId) => removeUserMutation.mutate(userId)}
-              onAddParticipant={(userId) => addParticipantMutation.mutate(userId)}
-              onRemoveParticipant={(userId) => removeParticipantMutation.mutate(userId)}
-              onWatchCard={(userId) => watchCardMutation.mutate(userId)}
-              onUnwatchCard={(userId) => unwatchCardMutation.mutate(userId)}
-              onUpdateWatchers={(data) => updateWatchersMutation.mutate(data)}
+              onUpdateCard={(data) => {
+                if (need('card.update')) updateCardMutation.mutate(data);
+              }}
+              onMoveCard={(listId) => {
+                if (need(['card.move', 'card.update'])) moveCardMutation.mutate(listId);
+              }}
+              onAssignUser={(userId) => {
+                if (need('card.assign')) assignUserMutation.mutate(userId);
+              }}
+              onRemoveUser={(userId) => {
+                if (need('card.assign')) removeUserMutation.mutate(userId);
+              }}
+              onAddParticipant={(userId) => {
+                if (need('card.update')) addParticipantMutation.mutate(userId);
+              }}
+              onRemoveParticipant={(userId) => {
+                if (need('card.update')) removeParticipantMutation.mutate(userId);
+              }}
+              onWatchCard={(userId) => {
+                if (need(['card.watch', 'card.update'])) watchCardMutation.mutate(userId);
+              }}
+              onUnwatchCard={(userId) => {
+                if (need(['card.watch', 'card.update'])) unwatchCardMutation.mutate(userId);
+              }}
+              onUpdateWatchers={(data) => {
+                if (need(['card.watch', 'card.update'])) updateWatchersMutation.mutate(data);
+              }}
               isUpdatingWatchers={updateWatchersMutation.isPending}
-              onToggleLabel={(data) => toggleLabelMutation.mutate(data)}
+              onToggleLabel={(data) => {
+                if (need('card.update')) toggleLabelMutation.mutate(data);
+              }}
             />
 
             {/* Subtasks Section */}
@@ -987,8 +1042,11 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               currentUser={user}
               orgId={orgId}
               onSelectCard={onSelectCard}
-              onCreateFullSubtask={() => setShowSubtaskComposer(true)}
+              onCreateFullSubtask={() => {
+                if (need('card.create')) setShowSubtaskComposer(true);
+              }}
               onQuickSubtaskSubmit={async (title, assigneeId) => {
+                if (!need('card.create')) return;
                 await quickSubtaskMutation.mutateAsync({ title, assigneeId });
               }}
               isSubmittingQuickSubtask={quickSubtaskMutation.isPending}
@@ -1025,20 +1083,32 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               onSetLogDate={setLogDate}
               onSetLogDescription={setLogDescription}
               onSetLogIsBillable={setLogIsBillable}
-              onSubmitLog={() => logTimeMutation.mutate()}
-              onDeleteLog={(id) => deleteTimeLogMutation.mutate(id)}
+              onSubmitLog={() => {
+                if (need('card.time_log.create')) logTimeMutation.mutate();
+              }}
+              onDeleteLog={(id) => {
+                if (need('card.time_log.delete')) deleteTimeLogMutation.mutate(id);
+              }}
             />
 
             {/* Checklists Section */}
             <TaskChecklistsCard
               checklists={checklists}
-              onToggleItem={(itemId, isDone) => toggleItemMutation.mutate({ itemId, isDone })}
-              onDeleteItem={(itemId) => deleteChecklistItemMutation.mutate(itemId)}
-              onSaveItemOrBulk={handleSaveItemOrBulk}
-              onUpdateChecklistTitle={(checklistId, title) =>
-                updateChecklistMutation.mutate({ checklistId, title })
-              }
-              onAddChecklist={(title) => addChecklistMutation.mutate({ title })}
+              onToggleItem={(itemId, isDone) => {
+                if (need('card.update')) toggleItemMutation.mutate({ itemId, isDone });
+              }}
+              onDeleteItem={(itemId) => {
+                if (need('card.update')) deleteChecklistItemMutation.mutate(itemId);
+              }}
+              onSaveItemOrBulk={(checklistId: string, items: string[]) => {
+                if (need('card.update')) handleSaveItemOrBulk(checklistId, items);
+              }}
+              onUpdateChecklistTitle={(checklistId, title) => {
+                if (need('card.update')) updateChecklistMutation.mutate({ checklistId, title });
+              }}
+              onAddChecklist={(title) => {
+                if (need('card.update')) addChecklistMutation.mutate({ title });
+              }}
               onRequestDeleteChecklist={(cl) => setConfirmDeleteChecklist(cl)}
               isAddingChecklist={addChecklistMutation.isPending}
             />
@@ -1046,8 +1116,12 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
             {/* Attachments Section */}
             <TaskAttachmentsCard
               attachments={attachments}
-              onUploadFile={(file) => uploadAttachmentMutation.mutate(file)}
-              onDeleteAttachment={(id) => deleteAttachmentMutation.mutate(id)}
+              onUploadFile={(file) => {
+                if (need('card.update')) uploadAttachmentMutation.mutate(file);
+              }}
+              onDeleteAttachment={(id) => {
+                if (need('card.update')) deleteAttachmentMutation.mutate(id);
+              }}
             />
 
             {/* Quick Navigation Ribbon */}
@@ -1080,18 +1154,26 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               comments={comments}
               systemActivities={systemActivities}
               participantUserIds={participantUserIds}
-              onAddParticipant={(userId) => addParticipantMutation.mutate(userId)}
-              onRemoveParticipant={(userId) => removeParticipantMutation.mutate(userId)}
+              onAddParticipant={(userId) => {
+                if (need('card.update')) addParticipantMutation.mutate(userId);
+              }}
+              onRemoveParticipant={(userId) => {
+                if (need('card.update')) removeParticipantMutation.mutate(userId);
+              }}
               onSendMessage={async (body, mentionedUserIds) => {
+                if (!need('card.update')) return;
                 await addCommentMutation.mutateAsync({ body, mentionedUserIds });
               }}
               onEditMessage={async (commentId, body) => {
+                if (!need('card.update')) return;
                 await editCommentMutation.mutateAsync({ commentId, body });
               }}
               onDeleteMessage={async (commentId) => {
+                if (!need('card.update')) return;
                 await deleteCommentMutation.mutateAsync(commentId);
               }}
               onUploadAttachment={async (file) => {
+                if (!need('card.update')) return;
                 return await uploadAttachmentMutation.mutateAsync(file);
               }}
               isSending={addCommentMutation.isPending}
@@ -1108,8 +1190,12 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           onCompleteTask={handleCompleteTask}
           onCloneTask={handleCloneTask}
           onCreateSubtask={handleCreateSubtask}
-          onArchiveTask={() => setShowArchiveConfirm(true)}
-          onDeleteTask={() => setShowDeleteConfirm(true)}
+          onArchiveTask={() => {
+            if (need('card.delete')) setShowArchiveConfirm(true);
+          }}
+          onDeleteTask={() => {
+            if (need('card.delete')) setShowDeleteConfirm(true);
+          }}
           userRating={userRating}
           onOpenRateModal={() => setShowRateModal(true)}
           uniqueMemberCount={uniqueMemberCount}
@@ -1170,7 +1256,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           variant="destructive"
           isLoading={deleteChecklistMutation.isPending}
           onConfirm={() => {
-            if (confirmDeleteChecklist?.id) {
+            if (confirmDeleteChecklist?.id && need('card.update')) {
               deleteChecklistMutation.mutate(confirmDeleteChecklist.id);
             }
           }}
@@ -1184,7 +1270,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           description={`"${card.title}" will be moved out of the active board. You can restore it anytime from archived cards.`}
           confirmLabel="Archive Task"
           isLoading={archiveCardMutation.isPending}
-          onConfirm={() => archiveCardMutation.mutate()}
+          onConfirm={() => {
+            if (need('card.delete')) archiveCardMutation.mutate();
+          }}
         />
 
         {/* Delete Task Confirmation */}
@@ -1196,7 +1284,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           confirmLabel="Delete Task"
           variant="destructive"
           isLoading={deleteCardMutation.isPending}
-          onConfirm={() => deleteCardMutation.mutate()}
+          onConfirm={() => {
+            if (need('card.delete')) deleteCardMutation.mutate();
+          }}
         />
 
         {/* Unsaved Changes Prompt */}

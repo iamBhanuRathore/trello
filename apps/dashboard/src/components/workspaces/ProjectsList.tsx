@@ -24,6 +24,7 @@ import {
 } from '@boardly/ui/dropdown-menu';
 import { ImportModal } from '../board/ImportModal';
 import { useDialogClose } from '../../hooks/useDialogClose';
+import { usePermissions, permissionReason } from '../../hooks/usePermissions';
 import { api } from '../../lib/api';
 import { BoardsList } from './BoardsList';
 
@@ -38,6 +39,11 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
   const [importProjectName, setImportProjectName] = useState<string>('');
   const [editingProj, setEditingProj] = useState<{ id: string; name: string } | null>(null);
   const [deletingProj, setDeletingProj] = useState<{ id: string; name: string } | null>(null);
+  const { can, isLoading: permsLoading } = usePermissions();
+  const canUpdateProject = permsLoading ? false : can('project.update');
+  const canDeleteProject = permsLoading ? false : can('project.delete');
+  const canImport = permsLoading ? false : can('board.create');
+  const canAutomate = permsLoading ? false : can('automation.manage');
 
   const { data: projects } = useQuery({
     queryKey: ['projects', workspaceId],
@@ -124,50 +130,64 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
                   Sprints
                 </Button>
               </Link>
-              <Link to={`/projects/${proj.id}/automation`}>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
-                  <Zap className="w-3.5 h-3.5 text-amber-500" /> Automation
-                </Button>
-              </Link>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs gap-1"
-                onClick={() => {
-                  setImportProjectId(proj.id);
-                  setImportProjectName(proj.name);
-                }}
-              >
-                <UploadCloud className="w-3.5 h-3.5 text-indigo-500" /> Import
-              </Button>
-
-              {/* Project Actions Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                  >
-                    <MoreHorizontal className="w-3.5 h-3.5" />
+              {canAutomate && (
+                <Link to={`/projects/${proj.id}/automation`}>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                    <Zap className="w-3.5 h-3.5 text-amber-500" /> Automation
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2 text-xs"
-                    onClick={() => setEditingProj({ id: proj.id, name: proj.name })}
-                  >
-                    <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename Project
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
-                    onClick={() => setDeletingProj({ id: proj.id, name: proj.name })}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete Project
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                </Link>
+              )}
+              <span
+                className="inline-flex"
+                title={canImport ? undefined : permissionReason('board.create')}
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1 disabled:cursor-not-allowed"
+                  disabled={!canImport}
+                  onClick={() => {
+                    setImportProjectId(proj.id);
+                    setImportProjectName(proj.name);
+                  }}
+                >
+                  <UploadCloud className="w-3.5 h-3.5 text-indigo-500" /> Import
+                </Button>
+              </span>
+
+              {/* Project Actions Dropdown — hidden when nothing inside is allowed */}
+              {(canUpdateProject || canDeleteProject) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    >
+                      <MoreHorizontal className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    {canUpdateProject && (
+                      <DropdownMenuItem
+                        className="cursor-pointer gap-2 text-xs"
+                        onClick={() => setEditingProj({ id: proj.id, name: proj.name })}
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename Project
+                      </DropdownMenuItem>
+                    )}
+                    {canUpdateProject && canDeleteProject && <DropdownMenuSeparator />}
+                    {canDeleteProject && (
+                      <DropdownMenuItem
+                        className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                        onClick={() => setDeletingProj({ id: proj.id, name: proj.name })}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete Project
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
 
@@ -176,7 +196,7 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
       ))}
 
       {/* Edit Project Dialog */}
-      {editingProj && (
+      {editingProj && canUpdateProject && (
         <Dialog open={!!editingProj} onOpenChange={handleEditOpenChange}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -216,7 +236,7 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
       )}
 
       {/* Delete Project Dialog */}
-      {deletingProj && (
+      {deletingProj && canDeleteProject && (
         <Dialog open={!!deletingProj} onOpenChange={handleDeleteOpenChange}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>

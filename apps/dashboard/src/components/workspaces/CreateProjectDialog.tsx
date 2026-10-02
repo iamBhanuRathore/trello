@@ -13,6 +13,7 @@ import { Label } from '@boardly/ui/label';
 import { Plus } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useDialogClose } from '../../hooks/useDialogClose';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface CreateProjectDialogProps {
   workspaceId: string;
@@ -22,6 +23,8 @@ export function CreateProjectDialog({ workspaceId }: CreateProjectDialogProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const queryClient = useQueryClient();
+  const { can, isLoading: permsLoading } = usePermissions();
+  const canCreateProject = permsLoading ? false : can('project.create');
 
   const { handleOpenChange, requestClose } = useDialogClose({
     isOpen: open,
@@ -48,6 +51,9 @@ export function CreateProjectDialog({ workspaceId }: CreateProjectDialogProps) {
     if (!name.trim()) return;
     createMutation.mutate();
   };
+
+  // Hidden entirely when the create affordance itself isn't allowed.
+  if (!canCreateProject) return null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

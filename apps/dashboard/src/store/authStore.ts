@@ -14,6 +14,8 @@ interface User {
   timezone: string;
   twoFactorEnabled: boolean;
   role?: string | null; // org-level role: org_owner, org_admin, member, etc.
+  /** Effective permission keys from GET /auth/me (server-expanded, fail-closed). */
+  permissions?: string[];
 }
 
 interface AuthState {

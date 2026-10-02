@@ -5,6 +5,8 @@ import { Search, X, Check, Tag, ExternalLink } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { usePermissions, permissionReason } from '../../hooks/usePermissions';
+import { toast } from 'sonner';
 
 export interface BoardLabel {
   id: string;
@@ -29,6 +31,9 @@ export function LabelPicker({ boardId, cardId, cardLabelIds, onClose }: LabelPic
   const [searchQuery, setSearchQuery] = useState('');
 
   const isAdmin = user?.isPlatformAdmin || user?.role === 'org_owner' || user?.role === 'org_admin';
+  // POST/DELETE /cards/:id/labels is card.update-gated (route map).
+  const { can: canPerm, isLoading: permsLoading } = usePermissions();
+  const canToggleLabel = !permsLoading && canPerm('card.update');
 
   useEffect(() => {
     searchInputRef.current?.focus();
@@ -155,7 +160,15 @@ export function LabelPicker({ boardId, cardId, cardLabelIds, onClose }: LabelPic
                     ? 'bg-primary/10 border border-primary/25 shadow-xs'
                     : 'hover:bg-muted/70 border border-transparent'
                 }`}
-                onClick={() => toggleLabelMutation.mutate({ labelId: lbl.id, hasLabel })}
+                disabled={!canToggleLabel}
+                title={canToggleLabel ? undefined : permissionReason('card.update')}
+                onClick={() => {
+                  if (!canToggleLabel) {
+                    if (!permsLoading) toast.error(permissionReason('card.update'));
+                    return;
+                  }
+                  toggleLabelMutation.mutate({ labelId: lbl.id, hasLabel });
+                }}
               >
                 <div className="flex items-center gap-2.5 min-w-0 pr-2">
                   <span

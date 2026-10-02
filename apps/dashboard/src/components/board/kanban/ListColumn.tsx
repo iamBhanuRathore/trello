@@ -29,6 +29,7 @@ import { api, getApiErrorMessage } from '../../../lib/api';
 import { useOptimisticMutation } from '../../../lib/useOptimisticMutation';
 import { useAuthStore } from '../../../store/authStore';
 import { useDialogClose } from '../../../hooks/useDialogClose';
+import { usePermissions } from '../../../hooks/usePermissions';
 import { AsyncMemberSearchableSelect } from '../../ui/AsyncMemberSelect';
 import { SortableCard } from './SortableCard';
 import {
@@ -78,6 +79,10 @@ export const ListColumn = memo(function ListColumn({
 
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const { can, isLoading: permsLoading } = usePermissions();
+  const canUpdateList = permsLoading ? false : can('list.update');
+  const canDeleteList = permsLoading ? false : can('list.delete');
+  const canCreateCard = permsLoading ? false : can('card.create');
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -165,7 +170,7 @@ export const ListColumn = memo(function ListColumn({
   );
 
   const handleAdd = () => {
-    if (!title.trim() || addCardMutation.isPending) return;
+    if (!canCreateCard || !title.trim() || addCardMutation.isPending) return;
     const payload: any = {
       listId: list.id,
       title: title.trim(),
@@ -230,50 +235,60 @@ export const ListColumn = memo(function ListColumn({
           </span>
         </div>
 
-        {/* List Actions Menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem
-              className="cursor-pointer gap-2 text-xs"
-              onClick={() => {
-                setEditListName(list.name);
-                setIsEditingList(true);
-              }}
-            >
-              <Edit2 className="w-3.5 h-3.5" /> Rename List
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="cursor-pointer gap-2 text-xs"
-              onClick={() => {
-                setAdding(true);
-              }}
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Card
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
-              onClick={() => setIsDeletingList(true)}
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Delete List
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* List Actions Menu — hidden when nothing inside is allowed */}
+        {(canUpdateList || canCreateCard || canDeleteList) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-44">
+              {canUpdateList && (
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2 text-xs"
+                  onClick={() => {
+                    setEditListName(list.name);
+                    setIsEditingList(true);
+                  }}
+                >
+                  <Edit2 className="w-3.5 h-3.5" /> Rename List
+                </DropdownMenuItem>
+              )}
+              {canCreateCard && (
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2 text-xs"
+                  onClick={() => {
+                    setAdding(true);
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Card
+                </DropdownMenuItem>
+              )}
+              {canDeleteList && (
+                <>
+                  {(canUpdateList || canCreateCard) && <DropdownMenuSeparator />}
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                    onClick={() => setIsDeletingList(true)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete List
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {/* Rename List Dialog */}
-      {isEditingList && (
+      {isEditingList && canUpdateList && (
         <Dialog open={isEditingList} onOpenChange={setIsEditingList}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -316,7 +331,7 @@ export const ListColumn = memo(function ListColumn({
       )}
 
       {/* Delete List Confirmation Dialog */}
-      {isDeletingList && (
+      {isDeletingList && canDeleteList && (
         <Dialog open={isDeletingList} onOpenChange={setIsDeletingList}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -408,7 +423,7 @@ export const ListColumn = memo(function ListColumn({
       </div>
 
       <div className="mt-3">
-        {adding ? (
+        {adding && canCreateCard ? (
           <div className="p-3 rounded-xl bg-card border border-primary/50 shadow-lg space-y-2.5 animate-in fade-in-50 zoom-in-95 duration-150">
             {/* Title Textarea */}
             <textarea
@@ -523,7 +538,7 @@ export const ListColumn = memo(function ListColumn({
               </Button>
             </div>
           </div>
-        ) : (
+        ) : canCreateCard ? (
           <Button
             variant="ghost"
             className="w-full justify-start text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors h-8 text-xs font-medium cursor-pointer"
@@ -531,7 +546,7 @@ export const ListColumn = memo(function ListColumn({
           >
             <Plus className="mr-1.5 w-3.5 h-3.5" /> Add a card
           </Button>
-        )}
+        ) : null}
       </div>
     </div>
   );

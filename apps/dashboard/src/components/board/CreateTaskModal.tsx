@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Sparkles, CornerDownRight, Tag, Users, Eye, ListChecks, Check, X } from 'lucide-react';
 import { MemberSearchableSelect, ListSearchableSelect } from '../ui/SearchableSelect';
 import { AsyncMemberSearchableSelect, AsyncMemberChipPicker } from '../ui/AsyncMemberSelect';
+import { usePermissions, permissionReason } from '../../hooks/usePermissions';
 
 export interface CreateTaskInitialData {
   listId?: string;
@@ -140,6 +141,9 @@ export function CreateTaskModal({
   const [checklistItemsText, setChecklistItemsText] = useState('');
   const [titleError, setTitleError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { can, isLoading: permsLoading } = usePermissions();
+  // POST /cards is guarded by card.create only (inline assignee/labels included).
+  const canCreateTask = permsLoading ? false : can('card.create');
 
   // Board tags for the Labels section.
   const { data: boardLabels = [] } = useQuery({
@@ -215,6 +219,10 @@ export function CreateTaskModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canCreateTask) {
+      toast.error(permissionReason('card.create'));
+      return;
+    }
     if (!title.trim()) {
       setTitleError('Please give the task a title.');
       return;
@@ -575,15 +583,30 @@ export function CreateTaskModal({
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={isSubmitting}
-              title={!title.trim() ? 'Enter a task title to continue' : undefined}
-              className="gap-1.5 cursor-pointer text-xs px-5 disabled:opacity-50"
+            <span
+              className="inline-flex"
+              title={!canCreateTask ? permissionReason('card.create') : undefined}
             >
-              {isSubmitting ? 'Creating...' : isSubtask ? 'Create Subtask' : 'Create & Open Task'}
-            </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSubmitting || !canCreateTask}
+                title={
+                  !canCreateTask
+                    ? permissionReason('card.create')
+                    : !title.trim()
+                      ? 'Enter a task title to continue'
+                      : undefined
+                }
+                aria-describedby={!canCreateTask ? 'create-task-modal-perm' : undefined}
+                className="gap-1.5 cursor-pointer text-xs px-5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? 'Creating...' : isSubtask ? 'Create Subtask' : 'Create & Open Task'}
+              </Button>
+            </span>
+            <span id="create-task-modal-perm" className="sr-only">
+              {permissionReason('card.create')}
+            </span>
           </div>
         </form>
       </DialogContent>

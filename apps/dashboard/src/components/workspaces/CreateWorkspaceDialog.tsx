@@ -12,6 +12,7 @@ import { Label } from '@boardly/ui/label';
 import { Plus } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useDialogClose } from '../../hooks/useDialogClose';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface CreateWorkspaceDialogProps {
   onSuccess: () => void;
@@ -35,6 +36,8 @@ export function CreateWorkspaceDialog({
 
   const [name, setName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { can, isLoading: permsLoading } = usePermissions();
+  const canCreateWorkspace = permsLoading ? false : can('workspace.create');
 
   const { handleOpenChange, requestClose } = useDialogClose({
     isOpen: dialogOpen,
@@ -58,8 +61,12 @@ export function CreateWorkspaceDialog({
     }
   };
 
+  // Hidden entirely when the create affordance itself isn't allowed. The
+  // controlled-open path (sidebar/header global create) is gated by its caller.
+  if (!canCreateWorkspace && !isControlled) return null;
+
   return (
-    <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
+    <Dialog open={dialogOpen && canCreateWorkspace} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button size="sm" className="h-9 text-xs font-semibold gap-1.5 shadow-xs">
           <Plus className="h-4 w-4" /> Create Workspace

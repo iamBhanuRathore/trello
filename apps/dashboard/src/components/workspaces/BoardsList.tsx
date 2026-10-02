@@ -17,6 +17,7 @@ import {
 import { Tooltip } from '@boardly/ui';
 import { api } from '../../lib/api';
 import { useDialogClose } from '../../hooks/useDialogClose';
+import { usePermissions } from '../../hooks/usePermissions';
 import { BOARD_GRADIENTS, resolveBoardGradient } from './types';
 import { CreateBoardDialog } from './CreateBoardDialog';
 
@@ -33,6 +34,9 @@ export function BoardsList({ projectId, initialBoards }: BoardsListProps) {
     background?: string;
   } | null>(null);
   const [deletingBoard, setDeletingBoard] = useState<{ id: string; name: string } | null>(null);
+  const { can, isLoading: permsLoading } = usePermissions();
+  const canUpdateBoard = permsLoading ? false : can('board.update');
+  const canDeleteBoard = permsLoading ? false : can('board.delete');
 
   const { data: boards } = useQuery({
     queryKey: ['boards', projectId],
@@ -123,50 +127,56 @@ export function BoardsList({ projectId, initialBoards }: BoardsListProps) {
               </Card>
             </Link>
 
-            <div className="absolute top-3.5 right-3.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-              <DropdownMenu>
-                <DropdownMenuTrigger>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    className="w-7 h-7 rounded-lg bg-black/35 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer shadow-xs"
-                    title="Board options"
-                  >
-                    <MoreHorizontal className="w-4 h-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2 text-xs"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setEditingBoard({
-                        id: board.id,
-                        name: board.name,
-                        background: board.background,
-                      });
-                    }}
-                  >
-                    <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename &amp; Theme
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDeletingBoard({ id: board.id, name: board.name });
-                    }}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete Board
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+            {(canUpdateBoard || canDeleteBoard) && (
+              <div className="absolute top-3.5 right-3.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                <DropdownMenu>
+                  <DropdownMenuTrigger>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      className="w-7 h-7 rounded-lg bg-black/35 hover:bg-black/60 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer shadow-xs"
+                      title="Board options"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    {canUpdateBoard && (
+                      <DropdownMenuItem
+                        className="cursor-pointer gap-2 text-xs"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingBoard({
+                            id: board.id,
+                            name: board.name,
+                            background: board.background,
+                          });
+                        }}
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename &amp; Theme
+                      </DropdownMenuItem>
+                    )}
+                    {canUpdateBoard && canDeleteBoard && <DropdownMenuSeparator />}
+                    {canDeleteBoard && (
+                      <DropdownMenuItem
+                        className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeletingBoard({ id: board.id, name: board.name });
+                        }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete Board
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
           </div>
         );
       })}
@@ -174,7 +184,7 @@ export function BoardsList({ projectId, initialBoards }: BoardsListProps) {
       <CreateBoardDialog projectId={projectId} />
 
       {/* Edit Board Dialog */}
-      {editingBoard && (
+      {editingBoard && canUpdateBoard && (
         <Dialog open={!!editingBoard} onOpenChange={handleEditOpenChange}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>

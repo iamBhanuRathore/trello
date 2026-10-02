@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@boardly/ui/button';
+import { usePermissions } from '../../../hooks/usePermissions';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -77,6 +78,10 @@ export const TaskDetailHeader: React.FC<TaskDetailHeaderProps> = ({
   onClose,
 }) => {
   const navigate = useNavigate();
+  const { can, isLoading: permsLoading } = usePermissions();
+  // POST /cards (+parentCardId) and POST /cards/:id/clone are card.create-only.
+  const canCloneTask = permsLoading ? false : can('card.create');
+  const canDeleteTask = permsLoading ? false : can('card.delete');
 
   return (
     <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-2.5 border-b border-border/70 shrink-0 bg-card/95 backdrop-blur-md z-20">
@@ -215,49 +220,58 @@ export const TaskDetailHeader: React.FC<TaskDetailHeaderProps> = ({
               <span>{copiedBranch ? 'Copied Branch!' : 'Copy Git Branch'}</span>
             </DropdownMenuItem>
 
-            <DropdownMenuSeparator />
+            {(canCloneTask || canDeleteTask) && <DropdownMenuSeparator />}
 
-            <DropdownMenuItem
-              onClick={onCloneTask}
-              disabled={isCloning}
-              className="cursor-pointer text-xs gap-2"
-            >
-              <CopyPlus className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Clone Task</span>
-            </DropdownMenuItem>
+            {canCloneTask && (
+              <DropdownMenuItem
+                onClick={onCloneTask}
+                disabled={isCloning}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <CopyPlus className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Clone Task</span>
+              </DropdownMenuItem>
+            )}
 
-            <DropdownMenuItem onClick={onCreateSubtask} className="cursor-pointer text-xs gap-2">
-              <PlusCircle className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Create Subtask</span>
-            </DropdownMenuItem>
+            {canCloneTask && (
+              <DropdownMenuItem onClick={onCreateSubtask} className="cursor-pointer text-xs gap-2">
+                <PlusCircle className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Create Subtask</span>
+              </DropdownMenuItem>
+            )}
 
-            <DropdownMenuItem
-              onClick={onCloneAsSubtask}
-              disabled={isCloning}
-              className="cursor-pointer text-xs gap-2"
-            >
-              <Layers className="w-3.5 h-3.5 text-amber-500" />
-              <span>Clone & Create Subtask</span>
-            </DropdownMenuItem>
+            {canCloneTask && (
+              <DropdownMenuItem
+                onClick={onCloneAsSubtask}
+                disabled={isCloning}
+                className="cursor-pointer text-xs gap-2"
+              >
+                <Layers className="w-3.5 h-3.5 text-amber-500" />
+                <span>Clone & Create Subtask</span>
+              </DropdownMenuItem>
+            )}
 
-            <DropdownMenuSeparator />
+            {canDeleteTask && (
+              <>
+                {canCloneTask && <DropdownMenuSeparator />}
+                <DropdownMenuItem
+                  onClick={onOpenArchiveConfirm}
+                  className="cursor-pointer text-xs gap-2"
+                >
+                  <Archive className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span>Archive Task</span>
+                </DropdownMenuItem>
 
-            <DropdownMenuItem
-              onClick={onOpenArchiveConfirm}
-              className="cursor-pointer text-xs gap-2"
-            >
-              <Archive className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Archive Task</span>
-            </DropdownMenuItem>
-
-            <DropdownMenuItem
-              onClick={onOpenDeleteConfirm}
-              variant="destructive"
-              className="cursor-pointer text-xs gap-2"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Delete Task</span>
-            </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={onOpenDeleteConfirm}
+                  variant="destructive"
+                  className="cursor-pointer text-xs gap-2"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Task</span>
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

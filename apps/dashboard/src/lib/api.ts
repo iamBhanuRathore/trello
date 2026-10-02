@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { toast } from 'sonner';
 import { edenV1 } from './eden';
+import { queryClient } from './queryClient';
 import type { ImportTasksBody, ImportTrelloBody } from '@boardly/backend/modules/importers/schema';
 import type { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
 
@@ -643,6 +644,30 @@ function singleFlightRefresh(): Promise<{ accessToken: string; refreshToken: str
   return p;
 }
 
+/**
+ * Permission-denial detector. Backend permission 403s carry
+ * details: { code: 'PERMISSION_DENIED', permission } (object, never an array).
+ * Other 403s (CSRF, plan-limit, SSO) must NOT trigger a permission refetch.
+ */
+export function permissionDeniedKey(err: any): string | null {
+  const data = err?.response?.data;
+  if (!data || typeof data !== 'object') return null;
+  const details = (data as any).details;
+  if (details && typeof details === 'object' && !Array.isArray(details)) {
+    if (details.code === 'PERMISSION_DENIED') {
+      return typeof details.permission === 'string' ? details.permission : '';
+    }
+    return null;
+  }
+  if ((data as any).code === 'PERMISSION_DENIED') {
+    const p = (data as any).permission;
+    return typeof p === 'string' ? p : '';
+  }
+  return null;
+}
+
+let lastPermRefetchAt = 0;
+
 // Interceptor to handle token refresh if 401 occurs
 api.interceptors.response.use(
   (response) => response,
@@ -689,9 +714,37 @@ api.interceptors.response.use(
         if (status === 401 || status === 403 || status === 404) {
           localStorage.removeItem('boardly_access_token');
           localStorage.removeItem('boardly_refresh_token');
+          queryClient.clear();
+          try {
+            const { useChatStore } = await import('../store/chatStore');
+            useChatStore.getState().resetSessionState();
+          } catch {
+            // Best-effort; query cache clear is the critical part.
+          }
           useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
         }
         return Promise.reject(error);
+      }
+    }
+
+    // Permission-denial safety net: a role change can leave the UI stale until
+    // focus/expiry. Quietly refresh /me (debounced, never for /me itself so it
+    // can't loop). The caller's own toast stays the single user-facing message.
+    if (error.response?.status === 403 && !originalRequest?._permRetry) {
+      const deniedKey = permissionDeniedKey(error);
+      const url: string = originalRequest?.url ?? '';
+      const isMeRequest = url.includes('/auth/me') || url.includes('/auth/permissions');
+      if (deniedKey !== null && !isMeRequest && !isAuthRoute) {
+        originalRequest._permRetry = true;
+        const now = Date.now();
+        if (now - lastPermRefetchAt > 5000) {
+          lastPermRefetchAt = now;
+          queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+          void useAuthStore
+            .getState()
+            .checkAuth()
+            .catch(() => {});
+        }
       }
     }
     return Promise.reject(error);

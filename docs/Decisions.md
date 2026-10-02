@@ -24,6 +24,23 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Permission-gated UI (global flat list, hide destructive / disable reversible)
+
+**Context:** Users without `board.update` saw Rename Board, submitted it, and got a 403 toast (screenshot). Frontend had no permission store — only ad-hoc `isAdmin` role checks; backend `requirePermission()` was the sole gate.
+
+**Decision:**
+
+1. Permissions are global (org-role only, verified: no board/project membership checks in any guard), served as a server-expanded flat `permissions[]` on `GET /auth/me`. One resolver (`lib/permissions-resolver.ts`) feeds the middleware, `/me`, and `/auth/permissions` — client holds zero role logic (`usePermissions` is `Set.has`, fail-closed).
+2. `can(...keys)` is any-of (mirrors backend aliases `card.move∨card.update` etc.), `canAll(...)` is all-of. Gating lives at handler level; button/menu state derives from it.
+3. Destructive actions (`*.delete/archive`, `member.remove`) hide entirely (dialogs unmounted, empty menu groups + separators dropped); reversible mutates render disabled with `title` + `aria-describedby` reason (tooltips die on disabled controls and touch).
+4. Staleness accepted: role change can leave UI stale until window focus, next permission-403 refetch, or 60s TTL. 403 interceptor refetches `/me` quietly (no extra toast — caller's toast is the single message) and only for `PERMISSION_DENIED` codes.
+5. `POST /cards` inline assignee/labels stay `card.create`-only (backend behavior) — never gate stricter than the backend. Phases/sprints had zero guards (real gap): now `project.read` reads + `sprint.*`/`phase.*` writes; their UI gates ship with the guard.
+6. Permits cache uses a version epoch (`permver:`) for O(1) atomic invalidation; `/me` cache key bumped to `u:v2:` so pre-deploy entries are never served.
+
+**Alternatives considered:** Per-resource `can` map on board/card responses (rejected — no scoped checks exist); client role short-circuit for owner/admin (rejected — rule would live in two places); separate `/permissions` query per render (rejected — extra waterfall); SCAN+DEL invalidation (rejected — O(N), non-atomic).
+
+**Consequences:** No 403 roundtrips for gated controls; role/custom-role edits propagate via `bumpUserCache` + epoch bump. Private-task layering (`requireCardAccess` after `card.read`) stays backend-decided. Follow-ups: Playwright zero-403 spec, per-field disabled states in task subcomponents, remaining `isAdmin` replacements.
+
 ### 2026-10-03 — Workspaces Page God-Component Decomposition (Component Library Pattern)
 
 **Context:** `apps/dashboard/src/pages/Workspaces.tsx` grew into a 1,121-line monolithic component containing tree query orchestration, KPI metrics calculations, inline project list & board grid rendering, and 6 uncoordinated modal dialogs (create/rename/delete workspace, create/rename/delete project, create/rename/delete board). Additionally, several dialogs did not adhere to the Rule 10 `useDialogClose` contract.

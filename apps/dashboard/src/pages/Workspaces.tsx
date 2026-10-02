@@ -16,6 +16,7 @@ import {
 } from '@boardly/ui/dropdown-menu';
 import { QueryError } from '../components/common/QueryError';
 import { useDialogClose } from '../hooks/useDialogClose';
+import { usePermissions } from '../hooks/usePermissions';
 import {
   WorkspacesOverview,
   CreateWorkspaceDialog,
@@ -30,6 +31,9 @@ export function Workspaces() {
   // Sidebar "+" / header Create menu open the shell-level GlobalCreateWorkspaceDialog
   // (DashboardLayout) via ?createWorkspace=1 — no page-local param handling here.
   const [createOpen, setCreateOpen] = useState(false);
+  const { can, isLoading: permsLoading } = usePermissions();
+  const canUpdateWs = permsLoading ? false : can('workspace.update');
+  const canDeleteWs = permsLoading ? false : can('workspace.delete');
 
   const {
     data: workspaces,
@@ -170,33 +174,39 @@ export function Workspaces() {
                 </Link>
                 <CreateProjectDialog workspaceId={ws.id} />
 
-                {/* Workspace Actions Dropdown */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                    >
-                      <MoreHorizontal className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem
-                      className="cursor-pointer gap-2 text-xs"
-                      onClick={() => setEditingWs({ id: ws.id, name: ws.name })}
-                    >
-                      <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename Workspace
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
-                      onClick={() => setDeletingWs({ id: ws.id, name: ws.name })}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Delete Workspace
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {/* Workspace Actions Dropdown — hidden when nothing inside is allowed */}
+                {(canUpdateWs || canDeleteWs) && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      {canUpdateWs && (
+                        <DropdownMenuItem
+                          className="cursor-pointer gap-2 text-xs"
+                          onClick={() => setEditingWs({ id: ws.id, name: ws.name })}
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-muted-foreground" /> Rename Workspace
+                        </DropdownMenuItem>
+                      )}
+                      {canUpdateWs && canDeleteWs && <DropdownMenuSeparator />}
+                      {canDeleteWs && (
+                        <DropdownMenuItem
+                          className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                          onClick={() => setDeletingWs({ id: ws.id, name: ws.name })}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Delete Workspace
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             </div>
 
@@ -206,7 +216,7 @@ export function Workspaces() {
       )}
 
       {/* Edit Workspace Dialog */}
-      {editingWs && (
+      {editingWs && canUpdateWs && (
         <Dialog open={!!editingWs} onOpenChange={handleEditOpenChange}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -246,7 +256,7 @@ export function Workspaces() {
       )}
 
       {/* Delete Workspace Dialog */}
-      {deletingWs && (
+      {deletingWs && canDeleteWs && (
         <Dialog open={!!deletingWs} onOpenChange={handleDeleteOpenChange}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>

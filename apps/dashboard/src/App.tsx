@@ -139,6 +139,21 @@ export function App() {
     checkAuth();
   }, [checkAuth]);
 
+  // Staleness safety net: a role change can leave permissions stale until the
+  // 60s server TTL lapses. Revalidate /me on window focus (throttled — /me is
+  // server-cached, but focus can fire in bursts across iframe/dialog moves).
+  useEffect(() => {
+    let last = 0;
+    const onFocus = () => {
+      const now = Date.now();
+      if (now - last < 60_000) return;
+      last = now;
+      if (useAuthStore.getState().isAuthenticated) void checkAuth();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [checkAuth]);
+
   return (
     <TooltipProvider delay={500} closeDelay={300}>
       <BrowserRouter>

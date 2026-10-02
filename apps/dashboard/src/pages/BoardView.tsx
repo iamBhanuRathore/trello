@@ -28,6 +28,7 @@ import { Button } from '@boardly/ui/button';
 import { RouteFallback } from '../components/common/RouteFallback';
 import { useRealtimeBoard } from '../hooks/useRealtimeBoard';
 import { useAuthStore } from '../store/authStore';
+import { usePermissions, permissionReason } from '../hooks/usePermissions';
 import {
   type KanbanCard,
   type KanbanList,
@@ -169,8 +170,14 @@ export function BoardView() {
     return closestCorners(args);
   }, []);
 
+  const { can: canPerm, isLoading: permsLoading } = usePermissions();
+  // ANY-of mirrors the backend alias (card.move ∨ card.update). Fail closed
+  // while /me is unresolved; the denied-drag toast is skipped until then.
+  const canMoveCard = !permsLoading && canPerm('card.move', 'card.update');
+
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
+      if (!canMoveCard) return;
       const { active } = event;
       const card = lists.flatMap((l) => l.cards).find((c) => c.id === active.id);
       if (card) {
@@ -178,11 +185,12 @@ export function BoardView() {
         setClonedLists(lists);
       }
     },
-    [lists]
+    [lists, canMoveCard]
   );
 
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
+      if (!canMoveCard) return;
       const { active, over } = event;
       if (!over) return;
 
@@ -232,7 +240,7 @@ export function BoardView() {
         });
       });
     },
-    [lists]
+    [lists, canMoveCard]
   );
 
   const handleDragEnd = useCallback(
@@ -240,6 +248,15 @@ export function BoardView() {
       const { active, over } = event;
       setActiveCard(null);
       setClonedLists(null);
+
+      if (!canMoveCard) {
+        // Handler-level gate: keyboard sensor can start a drag without buttons.
+        if (over && active.id !== over.id && clonedLists) setLists(clonedLists);
+        if (over && active.id !== over.id && !permsLoading) {
+          toast.error(permissionReason('card.move'));
+        }
+        return;
+      }
 
       if (!over) {
         if (clonedLists) setLists(clonedLists);
@@ -297,7 +314,7 @@ export function BoardView() {
         expectedVersion: newCards[targetIndex]?.version,
       });
     },
-    [lists, clonedLists, moveCardMutation]
+    [lists, clonedLists, moveCardMutation, canMoveCard, permsLoading]
   );
 
   const handleDragCancel = useCallback(
