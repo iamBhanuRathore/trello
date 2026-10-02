@@ -122,7 +122,7 @@ export const TaskMetadataGrid: React.FC<TaskMetadataGridProps> = ({
   }, [card?.watchers]);
 
   const cardLabelIds = useMemo(() => {
-    return card?.labels?.map((l: any) => l.id) || [];
+    return new Set<string>(card?.labels?.map((l: any) => l.id) || []);
   }, [card?.labels]);
 
   const isCurrentUserWatching = useMemo(() => {
@@ -596,26 +596,29 @@ export const TaskMetadataGrid: React.FC<TaskMetadataGridProps> = ({
           <span className="w-24 text-muted-foreground font-medium shrink-0">Tags:</span>
           <div className="flex-1 flex flex-wrap items-center gap-1.5">
             {card.labels && card.labels.length > 0 ? (
-              card.labels.map((lbl: any) => (
-                <span
-                  key={lbl.id}
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold"
-                  style={{
-                    backgroundColor: `${lbl.color}18`,
-                    color: lbl.color,
-                    border: `1px solid ${lbl.color}35`,
-                  }}
-                >
-                  <span>{lbl.name}</span>
-                  <button
-                    type="button"
-                    className="hover:opacity-100 opacity-70 ml-0.5 cursor-pointer"
-                    onClick={() => onToggleLabel({ labelId: lbl.id, hasLabel: true })}
+              card.labels.map((lbl: any) => {
+                const color = lbl.color || '#64748b';
+                return (
+                  <span
+                    key={lbl.id}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold"
+                    style={{
+                      backgroundColor: `${color}18`,
+                      color,
+                      border: `1px solid ${color}35`,
+                    }}
                   >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))
+                    <span>{lbl.name}</span>
+                    <button
+                      type="button"
+                      className="hover:opacity-100 opacity-70 ml-0.5 cursor-pointer"
+                      onClick={() => onToggleLabel({ labelId: lbl.id, hasLabel: true })}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                );
+              })
             ) : (
               <span className="text-muted-foreground italic text-xs">No tags</span>
             )}

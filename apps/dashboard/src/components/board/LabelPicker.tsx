@@ -76,6 +76,12 @@ export function LabelPicker({ boardId, cardId, cardLabelIds, onClose }: LabelPic
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+      // Board tiles embed labels — refresh the aggregate payload too,
+      // otherwise the kanban card keeps showing stale tags.
+      queryClient.invalidateQueries({ queryKey: ['board', 'full'] });
+      if (boardId) {
+        queryClient.invalidateQueries({ queryKey: ['boardLabels', boardId] });
+      }
     },
   });
 
@@ -150,7 +156,10 @@ export function LabelPicker({ boardId, cardId, cardLabelIds, onClose }: LabelPic
           </div>
         ) : (
           filteredLabels.map((lbl) => {
-            const hasLabel = cardLabelIds.has(lbl.id);
+            const hasLabel =
+              cardLabelIds instanceof Set
+                ? cardLabelIds.has(lbl.id)
+                : ((cardLabelIds as unknown as string[])?.includes?.(lbl.id) ?? false);
             return (
               <button
                 key={lbl.id}

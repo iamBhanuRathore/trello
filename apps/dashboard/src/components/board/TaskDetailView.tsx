@@ -366,7 +366,15 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           await api.post(`/cards/${cardId}/labels`, { labelId });
         }
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId] }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+        // Board tiles embed labels — refresh the aggregate payload too,
+        // otherwise the kanban card keeps showing stale tags.
+        queryClient.invalidateQueries({ queryKey: ['board', 'full'] });
+        if (card?.boardId) {
+          queryClient.invalidateQueries({ queryKey: ['boardLabels', card.boardId] });
+        }
+      },
     });
 
     const addCommentMutation = useMutation({

@@ -102,28 +102,33 @@ export const KanbanCardView = memo(function KanbanCardView({
       >
         <CardContent className="p-3 space-y-2 relative">
           {/* Top: Labels + Hover Quick Peek Button */}
-          <div className="flex items-center justify-between gap-1 min-h-[20px]">
-            <div className="flex flex-wrap gap-1">
-              {card.labels &&
-                card.labels.length > 0 &&
-                card.labels.map((lbl) => (
-                  <span
-                    key={lbl.id}
-                    className="px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1"
-                    style={{
-                      backgroundColor: `${lbl.color}20`,
-                      color: lbl.color,
-                      border: `1px solid ${lbl.color}35`,
-                    }}
-                  >
+          <div className="flex items-start justify-between gap-1">
+            {card.labels && card.labels.length > 0 ? (
+              <div className="flex flex-wrap gap-1 min-w-0">
+                {card.labels.map((lbl) => {
+                  const color = lbl.color || '#64748b';
+                  return (
                     <span
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: lbl.color }}
-                    />
-                    <span className="truncate max-w-[90px]">{lbl.name}</span>
-                  </span>
-                ))}
-            </div>
+                      key={lbl.id}
+                      className="px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1"
+                      style={{
+                        backgroundColor: `${color}20`,
+                        color,
+                        border: `1px solid ${color}35`,
+                      }}
+                    >
+                      <span
+                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="truncate max-w-[90px]">{lbl.name}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <span className="min-w-0 flex-1" />
+            )}
 
             {/* Quick Peek Button on Card Hover */}
             {!isOverlay && !isDragging && (
