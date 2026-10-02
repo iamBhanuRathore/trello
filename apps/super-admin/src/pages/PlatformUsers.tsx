@@ -101,7 +101,9 @@ export const PlatformUsers: React.FC = () => {
         const matchName = u.name?.toLowerCase().includes(q);
         const matchEmail = u.email?.toLowerCase().includes(q);
         const matchOrgs = u.organizations?.some(
-          (o) => o.organizationName?.toLowerCase().includes(q) || o.organizationSlug?.toLowerCase().includes(q)
+          (o) =>
+            o.organizationName?.toLowerCase().includes(q) ||
+            o.organizationSlug?.toLowerCase().includes(q)
         );
         if (!matchName && !matchEmail && !matchOrgs) return false;
       }
@@ -152,8 +154,8 @@ export const PlatformUsers: React.FC = () => {
           u.isMultiCompany
             ? `Multi-Company (${u.organizationsCount} Companies)`
             : u.organizationsCount === 1
-            ? 'Single Company (1)'
-            : 'No Company',
+              ? 'Single Company (1)'
+              : 'No Company',
         exportValue: (u) => `${u.organizationsCount} Companies`,
         cell: ({ row }) =>
           row.isMultiCompany ? (
@@ -177,7 +179,9 @@ export const PlatformUsers: React.FC = () => {
         filterable: true,
         accessorFn: (u) =>
           u.organizations.length > 0
-            ? u.organizations.map((o) => `${o.organizationName} (${o.role.replace('_', ' ')})`).join(', ')
+            ? u.organizations
+                .map((o) => `${o.organizationName} (${o.role.replace('_', ' ')})`)
+                .join(', ')
             : '(None)',
         exportValue: (u) =>
           u.organizations.map((o) => `${o.organizationName} [${o.role}]`).join('; '),
@@ -194,13 +198,15 @@ export const PlatformUsers: React.FC = () => {
                     isDeactivated
                       ? 'bg-destructive/10 text-destructive border-destructive/20 line-through opacity-70'
                       : isOwnerOrAdmin
-                      ? 'bg-purple-500/10 text-purple-300 border-purple-500/25'
-                      : 'bg-muted text-foreground border-border'
+                        ? 'bg-purple-500/10 text-purple-300 border-purple-500/25'
+                        : 'bg-muted text-foreground border-border'
                   }`}
                 >
                   <Building2 className="w-3 h-3 opacity-70" />
                   <span className="font-semibold">{org.organizationName}</span>
-                  <span className="text-[10px] opacity-75 font-mono">({org.role.replace('_', ' ')})</span>
+                  <span className="text-[10px] opacity-75 font-mono">
+                    ({org.role.replace('_', ' ')})
+                  </span>
                 </span>
               );
             })}
@@ -269,7 +275,8 @@ export const PlatformUsers: React.FC = () => {
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Inspect platform-wide user accounts, detect users working across multiple companies, and govern global access.
+            Inspect platform-wide user accounts, detect users working across multiple companies, and
+            govern global access.
           </p>
         </div>
       </div>
@@ -504,7 +511,9 @@ export const PlatformUsers: React.FC = () => {
                   </h4>
 
                   {selectedUser.organizations.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic">No active company associations.</p>
+                    <p className="text-xs text-muted-foreground italic">
+                      No active company associations.
+                    </p>
                   ) : (
                     <div className="space-y-2">
                       {selectedUser.organizations.map((org) => (
@@ -515,10 +524,13 @@ export const PlatformUsers: React.FC = () => {
                           <div>
                             <div className="font-bold text-white flex items-center gap-2">
                               <span>{org.organizationName}</span>
-                              <span className="text-[10px] font-mono text-muted-foreground">/{org.organizationSlug}</span>
+                              <span className="text-[10px] font-mono text-muted-foreground">
+                                /{org.organizationSlug}
+                              </span>
                             </div>
                             <div className="text-[11px] text-muted-foreground mt-0.5">
-                              Joined {formatRelativeTime(org.joinedAt)} • Last Active {formatRelativeTime(org.lastActiveAt)}
+                              Joined {formatRelativeTime(org.joinedAt)} • Last Active{' '}
+                              {formatRelativeTime(org.lastActiveAt)}
                             </div>
                           </div>
 
@@ -548,7 +560,11 @@ export const PlatformUsers: React.FC = () => {
                   variant="destructive"
                   size="sm"
                   className="text-xs gap-1.5 cursor-pointer"
-                  onClick={() => setUserToLogout(selectedUser)}
+                  onClick={() => {
+                    const target = selectedUser;
+                    setSelectedUser(null);
+                    setUserToLogout(target);
+                  }}
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Terminate All Sessions</span>
@@ -575,6 +591,7 @@ export const PlatformUsers: React.FC = () => {
         onConfirm={async () => {
           if (userToLogout) {
             await forceLogoutMutation.mutateAsync(userToLogout.id);
+            setUserToLogout(null);
           }
         }}
       />

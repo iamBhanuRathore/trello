@@ -2291,3 +2291,11 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   4. **CORS Middleware (`src/middleware/cors.ts`):** Extracted origin resolution, allowlist validation, and CORS header mutation into a dedicated middleware module with backwards-compatible re-exports from `index.ts`.
   5. **Domain Route Aggregator (`src/routes/v1.ts`):** Grouped the 37 individual `/v1` domain routes into logical clusters (Auth/Identity, Workspaces/Projects, Boards/Tasks, Realtime/Communication, Automations/Webhooks, Platform/System).
 - **Tests & Validation:** Backend `redis` and `lib` suites pass (23 pass / 0 fail); full monorepo typecheck clean across `apps/backend`, `apps/dashboard`, and `apps/super-admin` (`tsc --noEmit`).
+
+### 2026-10-03 — Super Admin & ConfirmDialog Layout Polish
+
+- **What:** Fixed UI defects in `ConfirmDialog` and `DialogFooter` affecting modal presentations in the Super Admin portal (`apps/super-admin`) and dashboard:
+  1. **DialogFooter Negative Margin Removal:** Removed hardcoded `-mx-4 -mb-4` from `@boardly/ui`'s base `DialogFooter`. When used with `p-0 overflow-hidden` modal containers, `-mb-4` clipped the bottom 16px of the footer, causing action buttons ("Terminate Sessions") to collide directly with the bottom boundary without padding.
+  2. **DialogOverlay Backdrop Opacity:** Increased `DialogOverlay` backdrop from faint `bg-black/10` to standard `bg-black/60 backdrop-blur-xs` so background data grid rows and action buttons no longer shine through or cause visual artifact overlap around modal borders.
+  3. **PlatformUsers Dialog State Transition:** Updated `PlatformUsers.tsx` to close the inspection modal (`selectedUser`) before opening the destructive `ConfirmDialog` (`userToLogout`), preventing modal stacking.
+- **Tests & Validation:** Monorepo typecheck clean (`tsc -b --noEmit`); production Vite build for `apps/super-admin` succeeded with 0 errors.

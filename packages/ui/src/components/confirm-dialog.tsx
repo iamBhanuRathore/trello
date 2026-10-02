@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from './dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from './dialog';
 import { Button } from './button';
 import { AlertTriangle, Info, AlertCircle, RotateCcw } from 'lucide-react';
 
@@ -53,18 +47,18 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
+      <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-card border border-border/80 rounded-2xl shadow-2xl">
         <div className="p-6 space-y-4">
-          <div className="flex items-start gap-3.5">
+          <div className="flex items-start gap-3.5 pr-6">
             <div
               className={`p-2.5 rounded-xl shrink-0 ${
                 isDestructive
-                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                  ? 'bg-rose-500/10 text-rose-500 dark:text-rose-400 border border-rose-500/20'
                   : isWarning
-                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                  : isSuccess
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                  : 'bg-primary/10 text-primary border border-primary/20'
+                    ? 'bg-amber-500/10 text-amber-500 dark:text-amber-400 border border-amber-500/20'
+                    : isSuccess
+                      ? 'bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 border border-emerald-500/20'
+                      : 'bg-primary/10 text-primary border border-primary/20'
               }`}
             >
               {isDestructive ? (
@@ -88,7 +82,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </div>
         </div>
 
-        <DialogFooter className="p-4 bg-muted/40 border-t border-border flex flex-col sm:flex-row items-center justify-end gap-2.5 shrink-0">
+        <DialogFooter className="p-4 bg-muted/30 border-t border-border/80 flex flex-col-reverse sm:flex-row items-center justify-end gap-2.5 shrink-0">
           <Button
             type="button"
             variant="outline"
@@ -105,12 +99,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             disabled={isLoading}
             className={`w-full sm:w-auto text-xs font-semibold cursor-pointer ${
               isDestructive
-                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-xs'
                 : isWarning
-                ? 'bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-600 dark:hover:bg-amber-700'
-                : isSuccess
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 shadow-sm'
-                : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-600 dark:hover:bg-amber-700 shadow-xs'
+                  : isSuccess
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-600 dark:hover:bg-emerald-700 shadow-xs'
+                    : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs'
             }`}
             onClick={handleConfirm}
           >
