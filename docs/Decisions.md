@@ -24,6 +24,22 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — Admin Users God-Component Decomposition (Domain Slice Pattern)
+
+**Context:** `apps/dashboard/src/pages/admin/Users.tsx` grew into a 1,548-line monolithic component containing 5 separate dialogs/drawers (single/bulk invites, role modification, deactivation reason form, removal confirmation, and member intelligence drawer) as well as two table column definitions inline. This led to cascading re-renders across the page on simple keystrokes, and violated Rule 10 by using loose `useEscapeKey` rather than the centralized `useDialogClose` contract.
+
+**Decision:**
+
+1. Modularized the page into a domain slice under `apps/dashboard/src/pages/admin/users/`.
+2. Extracted sub-components into `components/` (`InviteMemberDialog`, `ChangeRoleDialog`, `DeactivateMemberDialog`, `RemoveMemberDialog`, `MemberActivityDrawer`).
+3. Extracted table columns into `columns/` (`memberColumns.tsx`, `invitationColumns.tsx`).
+4. Converted all dialogs and the activity drawer to strictly adhere to the `useDialogClose` contract.
+5. Replaced `Users.tsx` with a clean 2-line facade exporting `UsersPage`.
+
+**Alternatives considered:** Keeping the monolithic file with inline memoization (`React.memo`) — rejected because it fails to address code sprawl, maintainability, and testing isolation.
+
+**Consequences:** Render isolation, zero breaking changes to existing routes, all components under 500 lines, and 100% adherence to Rule 10.
+
 ### 2026-10-03 — EnterpriseDataGrid Migration to Modern TanStack Table v9 API
 
 **Context:** The previous `@boardly/ui` `EnterpriseDataGrid` component relied on hand-rolled sorting, manual pagination, and custom filtering logic. This was bug-prone across corner cases (multi-column sorting, facet calculations, column visibility toggle) and incurred maintenance overhead. An initial migration to TanStack Table imported deprecated functions (`useLegacyTable`, `get*RowModel`) from `@tanstack/react-table/legacy`, which triggered deprecation warnings and added unnecessary legacy bridge weight.

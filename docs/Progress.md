@@ -2316,3 +2316,13 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   3. **New Capabilities Added:** Added column visibility dropdown toggle (`DropdownMenuCheckboxItem`), Shift-Click multi-column sorting, and automatic faceted unique value calculations for column filter popovers.
   4. **Optimized Exports & Performance:** Global search uses memoized column evaluator; CSV export streams all matching filtered rows via UTF-8 browser Blobs.
 - **Tests & Validation:** Monorepo typecheck clean across `apps/super-admin` and `apps/dashboard`; production Vite builds for both apps passed with 0 errors in ~300ms.
+
+### 2026-10-03 — Admin Users God-Component Decomposition
+
+- **What:** Refactored the monolithic 1,548-line `apps/dashboard/src/pages/admin/Users.tsx` into an isolated domain slice under `apps/dashboard/src/pages/admin/users/`:
+  1. **Clean Orchestrator (`UsersPage.tsx`):** Coordinates data queries, metrics cards, filter states, and active dialog pointers in ~400 lines without inline modal JSX.
+  2. **Dedicated Table Columns (`columns/`):** Extracted `memberColumns.tsx` and `invitationColumns.tsx` into standalone factory functions.
+  3. **Modular Sub-Dialogs (`components/`):** Isolated `InviteMemberDialog` (single/bulk tabs + link generator), `ChangeRoleDialog`, `DeactivateMemberDialog`, and `RemoveMemberDialog` into independent components.
+  4. **Strict Dialog Close Contract Compliance:** Replaced loose `useEscapeKey` and scattered boolean flags with `useDialogClose` across all 5 dialogs and `MemberActivityDrawer`, adhering to Rule 10.
+  5. **Zero Breaking Changes:** `Users.tsx` acts as a clean 2-line facade exporting `UsersPage`.
+- **Tests & Validation:** Dashboard typecheck (`bun run --cwd apps/dashboard typecheck`) and Vite build clean with 0 errors (306ms); oxlint 0 warnings/0 errors.
