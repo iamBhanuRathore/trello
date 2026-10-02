@@ -2389,3 +2389,15 @@ Three defects found reviewing the 5.5 worker against the real clamd wire protoco
   12. **`index.ts`:** Public barrel export for the calendar component library.
   13. **`Calendar.tsx` Coordinator (442 lines):** Orchestrates data queries (`calendarService.feed`), OAuth callback handling, Google sync mutations, time block mutations, keyboard navigation (`t`, `m`, `w`, `d`, arrows), and popovers.
 - **Tests & Validation:** Full dashboard typecheck (`tsc -b --noEmit`) passes with 0 errors; production Vite build succeeds in 601ms.
+
+### 2026-10-03 — TaskChatPane God-Component Decomposition (1,486 → 442 lines)
+
+- **What:** Refactored the monolithic 1,486-line `apps/dashboard/src/components/board/TaskChatPane.tsx` into modular domain subcomponents under `apps/dashboard/src/components/board/task-chat/`:
+  1. **`types.ts`:** Domain types (`ChatMessage`, `PendingAttachment`, `TaskChatPaneProps`).
+  2. **`chat-helpers.ts`:** Parsing and formatting helpers (`parseQuotedMessage`, `isActivityComment`, `formatActivityText`).
+  3. **`TaskChatHeader.tsx`:** Chat header with participant count, Google Meet button, chat launcher, `MemberPicker` popover, and expandable search filter bar.
+  4. **`ChatMessageItem.tsx`:** Message bubble with author DM trigger, inline message editor, markdown body, file attachments, timestamp, read receipts, hover quick-action ribbon, and context dropdown menu.
+  5. **`TaskChatComposer.tsx`:** Chat input composer with mention autocomplete, emoji picker, active replying-to banner, drag-and-drop zone, pending attachments preview tray, and send action.
+  6. **`index.ts`:** Public barrel exports.
+  7. **`TaskChatPane.tsx` Coordinator (442 lines):** Orchestrates timeline grouping, search filtering, delete confirmation dialog (`ConfirmDialog`), and task creation modal (`CreateTaskFromMessageModal`).
+- **Tests & Validation:** Monorepo typecheck clean across dashboard and backend (`tsc -b --noEmit`); Vite production build passes in 931ms with 0 errors; backend git tests all pass (8/8).

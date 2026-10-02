@@ -18,6 +18,7 @@ import {
 import { eventBus } from '../../lib/event-bus';
 import { env } from '../../lib/env';
 import { encryptToken } from '../calendar/google';
+import { GitLinkKind, GitLinkState } from '@boardly/shared-types';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -229,11 +230,11 @@ async function findCardsByKeys(
 export interface LinkEntry {
   repositoryId: string;
   cardId: string;
-  kind: string;
+  kind: GitLinkKind;
   ref: string;
   url?: string | null;
   title?: string | null;
-  state?: string;
+  state?: GitLinkState;
   author?: string | null;
 }
 
@@ -259,7 +260,7 @@ async function upsertLinksBulk(
         ref: link.ref,
         url: link.url || null,
         title: link.title || null,
-        state: link.state || 'open',
+        state: link.state || GitLinkState.Open,
         author: link.author || null,
       }))
     )
@@ -457,11 +458,11 @@ async function handlePush(
       found.map((card) => ({
         repositoryId: repoRow.id,
         cardId: card.id,
-        kind: 'commit',
+        kind: GitLinkKind.Commit,
         ref: String(commit.id),
         url,
         title,
-        state: 'pushed',
+        state: GitLinkState.Pushed,
         author,
       }))
     );
@@ -492,13 +493,13 @@ async function handlePullRequest(
   const prRef = String(pr.number);
   const prUrl = pr.html_url || '';
   const merged = action === 'closed' && pr.merged === true;
-  const state = merged
-    ? 'merged'
+  const state: GitLinkState = merged
+    ? GitLinkState.Merged
     : action === 'closed'
-      ? 'closed'
+      ? GitLinkState.Closed
       : action === 'opened' || action === 'reopened'
-        ? 'open'
-        : 'updated';
+        ? GitLinkState.Open
+        : GitLinkState.Updated;
 
   let matched = 0;
   let links = 0;
@@ -509,7 +510,7 @@ async function handlePullRequest(
     found.map((card) => ({
       repositoryId: repoRow.id,
       cardId: card.id,
-      kind: 'pr',
+      kind: GitLinkKind.PR,
       ref: prRef,
       url: prUrl,
       title: String(pr.title || '').slice(0, 200),
@@ -577,13 +578,14 @@ async function handleReview(
   if (keys.length === 0) return { delivery: 'review', matchedCards: 0, linksCreated: 0 };
 
   const found = await findCardsByKeys(db, repoRow.organizationId, keys);
-  const state =
+  const state: GitLinkState =
     review.state === 'approved'
-      ? 'approved'
+      ? GitLinkState.Approved
       : review.state === 'changes_requested'
-        ? 'changes_requested'
-        : 'commented';
-  const icon = state === 'approved' ? '✅' : state === 'changes_requested' ? '🔁' : '💬';
+        ? GitLinkState.ChangesRequested
+        : GitLinkState.Commented;
+  const icon =
+    state === GitLinkState.Approved ? '✅' : state === GitLinkState.ChangesRequested ? '🔁' : '💬';
   // Batched writes (see handlePush: keys repeat across boards).
   await upsertLinksBulk(
     db,
@@ -591,7 +593,7 @@ async function handleReview(
     found.map((card) => ({
       repositoryId: repoRow.id,
       cardId: card.id,
-      kind: 'pr',
+      kind: GitLinkKind.PR,
       ref: String(pr.number),
       url: pr.html_url || '',
       title: String(pr.title || '').slice(0, 200),

@@ -16,6 +16,7 @@ import { decodeCursor, encodeCursor } from '../notifications/service';
 import { bulkArchive, bulkUnarchive } from '../notifications/service';
 import { markChannelRead } from '../chat/service';
 import { httpError } from '../organizations/service';
+import { GitLinkState } from '@boardly/shared-types';
 
 // ─── Federated triage inbox (4.6a) ───────────────────────────────────────────
 // Four sources, no materialized table (see Decisions.md for the trigger that
@@ -371,7 +372,7 @@ async function fetchGit(
   for (let iter = 0; iter < 10 && items.length < PER_SOURCE_CAP && !exhausted; iter++) {
     const conds: SQL[] = [
       eq(gitLinks.organizationId, orgId),
-      inArray(gitLinks.state, ['open', 'changes_requested']),
+      inArray(gitLinks.state, [GitLinkState.Open, GitLinkState.ChangesRequested]),
       // Triage scope: only PRs linked to a card the reader is assigned to or
       // watching — never another member's personal queue.
       or(

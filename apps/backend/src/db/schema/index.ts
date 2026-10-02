@@ -16,7 +16,12 @@ import {
   primaryKey,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
+import type {
+  GitLinkKind,
+  GitLinkState,
+  MediaScanStatus,
+  MediaStatus,
+} from '@boardly/shared-types';
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 export const planTierEnum = pgEnum('plan_tier', ['free', 'pro', 'business', 'enterprise']);
@@ -1674,11 +1679,11 @@ export const gitLinks = pgTable(
     cardId: uuid('card_id')
       .notNull()
       .references(() => cards.id),
-    kind: varchar('kind', { length: 16 }).notNull(),
+    kind: varchar('kind', { length: 16 }).notNull().$type<GitLinkKind>(),
     ref: varchar('ref', { length: 512 }).notNull(),
     url: varchar('url', { length: 2048 }),
     title: varchar('title', { length: 500 }),
-    state: varchar('state', { length: 32 }).notNull().default('open'),
+    state: varchar('state', { length: 32 }).notNull().default('open').$type<GitLinkState>(),
     author: varchar('author', { length: 255 }),
     ...timestamps,
   },

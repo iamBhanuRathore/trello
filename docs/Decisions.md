@@ -1109,3 +1109,28 @@ Decomposed `Calendar.tsx` into a clean coordinator (~442 lines) delegating to mo
 
 **Consequences:**
 Preserves 100% feature parity, keyboard shortcuts (`t`, `m`, `w`, `d`, arrows), Google 2-way sync, time-blocking interactions, and popovers. Vite production build passes in ~600ms with 0 type errors.
+
+---
+
+### 2026-10-03 — TaskChatPane Component Decomposition (1,486 → 442 lines)
+
+**Context:** `apps/dashboard/src/components/board/TaskChatPane.tsx` had grown to 1,486 lines. It combined chat headers, Google Meet launcher, participants popover (`MemberPicker`), timeline search filtering, message quote parsing, system activity log formatting, message bubbles, DM launchers, inline editing textareas, hover quick actions, bubble context dropdown menus, paste/screenshot upload trays, drag-and-drop overlays, autocomplete mention dropdowns, emoji popups, and delete confirmations into a single file.
+
+**Alternatives considered:**
+
+- Keeping the file monolithic (rejected — over 1.4k lines makes it hard to maintain chat and task collaboration features).
+- Flattening subcomponents into `components/board/` (rejected — subfolder `task-chat/` mirrors `task-detail/` and `kanban/`).
+
+**Decision:**
+Decomposed `TaskChatPane.tsx` into an isolated domain folder `apps/dashboard/src/components/board/task-chat/` with a clean coordinator (~442 lines):
+
+1. `types.ts`: `ChatMessage`, `PendingAttachment`, `TaskChatPaneProps`.
+2. `chat-helpers.ts`: Regex markdown quote parser (`parseQuotedMessage`), system activity detector (`isActivityComment`), and activity pill formatter (`formatActivityText`).
+3. `TaskChatHeader.tsx`: Title display, member count, Google Meet launcher, chat launcher, `MemberPicker` popover, and search bar.
+4. `ChatMessageItem.tsx`: Individual chat message bubble, author DM launcher, inline message editor, markdown body, file attachments, timestamp, read receipts, hover action ribbon, and contextual action dropdown.
+5. `TaskChatComposer.tsx`: Sticky enterprise composer, mention autocomplete dropdown, emoji picker, active replying-to banner, drag-and-drop upload zone, pending file tray, and circular send trigger.
+6. `index.ts`: Barrel export.
+7. `TaskChatPane.tsx`: Coordinator managing timeline aggregation, search filtering, delete confirmation dialog, and task creation from messages.
+
+**Consequences:**
+Retains 100% backward compatibility for all props, types, and callbacks. Monorepo typechecks clean (`tsc -b --noEmit`) and Vite build completes in ~900ms.
