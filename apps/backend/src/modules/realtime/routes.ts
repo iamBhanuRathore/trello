@@ -12,7 +12,7 @@ import {
   handlePresenceDisconnect,
   type PresenceSocketMessage,
 } from '../presence/presence.gateway';
-import { recordUserHeartbeat } from '../presence/presenceService';
+import { recordUserHeartbeat, presenceTopic } from '../presence/presenceService';
 
 /** Framework-untyped WS connection bag — documented here instead of `any`. */
 export interface RealtimeWsData {
@@ -78,9 +78,19 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
       wsData.organizationId = organizationId;
       wsData.subscribedBoards = new Set<string>();
 
-      // Subscribe user to personal inbox & organization presence feed
+      // Personal inbox is keyed by the token's own userId — a socket can never
+      // name another user's inbox.
       ws.subscribe(`user:inbox:${payload.userId}`);
-      ws.subscribe('org:presence');
+
+      // Presence feed is organization-scoped. The legacy global `org:presence`
+      // topic is no longer published to; it is still accepted as a subscribe
+      // target for one release and mapped to the connection's OWN org topic, so
+      // a stale subscriber can never be served another tenant's presence.
+      // (No dual-publish window is needed: the client never names this topic —
+      // it is subscribed server-side here — so cached bundles are unaffected.)
+      if (organizationId) {
+        ws.subscribe(presenceTopic(organizationId));
+      }
 
       // Record online presence
       await recordUserHeartbeat(payload.userId);
@@ -111,9 +121,40 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
 
     if (!userId) return;
 
+    // 2b. Legacy global presence topic: still accepted for one release, but
+    // remapped to the connection's OWN org topic. Serving the global topic here
+    // is exactly the cross-tenant leak this change closes.
+    if (
+      message.action === 'subscribe' &&
+      !message.boardId &&
+      (message as { topic?: string }).topic === 'org:presence'
+    ) {
+      const orgId = wsData.organizationId;
+      if (!orgId) {
+        ws.send({ type: 'error', message: 'Forbidden — no organization on this connection' });
+        return;
+      }
+      const scoped = presenceTopic(orgId);
+      ws.subscribe(scoped);
+      ws.send({ type: 'subscribed', topic: 'org:presence', scopedTopic: scoped });
+      return;
+    }
+
     // 3. Board Real-time: Subscribe & Register Presence
     if (message.action === 'subscribe' && message.boardId) {
       const boardId = message.boardId;
+
+      // Re-check membership at subscribe time so removal/deactivation closes the
+      // board feed rather than waiting for token expiry.
+      if (
+        wsData.organizationId &&
+        !(await assertActiveOrgMembership(userId, wsData.organizationId))
+      ) {
+        ws.send({ type: 'error', message: 'Forbidden — no active membership' });
+        ws.close();
+        return;
+      }
+
       if (!(await assertBoardAccess(boardId, wsData.organizationId))) {
         ws.send({ type: 'error', message: 'Forbidden — board not in your organization' });
         return;

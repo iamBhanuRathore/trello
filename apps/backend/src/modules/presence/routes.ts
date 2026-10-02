@@ -4,7 +4,7 @@ import { authPlugin } from '../../middleware/auth';
 import { handleRouteError } from '../../lib/errors';
 import {
   computeUserPresence,
-  batchGetUsersPresence,
+  batchGetUsersPresenceScoped,
   setUserPresenceOverride,
   clearUserPresenceOverride,
   getUserWorkingHours,
@@ -14,13 +14,17 @@ import {
 export const presenceRoutes = new Elysia({ prefix: '/presence', tags: ['Presence'] })
   .use(authPlugin)
 
-  // GET /v1/presence/users - Batch fetch presence
+  // GET /v1/presence/users - Batch fetch presence (scoped to caller's org)
   .get(
     '/users',
-    async ({ query, set }) => {
+    async ({ query, user, set }) => {
       try {
+        if (!user.organizationId) {
+          set.status = 400;
+          return { error: 'Bad Request — no organization selected' };
+        }
         const userIds = query.ids ? query.ids.split(',').filter(Boolean) : [];
-        return await batchGetUsersPresence(db, userIds);
+        return await batchGetUsersPresenceScoped(db, userIds, user.organizationId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }

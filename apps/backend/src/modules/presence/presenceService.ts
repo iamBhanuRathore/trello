@@ -1,8 +1,60 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { Database } from '../../db/index';
-import { users, userWorkingHours, userPresenceOverrides } from '../../db/schema/index';
+import {
+  users,
+  userWorkingHours,
+  userPresenceOverrides,
+  organizationMembers,
+} from '../../db/schema/index';
 import { getDataClient, isRedisAvailable } from '../../redis/client';
 import { eventBus } from '../../lib/event-bus';
+
+/**
+ * Presence topics are organization-scoped: `org:presence:{organizationId}`.
+ *
+ * Previously every socket subscribed to a single global `org:presence` topic and
+ * every presence change broadcast to it, so any organization's status and
+ * heartbeat fanned out to all tenants. The org id is always resolved from the
+ * user's ACTIVE membership server-side — never taken from client input.
+ */
+export function presenceTopic(organizationId: string): string {
+  return `org:presence:${organizationId}`;
+}
+
+/** Resolves a user's active organization, or null when they have none. */
+export async function resolveUserOrgId(db: Database, userId: string): Promise<string | null> {
+  const [membership] = await db
+    .select({ organizationId: organizationMembers.organizationId })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        isNull(organizationMembers.deletedAt),
+        eq(organizationMembers.status, 'active')
+      )
+    )
+    .limit(1);
+  return membership?.organizationId ?? null;
+}
+
+/**
+ * Broadcasts a presence payload to the user's own organization topic only.
+ * `organizationId` is carried in the payload so a delivery-side filter can
+ * re-check it without another lookup.
+ */
+async function broadcastPresence(
+  db: Database,
+  userId: string,
+  event: string,
+  payload: unknown
+): Promise<void> {
+  const organizationId = await resolveUserOrgId(db, userId);
+  if (!organizationId) return;
+  await eventBus.broadcast(presenceTopic(organizationId), event, {
+    ...(payload && typeof payload === 'object' ? payload : {}),
+    organizationId,
+  });
+}
 
 export const DEFAULT_WORKING_SCHEDULE = {
   monday: { start: '09:00', end: '18:00', active: true },
@@ -105,6 +157,38 @@ export async function isUserOnline(userId: string): Promise<boolean> {
     } catch {}
   }
   return false;
+}
+
+/**
+ * Batch presence for a set of users, restricted to one organization.
+ *
+ * `GET /v1/presence/users?ids=…` previously accepted any user ids and returned
+ * their presence — a cross-tenant presence/name oracle. Ids outside the caller's
+ * organization are now dropped instead of resolved.
+ */
+export async function batchGetUsersPresenceScoped(
+  db: Database,
+  userIds: string[],
+  organizationId: string
+) {
+  const unique = Array.from(new Set(userIds.filter(Boolean)));
+  if (unique.length === 0) return [];
+
+  const members = await db
+    .select({ userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(
+      and(
+        inArray(organizationMembers.userId, unique),
+        eq(organizationMembers.organizationId, organizationId),
+        isNull(organizationMembers.deletedAt),
+        eq(organizationMembers.status, 'active')
+      )
+    );
+  const allowed = members.map((m) => m.userId);
+  if (allowed.length === 0) return [];
+
+  return batchGetUsersPresence(db, allowed);
 }
 
 // ─── Presence Computation ─────────────────────────────────────────────────────
@@ -234,8 +318,8 @@ export async function setUserPresenceOverride(
 
   const fullPresence = await computeUserPresence(db, userId);
 
-  // Broadcast presence update
-  await eventBus.broadcast('org:presence', 'presence:updated', fullPresence);
+  // Broadcast presence update to this user's organization topic only
+  await broadcastPresence(db, userId, 'presence:updated', fullPresence);
 
   return fullPresence;
 }
@@ -243,7 +327,7 @@ export async function setUserPresenceOverride(
 export async function clearUserPresenceOverride(db: Database, userId: string) {
   await db.delete(userPresenceOverrides).where(eq(userPresenceOverrides.userId, userId));
   const fullPresence = await computeUserPresence(db, userId);
-  await eventBus.broadcast('org:presence', 'presence:updated', fullPresence);
+  await broadcastPresence(db, userId, 'presence:updated', fullPresence);
   return fullPresence;
 }
 
@@ -296,7 +380,7 @@ export async function updateUserWorkingHours(
     .returning();
 
   const fullPresence = await computeUserPresence(db, userId);
-  await eventBus.broadcast('org:presence', 'presence:updated', fullPresence);
+  await broadcastPresence(db, userId, 'presence:updated', fullPresence);
 
   return wh;
 }
