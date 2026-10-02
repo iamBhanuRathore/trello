@@ -255,6 +255,7 @@ export const AutomationRunReason = {
   LabelNotFound: 'LABEL_NOT_FOUND',
   OpenSubtask: 'OPEN_SUBTASK',
   DuplicateEvent: 'DUPLICATE_EVENT',
+  LoopGuard: 'LOOP_GUARD',
   Error: 'ERROR',
 } as const;
 export type AutomationRunReason = (typeof AutomationRunReason)[keyof typeof AutomationRunReason];
@@ -266,6 +267,7 @@ export const AutomationRunReasonValues: readonly AutomationRunReason[] = [
   'LABEL_NOT_FOUND',
   'OPEN_SUBTASK',
   'DUPLICATE_EVENT',
+  'LOOP_GUARD',
   'ERROR',
 ];
 
@@ -291,9 +293,24 @@ export type SeatChangeDirection = (typeof SeatChangeDirection)[keyof typeof Seat
 export const SeatChangeDirectionValues: readonly SeatChangeDirection[] = ['increase', 'decrease'];
 
 // ─── Inbound email intake ────────────────────────────────────────────────────
+// NOTE: the column stores BOTH intake lifecycle (received/failed) and the
+// processing outcome (created/commented/duplicate/rejected) — `finish()`
+// writes the InboundResult status straight into it. Widening, not splitting:
+// a split needs a SQL migration; revisit with CHECK NOT VALID later.
 export const InboundEmailStatus = {
   Received: 'received',
   Failed: 'failed',
+  Created: 'created',
+  Commented: 'commented',
+  Duplicate: 'duplicate',
+  Rejected: 'rejected',
 } as const;
 export type InboundEmailStatus = (typeof InboundEmailStatus)[keyof typeof InboundEmailStatus];
-export const InboundEmailStatusValues: readonly InboundEmailStatus[] = ['received', 'failed'];
+export const InboundEmailStatusValues: readonly InboundEmailStatus[] = [
+  'received',
+  'failed',
+  'created',
+  'commented',
+  'duplicate',
+  'rejected',
+];

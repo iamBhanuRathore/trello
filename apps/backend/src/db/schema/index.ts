@@ -17,10 +17,16 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type {
+  AutomationRunReason,
+  AutomationRunStatus,
+  CardAccessStatus,
   GitLinkKind,
   GitLinkState,
+  InboundEmailStatus,
   MediaScanStatus,
   MediaStatus,
+  SeatChangeDirection,
+  SeatChangeStatus,
 } from '@boardly/shared-types';
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -306,9 +312,9 @@ export const seatChangeRequests = pgTable('seat_change_requests', {
     .notNull()
     .references(() => subscriptions.id),
   requestedQuantity: integer('requested_quantity').notNull(),
-  direction: varchar('direction', { length: 10 }).notNull(), // 'increase' | 'decrease'
+  direction: varchar('direction', { length: 10 }).notNull().$type<SeatChangeDirection>(), // 'increase' | 'decrease'
   stripeIdempotencyKey: varchar('stripe_idempotency_key', { length: 255 }).notNull().unique(),
-  status: varchar('status', { length: 20 }).notNull().default('pending'), // 'pending' | 'confirmed' | 'failed'
+  status: varchar('status', { length: 20 }).notNull().default('pending').$type<SeatChangeStatus>(), // 'pending' | 'confirmed' | 'failed'
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -937,7 +943,10 @@ export const inboundEmails = pgTable(
     fromAddress: varchar('from_address', { length: 320 }),
     toAddress: varchar('to_address', { length: 320 }),
     subject: varchar('subject', { length: 500 }),
-    status: varchar('status', { length: 16 }).notNull().default('received'),
+    status: varchar('status', { length: 16 })
+      .notNull()
+      .default('received')
+      .$type<InboundEmailStatus>(),
     result: jsonb('result').notNull().default('{}'),
     rawEmail: text('raw_email'),
     rawTruncated: boolean('raw_truncated').notNull().default(false),
@@ -1244,7 +1253,10 @@ export const cardAccessRequests = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    status: varchar('status', { length: 16 }).notNull().default('pending'),
+    status: varchar('status', { length: 16 })
+      .notNull()
+      .default('pending')
+      .$type<CardAccessStatus>(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -1793,8 +1805,11 @@ export const automationRuleRuns = pgTable(
     cardId: uuid('card_id').references(() => cards.id, { onDelete: 'set null' }),
     // Redelivery idempotency: the originating card event's id.
     eventId: varchar('event_id', { length: 100 }),
-    status: varchar('status', { length: 16 }).notNull().default('executed'),
-    reason: varchar('reason', { length: 32 }),
+    status: varchar('status', { length: 16 })
+      .notNull()
+      .default('executed')
+      .$type<AutomationRunStatus>(),
+    reason: varchar('reason', { length: 32 }).$type<AutomationRunReason>(),
     details: jsonb('details').notNull().default('{}'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
