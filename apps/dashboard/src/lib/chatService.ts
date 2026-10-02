@@ -1,4 +1,5 @@
 import { api, uploadMediaFile } from './api';
+import type { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
 
 export interface ChatChannel {
   id: string;
@@ -49,8 +50,8 @@ export interface ChatAttachment {
   fileSize: number;
   fileType: string;
   createdAt: string;
-  status?: 'staged' | 'scanning' | 'ready' | 'blocked' | 'failed';
-  scanStatus?: 'pending' | 'clean' | 'infected' | 'error' | 'skipped';
+  status?: MediaStatus;
+  scanStatus?: MediaScanStatus;
 }
 
 export interface ChatReaction {

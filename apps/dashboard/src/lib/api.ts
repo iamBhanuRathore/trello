@@ -2,6 +2,9 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { edenV1 } from './eden';
 import type { ImportTasksBody, ImportTrelloBody } from '@boardly/backend/modules/importers/schema';
+import type { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
+
+export type { MediaScanStatus, MediaStatus };
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/v1';
 
@@ -124,9 +127,7 @@ export async function uploadToPresignedUrl(
 }
 
 // ─── Unified media (5.5: request → PUT → confirm, fail-closed reads) ─────────
-export type MediaStatus = 'staged' | 'scanning' | 'ready' | 'blocked' | 'failed';
-export type MediaScanStatus = 'pending' | 'clean' | 'infected' | 'error' | 'skipped';
-
+// Status unions are canonical in @boardly/shared-types (single source of truth).
 export interface MediaAttachment {
   id: string;
   fileName: string;

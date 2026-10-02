@@ -2,6 +2,7 @@ import { eq, and, lt, lte } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { attachments, chatAttachments } from '../../db/schema/index';
 import { deleteObject } from '../../lib/storage';
+import { MediaStatus } from '@boardly/shared-types';
 import { logger } from '../../lib/logger';
 
 // ─── Media GC: staged >24h → delete object (404 ok) then row, idempotent ─────
@@ -58,7 +59,9 @@ export async function runMediaGC(
   const stagedCards = await db
     .select({ id: attachments.id, storageKey: attachments.storageKey })
     .from(attachments)
-    .where(and(eq(attachments.status, 'staged'), lt(attachments.createdAt, stagedOlderThan)))
+    .where(
+      and(eq(attachments.status, MediaStatus.Staged), lt(attachments.createdAt, stagedOlderThan))
+    )
     .limit(batch);
   result.stagedCards = await reap(stagedCards, async (id) => {
     await db.delete(attachments).where(eq(attachments.id, id));
@@ -68,7 +71,10 @@ export async function runMediaGC(
     .select({ id: chatAttachments.id, storageKey: chatAttachments.storageKey })
     .from(chatAttachments)
     .where(
-      and(eq(chatAttachments.status, 'staged'), lt(chatAttachments.createdAt, stagedOlderThan))
+      and(
+        eq(chatAttachments.status, MediaStatus.Staged),
+        lt(chatAttachments.createdAt, stagedOlderThan)
+      )
     )
     .limit(batch);
   result.stagedChat = await reap(stagedChat, async (id) => {
@@ -78,7 +84,9 @@ export async function runMediaGC(
   const failedCards = await db
     .select({ id: attachments.id, storageKey: attachments.storageKey })
     .from(attachments)
-    .where(and(eq(attachments.status, 'failed'), lte(attachments.createdAt, failedOlderThan)))
+    .where(
+      and(eq(attachments.status, MediaStatus.Failed), lte(attachments.createdAt, failedOlderThan))
+    )
     .limit(batch);
   result.failedCards = await reap(failedCards, async (id) => {
     await db.delete(attachments).where(eq(attachments.id, id));
@@ -88,7 +96,10 @@ export async function runMediaGC(
     .select({ id: chatAttachments.id, storageKey: chatAttachments.storageKey })
     .from(chatAttachments)
     .where(
-      and(eq(chatAttachments.status, 'failed'), lte(chatAttachments.createdAt, failedOlderThan))
+      and(
+        eq(chatAttachments.status, MediaStatus.Failed),
+        lte(chatAttachments.createdAt, failedOlderThan)
+      )
     )
     .limit(batch);
   result.failedChat = await reap(failedChat, async (id) => {

@@ -22,6 +22,9 @@ import {
 import { s3Client, LOCAL_UPLOADS_DIR, isLocalUploadKeyAllowed } from './s3';
 import { env } from './env';
 import { httpError } from '../modules/organizations/service';
+import { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
+export type ScanStatus = MediaScanStatus;
+export type { MediaStatus, MediaScanStatus };
 
 // ─── Shared validation (mirrors the old card/chat mint guards) ───────────────
 export const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
@@ -34,8 +37,6 @@ export const mediaUploadInput = z.object({
 });
 
 export type MediaKind = 'card' | 'chat';
-export type MediaStatus = 'staged' | 'scanning' | 'ready' | 'blocked' | 'failed';
-export type ScanStatus = 'pending' | 'clean' | 'infected' | 'error' | 'skipped';
 
 export function isS3Enabled(): boolean {
   return Boolean(s3Client && env.STORAGE_BUCKET);
@@ -283,7 +284,7 @@ export interface MediaRow {
   mime: string;
   sizeBytes: number;
   status: MediaStatus;
-  scanStatus: ScanStatus;
+  scanStatus: MediaScanStatus;
   storageKey: string | null;
   url: string;
   checksumSha256: string | null;
@@ -298,8 +299,8 @@ export async function findMedia(db: Database, mediaId: string): Promise<MediaRow
       fileName: a.fileName,
       mime: a.declaredMime || a.fileType || 'application/octet-stream',
       sizeBytes: a.sizeBytes ?? 0,
-      status: (a.status as MediaStatus) || 'staged',
-      scanStatus: (a.scanStatus as ScanStatus) || 'pending',
+      status: a.status || MediaStatus.Staged,
+      scanStatus: a.scanStatus || MediaScanStatus.Pending,
       storageKey: a.storageKey,
       url: a.url,
       checksumSha256: a.checksumSha256,
@@ -317,8 +318,8 @@ export async function findMedia(db: Database, mediaId: string): Promise<MediaRow
       fileName: c.fileName,
       mime: c.declaredMime || c.fileType || 'application/octet-stream',
       sizeBytes: c.fileSize ?? 0,
-      status: (c.status as MediaStatus) || 'staged',
-      scanStatus: (c.scanStatus as ScanStatus) || 'pending',
+      status: c.status || MediaStatus.Staged,
+      scanStatus: c.scanStatus || MediaScanStatus.Pending,
       storageKey: c.storageKey,
       url: c.fileUrl,
       checksumSha256: c.checksumSha256,
@@ -397,8 +398,8 @@ export async function requestUpload(
         declaredMime: input.declaredMime,
         sizeBytes: input.sizeBytes ?? null,
         storageKey,
-        status: 'staged',
-        scanStatus: 'pending',
+        status: MediaStatus.Staged,
+        scanStatus: MediaScanStatus.Pending,
         scanAttempts: 0,
       })
       .returning({ id: attachments.id });
@@ -417,8 +418,8 @@ export async function requestUpload(
         fileType: input.declaredMime || 'application/octet-stream',
         declaredMime: input.declaredMime,
         storageKey,
-        status: 'staged',
-        scanStatus: 'pending',
+        status: MediaStatus.Staged,
+        scanStatus: MediaScanStatus.Pending,
         scanAttempts: 0,
       })
       .returning({ id: chatAttachments.id });
@@ -436,7 +437,7 @@ export async function confirmUpload(
   organizationId: string,
   mediaId: string,
   opts: { enqueue?: (mediaId: string) => void } = {}
-): Promise<{ status: MediaStatus; scanStatus: ScanStatus }> {
+): Promise<{ status: MediaStatus; scanStatus: MediaScanStatus }> {
   const media = await findMedia(db, mediaId);
   if (!media) throw httpError(404, 'Upload not found');
   // Cross-org reads must 404 (no existence oracle).
@@ -483,8 +484,8 @@ export async function confirmUpload(
       await db
         .update(attachments)
         .set({
-          status: 'ready',
-          scanStatus: 'skipped',
+          status: MediaStatus.Ready,
+          scanStatus: MediaScanStatus.Skipped,
           scannedAt: new Date(),
           sizeBytes: head.size,
         })
@@ -492,10 +493,15 @@ export async function confirmUpload(
     } else {
       await db
         .update(chatAttachments)
-        .set({ status: 'ready', scanStatus: 'skipped', scannedAt: new Date(), fileSize: head.size })
+        .set({
+          status: MediaStatus.Ready,
+          scanStatus: MediaScanStatus.Skipped,
+          scannedAt: new Date(),
+          fileSize: head.size,
+        })
         .where(eq(chatAttachments.id, mediaId));
     }
-    return { status: 'ready', scanStatus: 'skipped' };
+    return { status: MediaStatus.Ready, scanStatus: MediaScanStatus.Skipped };
   }
 
   // Conditional transition: only staged rows move to scanning. The losers of
@@ -504,28 +510,29 @@ export async function confirmUpload(
   if (media.kind === 'card') {
     const rows = await db
       .update(attachments)
-      .set({ status: 'scanning', sizeBytes: head.size })
-      .where(and(eq(attachments.id, mediaId), eq(attachments.status, 'staged')))
+      .set({ status: MediaStatus.Scanning, sizeBytes: head.size })
+      .where(and(eq(attachments.id, mediaId), eq(attachments.status, MediaStatus.Staged)))
       .returning({ id: attachments.id });
     moved = rows.length;
   } else {
     const rows = await db
       .update(chatAttachments)
-      .set({ status: 'scanning', fileSize: head.size })
-      .where(and(eq(chatAttachments.id, mediaId), eq(chatAttachments.status, 'staged')))
+      .set({ status: MediaStatus.Scanning, fileSize: head.size })
+      .where(and(eq(chatAttachments.id, mediaId), eq(chatAttachments.status, MediaStatus.Staged)))
       .returning({ id: chatAttachments.id });
     moved = rows.length;
   }
   if (moved === 0) {
     const cur = await findMedia(db, mediaId);
     if (!cur) throw httpError(404, 'Upload not found');
-    if (cur.status === 'ready') return { status: 'ready', scanStatus: cur.scanStatus };
+    if (cur.status === MediaStatus.Ready)
+      return { status: MediaStatus.Ready, scanStatus: cur.scanStatus };
     throw httpError(409, `Upload is ${cur.status} (expected staged)`);
   }
   opts.enqueue?.(mediaId);
   const { enqueueScan } = await import('../modules/media/scan');
   enqueueScan(mediaId);
-  return { status: 'scanning', scanStatus: 'pending' };
+  return { status: MediaStatus.Scanning, scanStatus: MediaScanStatus.Pending };
 }
 
 // ─── ingestBytes: email path — no HTTP round-trip, same scan gate ────────────
@@ -560,8 +567,8 @@ export async function ingestBytes(
 
   const skipped = scanMode() === 'disabled';
   if (skipped) assertScanModeValid();
-  const status: MediaStatus = skipped ? 'ready' : 'scanning';
-  const scanStatus: ScanStatus = skipped ? 'skipped' : 'pending';
+  const status: MediaStatus = skipped ? MediaStatus.Ready : MediaStatus.Scanning;
+  const scanStatus: MediaScanStatus = skipped ? MediaScanStatus.Skipped : MediaScanStatus.Pending;
 
   let mediaId: string;
   if (input.kind === 'card') {
@@ -662,26 +669,30 @@ export async function presignedGet(
   }
 
   // Fail-closed gate: only clean (or dev-skipped) ready rows are servable.
-  if (media.status === 'blocked' || media.scanStatus === 'infected')
+  if (media.status === MediaStatus.Blocked || media.scanStatus === MediaScanStatus.Infected)
     throw httpError(410, 'File blocked by virus scan');
-  if (media.status === 'failed' || media.scanStatus === 'error')
+  if (media.status === MediaStatus.Failed || media.scanStatus === MediaScanStatus.Error)
     throw httpError(404, 'Upload not found');
   // Documented legacy exception: rows that predate the scan gate were backfilled
   // to ready/pending. New uploads can never land in this pair (staged → scanning →
   // ready/clean), so it uniquely identifies pre-gate rows; they stay downloadable
   // until the throttled legacy rescan re-clears them.
-  const legacy = media.status === 'ready' && media.scanStatus === 'pending';
-  if (media.status !== 'ready' && !legacy) {
+  const legacy = media.status === MediaStatus.Ready && media.scanStatus === MediaScanStatus.Pending;
+  if (media.status !== MediaStatus.Ready && !legacy) {
     const err = httpError(
-      media.status === 'scanning' ? 202 : 409,
+      media.status === MediaStatus.Scanning ? 202 : 409,
       `Upload is ${media.status} (scan ${media.scanStatus})`
     );
     throw err;
   }
-  if (!legacy && media.scanStatus !== 'clean' && media.scanStatus !== 'skipped') {
+  if (
+    !legacy &&
+    media.scanStatus !== MediaScanStatus.Clean &&
+    media.scanStatus !== MediaScanStatus.Skipped
+  ) {
     throw httpError(409, `Upload scan is ${media.scanStatus}`);
   }
-  if (media.scanStatus === 'skipped') assertScanModeValid();
+  if (media.scanStatus === MediaScanStatus.Skipped) assertScanModeValid();
   if (!media.storageKey) throw httpError(404, 'Upload not found');
 
   if (isS3Enabled()) {

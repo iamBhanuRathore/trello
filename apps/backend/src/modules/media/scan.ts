@@ -11,9 +11,8 @@ import {
   sha256Hex,
   deleteObject,
   scanMode,
-  type MediaStatus,
-  type ScanStatus,
 } from '../../lib/storage';
+import { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
 import { logger } from '../../lib/logger';
 
 // ─── ClamAV sidecar scanner (fail-closed) ─────────────────────────────────────
@@ -311,7 +310,7 @@ async function markRow(
   db: Database,
   mediaId: string,
   kind: 'card' | 'chat',
-  patch: { status: MediaStatus; scanStatus: ScanStatus; checksum?: string }
+  patch: { status: MediaStatus; scanStatus: MediaScanStatus; checksum?: string }
 ): Promise<void> {
   const now = new Date();
   if (kind === 'card') {
@@ -349,7 +348,12 @@ async function bumpError(db: Database, mediaId: string, kind: 'card' | 'chat'): 
     if (next >= attempts) {
       await db
         .update(attachments)
-        .set({ scanStatus: 'error', status: 'failed', scanAttempts: next, scannedAt: new Date() })
+        .set({
+          scanStatus: MediaScanStatus.Error,
+          status: MediaStatus.Failed,
+          scanAttempts: next,
+          scannedAt: new Date(),
+        })
         .where(eq(attachments.id, mediaId));
       scanMetrics.failed++;
     } else {
@@ -358,7 +362,7 @@ async function bumpError(db: Database, mediaId: string, kind: 'card' | 'chat'): 
       // otherwise spin the queue).
       await db
         .update(attachments)
-        .set({ scanStatus: 'error', scanAttempts: next, scannedAt: new Date() })
+        .set({ scanStatus: MediaScanStatus.Error, scanAttempts: next, scannedAt: new Date() })
         .where(eq(attachments.id, mediaId));
     }
   } else {
@@ -371,13 +375,18 @@ async function bumpError(db: Database, mediaId: string, kind: 'card' | 'chat'): 
     if (next >= attempts) {
       await db
         .update(chatAttachments)
-        .set({ scanStatus: 'error', status: 'failed', scanAttempts: next, scannedAt: new Date() })
+        .set({
+          scanStatus: MediaScanStatus.Error,
+          status: MediaStatus.Failed,
+          scanAttempts: next,
+          scannedAt: new Date(),
+        })
         .where(eq(chatAttachments.id, mediaId));
       scanMetrics.failed++;
     } else {
       await db
         .update(chatAttachments)
-        .set({ scanStatus: 'error', scanAttempts: next, scannedAt: new Date() })
+        .set({ scanStatus: MediaScanStatus.Error, scanAttempts: next, scannedAt: new Date() })
         .where(eq(chatAttachments.id, mediaId));
     }
   }
@@ -390,8 +399,8 @@ export async function scanOne(db: Database, mediaId: string): Promise<void> {
   if (!media) return;
   // ready/pending is the pre-gate legacy pair — the throttled rescan is the only
   // path allowed to touch it.
-  const legacy = media.status === 'ready' && media.scanStatus === 'pending';
-  if (media.status !== 'scanning' && !legacy) return;
+  const legacy = media.status === MediaStatus.Ready && media.scanStatus === MediaScanStatus.Pending;
+  if (media.status !== MediaStatus.Scanning && !legacy) return;
   if (!media.storageKey) {
     await bumpError(db, mediaId, media.kind);
     return;
@@ -457,16 +466,16 @@ async function runVerdict(
     const checksum = checksumFn();
     if (verdict === 'clean') {
       await markRow(db, mediaId, media.kind, {
-        status: 'ready',
-        scanStatus: 'clean',
+        status: MediaStatus.Ready,
+        scanStatus: MediaScanStatus.Clean,
         ...(checksum ? { checksum } : {}),
       });
       scanMetrics.clean++;
     } else {
       await quarantineObject(media.storageKey);
       await markRow(db, mediaId, media.kind, {
-        status: 'blocked',
-        scanStatus: 'infected',
+        status: MediaStatus.Blocked,
+        scanStatus: MediaScanStatus.Infected,
         ...(checksum ? { checksum } : {}),
       });
       scanMetrics.infected++;
@@ -526,8 +535,8 @@ export function startScanWorker(db: Database, opts: { pollMs?: number } = {}): (
         .from(attachments)
         .where(
           and(
-            eq(attachments.status, 'scanning'),
-            inArray(attachments.scanStatus, ['pending', 'error']),
+            eq(attachments.status, MediaStatus.Scanning),
+            inArray(attachments.scanStatus, [MediaScanStatus.Pending, MediaScanStatus.Error]),
             or(
               isNull(attachments.scannedAt),
               lt(attachments.scannedAt, new Date(Date.now() - pollMs))
@@ -545,8 +554,8 @@ export function startScanWorker(db: Database, opts: { pollMs?: number } = {}): (
         .from(chatAttachments)
         .where(
           and(
-            eq(chatAttachments.status, 'scanning'),
-            inArray(chatAttachments.scanStatus, ['pending', 'error']),
+            eq(chatAttachments.status, MediaStatus.Scanning),
+            inArray(chatAttachments.scanStatus, [MediaScanStatus.Pending, MediaScanStatus.Error]),
             or(
               isNull(chatAttachments.scannedAt),
               lt(chatAttachments.scannedAt, new Date(Date.now() - pollMs))
@@ -555,7 +564,8 @@ export function startScanWorker(db: Database, opts: { pollMs?: number } = {}): (
         )
         .limit(100);
       for (const r of [...cards, ...chat]) {
-        const window = r.scanStatus === 'error' ? backoffMs(r.attempts ?? 0, pollMs) : pollMs;
+        const window =
+          r.scanStatus === MediaScanStatus.Error ? backoffMs(r.attempts ?? 0, pollMs) : pollMs;
         if (Date.now() >= (r.scannedAt?.getTime() ?? 0) + window) enqueueScan(r.id);
       }
 
@@ -569,8 +579,8 @@ export function startScanWorker(db: Database, opts: { pollMs?: number } = {}): (
           .from(attachments)
           .where(
             and(
-              eq(attachments.status, 'ready'),
-              eq(attachments.scanStatus, 'pending'),
+              eq(attachments.status, MediaStatus.Ready),
+              eq(attachments.scanStatus, MediaScanStatus.Pending),
               isNotNull(attachments.storageKey)
             )
           )
@@ -580,8 +590,8 @@ export function startScanWorker(db: Database, opts: { pollMs?: number } = {}): (
           .from(chatAttachments)
           .where(
             and(
-              eq(chatAttachments.status, 'ready'),
-              eq(chatAttachments.scanStatus, 'pending'),
+              eq(chatAttachments.status, MediaStatus.Ready),
+              eq(chatAttachments.scanStatus, MediaScanStatus.Pending),
               isNotNull(chatAttachments.storageKey)
             )
           )

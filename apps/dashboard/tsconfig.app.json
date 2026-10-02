@@ -48,7 +48,9 @@
       "@boardly/ui/select": ["../../packages/ui/src/components/select.tsx"],
       "@boardly/ui/sidebar": ["../../packages/ui/src/components/sidebar.tsx"],
       "@boardly/ui/switch": ["../../packages/ui/src/components/switch.tsx"],
-      "@boardly/ui/tooltip": ["../../packages/ui/src/components/tooltip.tsx"]
+      "@boardly/ui/tooltip": ["../../packages/ui/src/components/tooltip.tsx"],
+      "@boardly/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@boardly/shared-types/*": ["../../packages/shared-types/src/*"]
     }
   },
   "include": ["src"]

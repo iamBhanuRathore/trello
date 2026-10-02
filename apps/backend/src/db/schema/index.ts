@@ -16,6 +16,7 @@ import {
   primaryKey,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 export const planTierEnum = pgEnum('plan_tier', ['free', 'pro', 'business', 'enterprise']);
@@ -706,8 +707,11 @@ export const attachments = pgTable(
     sizeBytes: integer('size_bytes'),
     // 5.5 scan gate (migration 0035). Fail-closed: servable only when
     // status=ready AND scan_status=clean (or skipped in non-prod SCAN_MODE=disabled).
-    status: varchar('status', { length: 16 }).notNull().default('staged'),
-    scanStatus: varchar('scan_status', { length: 16 }).notNull().default('pending'),
+    status: varchar('status', { length: 16 }).notNull().default('staged').$type<MediaStatus>(),
+    scanStatus: varchar('scan_status', { length: 16 })
+      .notNull()
+      .default('pending')
+      .$type<MediaScanStatus>(),
     scanAttempts: integer('scan_attempts').notNull().default(0),
     scannedAt: timestamp('scanned_at'),
     checksumSha256: varchar('checksum_sha256', { length: 64 }),
@@ -1544,8 +1548,11 @@ export const chatAttachments = pgTable(
     fileSize: integer('file_size').notNull().default(0),
     fileType: varchar('file_type', { length: 100 }).notNull().default('application/octet-stream'),
     // 5.5 scan gate (migration 0035) — same lifecycle as card attachments.
-    status: varchar('status', { length: 16 }).notNull().default('staged'),
-    scanStatus: varchar('scan_status', { length: 16 }).notNull().default('pending'),
+    status: varchar('status', { length: 16 }).notNull().default('staged').$type<MediaStatus>(),
+    scanStatus: varchar('scan_status', { length: 16 })
+      .notNull()
+      .default('pending')
+      .$type<MediaScanStatus>(),
     scanAttempts: integer('scan_attempts').notNull().default(0),
     scannedAt: timestamp('scanned_at'),
     checksumSha256: varchar('checksum_sha256', { length: 64 }),
