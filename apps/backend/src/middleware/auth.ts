@@ -197,8 +197,21 @@ export const authPlugin = new Elysia({ name: 'auth' })
       throw Object.assign(new Error('Unauthorized — missing Bearer token'), { status: 401 });
     }
 
+    // Only a genuine token-verification failure is a 401. Everything after it
+    // has its own status: a missing/!active membership is 403 and an
+    // infrastructure failure is 503. Previously one broad `catch` rewrote all
+    // three to 401, which told the client "re-login" for a deprovisioned user
+    // or a database blip, hid the outage signal, and made 403 branches below
+    // unreachable.
+    let user: AuthContext;
     try {
-      const user = await verifyAccessToken(bearer);
+      user = await verifyAccessToken(bearer);
+    } catch {
+      set.status = 401;
+      throw Object.assign(new Error('Unauthorized — invalid or expired token'), { status: 401 });
+    }
+
+    try {
       // Token claims are not trusted blindly: the holder must still be an
       // active member of the claimed org (kills reused JWTs after removal).
       if (user.organizationId && !user.isPlatformAdmin) {
@@ -224,9 +237,23 @@ export const authPlugin = new Elysia({ name: 'auth' })
         : ('free' as PlanTier);
 
       return { user, planTier };
-    } catch {
-      set.status = 401;
-      throw Object.assign(new Error('Unauthorized — invalid or expired token'), { status: 401 });
+    } catch (err: unknown) {
+      // Preserve a deliberate status (401 revoked / 403 membership); anything
+      // else is an infrastructure failure and must not masquerade as 401.
+      const status = (err as { status?: number }).status;
+      if (status === 401 || status === 403) {
+        set.status = status;
+        throw err;
+      }
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { err: errMsg, path, user_id: user.userId, organization_id: user.organizationId },
+        'Auth middleware infrastructure failure'
+      );
+      set.status = 503;
+      throw Object.assign(new Error('Service unavailable — could not verify session'), {
+        status: 503,
+      });
     }
   });
 
@@ -264,7 +291,17 @@ export function requirePermission(permissionKey: PermissionKey) {
       permCondition = or(...aliasKeys.map((k) => eq(permissions.key, k)));
     }
 
-    // If user.organizationId is undefined/null, look up their active organization membership
+    // If user.organizationId is undefined/empty, fall back to an active membership.
+    //
+    // STEP 1 (current): log-only. Picking "the first active membership" is not
+    // deterministic for multi-org users, so this grants whatever org the
+    // database happens to return first — privilege drift. It is instrumented
+    // rather than removed so we can see real traffic before turning it into a
+    // 400, which would otherwise lock out users who authenticate fine but have
+    // no active membership (see `auth-lifecycle.ts` login and
+    // `auth-tokens.ts` assertRefreshGate, both of which can mint an empty-org
+    // token). Caller inventory found no dashboard/mobile/API-key client that
+    // depends on this path, and no webhook caller reaches it (HMAC-authed).
     let orgId: string | undefined = user.organizationId;
     if (!orgId) {
       const [membership] = await db
@@ -279,6 +316,10 @@ export function requirePermission(permissionKey: PermissionKey) {
         )
         .limit(1);
       orgId = membership?.organizationId;
+      logger.warn(
+        { user_id: user.userId, resolved_org_id: orgId ?? null, permissionKey },
+        'Empty-org token resolved permissions via first-active-membership fallback'
+      );
     }
 
     if (!orgId) {

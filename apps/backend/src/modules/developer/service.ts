@@ -27,6 +27,10 @@ export async function generateApiKey(
   if (!input.name || input.name.trim().length === 0) {
     throw httpError(400, 'API key name is required');
   }
+  // An empty-org JWT would otherwise mint a key row scoped to no tenant.
+  if (!organizationId) {
+    throw httpError(400, 'Cannot create an API key without an organization context');
+  }
 
   // Format: bk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   const secretRandom = randomBytes(24).toString('hex');

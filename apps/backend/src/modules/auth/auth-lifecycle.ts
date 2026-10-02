@@ -9,6 +9,7 @@ import {
 } from '../../db/schema/index';
 import { httpError, type RefreshContext } from './auth-common';
 import { issueTokenPair } from './auth-tokens';
+import { logger } from '../../lib/logger';
 
 // ─── signUp ───────────────────────────────────────────────────────────────────
 export interface SignUpInput {
@@ -199,6 +200,15 @@ export async function signIn(db: Database, input: SignInInput, ctx: RefreshConte
   }
 
   const organizationId = membership?.organizationId ?? '';
+  if (!organizationId) {
+    // Logged, not rejected: this user authenticated but has no org membership.
+    // Flipping this to a 400 needs an org-selection path in the dashboard
+    // first, otherwise these accounts are locked out with no recovery.
+    logger.warn(
+      { user_id: user.id },
+      'Login produced an empty-organizationId token — user has no active org membership'
+    );
+  }
   const tokens = await issueTokenPair(db, user.id, organizationId, user.isPlatformAdmin, {
     userAgent: ctx.userAgent,
     ip: ctx.ip,
