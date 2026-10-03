@@ -114,7 +114,7 @@ require_writable_target() {
     echo -e "${BLUE}  target: ${target} (local)${NC}"
     return 0
   fi
-  if [ "${CI:-}" = "true" ] || [ "${ALLOW_REMOTE_DB:-}" = "1" ]; then
+  if [ "${ALLOW_REMOTE_DB:-}" = "1" ]; then
     echo -e "${YELLOW}⚠️  target: ${target} (REMOTE)${NC}"
     return 0
   fi
@@ -221,6 +221,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
       echo -e "The non-:test commands act on DATABASE_URL, which may be a shared remote"
       echo -e "database. They print the target and refuse a remote host unless you set"
       echo -e "  ${GREEN}ALLOW_REMOTE_DB=1${NC}. For local work use the ${GREEN}:test${NC} variants."
+      echo -e "Note: CI=${GREEN}true${NC} does NOT unlock a remote write."
       echo ""
       exit 1
       ;;

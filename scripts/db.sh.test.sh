@@ -122,19 +122,25 @@ case "$out" in
   *) no "empty DATABASE_URL explains itself" "'is not set' in output" "$out" ;;
 esac
 
-# CI is an accepted opt-in, so the guard must not block it.
-# The opt-in paths are exercised by calling the guard directly rather than
-# through a subcommand: allowing the write means the subcommand would go on to
-# connect, and a deliberately bogus host would leave the test making DNS
-# attempts against a real provider's domain.
-out="$(cd "$ROOT_DIR" && CI=true bash -c '. "$1"; require_writable_target migrate "$2"' _ "$SCRIPT_DIR/db.sh" "$REMOTE_URL" 2>&1)"
+# CI must NOT be an opt-in. It was briefly accepted here, which broke this very
+# test in CI: with CI=true ambient in the runner, the guard let the remote
+# through and the runner was invoked against a bogus Neon hostname. A flag that
+# means "this is a machine" cannot double as "yes, I mean to write to the
+# shared remote database".
+out="$(cd "$ROOT_DIR" && CI=true DATABASE_URL="$REMOTE_URL" ./scripts/db.sh migrate 2>&1)"
+st=$?
+assert_eq "CI=true does not unlock a remote write" "1" "$st"
 case "$out" in
-  *"ep-foo.us-east-2.aws.neon.tech/neondb"*) ok "CI is allowed through and echoes the target" ;;
-  *) no "CI is allowed through and echoes the target" "target in output" "$out" ;;
+  *REMOTE*) ok "CI=true still names the remote target" ;;
+  *) no "CI=true still names the remote target" "REMOTE in output" "$out" ;;
+esac
+case "$out" in
+  *"drizzle"* | *"migrate.ts"*) no "CI=true never reached the runner" "no drizzle invocation" "drizzle was invoked" ;;
+  *) ok "CI=true never reached the runner" ;;
 esac
 
 echo "ALLOW_REMOTE_DB is the documented opt-in"
-out="$(ALLOW_REMOTE_DB=1 bash -c '. "$1"; require_writable_target reset "$2"' _ "$SCRIPT_DIR/db.sh" "$REMOTE_URL" 2>&1)"
+out="$(ALLOW_REMOTE_DB=1 CI=true bash -c '. "$1"; require_writable_target reset "$2"' _ "$SCRIPT_DIR/db.sh" "$REMOTE_URL" 2>&1)"
 case "$out" in
   *"ep-foo.us-east-2.aws.neon.tech/neondb"*) ok "opt-in echoes the remote target" ;;
   *) no "opt-in echoes the remote target" "target in output" "$out" ;;
