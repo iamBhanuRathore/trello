@@ -16,6 +16,12 @@ const envSchema = z.object({
     .default('postgresql://boardly:boardly_dev@localhost:5432/boardly_dev'),
   DATABASE_REPLICA_URL: z.string().url().optional(),
   DATABASE_TEST_URL: z.string().url().optional(),
+  // Connections per instance. Every query in the app runs on this one pool —
+  // read-replica routing was removed as dead code (docs/Decisions.md), so this
+  // number is the entire DB concurrency budget for a process. Raise it only
+  // after confirming the RDS Proxy / PgBouncer backend can absorb the extra
+  // connections; it is per-instance, so `max × replicas` is the real total.
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(5),
 
   // Redis
   REDIS_URL: z.string().default('redis://localhost:6379'),

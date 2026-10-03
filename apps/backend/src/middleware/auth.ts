@@ -214,14 +214,22 @@ export const authPlugin = new Elysia({ name: 'auth' })
     try {
       // Token claims are not trusted blindly: the holder must still be an
       // active member of the claimed org (kills reused JWTs after removal).
-      if (user.organizationId && !user.isPlatformAdmin) {
-        const active = await assertActiveOrgMembership(user.userId, user.organizationId);
-        if (!active) {
-          set.status = 403;
-          throw Object.assign(new Error('Forbidden — no active membership in organization'), {
-            status: 403,
-          });
-        }
+      //
+      // The membership probe and the plan-tier lookup are independent Redis
+      // reads — run them concurrently instead of paying two sequential RTTs on
+      // every authenticated request.
+      const needsMembershipCheck = !!user.organizationId && !user.isPlatformAdmin;
+      const [active, planTier] = await Promise.all([
+        needsMembershipCheck
+          ? assertActiveOrgMembership(user.userId, user.organizationId)
+          : Promise.resolve(true),
+        user.organizationId ? resolveOrgPlanTier(user.organizationId) : ('free' as PlanTier),
+      ]);
+      if (needsMembershipCheck && !active) {
+        set.status = 403;
+        throw Object.assign(new Error('Forbidden — no active membership in organization'), {
+          status: 403,
+        });
       }
       // Burned refresh families kill access tokens immediately, but only on
       // sensitive routes — one extra Redis RTT per request everywhere would
@@ -232,9 +240,6 @@ export const authPlugin = new Elysia({ name: 'auth' })
           throw Object.assign(new Error('Unauthorized — session revoked'), { status: 401 });
         }
       }
-      const planTier = user.organizationId
-        ? await resolveOrgPlanTier(user.organizationId)
-        : ('free' as PlanTier);
 
       return { user, planTier };
     } catch (err: unknown) {

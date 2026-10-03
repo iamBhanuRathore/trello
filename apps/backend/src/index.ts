@@ -4,6 +4,7 @@ import { env } from './lib/env';
 import { logger } from './lib/logger';
 import { db, disconnectDb } from './db/index';
 import { runBootMigrations } from './db/bootstrap';
+import { ensurePermissionsSeeded } from './modules/roles/service';
 import { redisService, disconnectRedis } from './redis';
 import { workerService } from './lib/workers';
 import { healthRoutes } from './modules/health/routes';
@@ -21,6 +22,13 @@ let shuttingDown = false;
 
 // 1. Ensure enum values and schema columns are up to date on boot
 await runBootMigrations(db);
+
+// 1b. Seed the permission registry once per process. The auth middleware resolves
+// permissions on every authenticated request and must never write to the DB
+// on that path.
+await ensurePermissionsSeeded(db).catch((err) => {
+  logger.error({ err }, 'Permission registry seed failed at boot');
+});
 
 // 2. Initialize Redis Pub/Sub cluster connection
 await redisService.connect();

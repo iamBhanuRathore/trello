@@ -3,6 +3,7 @@ import type { Database } from '../db/index';
 import {
   users,
   organizationMembers,
+  organizationRoleMembers,
   roles,
   rolePermissions,
   permissions,
@@ -57,65 +58,67 @@ export async function resolveUserPermissions(
   userId: string,
   organizationId: string
 ): Promise<Set<string>> {
-  const [user] = await db
-    .select({ isPlatformAdmin: users.isPlatformAdmin })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  const [membership] = await db
-    .select({ role: organizationMembers.role })
-    .from(organizationMembers)
-    .where(
-      and(
-        eq(organizationMembers.userId, userId),
-        eq(organizationMembers.organizationId, organizationId),
-        isNull(organizationMembers.deletedAt)
+  const [[user], [membership]] = await Promise.all([
+    db
+      .select({ isPlatformAdmin: users.isPlatformAdmin })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1),
+    db
+      .select({ role: organizationMembers.role })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, userId),
+          eq(organizationMembers.organizationId, organizationId),
+          isNull(organizationMembers.deletedAt)
+        )
       )
-    )
-    .limit(1);
+      .limit(1),
+  ]);
 
   const rawRole = (membership?.role as string) || 'member';
 
-  const { ensurePermissionsSeeded } = await import('../modules/roles/service');
-  await ensurePermissionsSeeded(db);
-  const allPerms = await db.select({ key: permissions.key }).from(permissions);
-
+  // The `permissions` registry is seeded once at boot (see backend/src/index.ts),
+  // never per request — this resolver runs on every authenticated route.
   let granted: Set<string>;
   if (user?.isPlatformAdmin || rawRole === 'org_owner' || rawRole === 'org_admin') {
+    // Only the all-access branch needs the full registry scan; members resolve
+    // through their role joins below.
+    const allPerms = await db.select({ key: permissions.key }).from(permissions);
     granted = new Set(allPerms.map((p) => p.key));
   } else {
     const matchedRoleName = roleTitleFor(rawRole);
-    const roleRows = await db
-      .select({ permKey: permissions.key })
-      .from(rolePermissions)
-      .innerJoin(roles, eq(roles.id, rolePermissions.roleId))
-      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
-      .where(
-        and(
-          eq(roles.name, matchedRoleName),
-          or(
-            eq(roles.organizationId, organizationId),
-            and(eq(roles.isSystemRole, true), isNull(roles.organizationId))
+    const [roleRows, extraRows] = await Promise.all([
+      db
+        .select({ permKey: permissions.key })
+        .from(rolePermissions)
+        .innerJoin(roles, eq(roles.id, rolePermissions.roleId))
+        .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+        .where(
+          and(
+            eq(roles.name, matchedRoleName),
+            or(
+              eq(roles.organizationId, organizationId),
+              and(eq(roles.isSystemRole, true), isNull(roles.organizationId))
+            )
           )
-        )
-      );
+        ),
+      // Team-role extras: union of organizationRoleMembers grants.
+      db
+        .select({ permKey: permissions.key })
+        .from(organizationRoleMembers)
+        .innerJoin(roles, eq(roles.id, organizationRoleMembers.roleId))
+        .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+        .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+        .where(
+          and(
+            eq(organizationRoleMembers.organizationId, organizationId),
+            eq(organizationRoleMembers.userId, userId)
+          )
+        ),
+    ]);
     granted = new Set(roleRows.map((r) => r.permKey));
-
-    // Team-role extras: union of organizationRoleMembers grants.
-    const { organizationRoleMembers } = await import('../db/schema/index');
-    const extraRows = await db
-      .select({ permKey: permissions.key })
-      .from(organizationRoleMembers)
-      .innerJoin(roles, eq(roles.id, organizationRoleMembers.roleId))
-      .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
-      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
-      .where(
-        and(
-          eq(organizationRoleMembers.organizationId, organizationId),
-          eq(organizationRoleMembers.userId, userId)
-        )
-      );
     for (const r of extraRows) granted.add(r.permKey);
 
     if (rawRole === 'member') {

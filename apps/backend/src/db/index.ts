@@ -19,7 +19,7 @@ const replicaConnectionString =
     : (env.DATABASE_REPLICA_URL ?? connectionString);
 
 export const writeClient = postgres(connectionString, {
-  max: env.NODE_ENV === 'test' ? 1 : 5,
+  max: env.NODE_ENV === 'test' ? 1 : env.DATABASE_POOL_MAX,
   idle_timeout: 20,
   connect_timeout: 10,
   prepare: false, // Required for RDS Proxy transaction pooling

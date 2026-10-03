@@ -38,13 +38,36 @@ export function httpError(status: number, message: string): Error & { status: nu
   return err;
 }
 
-export async function ensurePermissionsSeeded(db: Database) {
-  // Backfill from the registry — insert-only-if-empty would never add keys
-  // introduced after the first seed run. onConflictDoNothing keeps it idempotent.
-  await db
-    .insert(permissions)
-    .values(ALL_PERMISSION_KEYS.map((key) => ({ key, description: key })))
-    .onConflictDoNothing();
+/**
+ * Backfill from the registry — insert-only-if-empty would never add keys
+ * introduced after the first seed run. onConflictDoNothing keeps it idempotent.
+ *
+ * Memoized per process: this used to run on EVERY authenticated request (via
+ * resolveUserPermissions), turning each one into a ~60-row INSERT plus a
+ * full-table scan. Boot seeds it (backend/src/index.ts); `permissionsReset()`
+ * clears the memo so a registry change takes effect without a restart.
+ */
+let permissionsSeed: Promise<void> | null = null;
+
+export async function ensurePermissionsSeeded(db: Database): Promise<void> {
+  if (!permissionsSeed) {
+    permissionsSeed = db
+      .insert(permissions)
+      .values(ALL_PERMISSION_KEYS.map((key) => ({ key, description: key })))
+      .onConflictDoNothing()
+      .then(() => undefined)
+      .catch((err) => {
+        // Do not cache a transient failure — the next caller retries.
+        permissionsSeed = null;
+        throw err;
+      });
+  }
+  return permissionsSeed;
+}
+
+/** Drops the seed memo so the next call re-runs the INSERT. */
+export function permissionsReset(): void {
+  permissionsSeed = null;
 }
 
 export async function getAvailablePermissions(db: Database) {
