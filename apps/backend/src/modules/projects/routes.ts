@@ -2,6 +2,7 @@ import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
+import { httpError } from '../organizations/service';
 import { createProject, listProjects, getProject, updateProject, deleteProject } from './service';
 
 /** Project routes — /v1/projects/* */
@@ -13,7 +14,9 @@ export const projectRoutes = new Elysia({ prefix: '/projects', tags: ['Projects'
     '/',
     async ({ query, user, set }) => {
       try {
-        if (!query.workspaceId) throw new Error('workspaceId query parameter is required');
+        // A missing required query param is a client error. `throw new Error`
+        // reached the global handler as an opaque 500.
+        if (!query.workspaceId) throw httpError(400, 'workspaceId query parameter is required');
         return await listProjects(db, query.workspaceId, user.organizationId);
       } catch (err: unknown) {
         return handleRouteError(err, set);

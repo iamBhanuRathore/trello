@@ -2,6 +2,7 @@ import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
+import { httpError } from '../organizations/service';
 import {
   createCard,
   getCard,
@@ -103,7 +104,9 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/',
     async ({ query, user, set }) => {
       try {
-        if (!query.listId) throw new Error('listId query parameter is required');
+        // A missing required query param is a client error. `throw new Error`
+        // reached the global handler as an opaque 500.
+        if (!query.listId) throw httpError(400, 'listId query parameter is required');
         return await listCards(db, query.listId, user.organizationId, { limit: query.limit });
       } catch (err: unknown) {
         return handleRouteError(err, set);
@@ -147,20 +150,23 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
       beforeHandle: requirePermission('card.create'),
       body: t.Object({
         listId: t.String({ format: 'uuid' }),
-        title: t.String(),
-        description: t.Optional(t.String()),
-        position: t.Optional(t.Number()),
-        parentCardId: t.Optional(t.String()),
-        dueDate: t.Optional(t.String()),
+        // Bounds + formats below: an unbounded title or a NaN/negative estimate
+        // reached Postgres and surfaced as an opaque 500; a malformed dueDate
+        // produced an Invalid Date on write.
+        title: t.String({ minLength: 1, maxLength: 1000 }),
+        description: t.Optional(t.String({ maxLength: 100_000 })),
+        position: t.Optional(t.Number({ minimum: 0, maximum: 1_000_000_000 })),
+        parentCardId: t.Optional(t.String({ format: 'uuid' })),
+        dueDate: t.Optional(t.String({ format: 'date-time' })),
         stageId: t.Optional(t.String({ format: 'uuid' })),
         priorityId: t.Optional(t.Union([t.String({ format: 'uuid' }), t.Null()])),
-        storyPoints: t.Optional(t.Number()),
-        estimateMinutes: t.Optional(t.Number()),
-        assigneeId: t.Optional(t.String()),
-        componentIds: t.Optional(t.Array(t.String())),
-        labelIds: t.Optional(t.Array(t.String())),
-        participantIds: t.Optional(t.Array(t.String())),
-        watcherIds: t.Optional(t.Array(t.String())),
+        storyPoints: t.Optional(t.Number({ minimum: 0, maximum: 10_000 })),
+        estimateMinutes: t.Optional(t.Number({ minimum: 0, maximum: 1_000_000 })),
+        assigneeId: t.Optional(t.String({ format: 'uuid' })),
+        componentIds: t.Optional(t.Array(t.String({ format: 'uuid' }))),
+        labelIds: t.Optional(t.Array(t.String({ format: 'uuid' }))),
+        participantIds: t.Optional(t.Array(t.String({ format: 'uuid' }))),
+        watcherIds: t.Optional(t.Array(t.String({ format: 'uuid' }))),
         checklist: t.Optional(
           t.Object({
             title: t.Optional(t.String()),
@@ -217,13 +223,13 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     {
       beforeHandle: requirePermission('card.update'),
       body: t.Object({
-        title: t.Optional(t.String()),
-        description: t.Optional(t.String()),
-        dueDate: t.Optional(t.String()),
+        title: t.Optional(t.String({ minLength: 1, maxLength: 1000 })),
+        description: t.Optional(t.String({ maxLength: 100_000 })),
+        dueDate: t.Optional(t.String({ format: 'date-time' })),
         stageId: t.Optional(t.Union([t.String({ format: 'uuid' }), t.Null()])),
         priorityId: t.Optional(t.Union([t.String({ format: 'uuid' }), t.Null()])),
-        storyPoints: t.Optional(t.Number()),
-        estimateMinutes: t.Optional(t.Number()),
+        storyPoints: t.Optional(t.Number({ minimum: 0, maximum: 10_000 })),
+        estimateMinutes: t.Optional(t.Number({ minimum: 0, maximum: 1_000_000 })),
       }),
     }
   )

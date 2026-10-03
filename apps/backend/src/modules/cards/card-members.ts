@@ -30,7 +30,7 @@ export async function assignUserToCard(
   actorId: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
-    return { success: false, error: 'Invalid UUID provided for cardId or userId' };
+    throw httpError(400, 'Invalid UUID provided for cardId or userId');
   }
   await verifyCardAccess(db, cardId, organizationId);
   await requireOrgMember(db, organizationId, userId);
@@ -82,7 +82,7 @@ export async function removeUserFromCard(
   actorId?: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
-    return { success: false, error: 'Invalid UUID provided for cardId or userId' };
+    throw httpError(400, 'Invalid UUID provided for cardId or userId');
   }
   await verifyCardAccess(db, cardId, organizationId);
   const name = actorId ? await getUserDisplayName(db, userId) : null;
@@ -112,7 +112,7 @@ export async function addParticipantToCard(
   actorId: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
-    return { success: false, error: 'Invalid UUID provided for cardId or userId' };
+    throw httpError(400, 'Invalid UUID provided for cardId or userId');
   }
   await verifyCardAccess(db, cardId, organizationId);
   await requireOrgMember(db, organizationId, userId);
@@ -162,7 +162,7 @@ export async function removeParticipantFromCard(
   actorId?: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(userId)) {
-    return { success: false, error: 'Invalid UUID provided for cardId or userId' };
+    throw httpError(400, 'Invalid UUID provided for cardId or userId');
   }
   await verifyCardAccess(db, cardId, organizationId);
   const name = actorId ? await getUserDisplayName(db, userId) : null;

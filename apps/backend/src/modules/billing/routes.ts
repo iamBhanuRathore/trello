@@ -110,8 +110,9 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
       body: t.Object({
         planTier: t.Union([t.Literal('pro'), t.Literal('business')]),
         billingInterval: t.Union([t.Literal('monthly'), t.Literal('annual')]),
-        seatCount: t.Optional(t.Number()),
-        idempotencyKey: t.Optional(t.String()),
+        // Reaches Stripe as `quantity` — must be a positive whole number.
+        seatCount: t.Optional(t.Number({ minimum: 1, maximum: 10_000, multipleOf: 1 })),
+        idempotencyKey: t.Optional(t.String({ maxLength: 255 })),
       }),
     }
   )
@@ -133,7 +134,7 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
     {
       beforeHandle: requirePermission('org.update'),
       body: t.Object({
-        additionalSeats: t.Optional(t.Number()),
+        additionalSeats: t.Optional(t.Number({ minimum: 1, maximum: 10_000, multipleOf: 1 })),
       }),
     }
   )
@@ -156,8 +157,8 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
     {
       beforeHandle: requirePermission('org.update'),
       body: t.Object({
-        additionalSeats: t.Number(),
-        idempotencyKey: t.Optional(t.String()),
+        additionalSeats: t.Number({ minimum: 1, maximum: 10_000, multipleOf: 1 }),
+        idempotencyKey: t.Optional(t.String({ maxLength: 255 })),
       }),
     }
   )
@@ -184,8 +185,8 @@ export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] 
     {
       beforeHandle: requirePermission('org.update'),
       body: t.Object({
-        targetSeatCount: t.Number(),
-        idempotencyKey: t.Optional(t.String()),
+        targetSeatCount: t.Number({ minimum: 1, maximum: 10_000, multipleOf: 1 }),
+        idempotencyKey: t.Optional(t.String({ maxLength: 255 })),
       }),
     }
   )

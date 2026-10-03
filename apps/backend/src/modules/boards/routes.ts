@@ -2,6 +2,7 @@ import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
+import { httpError } from '../organizations/service';
 import {
   createBoard,
   listBoards,
@@ -30,7 +31,9 @@ export const boardRoutes = new Elysia({ prefix: '/boards', tags: ['Boards'] })
     '/',
     async ({ query, user, set }) => {
       try {
-        if (!query.projectId) throw new Error('projectId query parameter is required');
+        // A missing required query param is a client error. `throw new Error`
+        // reached the global handler as an opaque 500.
+        if (!query.projectId) throw httpError(400, 'projectId query parameter is required');
         return await listBoards(db, query.projectId, user.organizationId);
       } catch (err: unknown) {
         return handleRouteError(err, set);

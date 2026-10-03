@@ -2,6 +2,7 @@ import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
+import { httpError } from '../organizations/service';
 import { createList, listLists, updateList, deleteList } from './service';
 
 /** List routes — /v1/lists/* */
@@ -13,7 +14,9 @@ export const listRoutes = new Elysia({ prefix: '/lists', tags: ['Lists'] })
     '/',
     async ({ query, user, set }) => {
       try {
-        if (!query.boardId) throw new Error('boardId query parameter is required');
+        // A missing required query param is a client error. `throw new Error`
+        // reached the global handler as an opaque 500.
+        if (!query.boardId) throw httpError(400, 'boardId query parameter is required');
         return await listLists(db, query.boardId, user.organizationId);
       } catch (err: unknown) {
         return handleRouteError(err, set);

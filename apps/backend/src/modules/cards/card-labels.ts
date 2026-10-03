@@ -117,7 +117,7 @@ export async function attachLabelToCard(
   actorId?: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(labelId)) {
-    return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
+    throw httpError(400, 'Invalid UUID provided for cardId or labelId');
   }
   await verifyCardAccess(db, cardId, organizationId);
   // Labels are board-scoped: the label must belong to the card's own board in
@@ -164,7 +164,7 @@ export async function removeLabelFromCard(
   actorId?: string
 ) {
   if (!isValidUuid(cardId) || !isValidUuid(labelId)) {
-    return { success: false, error: 'Invalid UUID provided for cardId or labelId' };
+    throw httpError(400, 'Invalid UUID provided for cardId or labelId');
   }
   await verifyCardAccess(db, cardId, organizationId);
   const [label] = actorId
