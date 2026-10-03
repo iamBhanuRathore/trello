@@ -9,6 +9,13 @@ import {
   permissions,
 } from '../db/schema/index';
 import type { PermissionKey } from '@boardly/shared-types';
+import {
+  BOARD_PERMISSIONS,
+  CARD_PERMISSIONS,
+  OrgMemberRole,
+  PROJECT_PERMISSIONS,
+  WORKSPACE_PERMISSIONS,
+} from '@boardly/shared-types';
 
 /** Distinct code so the dashboard can tell permission 403s apart from other 403s. */
 export const PERMISSION_DENIED_CODE = 'PERMISSION_DENIED';
@@ -16,12 +23,68 @@ export const PERMISSION_DENIED_CODE = 'PERMISSION_DENIED';
 /**
  * Alias map — a check for the key passes when ANY of the listed keys is granted.
  * Single source of truth shared by requirePermission() and the UI's can().
+ *
+ * Declared with `satisfies` rather than a `Record<string, …>` annotation on
+ * purpose. The old annotation type-checked the VALUES but left the KEYS as bare
+ * strings, so `'card.mvoe'` compiled, passed CI, and silently cost every caller
+ * the `card.update` → `card.move` fallback — a runtime 403 with no build error.
+ * `satisfies` validates both sides against the registry union without widening
+ * the exported type, so `PERMISSION_ALIASES[someString]` still works for callers.
  */
-export const PERMISSION_ALIASES: Record<string, PermissionKey[]> = {
-  'card.move': ['card.move', 'card.update'],
-  'card.archive': ['card.archive', 'card.delete'],
-  'board.archive': ['board.archive', 'board.delete'],
+const ALIAS_DEFINITIONS = {
+  [CARD_PERMISSIONS.MOVE]: [CARD_PERMISSIONS.MOVE, CARD_PERMISSIONS.UPDATE],
+  [CARD_PERMISSIONS.ARCHIVE]: [CARD_PERMISSIONS.ARCHIVE, CARD_PERMISSIONS.DELETE],
+  [BOARD_PERMISSIONS.ARCHIVE]: [BOARD_PERMISSIONS.ARCHIVE, BOARD_PERMISSIONS.DELETE],
+} satisfies Partial<Record<PermissionKey, readonly PermissionKey[]>>;
+
+export const PERMISSION_ALIASES: Record<string, readonly PermissionKey[]> = ALIAS_DEFINITIONS;
+
+/**
+ * Baseline grants that the role tables do not carry.
+ *
+ * Typed as `PermissionKey[]`, so a typo is a compile error. These used to be
+ * inferred `string[]`, which meant a misspelling silently granted nothing and
+ * surfaced as a 403 on that one action with no other symptom.
+ */
+const MEMBER_BASELINE_KEYS: readonly PermissionKey[] = [
+  CARD_PERMISSIONS.CREATE,
+  CARD_PERMISSIONS.READ,
+  CARD_PERMISSIONS.UPDATE,
+  CARD_PERMISSIONS.WATCH,
+  CARD_PERMISSIONS.CREATE_TIME_LOG,
+  BOARD_PERMISSIONS.READ,
+  PROJECT_PERMISSIONS.READ,
+  WORKSPACE_PERMISSIONS.READ,
+];
+
+const VIEWER_BASELINE_KEYS: readonly PermissionKey[] = [
+  CARD_PERMISSIONS.READ,
+  BOARD_PERMISSIONS.READ,
+  PROJECT_PERMISSIONS.READ,
+  WORKSPACE_PERMISSIONS.READ,
+];
+
+/** Baseline keys per raw org role — org members only. */
+const ROLE_BASELINE_KEYS: Partial<Record<OrgMemberRole, readonly PermissionKey[]>> = {
+  [OrgMemberRole.Member]: MEMBER_BASELINE_KEYS,
+  [OrgMemberRole.Viewer]: VIEWER_BASELINE_KEYS,
 };
+
+/**
+ * `roles.name` for a raw org role. These are display names that must match the
+ * seeded system-role rows, so they are data rather than permission keys.
+ */
+const SYSTEM_ROLE_NAME_BY_ORG_ROLE: Partial<Record<OrgMemberRole, string>> = {
+  [OrgMemberRole.OrgOwner]: 'Org Owner',
+  [OrgMemberRole.OrgAdmin]: 'Org Admin',
+  [OrgMemberRole.BillingManager]: 'Billing Manager',
+  [OrgMemberRole.WorkspaceAdmin]: 'Workspace Admin',
+  [OrgMemberRole.Member]: 'Member',
+  [OrgMemberRole.Viewer]: 'Viewer',
+};
+
+/** Roles that hold every permission in the registry. */
+const ALL_ACCESS_ROLES: readonly OrgMemberRole[] = [OrgMemberRole.OrgOwner, OrgMemberRole.OrgAdmin];
 
 /** Body for permission denials — additive `details` object (never an array). */
 export function permissionDenied(permissionKey: string): {
@@ -42,10 +105,7 @@ export function satisfiesPermission(granted: Set<string>, key: string): boolean 
 }
 
 function roleTitleFor(rawRole: string): string {
-  if (rawRole === 'viewer') return 'Viewer';
-  if (rawRole === 'billing_manager') return 'Billing Manager';
-  if (rawRole === 'workspace_admin') return 'Workspace Admin';
-  return 'Member';
+  return SYSTEM_ROLE_NAME_BY_ORG_ROLE[rawRole as OrgMemberRole] ?? 'Member';
 }
 
 /**
@@ -77,12 +137,12 @@ export async function resolveUserPermissions(
       .limit(1),
   ]);
 
-  const rawRole = (membership?.role as string) || 'member';
+  const rawRole = (membership?.role as OrgMemberRole) ?? OrgMemberRole.Member;
 
   // The `permissions` registry is seeded once at boot (see backend/src/index.ts),
   // never per request — this resolver runs on every authenticated route.
   let granted: Set<string>;
-  if (user?.isPlatformAdmin || rawRole === 'org_owner' || rawRole === 'org_admin') {
+  if (user?.isPlatformAdmin || ALL_ACCESS_ROLES.includes(rawRole)) {
     // Only the all-access branch needs the full registry scan; members resolve
     // through their role joins below.
     const allPerms = await db.select({ key: permissions.key }).from(permissions);
@@ -121,25 +181,15 @@ export async function resolveUserPermissions(
     granted = new Set(roleRows.map((r) => r.permKey));
     for (const r of extraRows) granted.add(r.permKey);
 
-    if (rawRole === 'member') {
-      [
-        'card.create',
-        'card.read',
-        'card.update',
-        'card.watch',
-        'card.time_log.create',
-        'board.read',
-        'project.read',
-        'workspace.read',
-      ].forEach((k) => granted.add(k));
-    } else if (rawRole === 'viewer') {
-      ['card.read', 'board.read', 'project.read', 'workspace.read'].forEach((k) => granted.add(k));
-    }
+    for (const key of ROLE_BASELINE_KEYS[rawRole] ?? []) granted.add(key);
   }
 
   // Expand alias-implied keys so single-key has() matches requirePermission().
-  if (granted.has('card.update')) granted.add('card.move');
-  if (granted.has('card.delete')) granted.add('card.archive');
-  if (granted.has('board.delete')) granted.add('board.archive');
+  // Derived from ALIAS_DEFINITIONS rather than hand-written: the three `if`
+  // lines that used to live here duplicated the alias table with no compiler
+  // link, so renaming a constant in one place silently broke the other.
+  for (const [key, aliases] of Object.entries(ALIAS_DEFINITIONS)) {
+    if (aliases.some((alias) => granted.has(alias))) granted.add(key);
+  }
   return granted;
 }

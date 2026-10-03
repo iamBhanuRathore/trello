@@ -58,3 +58,24 @@ describe('permissionDenied', () => {
     expect(typeof body.error).toBe('string');
   });
 });
+
+describe('alias-derived expansion', () => {
+  // The expansion is derived from PERMISSION_ALIASES rather than hand-written,
+  // so these pin the *behaviour* the derivation has to preserve.
+  it('grants the alias target when only a fallback key is held', () => {
+    const expand = (granted: Iterable<string>) => {
+      const set = new Set(granted);
+      for (const [key, aliases] of Object.entries(PERMISSION_ALIASES)) {
+        if (aliases.some((alias) => set.has(alias))) set.add(key);
+      }
+      return set;
+    };
+
+    expect(expand(['card.update']).has('card.move')).toBe(true);
+    expect(expand(['card.delete']).has('card.archive')).toBe(true);
+    expect(expand(['board.delete']).has('board.archive')).toBe(true);
+    // No alias held -> nothing invented.
+    expect(expand(['card.read']).has('card.move')).toBe(false);
+    expect(expand(['board.read']).has('board.archive')).toBe(false);
+  });
+});

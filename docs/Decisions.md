@@ -1623,3 +1623,30 @@ While there, cards within a page go through one `deleteCardCascade` call instead
 **2. Chat feed virtualization was declined, and that is a decision worth recording rather than an omission.** The audit's recommendation was sound in the abstract — `@tanstack/react-virtual` is already a dependency, already used for the kanban board, and the message list is the largest list in the chat surface. It does not apply to the current code: the feed requests a hard-capped `limit=50` with no pagination and no load-more, so there are at most 50 rows. Windowing 50 rows introduces dynamic height measurement, scroll anchoring and overscan tuning — a well-known source of "message list jumps while scrolling" bugs — in exchange for no measurable gain, because the actual cost at 50 rows was markdown re-parsing and store-wide re-rendering, both of which are already fixed.
 
 Gating it behind a threshold above 50 was rejected as well: it would be unreachable code today, and AGENTS.md §7 forbids dead UI. So the feed is left unvirtualized **on purpose**, with the trigger recorded — virtualize when the page size is raised or infinite scroll lands, not before.
+
+---
+
+### 2026-10-04 — Permission Keys Are Now Compile-Checked, Not Just Registry-Checked
+
+**Context:** a question about why `permissions-resolver.ts` used raw string literals (`'card.move'`, `'card.create'`, `'member'`) when `packages/shared-types/src/permissions.ts` already exports `CARD_PERMISSIONS`, `BOARD_PERMISSIONS`, `PROJECT_PERMISSIONS`, `WORKSPACE_PERMISSIONS` and `OrgMemberRole` — and `roles/service.ts` already imports and uses them. The inconsistency was real and so was the risk, but the shape of the risk was not obvious, so it was measured rather than asserted.
+
+**What was actually protected, and what was not:**
+
+| Site                                              | Before              | A typo was caught?                     |
+| ------------------------------------------------- | ------------------- | -------------------------------------- |
+| `PERMISSION_ALIASES` values                       | `PermissionKey[]`   | **Yes** — compile error                |
+| `PERMISSION_ALIASES` keys                         | `Record<string, …>` | **No** — compiled and passed CI        |
+| member/viewer baseline arrays                     | inferred `string[]` | **No** — compiled and passed CI        |
+| alias expansion `if (granted.has('card.update'))` | bare strings        | **No**, and duplicated the alias table |
+
+Verified empirically rather than assumed: `'card.typo_here'` in an alias _value_ is a compile error, while `'card.mvoe'` as an alias _key_ and `'card.readd'` in the member baseline both compiled clean and `scripts/check-permissions.ts` reported `ok`. That script only scans `requirePermission('x')` and the dashboard's `can()` family, so none of these four sites were in its net. The failure mode is silent and narrow: a misspelled baseline key grants nothing, so one action 403s for the affected role and nothing else looks wrong. A misspelled alias key costs that permission its fallback path, which is even harder to spot because the primary key still works.
+
+**Decisions:**
+
+1. **The alias map is declared with `satisfies`, not a `Record` annotation.** A `Record<string, PermissionKey[]>` annotation checks the values and leaves the keys as bare strings — precisely the half that was unguarded. `satisfies Partial<Record<PermissionKey, readonly PermissionKey[]>>` validates both sides against the registry union while leaving the inferred type narrow, and the export is widened once at the boundary so `PERMISSION_ALIASES[someString]` in `middleware/auth.ts` keeps working. An explicit `as PermissionKey` still bypasses this, which is the correct trade: the escape hatch is visible in review, whereas a typo is not.
+2. **Baseline arrays are typed `PermissionKey[]` built from constants**, grouped into a `ROLE_BASELINE_KEYS` lookup keyed by `OrgMemberRole` instead of an `if (rawRole === 'member') / else if (rawRole === 'viewer')` chain. Adding a role is now a table entry rather than a new branch.
+3. **Role comparisons use `OrgMemberRole`**, and the `'Viewer'` / `'Billing Manager'` display strings moved into a named `SYSTEM_ROLE_NAME_BY_ORG_ROLE` map. Those strings are not permission keys — they must match seeded `roles.name` rows — so they are labelled as data instead of being mistaken for keys.
+4. **The alias expansion is derived from the alias map** rather than three hand-written `if` lines. Those lines duplicated the table with no compiler link; renaming a constant in one place would have silently broken the other. Deriving it also makes the behaviour symmetric — holding either side of an alias now grants the other.
+5. **No change to `scripts/check-permissions.ts` was needed.** Once these sites are typed as `PermissionKey`, the compiler subsumes the script for them: `PermissionKey` is derived from the same `as const` objects that build `ALL_PERMISSION_KEYS`, so a value cannot typecheck without also being a registry key. Adding regex scans for string literals would have re-created the hole the type system now closes.
+
+**Consequences:** both injected typos are compile errors, verified by re-introducing them. A regression test pins the derived expansion's behaviour (fallback-only grants the target; unrelated keys grant nothing). Backend suite is 464 pass / 1 skip / 0 fail.
