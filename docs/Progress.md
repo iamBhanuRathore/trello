@@ -4,6 +4,10 @@
 
 - Focus on Phase 2 polish items (Admin Panels).
 
+**Current state — 2026-10-04:** the P0–P4 fix-only security/integrity/stability/UX pass is **complete** (P0 and P1 previously documented below; P2, P3 and P4 in the three entries at the end of this file). 20 local commits on `main`, all unpushed at the time of writing. The headline results: cross-tenant trash/subtask/presence reads closed; Stripe webhooks made idempotent with a claimed `processing` state; degraded modes enforce locally instead of failing open; `subtasksTotal` and cross-board cache invalidation fixed; silent 200s replaced with real errors; every dialog on one close path with correct Escape precedence; board drag-and-drop placement, rollback and touch drag corrected; query failures no longer render as legitimate empty states; dead controls removed; and the dashboard suite is now actually executed by CI.
+
+**Known remaining work is listed in `docs/Roadmap.md` under "Open items from the 2026-10-04 fix-only pass"** — automation rule editing, the deferred empty-org 400, the Member sprint/phase product decision, the log-correlation blocker on the historical exploitation audit, and the remainder of the backend test-isolation cleanup. Nothing in that list is a regression; all of it predates the pass.
+
 ---
 
 ## How to use this file (for the agent)
@@ -2648,3 +2652,143 @@ Continuation of the fix-only pass (P0 documented above). Five commits, all local
 **Validation:** backend `tsc --noEmit` clean, `oxlint` clean apart from the pre-existing `chat-messages.ts:610` warning, suite **454 pass / 1 skip / 0 fail** across 59 files.
 
 **P1 status: complete. Next: P2** (dialog-contract violations, Esc handling, BoardView drag-and-drop, auth/theme stores), then P3 (error states, toasts, disabled reasons, responsive), then P4 (test hygiene, tsconfig `baseUrl`, turbo scripts, DB scripts).
+
+### 2026-10-04 — P2: Interaction Correctness (Dialogs, Escape, Drag-and-Drop, Session, Theme)
+
+Continuation of the fix-only pass (P0 and P1 documented above). Four commits, dashboard only.
+
+**Dialog close contract, 33 files** (`134b35d`)
+
+- AGENTS.md §11 requires exactly one close path per dialog. The audit found the contract bypassed in ~25 places, in four distinct shapes:
+  - **Pass-through components** — `TrashBinModal`, `AppearanceModal` and `KeyboardShortcutsModal` accepted an `onOpenChange` and handed it straight to `<Dialog>`. Each now calls `useDialogClose` internally, so X, backdrop and Esc all funnel through one idempotent `requestClose`.
+  - **Bare setters and inline arrows** — 15 dialogs passed `setX` or `(open) => !open && setX(...)` straight to `onOpenChange`, skipping dirty-editor routing and letting each gesture close independently. All now pass a named handler. Where several dialogs share one scope (Billing has five, `TaskDetailView` four, `ListColumn` two) each got a renamed binding: a hook owns its own `closedRef`, so two instances for one dialog means one Esc runs two close paths — exactly what `ListColumn` had.
+  - **Hand-rolled portals** — `ShareTaskModal` and `CreateTaskFromMessageModal` used `useEscapeKey` plus an inline `e.target === e.currentTarget` overlay check. `ShareTaskModal`'s backdrop had **no click handler at all**, so touch users could not dismiss it. Both now use `useDialogClose` with `handleOverlayClick`.
+  - **Nested dialogs** — the parent's Escape listener is capture-phase and fires alongside a mounted child's. Parents now stand down via `handleEscape` while a child is open.
+- **Two audit claims did not survive inspection and were deliberately not "fixed":** `useEscapeKey(fn, true)` on the four popovers is correct (those components are conditionally mounted, and their inline `onKeyDown` handles Enter, not Escape); and the multiple `useEscapeKey` listeners are safe because that hook registers on `window` in capture phase and calls `stopImmediatePropagation`, preempting `useDialogClose`'s `document` listener. That ordering is now documented in the guard rather than changed.
+
+**Mention menu Escape precedence** (`72e3171`)
+
+- The mention menu handled Escape in a **bubble**-phase `onKeyDown` on the textarea, while the hosting dialog's `useDialogClose` listens on `document` in **capture** phase. The DOM delivers capture on `document` before any bubble listener on the target, so the dialog's `requestClose` ran first and a single Esc closed the whole task dialog _as well as_ the menu. The `return` in the bubble handler was dead code.
+- Both menus now register on the existing `useEscapeKey` LIFO stack, which sits on `window` in capture phase — the same primitive the popovers already use for this precedence problem.
+- `MentionAutocomplete` was left alone deliberately: its composer lives in `ChatThreadPane`, outside any Dialog, so there is no competing capture listener and its bubble handler is correct. The guard documents that distinction.
+
+**Board drag-and-drop** (`cb63078`)
+
+- **Cross-list drops landed one slot too far.** `handleDragOver` already splices the card in at the drop index, so on release the card sits immediately _before_ the hovered one; `handleDragEnd` then ran `arrayMove` against `overIndex` unconditionally, pushing it one further. `arrayMove` now runs only when the drag stayed within one list — the only case `handleDragOver` leaves untouched.
+- **A denied drag restored a previous drag's board.** The pre-drag snapshot lived in state, but `handleDragStart` returned early on `!canMoveCard` without setting it, so `handleDragEnd`'s permission branch read whatever the _previous_ drag had left there. Snapshot and source list are now refs captured before the gate (which also removes a re-render).
+- **A failed move rolled back to the wrong state.** `onErrorExtra` restored the `['board','full']` cache, which never had the optimistic move applied — discarding the move _and_ any concurrent realtime update that had landed since. The snapshot now travels in the mutation variables and is restored directly.
+- **Touch drag never started.** `TouchSensor` was active but `SortableCard` set no `touch-action`, so the browser treated the gesture as a scroll. dnd-kit's `attributes` do not include it, so it is set explicitly.
+
+**Session resolution and pre-paint theme** (`f6f6175`)
+
+- `isAuthenticated` conflated three states: a stored-but-unverified token, a verified session, and "staying authenticated through a 5xx". The first flashed the private route before `checkAuth` resolved, so an expired token showed a frame of app shell. The third left `isAuthenticated: true` with `user: null`, which silently disabled every query **and emptied the permission set** — during an outage the whole UI rendered as if the user had lost access.
+- New `authResolved` flag separates them: boot is unresolved when a token exists, success and definitive rejection resolve, a 5xx stays unresolved. `ProtectedRoute` waits for a definitive answer; `usePermissions` reports `isLoading` while unresolved so gated controls do not vanish.
+- `applyDOMTheme` only ran from an effect, so every reload painted a frame of default light — a visible white flash for dark-mode users. An inline script in `index.html` applies the stored theme before the module bundle runs. Two related defects fixed alongside: light mode removed `data-theme`, discarding the stored palette so switching back to dark lost it; and choosing a dark-only palette silently rewrote the user's mode light → dark with no indication, so the modal now labels those palettes.
+
+**Tests:** `useDialogClose.contract.test.ts` (8), `BoardView.dnd.test.ts` (17), `session-theme.contract.test.ts` (12) — 9 of the session/theme set fail against pre-fix code, 5 of the DnD set.
+
+**Two of my own test bugs were caught rather than papered over**, both the same failure mode — a source-text assertion that passed against broken code:
+
+- `72e3171`: the Escape assertion was masked twice by prose _mentioning_ `useEscapeKey` in a comment. The test now strips comment lines before asserting; removing the registration now fails it.
+- `f6f6175`: the DnD assertions compared exact substrings, and prettier rewrapped a condition between runs, failing against correct code. They now compare whitespace-stripped text.
+
+**Validation:** dashboard `tsc -b --noEmit` clean, `oxlint` clean, **39/39** dashboard tests.
+
+**P2 status: complete. Next: P3** (query error states, silent mutation failures, disabled-control reasons, responsive layouts, dead controls), then P4 (test/config/script hygiene).
+
+### 2026-10-04 — P3: Error States, Feedback, Disabled Reasons, Responsive Layout, Dead Controls
+
+Continuation of the fix-only pass. Five commits across the dashboard and super-admin.
+
+**P3-1 — query failures rendered as legitimate empty states** (`b5a0b8e`)
+
+- `TaskDetailView`'s stage-templates query caught every error and returned `[]`, which is exactly what an org with no templates looks like. The Stage picker rendered empty with no message and retry was disabled. It now rethrows so TanStack Query owns the error state, and the row renders a message with a Retry button (plus a skeleton while loading).
+- `ChatPage`: a failed channel fetch rendered the **Welcome** state. `ChatSidebar`: a failed fetch rendered **"No conversations found"** — the failure looked like an empty inbox. Both render `QueryError` with retry now.
+- super-admin `Overview`: a failed fetch rendered `0` for tenant and user counts, which is precisely what a genuinely empty platform looks like — the wrong thing to show an operator. All three queries now have an explicit error state with retry. `Plans` does the same for its grid, and `Tenants` now passes `isError`/`errorMessage`/`onRetry` into the shared `EnterpriseDataGrid`, which already renders an error row with a Retry button but was never told about failures.
+- Added `AdminQueryError` for the standalone console, which cannot import the dashboard's component.
+
+**P3-2 — silent mutation failures** (`2a24739`)
+
+- Twelve mutations in `TaskDetailView` had no `onError`, so a failed write produced **no feedback at all**: `updateCard`, assign/removeUser, add/removeParticipant, watch/unwatch, toggleLabel, addComment, deleteAttachment, cloneCard, logTime, deleteTimeLog. Several had a success toast and no failure path, so a failed worklog looked like nothing had happened while the form kept its values. Each now reports what specifically failed via `getApiErrorMessage`.
+- Clipboard writes were fire-and-forget, so the success toast appeared even when the browser denied clipboard access. `handleCopyLink` and the chat copy actions now await the write and report the rejection. The task-link copy had also dropped its toast entirely (it already flips an inline "copied" label); the chat message menu now shows that inline label too.
+- **Left alone deliberately:** the start/pause/complete toasts accompany real async mutations and report minutes logged, which the UI does not otherwise show — the completed-backend-action case AGENTS §5 permits.
+
+**P3-3 — disabled controls that did not say why** (`ce4b87e`)
+
+- Added titles via the existing `permissionReason` helper: `AutomationsModal` save (header and footer), `RuleEditor` save (distinguishing "no permission" from "no changes yet"), `ProjectsList` import.
+- **Two audit claims did not survive inspection:** Priorities' `canCreate` is a validation check, not a permission — the title now says "Enter a name for the new level", which is the actual reason; and super-admin `PlatformUsers`' two `isBot`/`isSystemBot` buttons already carry titles.
+- The ~100 remaining disabled controls are all gated on `isPending` or an empty required field, where the button's own label already explains the state. "Saving…" tooltips there would be noise, not information.
+
+**P3-4 — narrow viewports** (`3fed806`)
+
+- Ran a Chromium audit over **23 authenticated routes at 390px and 820px**. No horizontal overflow at either width — which is why source review, not the automated check, found the real defect: **`SuperAdminLayout`'s sidebar is `hidden md:flex` with no alternative, so below 768px the entire console navigation (Tenants / Users / Plans) was unreachable.** Measured pre-fix: 0 visible nav links at 390px and no toggle. Added a header toggle and a drawer that closes on navigation, with an e2e test asserting hidden-before → visible-after-toggle → hidden-after-navigate, so the drawer cannot silently become sticky.
+- Layout fixes for AGENTS §9: kanban columns, the add-list form and the drag overlay were a bare `w-72` on a 360–390px screen (now `w-[85vw] max-w-72 sm:w-72`); member/stage/watcher pickers and the mention menu could exceed the viewport (capped with `max-w-[calc(100vw-2rem)]`); `WorkspacesOverview` and the `MyTasks` KPI grids were `grid-cols-2 lg:grid-cols-4` and now start at 1 column.
+- `UnscheduledTray` was a fixed `w-64` flex sibling that squeezed the calendar grid. It is now an overlay below `lg`. Because an overlay that defaults to open buries the calendar on first paint, its initial state derives from a `(min-width: 1024px)` media query rather than defaulting to open, and a scrim was added so taps do not land on the calendar behind it. The header toggle still reopens it at every width. **No behaviour change at ≥ 1024px.**
+
+**P3-5 — dead controls and a counter that lied** (`e1fee1c`)
+
+Audited every `cursor-pointer`, every pill/badge/chip and every hover affordance. Five confirmed dead controls, **two of which the manual audit missed and the new static guard caught**.
+
+Wired up (the affordance was right, the handler was missing):
+
+- The **checklist title** was an `<h4>` with `cursor-pointer hover:text-primary` and no handler — the only such pair in the file, so it was the single most tappable-looking thing in the card and was inert, with no cue at all for touch users. Now a `<button>` driving the same state the "Rename checklist" menu item uses, so the two entry points cannot drift.
+- A **saved-search row** advertised hover + `cursor-pointer` while only its inner `<div>` had the `onClick`, leaving the row's own padding a dead zone. The label is now the button. Its delete action was `opacity-0 group-hover:opacity-100` — invisible and unreachable on touch (§9); now always visible on coarse pointers.
+
+Removed the affordance (no handler exists, and adding one would be a feature, not a fix):
+
+- **Automation rule and project-default tiles** had `hover:bg-muted/20 transition-colors`, the universal "this row is clickable" signal, but there is no edit path for a rule anywhere in the file — only create and delete. Rather than ship a half-built rule editor in a fix-only pass, the hover tint is gone so the tile stops lying. **Rule editing remains an open product item.**
+- **`PresenceAvatars`** had `cursor-pointer` and a tooltip, but `BoardHeader` renders it bare, so a click did nothing. The informational tooltip stays.
+
+Correctness and disabled-state fixes:
+
+- The **"All Tasks" badge summed the four summary `Set` sizes**. The backend builds `all` as a `Set` _union_ and returns `count(distinct cards.id)` as `total`, so any card both assigned to you and commented on by you was counted twice and the badge permanently disagreed with the list it labels. It now renders the backend's `total`. The old `|| tasks.length` fallback only fired when the sum was 0, which hid this on empty accounts.
+- Timesheets' **Export CSV** is permanently greyed out when the filter yields no entries, with no explanation. Now titled with the reason.
+
+**`src/dead-ui.contract.test.ts` (8 tests).** The reusable part is a static guard: no native element may carry `cursor-pointer` without a click/key handler. Two things made the first version useless and are worth recording — a regex cannot find the end of a JSX tag whose `className` holds nested `${…}` conditionals (it missed real handlers), and Base UI / Radix `render={<div/>}` and `asChild` inject their handlers at runtime, so those elements look handler-less in source but are not. The guard walks tags with a brace/backtick counter and skips anything lexically inside an open `render={`. It reports zero offenders today. **7 of the 8 tests fail against the pre-fix code.**
+
+**P3 status: complete. Next: P4** (test/config/script hygiene).
+
+### 2026-10-04 — P4: Test, Config and Script Hygiene
+
+Five commits. **The headline is that two of the repo's gates were not actually running.**
+
+**The dashboard suite was never executed by CI** (`8459a70`)
+
+- `bun run test` fans out to `turbo run test`, and turbo **skips any workspace package without a `test` script**. `apps/dashboard` had `test:e2e`, `test:e2e:smoke` and `test:e2e:full` but no `test`, so `turbo run test --dry` reported `dashboard#test -> <NONEXISTENT>`. All 47 dashboard unit tests — the dialog-close contract, the DnD tests, the session/theme contract, the dead-UI guard — were never run by CI. They passed locally only because they were being invoked by hand as `bun test src`.
+- A bare `bun test` in `apps/dashboard` reported **17 failures that were not failures**: with no path argument bun globs the whole package, so it loaded the 17 Playwright specs under `e2e/` and died with "Playwright Test did not expect test.describe() to be called here". A red test run that means nothing is worse than none, because it teaches you to ignore the output. Added `apps/dashboard/bunfig.toml` with `[test] root = "src"` so the no-argument invocation is correct too.
+- `turbo.json` declared `test.outputs: ["coverage/**"]`, but no task writes a coverage directory — the backend runs `bun test --coverage`, which prints a text table to stdout. Every run ended in three "no output files found" warnings. Removed the key rather than inventing a directory nothing produces.
+- Verified: `turbo run test --dry=json` now lists `dashboard#test -> bun test src`; full `bun run test` is 3/3 tasks — backend 454/1/0, dashboard 47/0, mobile 3/0 — with no warnings.
+
+**`scripts/db.sh` could drop a schema, and did not know which database** (`421d8c3`)
+
+- `db.sh up` starts a local Postgres container and the help text said `migrate` = "Run migrations on dev database". It did not mean the container: `migrate`, `seed`, `reset` and `studio` forwarded `.env`'s `DATABASE_URL` verbatim, so they wrote to whatever that was. **This is how `0040_billing_event_status.sql` was applied to the shared Neon database during what was meant to be local work.** Nothing printed a target and nothing objected. The migration was additive and idempotent and no data was lost, but the next one might not be.
+- Every writing command now resolves its target, prints it as `host:port/database` (**credentials are never echoed**, AGENTS §6), and refuses a non-local host with exit 1 and a message naming the local alternative. The opt-in is explicit: `ALLOW_REMOTE_DB=1`, or `CI=true`, which is how the pipeline already runs. The `:test` variants are held to the same rule.
+- **A second defect surfaced while making the guard reachable:** `.env` was loaded with `set -a; source .env; set +a`, which **overwrites variables the caller already exported** — so `DATABASE_URL=… ./scripts/db.sh migrate` and the `ALLOW_REMOTE_DB` escape hatch were both inert and `.env` always had the last word. Each line is now applied only when its key is not already set. Found because the guard's own tests could not make it refuse.
+- Replaced `bun run --cwd DIR script` with a `run_in_backend` helper that changes directory. The flag-order form works, but `bun --cwd DIR run script` **silently prints bun's help and exits 0 without running anything** — depending on an ordering that quietly does nothing is not worth it for a script that can reset a database.
+- New `scripts/db.sh.test.sh` (23 assertions, also in CI). **16 fail against the pre-fix script.** The opt-in paths call the guard function directly rather than through a subcommand, so allowing the write never leads to a connection attempt against a real provider's domain.
+
+**The backend suite was deleting rows it did not own** (`11c1baa`)
+
+- 59 test files share one `boardly_test` database. **Thirteen deletes had no `.where(...)` at all.** The worst were three bare `db.delete(schema.refreshTokens)` — `refresh_tokens` is shared, so those wiped every live token in the database, from a `beforeEach` in two auth suites and an `afterAll` in notifications. Any other suite that signed in mid-test could fail with a 401 **purely from file execution order**, which is the worst kind of flake: intermittent, unrelated-looking, impossible to reproduce on demand.
+- Also fixed: `board.test.ts` deleted all `cardLabels` once per board in a loop; `importers.test.ts` emptied `cardLabels`/`checklistItems`/`checklists`; `forms.test.ts` emptied `formSubmissions`/`cardAssignees`; `docs.test.ts` emptied `documentCards`; `search.test.ts` emptied `savedSearches`; `sso-state.test.ts` deleted **every expired SSO login state in the database** — and was a no-op for its own rows, whose `expiresAt` is `now - 1000` rather than a date before the epoch, so it destroyed other suites' rows to clean nothing.
+- `project-automation.test.ts` created the **global `Member` system role** (`organizationId = null`) when the seed had not, then deleted it. Under parallel workers one worker could remove the role another was resolving against, and the same code could delete a legitimately seeded role for the rest of the run. The name must stay `Member` (`resolveRolePool` matches on `systemRoleName(role)`), so the row cannot be suite-scoped and the correct terminal state is the canonical seeded row. Not deleted.
+- New `src/test-isolation.contract.test.ts` — a **source scan**, because a destructive delete is only ever observable by what survived, which is the failure mode that hides. It reports all 8 offending files against pre-fix code.
+
+**Three teardowns were failing silently and never cleaning up** (`be39d0e`)
+
+- `search.test.ts` and `superadmin.test.ts` wrapped their chains in `catch {}`; `timetracking.test.ts` put `.catch(() => {})` on the roles delete and again on the organizations delete. None of the three chains deleted `rolePermissions` or `subscriptions`, so the org delete threw on a restrict FK — and the handler swallowed both that error and every statement after it. **The teardown never ran to completion, on any run, ever**, while the suite reported green.
+- All three now do scoped leaf cleanup then call `deleteTestOrg`/`deleteTestUser`. `deleteTestOrg` was also missing `sso_configurations` (NO ACTION FK — 30 tables reference `organizations` that way, confirmed by querying `information_schema`), which is why three suites each hand-rolled that one statement.
+
+**chat.test.ts was leaking 21 organizations per run** (`fd6d272`)
+
+- **Measured rather than estimated.** Counting rows before and after a full `bun test`: one run added **92 organizations, 122 users and 112 memberships**, and the database had already accumulated **4,702 organizations**. `chat.test.ts` was the largest contributor at 21 — its `afterAll` only closed the postgres client.
+- Verified fix: chat org count **1234 → 1234** and orphan chat users **636 → 636** across a run; full-suite leak drops from 92 orgs/run to 71.
+- The delete order is forced by the schema and documented in the new `chat-test-teardown.ts`: `chat_messages` is self-referential via `parent_message_id`/`reply_to_message_id`/`forwarded_from_id`, so those are nulled before any message is deleted. That module lives beside the suite because `chat.test.ts` is already the largest test file in the repo (§10).
+- `deleteTestOrg` grew the org-scoped rows a signup actually produces: `audit_log`, `activity_log`, `api_keys`, `billing_events`, `sso_login_states`, `notification_preferences`, `notifications`. Each is a NO ACTION FK on `organizations`, which is why every hand-rolled chain had to rediscover them one FK error at a time.
+- Added `scripts/db-leak-report.ts` (`bun run db:leaks`, `--slugs` for the per-suite breakdown) so the remainder is a number, not an anecdote.
+
+**P4 status: complete for the destructive and silently-broken classes. Remaining, documented rather than hidden:** 71 orgs/run still leak from components (8), card (9), my-tasks (7), git (5), priorities (5), calendar (6) and ~12 smaller suites; ~18 suites still hand-roll an org teardown chain that now works but should call the helper; and the 4,702 banked orgs in the local scratch DB want a separate, manually reviewed cleanup commit. Each suite needs its own leaf chain — the reason chat took a dedicated module — so this is mechanical follow-up, not a design question.
+
+**Validation across P4:** backend `tsc --noEmit` clean, `oxlint` clean apart from the pre-existing `chat-messages.ts:610` warning, **459 pass / 1 skip / 0 fail across 60 files**. `scripts/db.sh.test.sh` **23/23**, with and without a `.env` present. Monorepo `bun run test` **3/3 tasks**.
+
+**Fix-only pass (P0–P4) status: complete.** 20 local commits on `main`. Deferred by design: P0 item 5 step 2 (empty-org → 400) stays instrumented until logs are quiet; sprint/phase grants for `Member` remain a product decision; the historical cross-org exploitation audit is blocked because access logs do not record organization and entity ids together; automation **rule editing** is an open product item found during P3-5.

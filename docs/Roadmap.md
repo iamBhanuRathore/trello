@@ -122,7 +122,17 @@ Checkable version of the Build Order from `docs/project-tech-stack.md` §5 + `do
 - [x] 5.4 Frontend: column virtualization (>20 cards, @tanstack/react-virtual), immutable feed merge, leaf-memo cards, stable column callbacks, auth-store selectors; drag path renders in full + e2e-verified (windowing/scroll/drag/empty-state/short-column)
 - [x] 5.5 Media: unified request-upload/confirm flow, presigned-GET reads, virus-scan gate
 - [x] 5.6 Project Automation Engine: project-scoped WHEN/IF/THEN rules (label router, Testing-handoff RR subtask), locked round-robin, loop guard, skip audit log, CRUD/toggle/runs/dry-run/context APIs, dashboard builder page (Project → Automation) with templates, coverage auto-fix, run-history drawer
+- [ ] 5.7 Automation rule **editing**. Rules can be created and deleted but not modified — the rule tiles in the Automations modal had a clickable hover state and no handler, because there was no edit path to wire it to. Found during the P3-5 dead-control audit (2026-10-04); the misleading hover state was removed rather than shipping a half-built editor during a fix-only pass. Linear/Jira both make the rule row the edit entry point.
 
 - [ ] AI Copilot assistant for task summarization, sprint velocity forecasting, and PR description generation
 - [ ] Virtual Office 2D interactive floor plan with avatar desk presence
 - [ ] Native Desktop App packaging with Electron / Tauri (global hotkeys, tray menu)
+
+### Open items from the 2026-10-04 fix-only pass (P0–P4)
+
+Tracked here so they are not rediscovered. None are regressions; all predate the pass.
+
+- [ ] **P0-5 step 2** — empty-`organizationId` fallback currently warns and mints a token; flipping it to 400 is deliberately deferred until the logs are quiet. The dashboard has no org-selection recovery path, so a 400 would strand those accounts.
+- [ ] **Sprint/phase grants for `Member`** — product decision, not a bug. Only Owner and Admin are granted `sprint.*`/`phase.*` by the seed. The UI is gated correctly; the pinned `Member` assertion in `sprint-phase-permissions.test.ts` is the tripwire if this is ever changed.
+- [ ] **Historical cross-org exploitation audit** — blocked. Access logs do not record organization and entity ids together, so the logs cannot answer it. Adding that logging is the prerequisite.
+- [ ] **Backend suite isolation, remainder** — 71 orgs/run still leak (components 8, card 9, my-tasks 7, git 5, priorities 5, calendar 6, ~12 smaller); ~18 suites still hand-roll an org teardown chain that works but should call `deleteTestOrg`; and the local scratch DB has ~4,700 banked orgs to clear in a separate, manually reviewed commit. Measure with `bun run db:leaks`. See Progress.md 2026-10-04 P4.

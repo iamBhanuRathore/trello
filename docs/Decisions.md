@@ -1448,3 +1448,137 @@ Separately, `listTrash` used `innerJoin` from projects to workspaces and from bo
 **Consequences:** a card with a document link, card event, form submission, calendar link or git link can now be hard-deleted instead of failing with a foreign-key violation half-way through a purge. No migration was needed and none is included — the orphan counts (zero on the test database and on Neon, which holds 3,537 cards) are recorded here as the reason.
 
 **Also in this commit:** `createCard` was found to bump the parent's _cache_ for subtask creation without ever incrementing the parent's `subtasksTotal` _column_ — only `cloneCard` did — so `getCard` reported `subtasksTotal: 0` for any subtask created through the normal API. `createCard` increments; `deleteCard` and `archiveCard` decrement with `GREATEST(0, …)`, since `getCard`'s subtask query excludes archived rows. Related: `card-members` and `card-activity` called `bumpCardAndBoard` directly, skipping the parent invalidation that `bumpForCard` performs, and a cross-board move relied on the cached card→board map to find the source board. All now pass the resolved board id explicitly.
+
+### 2026-10-04 — Dialog Close Precedence Is a Stack, and `useEscapeKey` Must Preempt `useDialogClose`
+
+**Context:** P2 enforced the AGENTS.md §11 single-close-path contract across 33 dashboard files. Two findings were not about _having_ one close path but about _ordering_ between two of them.
+
+**The mention-menu bug.** The mention menu handled Escape in a **bubble**-phase `onKeyDown` on the textarea. The hosting dialog's `useDialogClose` listens on `document` in **capture** phase. The DOM delivers capture on `document` before any bubble listener on the target, so `requestClose` ran first: one Esc closed the whole task dialog _and_ the menu. The `return` at the end of the bubble handler was dead code that had been read as protection.
+
+**Alternatives considered:**
+
+- `stopPropagation()` in the mention menu's handler (rejected — it cannot help. The dialog's listener is on an _ancestor_ in capture phase, which runs before the target's bubble phase. No amount of stopping propagation from the target can un-run a capture listener that already fired.)
+- Have the mention menu check "is a dialog open?" and no-op if so (rejected — couples a leaf component to its host's state, and inverts the dependency.)
+- Give the mention menu its own capture-phase listener on `document` (rejected — it would still be registered _after_ the dialog's, so the dialog would still win.)
+- Reuse `useEscapeKey` (chosen).
+
+**Decisions:**
+
+1. **The mention menus register on the existing `useEscapeKey` LIFO stack.** That hook registers on `window` in capture phase and calls `stopImmediatePropagation`, so it runs before `useDialogClose`'s `document` listener and the event never reaches the dialog. This reuses a primitive the popovers already carry for exactly this precedence problem rather than inventing a third mechanism.
+2. **Ordering is now documented, not changed.** `useEscapeKey` registers on `window` in capture; `useDialogClose` registers on `document` in capture. Capture propagates `window` → `document` → … → target, so `window` always wins. That is load-bearing for the four popovers that keep their own `useEscapeKey(fn, true)` and for `TrashBinModal`'s nested confirms, so the contract test asserts the ordering rather than leaving it as folklore.
+3. **Nested dialogs stand down explicitly.** `TrashBinModal`'s three confirms and `ListColumn`'s two mount while the parent is open; the parent now yields via `handleEscape` while a child is open, rather than relying on stopImmediatePropagation ordering to save it.
+4. **`MentionAutocomplete` was deliberately left on its bubble handler.** Its composer lives in `ChatThreadPane`, which is not inside a `Dialog`, so there is no competing capture listener and the bubble handler is correct. The guard documents that distinction rather than rewriting working code.
+
+**Consequences:** the Escape key now means one thing everywhere — close the topmost thing. The contract test gained a comment-stripping step, because the assertion was masked twice by prose _mentioning_ `useEscapeKey` in a comment: the first version passed against code with the call removed. A source-text assertion that can be satisfied by a comment is worse than no assertion.
+
+**Benchmark:** Linear's command palette and Slack's emoji picker both claim Escape above their host surface via a stack, not a flag. Matching that.
+
+---
+
+### 2026-10-04 — A Disabled Control Must Explain Itself, but "Saving…" Is Not an Explanation
+
+**Context:** AGENTS.md §7 says a visible control must either act or be disabled with an explanatory tooltip. P3 audited every disabled control in the dashboard and super-admin.
+
+**Decisions:**
+
+1. **Permission gates get a real reason, via the existing `permissionReason` helper.** Applied to `AutomationsModal` save (both header and footer), `RuleEditor` save — which distinguishes "no permission" from "no changes yet", two states that look identical otherwise — and `ProjectsList` import.
+2. **The ~100 remaining disabled controls were left alone, on purpose.** They are gated on `isPending` or an empty required field, where the button's own label already explains the state. Adding "Saving…" tooltips there is noise, not information; it would also make the genuinely-permission-gated tooltips harder to notice, which defeats the purpose of adding them.
+3. **Two audit claims were rejected after inspection.** Priorities' `canCreate` is a _validation_ check, not a permission — its title now says "Enter a name for the new level", which is the actual reason, rather than a permission message that would be wrong. super-admin `PlatformUsers`' two `isBot`/`isSystemBot` buttons already carried titles.
+
+**Consequences:** the rule is now "explain the reason a user cannot act", not "explain disabled". A disabled button whose label already says why needs nothing.
+
+---
+
+### 2026-10-04 — A Dead Affordance Is Removed, Not Faked; Rule Editing Stays a Product Decision
+
+**Context:** P3-5 audited every `cursor-pointer`, pill, badge and hover affordance for controls that look interactive and do nothing.
+
+**Decisions:**
+
+1. **Where a handler was missing but the affordance was correct, the handler was added.** The checklist title was an `<h4>` with `cursor-pointer hover:text-primary` and no handler — the only such pair in the file, so it was the most tappable-looking element in the card and was completely inert, with no cue at all for touch users. It is now a `<button>` driving the _same state the "Rename checklist" menu item already sets_, so the two entry points cannot drift apart.
+2. **Where no handler exists anywhere and adding one is a feature, the affordance was removed.** Automation rule tiles had `hover:bg-muted/20 transition-colors` — the universal "this row is clickable" signal — but there is no edit path for a rule in the entire file, only create and delete. Building a rule editor is a feature; this pass is fix-only. The hover tint is gone so the tile stops lying, and **rule editing is recorded as an open product item** rather than quietly shipped or quietly dropped.
+3. **`PresenceAvatars` kept its tooltip and lost its `cursor-pointer`.** The tooltip is information; the cursor was a promise.
+4. **A static guard replaces the audit as the ongoing mechanism.** `src/dead-ui.contract.test.ts` asserts that no native element carries `cursor-pointer` without a click/key handler.
+
+**Two things the guard had to get right, both learned by it being wrong first:**
+
+- **A regex cannot delimit a JSX tag.** `className` template literals contain nested `${…}` conditionals and JSX blocks, so the first version missed real handlers and reported false positives. The guard walks tags with a brace/backtick counter instead.
+- **Base UI / Radix `render={<div/>}` and `asChild` inject handlers at runtime.** Those elements look handler-less in source but are not, and the first version flagged six of them. The guard now skips anything lexically inside an open `render={`. This is also why the audit's `cursor-pointer` grep was mostly false positives — the sub-agent that did the manual pass ruled them out by reading the surrounding code, and that reading is what the guard now encodes.
+
+**Consequences:** the class of bug cannot come back silently, and the two remaining dead controls found by the guard (`PresenceAvatars`, the saved-search row) were ones a human reading the audit list had missed.
+
+**Benchmark:** Asana and Linear both make a list section's title the rename affordance, and both keep a destructive row action visible on touch rather than hover-only.
+
+---
+
+### 2026-10-04 — The Shared Test Database Is a Public Space: Scope Every Delete, and Never Swallow a Teardown Error
+
+**Context:** P4 audited the backend suite's isolation. 59 files share one `boardly_test` database. Three distinct defects, in ascending order of how long they had been hiding.
+
+**1. Thirteen deletes had no `WHERE` at all.** The worst were three bare `db.delete(schema.refreshTokens)`. `refresh_tokens` is shared, so those wiped every live token in the database from a `beforeEach` in two auth suites. An unrelated suite signing in mid-test could fail with a 401 **purely from file execution order**.
+
+**Alternatives considered:**
+
+- Run each suite against its own database (rejected — provisioning 59 databases is new infrastructure, i.e. a feature, and it would not have caught defect 2 below at all).
+- Restore the database from a snapshot after each run (rejected — hides the ordering dependency instead of removing it, and a snapshot is a new operational surface).
+- Enforce per-suite id scoping (chosen).
+
+**2. Three teardowns could not succeed and hid it.** `search.test.ts` and `superadmin.test.ts` wrapped their chains in `catch {}`; `timetracking.test.ts` put `.catch(() => {})` on the roles delete and again on the organizations delete. None deleted `rolePermissions` or `subscriptions`, so the org delete threw on a restrict FK — and the handler swallowed that error _and every statement after it_. The teardown never ran to completion, on any run, ever, while the suite reported green.
+
+**3. `chat.test.ts` created 21 organizations per run and deleted none.** Measured by counting rows before and after a full run: one `bun test` added **92 organizations, 122 users, 112 memberships**. The scratch database had accumulated **4,702 organizations**.
+
+**Decisions:**
+
+1. **Every delete in a test file is scoped with `.where()`.** Enforced by a static scan in `test-isolation.contract.test.ts`, not by convention — a destructive delete is only ever observable by _what survived_, which is precisely the failure mode that hides.
+2. **Never delete a row the suite does not own.** The one case found was the global `Member` system role (`organizationId = null`). Its name must remain `Member` because `resolveRolePool` matches on `systemRoleName(role)`, so the row **cannot** be suite-scoped; the correct terminal state is the canonical seeded row, left in place.
+3. **A teardown error must be loud.** `.catch(...)` on a `db.delete(schema.x)` and empty `catch {}` blocks are both now test failures. The guard is scoped to raw schema deletes on purpose: a swallowed reject on a _service_ call such as `deleteCard` on an already-deleted row is legitimate and is not flagged.
+4. **`deleteTestOrg` is the single sanctioned teardown, and it was incomplete.** `organizations` has **30 NO ACTION foreign keys** pointing at it — confirmed by querying `information_schema`, not assumed — so every suite that rolled its own chain had to rediscover them one FK error at a time, and the three broken chains above each missed `rolePermissions`. The helper now covers everything a `signUp` produces, including `sso_configurations`, whose absence had forced three suites to hand-roll that single statement.
+5. **Suite-specific leaf chains stay explicit.** `chat-test-teardown.ts` exists because chat's `chat_messages` is self-referential, so `parent_message_id`/`reply_to_message_id`/`forwarded_from_id` must be nulled before any message row is deleted. That knowledge belongs beside the suite, not in a general helper — and it lives in a sibling module because `chat.test.ts` is already the largest test file in the repo (§10).
+6. **The leak is a number, not an anecdote.** `scripts/db-leak-report.ts` (`bun run db:leaks`) reports totals, and `--slugs` groups by slug prefix so the offending suite is identifiable from the name.
+
+**Consequences:** a run is now reproducible against a dirty database, and a suite that leaks is measurable rather than invisible. Fixing chat took the per-run leak from 92 orgs to 71 and was verified by counting (chat orgs 1234 → 1234, orphan chat users 636 → 636). The remaining 71 orgs/run, the ~18 suites still hand-rolling a chain that now works, and the 4,702 banked rows in the local scratch DB are **recorded as remaining work rather than left for someone to rediscover**.
+
+---
+
+### 2026-10-04 — `scripts/db.sh` Refuses a Remote Database Unless the Opt-In Is Explicit
+
+**Context:** `scripts/db.sh` can drop a schema (`db.sh reset`). It had no idea which database it was about to touch. `db.sh up` starts a local Postgres container and the help text said `migrate` = "Run migrations on dev database" — but `migrate`, `seed`, `reset` and `studio` forwarded `.env`'s `DATABASE_URL` verbatim. **This is how `0040_billing_event_status.sql` was applied to the shared Neon database during what was meant to be local work.** Nothing printed a target and nothing objected. The migration was additive and idempotent and no data was lost; the next one might not be.
+
+**Alternatives considered:**
+
+- Point the default commands at the local container and add `migrate:remote` for deliberate remote work (rejected — it silently changes what every existing muscle-memory command does, including in muscle memory I did not know existed. A guard that announces itself is safer than a redefinition that does not.)
+- Prompt for confirmation (rejected — the script is used non-interactively, and a prompt that can be piped through is not a control.)
+- Rely on documentation (rejected — the documentation was what was misread.)
+
+**Decisions:**
+
+1. **Every writing command resolves its target, prints it, and refuses a non-local host** with exit 1 and a message naming the local alternative. The refusal is a real `exit 1` before any runner is invoked, so it works in CI and in a pipe.
+2. **The opt-in is explicit and singular:** `ALLOW_REMOTE_DB=1`, or `CI=true`, which is how the pipeline already runs. The `:test` variants are held to the same rule so a remote `DATABASE_TEST_URL` cannot reintroduce the accident through the back door.
+3. **The target is printed as `host:port/database` only.** Credentials are never echoed (AGENTS.md §6), and `scripts/db.sh.test.sh` asserts that with a literal password in the fixture URL.
+4. **The real environment beats `.env`.** This was a _second_ defect, found only because the guard's own tests could not make it refuse: `.env` was loaded with `set -a; source .env; set +a`, which overwrites variables the caller already exported. So `DATABASE_URL=… ./scripts/db.sh migrate` and `ALLOW_REMOTE_DB=1` were both inert and `.env` always had the last word. Each line is now applied only when its key is not already set.
+5. **`run_in_backend` changes directory instead of using `--cwd`.** `bun run --cwd DIR script` works, but `bun --cwd DIR run script` silently prints bun's help and exits 0 **without running anything**. Depending on a flag ordering that quietly does nothing is not acceptable in a script that can reset a database.
+
+**Consequences:** local workflows are unaffected — a local `DATABASE_URL` prints `(local)` and proceeds exactly as before. `scripts/db.sh.test.sh` (23 assertions, also in CI) covers redaction, host classification, `.env` precedence, refusal for all five writing commands, the empty-URL case, and both opt-in paths; **16 fail against the pre-fix script.** The opt-in paths call the guard function directly rather than through a subcommand, so allowing the write never leads to a connection attempt against a real provider's domain.
+
+---
+
+### 2026-10-04 — The Frontend Test Script Was Missing, So CI Was Green Without Running The Frontend
+
+**Context:** while trying to run the dashboard suite during P3, `bun test` in `apps/dashboard` reported 17 failures — all of them "Playwright Test did not expect test.describe() to be called here", because with no path argument bun globs the whole package and loaded the 17 Playwright specs in `e2e/`.
+
+Investigating that turned up the more serious problem: `bun run test` fans out to `turbo run test`, and **turbo skips any workspace package without a `test` script**. `apps/dashboard` had `test:e2e`, `test:e2e:smoke` and `test:e2e:full` but no `test`. `turbo run test --dry` reported `dashboard#test -> <NONEXISTENT>`. All 47 dashboard unit tests — the dialog-close contract, the DnD tests, the session/theme contract, the dead-UI guard — had never been executed by CI. They passed locally only because they were being invoked by hand.
+
+**Alternatives considered:**
+
+- Add a `bunfig.toml` only (rejected — fixes the phantom failures but leaves CI not running the tests at all, which is the actual defect).
+- Move the e2e specs out of the package (rejected — large, disruptive, and treats the symptom).
+- Add the missing `test` script _and_ scope the bare invocation (chosen).
+
+**Decisions:**
+
+1. **`"test": "bun test src"` in `apps/dashboard`**, so `turbo run test` includes it. Verified via `turbo run test --dry=json`.
+2. **`apps/dashboard/bunfig.toml` with `[test] root = "src"`**, so a bare `bun test` is _also_ correct rather than only the scripted form. A red test run that means nothing is worse than no test run, because it teaches you to ignore the output.
+3. **e2e keeps its own runner and its own scripts** (`test:e2e`, `test:e2e:smoke`, `test:e2e:full`) — it is a different tool answering a different question, not a special case of the unit suite.
+4. **Removed `turbo.json`'s `test.outputs: ["coverage/**"]`.** No task writes a coverage directory; the backend runs `bun test --coverage`, which prints a text table to stdout. The key produced three "no output files found" warnings on every run, and a warning you always see is a warning you stop seeing.
+
+**Consequences:** `bun run test` is now 3/3 tasks — backend, dashboard and mobile — with no warnings, and a frontend regression fails CI instead of waiting to be noticed locally.
