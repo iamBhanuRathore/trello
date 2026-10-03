@@ -2609,3 +2609,42 @@ Continuation of the P0 security pass (see the earlier entry for Phase 0 and item
 **P0 status: complete.** Items 1–8 landed as 8 local commits, none pushed. Deferred by design: item 5 step 2 (empty-org → 400) stays instrumented until logs are quiet; P1–P4 remain.
 
 **Next (P1):** trash restore/list transactions + cascade FK gaps (orphan counts first, then `ADD FK NOT VALID` → cleanup → `VALIDATE` outside a long transaction in a low-traffic window), `bumpForCard` consistency + cross-board move bumping both boards, `throw new Error` → `httpError(400)` with seat/UUID/date validation, silent-200 → 400/404 with frontend caller fixes in the same commit, and the double `inFlight` decrement + double `event-bus` broadcast moved up from the old P4.
+
+### 2026-10-03 — P1: Data Integrity and Correctness
+
+Continuation of the fix-only pass (P0 documented above). Five commits, all local.
+
+**Phase 0 prerequisite — orphan counts (done first, as the plan required)**
+
+- Counted orphans in all 19 `card_id` tables on **both** the test database and the development database (Neon, 3,537 cards): **zero everywhere**. No data cleanup needed.
+- FK survey changed the plan: only 5 of the 7 uncovered tables matter. Three are already `CASCADE`, two are `SET NULL` — the database handles those, and hand-deleting a chat channel would be wrong. The other five are `NO ACTION` and genuinely block the delete. **No migration is required**; the fix is service-level.
+
+**In-flight accounting + realtime self-delivery** (`8d73fe0`)
+
+- Proved with a lifecycle probe rather than assumed: a thrown handler fires `onRequest → onError → onAfterResponse`, as does an unmatched route. `inFlight` decremented in _both_ `onError` and `onAfterResponse`, so every error double-decremented. `Math.max(0, …)` hid it, but the shutdown drain (`while (inFlight > 0)`) concluded the server was idle while requests were still running — a deploy could sever live requests.
+- `onRedisBroadcast` never filtered `instanceId`. Redis delivers a published message back to the publisher's own subscriber, so an event that failed the 1.5s publish race (falling back to a local emit) and then landed late reached this instance's sockets twice.
+
+**Cache consistency + a real counter bug** (`8be8755`)
+
+- **Found a genuine data bug while writing tests:** `createCard` bumped the parent's _cache_ on subtask creation but never incremented the parent's `subtasksTotal` _column_ — only `cloneCard` did. `getCard` reads that denormalised column, so any subtask created through the normal API left the parent reporting `subtasksTotal: 0` while its embedded subtasks array showed the child. Now: create increments, delete and archive decrement (`GREATEST(0, …)`; archive because `getCard`'s subtask query excludes archived rows).
+- `card-members` (assignees/participants/watchers) and `card-activity` (comment update/delete) called `bumpCardAndBoard` directly, skipping the parent invalidation `bumpForCard` performs — a subtask being assigned, watched or commented on left the parent modal stale.
+- A cross-board move bumped only the destination; the source relied on the cached card→board map, which can hold the pre-move board, a stale board, or nothing. The source board is now captured before the write.
+
+**Validation at the edge + no more silent 200s** (`dfc25d8`)
+
+- Missing required query params threw a bare `Error` → opaque 500. Now `httpError(400)` on all four routes; this closes the open `FIND-01` item (`GET /v1/cards/not-a-uuid` was a 500).
+- Card bodies now bound title/description and reject negative or non-finite `position`/`storyPoints`/`estimateMinutes`, validate uuid and `date-time` formats, so a malformed `dueDate` no longer becomes an Invalid Date on write.
+- Billing seat counts reach Stripe as `quantity`, so a float/negative/NaN produced a 500 from Stripe instead of a validation error. Now `minimum 1, maximum 10_000, multipleOf 1`. `idempotencyKey` length-bounded; `minLength` deliberately not added (no in-repo caller sends one, and it is a public API surface).
+- `card-members`/`card-labels` returned `{success:false}` with a **200** for an invalid UUID. Caller check: the routes already enforce `format:'uuid'`, the automation callers pre-validate with `isValidUuid`, and no frontend reads `success:false` — so the branch was only reachable from a future caller that forgot to check, which is the worst case for a silent result. Both now throw `httpError(400)`.
+
+**Trash cascade + purge atomicity** (`8e79fc9`)
+
+- The five `NO ACTION` tables (`calendar_event_links`, `card_events`, `document_cards`, `form_submissions`, `git_links`) are now deleted before the card row. Without this, purging a card with a document link failed with `23503` **half-way through the trash**.
+- `emptyTrash` had no transaction: a failure left the org half-purged and still returned success. Now transactional, chunked at 50, ordered children-before-parents, `purgedCount` reports what was actually removed. `hardDeleteItem` split into a cache-free core plus post-commit bumps.
+- `listTrash` used `innerJoin` to parents, so a trashed project whose workspace was hard-deleted vanished — unrestorable and unpurgeable. Now `leftJoin`.
+
+**Tests:** `cache-consistency.test.ts` (11), `request-validation.test.ts` (13), `trash-cascade.test.ts` (13), `delivery-duplication.test.ts` (7). Verified failing against pre-fix code: 6 / 8 / 6 / 1 respectively — including real `23503` foreign-key violations and `401`→`403` auth-status mismatches. Two of my own test bugs were caught and fixed rather than papered over: a needle that double-prefixed `t.Number()` (making one assertion vacuous) and source-text matching that broke when prettier rewrapped the file.
+
+**Validation:** backend `tsc --noEmit` clean, `oxlint` clean apart from the pre-existing `chat-messages.ts:610` warning, suite **454 pass / 1 skip / 0 fail** across 59 files.
+
+**P1 status: complete. Next: P2** (dialog-contract violations, Esc handling, BoardView drag-and-drop, auth/theme stores), then P3 (error states, toasts, disabled reasons, responsive), then P4 (test hygiene, tsconfig `baseUrl`, turbo scripts, DB scripts).
