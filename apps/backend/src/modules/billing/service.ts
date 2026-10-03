@@ -710,14 +710,97 @@ export async function getCustomerPortalUrl(orgId: string, returnUrl?: string) {
 }
 
 // ─── Webhook Processor (Sole Writer for Subscriptions) ─────────────────────────
+export type BillingEventStatus = 'processing' | 'done' | 'failed';
+
+/**
+ * How long a `processing` claim is honoured before another delivery may take it
+ * over. Stripe retries webhook failures for up to 3 days, so a generous window
+ * is safe: the point is to recover from a crashed handler, not to race a live one.
+ */
+const CLAIM_TAKEOVER_MS = 5 * 60_000;
+
+type ClaimOutcome = 'claimed' | 'skip' | 'proceed';
+
+/**
+ * Claims a webhook event id BEFORE any side effect.
+ *
+ * The previous shape inserted its `billing_events` row only after the handler
+ * finished, which broke idempotency in two directions: a crash mid-handler left
+ * no row so the retry re-applied everything, and the failure path inserted a row
+ * that the retry matched as "already processed" and skipped — dropping the event
+ * permanently. Claiming first, with an explicit status, makes both recoverable:
+ * a stale `processing` claim is taken over after the takeover window, a `failed`
+ * row is retried, and only `done` is skipped.
+ */
+async function claimBillingEvent(event: Stripe.Event): Promise<ClaimOutcome> {
+  const payload = event.data.object as unknown as Record<string, unknown>;
+
+  const inserted = await db
+    .insert(billingEvents)
+    .values({
+      stripeEventId: event.id,
+      eventType: event.type,
+      payload,
+      status: 'processing',
+      claimedAt: new Date(),
+    })
+    .onConflictDoNothing()
+    .returning({ id: billingEvents.id });
+
+  if (inserted.length > 0) return 'claimed';
+
+  const [existing] = await db
+    .select()
+    .from(billingEvents)
+    .where(eq(billingEvents.stripeEventId, event.id))
+    .limit(1);
+
+  // Row disappeared between the insert and the read — treat as unclaimed.
+  if (!existing) return 'proceed';
+
+  if (existing.status === 'done') return 'skip';
+
+  if (existing.status === 'processing') {
+    const age = existing.claimedAt
+      ? Date.now() - existing.claimedAt.getTime()
+      : Number.POSITIVE_INFINITY;
+    // A live handler still owns it — leave it alone.
+    if (age < CLAIM_TAKEOVER_MS) return 'skip';
+    logger.warn(
+      { eventId: event.id, ageMs: age },
+      'Taking over stale processing claim for Stripe webhook'
+    );
+    await db
+      .update(billingEvents)
+      .set({ status: 'processing', claimedAt: new Date(), error: null })
+      .where(and(eq(billingEvents.id, existing.id), eq(billingEvents.status, 'processing')));
+    return 'proceed';
+  }
+
+  // status === 'failed' — a previous attempt did not complete; retry it.
+  await db
+    .update(billingEvents)
+    .set({ status: 'processing', claimedAt: new Date(), error: null })
+    .where(and(eq(billingEvents.id, existing.id), eq(billingEvents.status, 'failed')));
+  return 'proceed';
+}
+
+async function markBillingEvent(
+  eventId: string,
+  status: Exclude<BillingEventStatus, 'processing'>,
+  error?: string
+): Promise<void> {
+  await db
+    .update(billingEvents)
+    .set({ status, error: error ?? null, processedAt: new Date() })
+    .where(eq(billingEvents.stripeEventId, eventId));
+}
+
 export async function processStripeWebhook(event: Stripe.Event) {
   logger.info({ eventType: event.type, eventId: event.id }, 'Processing Stripe webhook event');
 
-  // 1. Check idempotency
-  const existingEvent = await db.query.billingEvents.findFirst({
-    where: eq(billingEvents.stripeEventId, event.id),
-  });
-  if (existingEvent) {
+  const claim = await claimBillingEvent(event);
+  if (claim === 'skip') {
     logger.info({ eventId: event.id }, 'Webhook event already processed (idempotent skip)');
     return { received: true, alreadyProcessed: true };
   }
@@ -984,25 +1067,17 @@ export async function processStripeWebhook(event: Stripe.Event) {
         break;
     }
 
-    // Record processed event
-    await db.insert(billingEvents).values({
-      stripeEventId: event.id,
-      eventType: event.type,
-      payload: event.data.object as unknown as Record<string, unknown>,
-    });
-
+    // Side effects committed — the claim becomes final.
+    await markBillingEvent(event.id, 'done');
     return { received: true };
   } catch (err: unknown) {
     logger.error({ err, eventId: event.id }, 'Error processing webhook event');
-    await db
-      .insert(billingEvents)
-      .values({
-        stripeEventId: event.id,
-        eventType: event.type,
-        payload: event.data.object as unknown as Record<string, unknown>,
-        error: errorMessage(err),
-      })
-      .onConflictDoNothing();
+    // Recorded as `failed`, not `done`: Stripe's retry must be allowed to
+    // re-attempt, which the old error-row-then-"already processed" path
+    // prevented, silently dropping the event on any transient failure.
+    await markBillingEvent(event.id, 'failed', errorMessage(err)).catch((markErr: unknown) => {
+      logger.error({ markErr, eventId: event.id }, 'Failed to mark webhook event as failed');
+    });
     throw err;
   }
 }

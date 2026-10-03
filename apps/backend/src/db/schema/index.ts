@@ -290,6 +290,14 @@ export const billingEvents = pgTable('billing_events', {
   payload: jsonb('payload').notNull(),
   processedAt: timestamp('processed_at').notNull().defaultNow(),
   error: text('error'),
+  /**
+   * Delivery lifecycle. `processing` is claimed BEFORE any side effect, so a
+   * crash mid-handler leaves a stale `processing` row that a later Stripe retry
+   * can take over, and `failed` rows are retried instead of being mistaken for
+   * already-applied events. See Decisions.md (2026-10-03, Stripe idempotency).
+   */
+  status: varchar('status', { length: 20 }).notNull().default('done'),
+  claimedAt: timestamp('claimed_at'),
 });
 
 // ─── Guest Seats ──────────────────────────────────────────────────────────────

@@ -1335,3 +1335,37 @@ Separately, `requirePermission` resolved an empty `user.organizationId` by takin
 - Webhook and git-integration callers are HMAC-authed and never reach the JWT path.
 
 **Consequences:** `auth-status.test.ts` covers each failure mode separately; two cases fail against the pre-fix code with 401 where 403 is correct. Clients can now distinguish "your session ended" from "you were removed" from "we are having an outage". A known 60s window remains on membership revocation: `assertActiveOrgMembership` caches under `auth:membership:{orgId}:{userId}`, and `bumpUserCache` targets a different key, so nothing invalidates it early — deliberate, and bounded by the 60s TTL.
+
+---
+
+### 2026-10-03 — Stripe Webhook Idempotency Uses a Claimed Processing State
+
+**Context:** `POST /v1/billing/webhook` had one `catch` covering both signature verification and handler execution, returning `400` with `Webhook Error: ${errorMessage(err)}` in both cases. Stripe does not retry a 400, so any transient failure while processing a validly signed event — a database blip, a Stripe API timeout — discarded that billing event permanently, while the response body echoed internal error text to an unauthenticated caller.
+
+Idempotency was also weaker than it looked. `billing_events.stripe_event_id` is UNIQUE, but the handler inserted its row only _after_ applying side effects, so:
+
+- a crash between the side effects and the insert left no row, and Stripe's retry re-ran the whole handler, applying the change **twice**;
+- the failure path inserted a row carrying `error`, which the next delivery matched as "already processed" and skipped — so the error row actively **poisoned** the retry;
+- two concurrent deliveries both passed the `findFirst` pre-check and both executed the side effects.
+
+**Alternatives considered:**
+
+- Rely on Stripe's own retry semantics with no claim (rejected — that is precisely the double-apply path).
+- Record the id before processing and treat any existing row as done (rejected — a crash mid-handler would then mark the event done and Stripe's retry would be skipped, losing the update).
+- Wrap each handler body in a transaction (rejected as the primary mechanism — it cannot cover the external Stripe API calls or email sends, which are not transactional).
+
+**Decision:**
+
+1. `billing_events` gains `status` (`processing` | `done` | `failed`, defaulting to `done`) and `claimed_at`, via migration `0040_billing_event_status.sql` with an explicit down path. Existing rows backfill to `done`, matching prior behaviour.
+2. The claim is taken **before** any side effect via an `INSERT … ON CONFLICT DO NOTHING`, then reconciled:
+   - row inserted → we own it, proceed;
+   - `done` → skip (already applied exactly once);
+   - `processing` and fresh → another worker is live, skip;
+   - `processing` and older than a 5-minute takeover window → a crashed handler, take over;
+   - `failed` → retry, since side effects never completed.
+3. Success marks `done`; failure marks `failed` and rethrows, so Stripe's retry is allowed through.
+4. Route status codes split: missing/invalid signature → `400` (Stripe will not retry, correctly); processing failure → `500` with the generic body `{"error":"Webhook processing failed"}`, so Stripe retries and the claim state makes the retry safe. Internal error text goes to the log, never to the response.
+
+**Consequences:** a crash between side effects and completion is now recoverable instead of duplicating, and a failed event is retried instead of being silently skipped. `webhook-idempotency.test.ts` covers the claim lifecycle including the crash-between and stale-takeover cases; `webhook-status-signed.test.ts` stubs `lib/stripe` so the 500 path is exercised offline with no credentials and no network. Two of these fail against the pre-fix code with 400 where 500 is correct.
+
+**Migration note:** `db:migrate` reads `process.env.DATABASE_URL` and ignores `DATABASE_TEST_URL`, so it targets the configured development database unless the URL is passed explicitly (`DATABASE_URL=… bun run db:migrate`). `0040` is additive and idempotent (`IF NOT EXISTS` throughout, plus a backfill), so applying it to a database that already has it is a no-op.

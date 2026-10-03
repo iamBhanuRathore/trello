@@ -21,22 +21,41 @@ import { eq } from 'drizzle-orm';
 
 export const billingRoutes = new Elysia({ prefix: '/billing', tags: ['Billing'] })
   // ─── Public Stripe Webhook Receiver ──────────────────────────────────────────
+  //
+  // Status codes matter to Stripe and must not be collapsed into one catch:
+  //   * 400 = the request itself is bad (missing or invalid signature). Stripe
+  //     does NOT retry these, which is correct — replaying a forged event is
+  //     pointless.
+  //   * 500 = we could not process a legitimately signed event (database blip,
+  //     Stripe API failure). Stripe DOES retry these, and the claim state in
+  //     billing_events makes the retry safe. Returning 400 here silently
+  //     discarded billing events on any transient failure.
+  //
+  // The response body is intentionally generic: this endpoint is
+  // unauthenticated, so internal error text must not reach the caller.
   .post('/webhook', async ({ request, set }) => {
-    try {
-      const signature = request.headers.get('stripe-signature');
-      if (!signature) {
-        set.status = 400;
-        return { error: 'Missing stripe-signature header' };
-      }
-
-      const rawBody = await request.text();
-      const event = constructWebhookEvent(rawBody, signature);
-      const result = await processStripeWebhook(event);
-      return result;
-    } catch (err: unknown) {
-      logger.error({ err }, 'Stripe webhook signature validation or processing error');
+    const signature = request.headers.get('stripe-signature');
+    if (!signature) {
       set.status = 400;
-      return { error: `Webhook Error: ${errorMessage(err)}` };
+      return { error: 'Missing stripe-signature header' };
+    }
+
+    let event;
+    try {
+      const rawBody = await request.text();
+      event = constructWebhookEvent(rawBody, signature);
+    } catch (err: unknown) {
+      logger.warn({ err: errorMessage(err) }, 'Stripe webhook signature validation failed');
+      set.status = 400;
+      return { error: 'Invalid webhook signature' };
+    }
+
+    try {
+      return await processStripeWebhook(event);
+    } catch (err: unknown) {
+      logger.error({ err, eventId: event.id }, 'Stripe webhook processing failed');
+      set.status = 500;
+      return { error: 'Webhook processing failed' };
     }
   })
 
