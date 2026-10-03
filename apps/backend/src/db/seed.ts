@@ -11,10 +11,12 @@ import { plans, permissions, rolePermissions } from './schema/index';
 import {
   ALL_PERMISSION_KEYS,
   ORG_PERMISSIONS,
+  PLATFORM_PERMISSIONS,
   WORKSPACE_PERMISSIONS,
   PROJECT_PERMISSIONS,
   BOARD_PERMISSIONS,
   CARD_PERMISSIONS,
+  type PermissionKey,
 } from '@boardly/shared-types';
 
 const connectionString = process.env['DATABASE_URL'];
@@ -100,24 +102,26 @@ const roleMap = Object.fromEntries(allSystemRoles.map((r) => [r.name, r.id]));
 // When permissions are removed from memberPermKeys below, this block strips them
 // from the live Member role so a db:seed re-run cleans existing environments.
 console.log('🌱  Revoking over-privileged Member permissions (cleanup)...');
-const memberRevoke = [
+// Typed `PermissionKey[]` so a renamed/removed key is a compile error rather
+// than a silently-skipped DELETE that leaves a stale grant behind.
+const memberRevoke: readonly PermissionKey[] = [
   // Structural workspace/project/board powers — Admin-only
-  'workspace.create',
-  'workspace.update',
-  'project.create',
-  'project.update',
-  'project.archive',
-  'board.create',
-  'board.update',
-  'board.archive',
-  'label.create',
-  'label.update',
-  'list.create',
-  'list.update',
-  'list.archive',
+  WORKSPACE_PERMISSIONS.CREATE,
+  WORKSPACE_PERMISSIONS.UPDATE,
+  PROJECT_PERMISSIONS.CREATE,
+  PROJECT_PERMISSIONS.UPDATE,
+  PROJECT_PERMISSIONS.ARCHIVE,
+  BOARD_PERMISSIONS.CREATE,
+  BOARD_PERMISSIONS.UPDATE,
+  BOARD_PERMISSIONS.ARCHIVE,
+  BOARD_PERMISSIONS.CREATE_LABEL,
+  BOARD_PERMISSIONS.UPDATE_LABEL,
+  BOARD_PERMISSIONS.CREATE_LIST,
+  BOARD_PERMISSIONS.UPDATE_LIST,
+  BOARD_PERMISSIONS.ARCHIVE_LIST,
   // Destructive / sprint-management powers
-  'card.archive',
-  'card.sprint.assign',
+  CARD_PERMISSIONS.ARCHIVE,
+  CARD_PERMISSIONS.ASSIGN_SPRINT,
 ];
 const memberRoleId = roleMap['Member'];
 if (memberRoleId) {
@@ -164,22 +168,22 @@ async function assignPerms(roleName: string, permKeys: readonly string[] | strin
 await assignPerms('Org Owner', ALL_PERMISSION_KEYS);
 
 // Org Admin — gets everything except platform + ownership transfer + SSO + security + billing manage
-const adminExclude = new Set([
-  'platform.manage',
-  'org.impersonate',
-  'org.create',
-  'org.delete',
-  'feature_flag.manage',
-  'plan.manage',
-  'platform.audit_log.read',
-  'platform.health.read',
-  'rate_limit.manage',
-  'org.transfer_ownership',
-  'sso.configure',
-  'security_policy.manage',
-  'billing.manage',
+const adminExclude = new Set<PermissionKey>([
+  PLATFORM_PERMISSIONS.MANAGE,
+  PLATFORM_PERMISSIONS.IMPERSONATE_ORG,
+  PLATFORM_PERMISSIONS.CREATE_ORG,
+  PLATFORM_PERMISSIONS.DELETE_ANY_ORG,
+  PLATFORM_PERMISSIONS.MANAGE_FEATURE_FLAGS,
+  PLATFORM_PERMISSIONS.MANAGE_PLANS,
+  PLATFORM_PERMISSIONS.READ_AUDIT_LOG,
+  PLATFORM_PERMISSIONS.READ_HEALTH,
+  PLATFORM_PERMISSIONS.MANAGE_RATE_LIMITS,
+  ORG_PERMISSIONS.TRANSFER_OWNERSHIP,
+  ORG_PERMISSIONS.CONFIGURE_SSO,
+  ORG_PERMISSIONS.MANAGE_SECURITY_POLICY,
+  ORG_PERMISSIONS.MANAGE_BILLING,
 ]);
-const adminKeys: string[] = [];
+const adminKeys: PermissionKey[] = [];
 for (const key of ALL_PERMISSION_KEYS) {
   if (!adminExclude.has(key)) adminKeys.push(key);
 }

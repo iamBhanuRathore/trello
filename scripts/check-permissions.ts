@@ -45,6 +45,34 @@ function check(file: string, pattern: RegExp, origin: string) {
 for (const f of walk(join(ROOT, 'apps/backend/src'))) {
   check(f, /requirePermission\(\s*['"]([^'"]+)['"]/g, 'backend');
 }
+
+/**
+ * RBAC seed/reset scripts — every `<namespace>.<verb>` literal must be a registry key.
+ *
+ * Scoped to these two files on purpose. A repo-wide literal scan is NOT viable:
+ * audit actions ('card.moved', 'list.created', 'member.invitation.accept'),
+ * notification types ('card.assigned', 'card.mentioned') and realtime event
+ * names ('card.archived', 'card.labeled') are a separate namespace that merely
+ * shares the dotted shape, and a blanket scan flags all of them. The seed
+ * scripts contain no such strings, so the rule is exact here.
+ *
+ * These files are scripts with DB side effects at import time, so the compiler
+ * cannot check them via a test — this rule is the guard for the `memberRevoke`
+ * and `adminExclude` sets, which must stay byte-identical to each other.
+ */
+const RBAC_SEED_SCRIPTS = ['apps/backend/src/db/seed.ts', 'apps/backend/src/db/reset.ts'];
+for (const rel of RBAC_SEED_SCRIPTS) {
+  const src = readFileSync(join(ROOT, rel), 'utf8');
+  let m: RegExpExecArray | null;
+  const re = /['"]([a-z_]+\.[a-z_.]+)['"]/g;
+  while ((m = re.exec(src)) !== null) {
+    const key = m[1]!;
+    if (!registry.has(key)) {
+      console.error(`[check-permissions] seed script key "${key}" not in registry: ${rel}`);
+      failures++;
+    }
+  }
+}
 for (const f of walk(join(ROOT, 'apps/dashboard/src'))) {
   // can()/canAll() take varargs — check EVERY quoted literal in the call.
   const src = readFileSync(f, 'utf8');
