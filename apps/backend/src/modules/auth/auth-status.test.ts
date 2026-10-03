@@ -168,7 +168,7 @@ describe('Auth derive — distinct status per failure mode', () => {
     // Burned-family state lives in Redis only; without it this path is a no-op.
     const { getDataClient, isRedisAvailable } = await import('../../redis/client');
     if (!isRedisAvailable() || !getDataClient()) {
-      console.warn('[auth-status] skipping burned-family test: Redis unavailable');
+      // Skipped: burned-family state is Redis-only and Redis is unavailable here.
       return;
     }
     const t = await makeOrg('auth-burned');
