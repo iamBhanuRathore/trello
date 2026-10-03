@@ -1421,3 +1421,30 @@ The real risk was the opposite one. `POST/PATCH/DELETE /sprints` require `sprint
 3. Added `sprint-phase-permissions.test.ts` to pin the contract: every handler is guarded, reads use `project.read` while mutations use their specific key, Owner/Admin hold all six keys, Viewer reads but cannot mutate, Member reads but cannot mutate, and no role can mutate without being able to read. The Member assertion is deliberately pinned so that granting Member these keys later produces a deliberate signal to revisit the gating rather than a silent UI inconsistency.
 
 **Consequences:** members and viewers get a coherent read-only sprint/phase view with an explicit reason instead of buttons that 403. Custom production roles are covered by the same gate, since it reads the effective permission set rather than a role name. If sprint management is later opened up to members, the pinned Member assertion is the tripwire.
+
+---
+
+### 2026-10-03 — Trash Purge Is Atomic and Batched; the Cascade Is Completed at the Service Layer
+
+**Context:** `emptyTrash` walked the trash with a bare sequential loop and no transaction. Any failure part-way left the org half-purged and still returned `{success: true}`. The cascades were also incomplete: a survey of every `card_id` column in the live schema found 19 tables, of which the cascade covered 12.
+
+Of the seven uncovered tables, five carry a **NO ACTION** foreign key — `calendar_event_links`, `card_events`, `document_cards`, `form_submissions`, `git_links` — so the database actively refuses the card delete and the request fails with `23503` mid-purge. The other two are handled by the database already (`card_views`/`card_components`/`card_access_requests` are CASCADE, `chat_channels.card_id` and `automation_rule_runs` are SET NULL), and there deleting the parent row by hand would be wrong: nulling a chat channel's card link is the intended behaviour.
+
+Separately, `listTrash` used `innerJoin` from projects to workspaces and from boards to projects, so a trashed project whose workspace had been hard-deleted silently disappeared — unrestorable _and_ unpurgeable, since `emptyTrash` drives off that same list.
+
+**Alternatives considered:**
+
+- Add the five FKs with `ON DELETE CASCADE` (rejected — the plan's original approach, and it is a schema migration with no current benefit; orphan counts came back zero on both databases, so there is nothing for a constraint to fix. It would also silently delete audit-shaped rows such as `card_events`.)
+- One transaction for the whole purge (rejected — holds locks for the length of a large purge; the plan itself asked for batching to avoid a long lock.)
+- Cache bumps inside the transaction (rejected — a rolled-back purge would still have invalidated every cache).
+
+**Decision:**
+
+1. The five NO ACTION tables are deleted explicitly before the card row. A test introspects `information_schema` at run time and asserts that **every** `card_id` table with `delete_rule = 'NO ACTION'` is covered by the cascade, so a future table cannot be added without it.
+2. `emptyTrash` deletes inside transactions chunked at 50 items, ordered children-before-parents so a parent's cascade does not 404 on a child it just removed. `purgedCount` reports what was actually removed, so a partial failure surfaces as an error rather than a silent success. The tradeoff — earlier chunks stay purged if a later one fails — is preferable to one long lock, and is now visible instead of hidden.
+3. `hardDeleteItem` is split into a cache-free `hardDeleteItemCascade` plus cache bumps, so `emptyTrash` invalidates once after commit.
+4. `listTrash` uses `leftJoin` for both parent chains.
+
+**Consequences:** a card with a document link, card event, form submission, calendar link or git link can now be hard-deleted instead of failing with a foreign-key violation half-way through a purge. No migration was needed and none is included — the orphan counts (zero on the test database and on Neon, which holds 3,537 cards) are recorded here as the reason.
+
+**Also in this commit:** `createCard` was found to bump the parent's _cache_ for subtask creation without ever incrementing the parent's `subtasksTotal` _column_ — only `cloneCard` did — so `getCard` reported `subtasksTotal: 0` for any subtask created through the normal API. `createCard` increments; `deleteCard` and `archiveCard` decrement with `GREATEST(0, …)`, since `getCard`'s subtask query excludes archived rows. Related: `card-members` and `card-activity` called `bumpCardAndBoard` directly, skipping the parent invalidation that `bumpForCard` performs, and a cross-board move relied on the cached card→board map to find the source board. All now pass the resolved board id explicitly.
