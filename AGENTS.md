@@ -49,6 +49,7 @@
 ## 8. Commit After Changes, Never Push (STRICT — NO EXCEPTIONS)
 
 - **Commit when done**: after completing all requested changes, create a checkpoint commit (`git add` only intended files, inspect `git status`/`git diff` first, concise message matching repo style). Commit the pre-change state first if the tree is dirty.
+- **No co-author trailers**: commit messages use the repo's own conventional-commit style and nothing else. Do NOT append `Co-Authored-By:`, `Signed-off-by:`, `Reviewed-by:`, or any other attribution/attestation trailer — not for an AI assistant and not for a human. GitHub renders a `Co-Authored-By:` trailer as "user and <name>", which puts a second identity on every commit in this repo's history. Attribution belongs in the commit body prose where it is genuinely useful, not in a machine-parsed trailer.
 - **Never push**: do NOT run `git push`, do NOT create PRs, do NOT force-push — CI/CD pipelines own deployment. Leave commits local for the user to push.
 - **Never amend a failed commit**: fix and create a new commit instead.
 
