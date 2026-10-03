@@ -2572,3 +2572,40 @@ Fix-only pass (no new features). Started from a Phase 0 read-only audit, then on
 **Rollback notes:** each commit is self-contained. Items 1 and 5 are behaviour-changing (404 instead of cross-org delete; 503/403 instead of blanket 401) — revert the commit to restore prior behaviour, no schema or response-shape change. Item 2's rollback also restores the global topic; the source guard test will fail loudly if the topic is reintroduced.
 
 **Next:** P0-6 (Stripe webhook 400/500 split + idempotency with a `processing` state and crash-between test), P0-7 (fail-open paths — in-memory rate-limit fallback, DB-backed SSO state, Redis retry, per-instance presence store, Redis/outbound timeouts), P0-8 (phases/sprints guard — already present, so verify parity rather than add).
+
+### 2026-10-03 — P0 Items 6–8: Stripe Idempotency, Degraded-Mode Enforcement, Sprint/Phase Parity
+
+Continuation of the P0 security pass (see the earlier entry for Phase 0 and items 1–5).
+
+**Item 6 — Stripe webhook idempotency + status split** (`c5869e5`)
+
+- Found a worse problem than the plan assumed. `billing_events.stripe_event_id` is UNIQUE, but the row was written only _after_ the side effects, so: a crash in between left no row and Stripe's retry **re-applied everything**; the failure path wrote a row carrying `error`, which the retry matched as "already processed" and skipped, so one transient DB error **dropped the event permanently**; concurrent deliveries both passed the pre-check and both executed.
+- Migration `0040_billing_event_status.sql` adds `status` (`processing|done|failed`, default `done`) + `claimed_at`, backfills existing rows to `done`, and ships a down path.
+- The claim is taken **before** any side effect and reconciled: `done` skips, a fresh `processing` claim belongs to a live worker, a claim older than 5 minutes is a crashed handler and is taken over, `failed` is retried.
+- Route split: missing/invalid signature → 400 (Stripe won't retry, correctly); processing failure → **500** with a generic body so Stripe retries and the claim makes it safe. Internal error text no longer reaches an unauthenticated caller.
+- Tests: `webhook-idempotency.test.ts` (claim lifecycle incl. crash-between + stale takeover), `webhook-status.test.ts` (unsigned codes + structural check), `webhook-status-signed.test.ts` (stubs `lib/stripe` so the 500 path runs offline, no credentials, no network). 3 fail pre-fix.
+
+**Item 7 — degraded modes enforce locally** (`30f966f`)
+
+- Rate limiter: all three failure paths (Redis absent / >400ms / exception) returned `undefined`, so a Redis outage removed the pre-auth `2 rps / 30 burst` bucket entirely — sign-in, sign-up, refresh, SSO and invites became unthrottled credential-stuffing targets. Now enforces from an in-process bucket (`lib/memory-token-bucket.ts`) that mirrors `TOKEN_BUCKET_LUA` exactly. Failing closed was rejected — that trades a rate limit for a full outage. Accepted tradeoff: per-pod limits during degradation, surfaced via a new `rateLimiterMemoryFallbackTotal` metric. The store is LRU-bounded at 10k buckets because pre-auth keys derive from attacker-controlled `x-forwarded-for`.
+- SSO `state`: the callback verified it inside `if (redis && isRedisAvailable())`, so a Redis outage skipped CSRF/replay protection entirely. Now durable in the database (migration `0041_sso_login_states.sql`) with `expires_at` TTL, `consumed_at` single-use, and a conditional claim so concurrent callbacks cannot both win. No skip branch; the service no longer imports the Redis client at all (asserted by test).
+- Presence: `HybridPresenceStore` picked its store **per call**, so a flapping Redis split reads/writes across two stores (flickering avatars, ghost users), and the sweeper ran on both stores so one eviction could broadcast `presence:update` twice. Now pinned once per instance, single sweeper.
+- Redis client: `retryStrategy` returned `null` after 10 attempts, stopping ioredis for the life of the process — a long outage left the pod degraded until restart. Now retries forever with capped backoff + jitter.
+
+**Item 7 remainder — outbound timeouts (BUG-11)** (`f01f152`)
+
+- Stripe SDK had no timeout (80s default) — enough to pin a handler on an unresponsive API, worst on the webhook receiver where a hang defeats both the claim state and Stripe's retry. Set to 10s + 2 retries. SMTP transporter had no connection/greeting/socket timeout. Webhook-dispatch and SNS fetches already had `AbortSignal` timeouts; unchanged.
+
+**Item 8 — sprint/phase parity** (`f01f152`)
+
+- **Corrected an assumption:** the plan said `phases/*` and `sprints/*` lacked `requirePermission`. They had guards on all 8 handlers each. Verifying instead of assuming changed the work.
+- The real gap: only **Org Owner and Org Admin** are granted `sprint.*`/`phase.*` by the seed, so members see `Start/Complete/Create Sprint` and `Add/Start Phase` controls that 403 — neither page consulted `usePermissions` at all.
+- Gated the UI on the keys the routes require; reads untouched. The check runs after every hook and treats `permsLoading` as no-permission, because permissions load async and an early return would change hook order between renders.
+- `sprint-phase-permissions.test.ts` pins the contract; the Member assertion is a deliberate tripwire for a future decision to open sprint management to members.
+- **Open product question (not decided here):** should `Member` hold `sprint.*`/`phase.*`? Not changed — it widens every member's grant and is a product call.
+
+**Validation:** backend `tsc --noEmit` clean, `oxlint` clean apart from the pre-existing `chat-messages.ts:610` warning, suite **410 pass / 1 skip / 0 fail** across 55 files. Dashboard `tsc -b --noEmit` and `oxlint` clean.
+
+**P0 status: complete.** Items 1–8 landed as 8 local commits, none pushed. Deferred by design: item 5 step 2 (empty-org → 400) stays instrumented until logs are quiet; P1–P4 remain.
+
+**Next (P1):** trash restore/list transactions + cascade FK gaps (orphan counts first, then `ADD FK NOT VALID` → cleanup → `VALIDATE` outside a long transaction in a low-traffic window), `bumpForCard` consistency + cross-board move bumping both boards, `throw new Error` → `httpError(400)` with seat/UUID/date validation, silent-200 → 400/404 with frontend caller fixes in the same commit, and the double `inFlight` decrement + double `event-bus` broadcast moved up from the old P4.
