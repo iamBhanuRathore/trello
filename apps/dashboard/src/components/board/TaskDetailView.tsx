@@ -244,6 +244,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         queryClient.invalidateQueries({ queryKey: ['lists', card?.boardId] });
       },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to update the task.'));
+      },
     });
 
     const moveCardMutation = useMutation({
@@ -296,6 +299,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to assign the task.'));
+      },
     });
 
     const removeUserMutation = useMutation({
@@ -303,6 +309,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         await api.delete(`/cards/${cardId}/assignees/${userId}`),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+      },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to remove the assignee.'));
       },
     });
 
@@ -312,6 +321,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to add the participant.'));
+      },
     });
 
     const removeParticipantMutation = useMutation({
@@ -319,6 +331,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         await api.delete(`/cards/${cardId}/participants/${userId}`),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+      },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to remove the participant.'));
       },
     });
 
@@ -328,6 +343,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
       },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to start watching this task.'));
+      },
     });
 
     const unwatchCardMutation = useMutation({
@@ -335,6 +353,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
+      },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to stop watching this task.'));
       },
     });
 
@@ -380,6 +401,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           queryClient.invalidateQueries({ queryKey: ['boardLabels', card.boardId] });
         }
       },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to update labels.'));
+      },
     });
 
     const addCommentMutation = useMutation({
@@ -394,6 +418,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
         queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+      },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to post the comment.'));
       },
     });
 
@@ -553,6 +580,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       mutationFn: async (attachmentId: string) =>
         await api.delete(`/cards/${cardId}/attachments/${attachmentId}`),
       onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId] }),
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to delete the attachment.'));
+      },
     });
 
     const logTimeMutation = useMutation({
@@ -575,11 +605,19 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         setLogDescription('');
         toast.success('Time worklog recorded');
       },
+      // Previously absent: a failed worklog failed silently while the form kept
+      // its values, so it looked like nothing had happened.
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to record time. Please try again.'));
+      },
     });
 
     const deleteTimeLogMutation = useMutation({
       mutationFn: (id: string) => deleteTimeLog(id),
       onSuccess: () => queryClient.invalidateQueries({ queryKey: ['card', cardId] }),
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to delete the time entry.'));
+      },
     });
 
     const cloneCardMutation = useMutation({
@@ -604,6 +642,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           }
         }
         toast.success('Task cloned successfully');
+      },
+      onError: (err: unknown) => {
+        toast.error(getApiErrorMessage(err, 'Unable to create the subtask.'));
       },
     });
 
@@ -737,12 +778,18 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       }, 0);
     };
 
-    const handleCopyLink = () => {
+    const handleCopyLink = async () => {
       const url = `${window.location.origin}/cards/${cardId}`;
-      navigator.clipboard.writeText(url);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-      toast.success('Task link copied to clipboard');
+      // Awaited: fire-and-forget reported success even when the browser denied
+      // clipboard access. The inline `copiedLink` label is the confirmation, so a
+      // toast would be a duplicate.
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+      } catch {
+        toast.error('Unable to copy — your browser blocked clipboard access.');
+      }
     };
 
     const handleScrollToSection = (sectionId: string) => {

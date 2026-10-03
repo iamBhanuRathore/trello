@@ -79,6 +79,8 @@ export function TaskChatPane({
   const lastMemberPickerClosedRef = useRef(0);
 
   const [inputText, setInputText] = useState('');
+  /** Inline "Copied" confirmation for the copy action, replacing a toast. */
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showMentionMenu, setShowMentionMenu] = useState(false);
@@ -518,10 +520,17 @@ export function TaskChatPane({
     }
   };
 
-  const handleCopyMessage = (comment: ChatMessage) => {
+  const handleCopyMessage = async (comment: ChatMessage) => {
     const parsed = parseQuotedMessage(comment.body);
-    navigator.clipboard.writeText(parsed.content);
-    toast.success('Copied to clipboard');
+    // Awaited: the promise rejects when the document is not focused or permission
+    // is denied, and the old fire-and-forget reported success regardless.
+    try {
+      await navigator.clipboard.writeText(parsed.content);
+      setCopiedKey(parsed.content);
+      setTimeout(() => setCopiedKey((k) => (k === parsed.content ? null : k)), 1500);
+    } catch {
+      toast.error("Couldn't copy — your browser blocked clipboard access.");
+    }
     setActiveMenuCommentId(null);
   };
 
@@ -645,6 +654,7 @@ export function TaskChatPane({
                       textareaRef.current?.focus();
                     }}
                     onCopy={() => handleCopyMessage(comment)}
+                    copied={copiedKey === parseQuotedMessage(comment.body).content}
                     onToggleMenu={() =>
                       setActiveMenuCommentId(activeMenuCommentId === comment.id ? null : comment.id)
                     }

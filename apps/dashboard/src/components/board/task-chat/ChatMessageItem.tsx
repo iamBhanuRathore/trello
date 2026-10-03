@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import {
+  Check,
   CheckCheck,
   CornerUpLeft,
   Copy,
@@ -35,6 +36,8 @@ interface ChatMessageItemProps {
   onSaveEdit: () => void;
   onReply: () => void;
   onCopy: () => void;
+  /** True right after a successful copy, for an inline confirmation. */
+  copied?: boolean;
   onToggleMenu: () => void;
   onCloseMenu: () => void;
   onDelete: () => void;
@@ -59,6 +62,7 @@ export function ChatMessageItem({
   onSaveEdit,
   onReply,
   onCopy,
+  copied = false,
   onToggleMenu,
   onCloseMenu,
   onDelete,
@@ -263,14 +267,20 @@ export function ChatMessageItem({
               <CornerUpLeft className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
 
-            {/* Copy */}
+            {/* Copy — confirms inline; a toast is noise for a routine local action */}
             <button
               type="button"
               onClick={onCopy}
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-muted/70 transition-colors cursor-pointer text-left"
             >
-              <span className="font-medium">Copy</span>
-              <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className={copied ? 'font-medium text-primary' : 'font-medium'}>
+                {copied ? 'Copied' : 'Copy'}
+              </span>
+              {copied ? (
+                <Check className="w-3.5 h-3.5 text-primary" />
+              ) : (
+                <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
             </button>
 
             {/* Edit (Permission Protected) */}
@@ -288,9 +298,17 @@ export function ChatMessageItem({
             {/* Forward / Share */}
             <button
               type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}#card-${cardTitle}`);
-                toast.success('Task link copied to share');
+              onClick={async () => {
+                // Awaited so a blocked clipboard reports a failure instead of a
+                // false success (fire-and-forget rejected silently).
+                try {
+                  await navigator.clipboard.writeText(
+                    `${window.location.origin}#card-${cardTitle}`
+                  );
+                  toast.success('Task link copied to share');
+                } catch {
+                  toast.error("Couldn't copy — your browser blocked clipboard access.");
+                }
                 onCloseMenu();
               }}
               className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-muted/70 transition-colors cursor-pointer text-left"
