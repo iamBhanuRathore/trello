@@ -11,6 +11,7 @@ import { Sparkles, CornerDownRight, Tag, Users, Eye, ListChecks, Check, X } from
 import { MemberSearchableSelect, ListSearchableSelect } from '../ui/SearchableSelect';
 import { AsyncMemberSearchableSelect, AsyncMemberChipPicker } from '../ui/AsyncMemberSelect';
 import { usePermissions, permissionReason } from '../../hooks/usePermissions';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 export interface CreateTaskInitialData {
   listId?: string;
@@ -259,8 +260,15 @@ export function CreateTaskModal({
     }
   };
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per open
+  // session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen,
+    onClose,
+  });
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[88vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
         {/* ─── Fixed Header ─── */}
         <div className="p-5 border-b border-border/80 bg-card/90 backdrop-blur-md flex items-center justify-between shrink-0 pr-8">

@@ -97,6 +97,13 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
     );
   }
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: !!importProjectId,
+    onClose: () => setImportProjectId(null),
+  });
+
   return (
     <div className="grid gap-6 pt-1">
       {projects.map((proj: any) => (
@@ -277,7 +284,7 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
       {importProjectId && (
         <ImportModal
           open={!!importProjectId}
-          onOpenChange={(open) => !open && setImportProjectId(null)}
+          onOpenChange={handleOpenChange}
           projectId={importProjectId}
           projectName={importProjectName}
         />

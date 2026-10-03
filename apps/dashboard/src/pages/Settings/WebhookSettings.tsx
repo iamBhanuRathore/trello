@@ -6,6 +6,7 @@ import { Switch } from '@boardly/ui/switch';
 import { Trash, Plus, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 const AVAILABLE_EVENTS = [
   { id: 'card.created', label: 'Card Created' },
@@ -95,6 +96,13 @@ export function WebhookSettings() {
   const toggleSecret = (id: string) => {
     setRevealedSecrets((prev) => ({ ...prev, [id]: !prev[id] }));
   };
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: webhookToDelete !== null,
+    onClose: () => setWebhookToDelete(null),
+  });
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4" aria-busy={loading}>
@@ -278,9 +286,7 @@ export function WebhookSettings() {
           {/* Delete Webhook Confirmation Dialog */}
           <ConfirmDialog
             open={!!webhookToDelete}
-            onOpenChange={(open) => {
-              if (!open) setWebhookToDelete(null);
-            }}
+            onOpenChange={handleOpenChange}
             title="Delete Webhook"
             description={`Are you sure you want to delete the webhook "${webhookToDelete?.url || ''}"? This organization will stop receiving event notifications to this URL.`}
             confirmLabel="Delete Webhook"

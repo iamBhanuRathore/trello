@@ -92,6 +92,13 @@ export function Workspaces() {
       0
     ) || 0;
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: createOpen,
+    onClose: () => setCreateOpen(false),
+  });
+
   return (
     <div className="w-full mx-auto flex flex-col gap-6">
       {/* Header */}
@@ -105,7 +112,7 @@ export function Workspaces() {
         <CreateWorkspaceDialog
           onSuccess={() => queryClient.invalidateQueries({ queryKey: ['workspaces'] })}
           open={createOpen}
-          onOpenChange={setCreateOpen}
+          onOpenChange={handleOpenChange}
         />
       </div>
 

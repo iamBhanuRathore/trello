@@ -208,6 +208,13 @@ export function CustomRoles() {
     );
   }
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: isModalOpen,
+    onClose: () => setIsModalOpen(false),
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -347,7 +354,7 @@ export function CustomRoles() {
       />
 
       {/* Role Editor Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] h-[85vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
           {/* ─── Fixed Header ─── */}
           <DialogHeader className="p-5 sm:px-6 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">

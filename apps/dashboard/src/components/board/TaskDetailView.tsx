@@ -47,6 +47,7 @@ import { ShareTaskModal } from './ShareTaskModal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { RouteFallback } from '../common/RouteFallback';
 import { Layers } from 'lucide-react';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 // Lazy modal
 const CreateTaskModal = lazy(() =>
@@ -892,6 +893,33 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       );
     }
 
+    // Single close path (AGENTS.md §11). Four dialogs share this scope, so each
+    // gets a renamed handler. useDialogClose only registers its Escape listener
+    // while `isOpen`, and these dialogs are mutually exclusive, so a single Esc
+    // can never reach two of them.
+    const { handleOpenChange: checklistDeleteClose } = useDialogClose({
+      isOpen: confirmDeleteChecklist !== null,
+      onClose: () => setConfirmDeleteChecklist(null),
+    });
+
+    const { handleOpenChange: archiveConfirmClose } = useDialogClose({
+      isOpen: showArchiveConfirm,
+      onClose: () => setShowArchiveConfirm(false),
+    });
+
+    const { handleOpenChange: deleteConfirmClose } = useDialogClose({
+      isOpen: showDeleteConfirm,
+      onClose: () => setShowDeleteConfirm(false),
+    });
+
+    // The unsaved-changes prompt belongs to the dirty flow: closing it returns
+    // to the editor instead of discarding, so onClose clears the pending action
+    // and leaves the card dialog as it was.
+    const { handleOpenChange: unsavedPromptClose } = useDialogClose({
+      isOpen: showUnsavedPrompt,
+      onClose: () => setPendingAction(null),
+    });
+
     return (
       <div className="relative flex flex-col w-full h-full bg-background text-foreground overflow-hidden">
         {/* Header Bar */}
@@ -1251,9 +1279,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         {/* Delete Checklist Confirmation */}
         <ConfirmDialog
           open={!!confirmDeleteChecklist}
-          onOpenChange={(open) => {
-            if (!open) setConfirmDeleteChecklist(null);
-          }}
+          onOpenChange={checklistDeleteClose}
           title="Delete checklist?"
           description={`Are you sure you want to delete "${confirmDeleteChecklist?.title || 'Checklist'}"?${
             (confirmDeleteChecklist?.itemCount || 0) > 0
@@ -1273,7 +1299,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         {/* Archive Task Confirmation */}
         <ConfirmDialog
           open={showArchiveConfirm}
-          onOpenChange={setShowArchiveConfirm}
+          onOpenChange={archiveConfirmClose}
           title="Archive this task?"
           description={`"${card.title}" will be moved out of the active board. You can restore it anytime from archived cards.`}
           confirmLabel="Archive Task"
@@ -1286,7 +1312,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         {/* Delete Task Confirmation */}
         <ConfirmDialog
           open={showDeleteConfirm}
-          onOpenChange={setShowDeleteConfirm}
+          onOpenChange={deleteConfirmClose}
           title="Permanently delete task?"
           description={`Are you sure you want to delete "${card.title}"? All associated checklist items, time logs, comments, and attachments will be permanently purged. This action cannot be undone.`}
           confirmLabel="Delete Task"
@@ -1300,10 +1326,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         {/* Unsaved Changes Prompt */}
         <ConfirmDialog
           open={showUnsavedPrompt}
-          onOpenChange={(open) => {
-            setShowUnsavedPrompt(open);
-            if (!open) setPendingAction(null);
-          }}
+          onOpenChange={unsavedPromptClose}
           title="Unsaved requirement changes"
           description="You have unsaved changes in the task requirement. If you navigate away or close, these edits will be permanently lost."
           confirmLabel="Discard changes"

@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 interface TrashBinModalProps {
   open: boolean;
@@ -36,6 +37,35 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
   const [confirmEmptyOpen, setConfirmEmptyOpen] = useState(false);
   const [itemToDeleteForever, setItemToDeleteForever] = useState<TrashedItem | null>(null);
   const [itemToRestore, setItemToRestore] = useState<TrashedItem | null>(null);
+
+  // Nested confirms, each on the same contract. The bin's own Escape handler
+  // stands down while any of these is open (see handleEscape above).
+  const { handleOpenChange: restoreConfirmClose } = useDialogClose({
+    isOpen: itemToRestore !== null,
+    onClose: () => setItemToRestore(null),
+  });
+
+  const { handleOpenChange: deleteForeverClose } = useDialogClose({
+    isOpen: itemToDeleteForever !== null,
+    onClose: () => setItemToDeleteForever(null),
+  });
+
+  const { handleOpenChange: emptyTrashClose } = useDialogClose({
+    isOpen: confirmEmptyOpen,
+    onClose: () => setConfirmEmptyOpen(false),
+  });
+
+  // Single close path (AGENTS.md §11): X, backdrop and Esc all funnel through
+  // requestClose, which fires the caller's onOpenChange at most once per open
+  // session instead of once per gesture.
+  const { requestClose, handleOpenChange } = useDialogClose({
+    isOpen: open,
+    onClose: () => onOpenChange(false),
+    // Nested confirm dialogs own the Escape key while they are open. Our Esc
+    // listener is capture-phase, so without standing down a single Esc would
+    // dismiss the confirm AND the bin behind it.
+    handleEscape: !itemToRestore && !itemToDeleteForever && !confirmEmptyOpen,
+  });
 
   // Queries
   const {
@@ -141,7 +171,7 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
           showCloseButton={false}
           className="sm:max-w-3xl w-[94vw] max-h-[85vh] p-0 overflow-hidden flex flex-col bg-card border border-border/80 rounded-2xl shadow-2xl"
@@ -183,7 +213,7 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-lg cursor-pointer"
-                onClick={() => onOpenChange(false)}
+                onClick={requestClose}
                 title="Close"
               >
                 <X className="w-4 h-4" />
@@ -383,7 +413,7 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
               size="sm"
               variant="ghost"
               className="h-7 text-xs cursor-pointer"
-              onClick={() => onOpenChange(false)}
+              onClick={requestClose}
             >
               Close
             </Button>
@@ -395,7 +425,7 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
       {itemToRestore && (
         <ConfirmDialog
           open={!!itemToRestore}
-          onOpenChange={(isOpen) => !isOpen && setItemToRestore(null)}
+          onOpenChange={restoreConfirmClose}
           title={`Restore ${getItemTypeName(itemToRestore.itemType)}?`}
           description={`Are you sure you want to restore "${itemToRestore.name}"? It will immediately be reactivated and returned to your workspace along with all associated child elements.`}
           confirmLabel="Restore Item"
@@ -410,7 +440,7 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
       {itemToDeleteForever && (
         <ConfirmDialog
           open={!!itemToDeleteForever}
-          onOpenChange={(isOpen) => !isOpen && setItemToDeleteForever(null)}
+          onOpenChange={deleteForeverClose}
           title="Permanently Delete Item?"
           description={`Are you sure you want to permanently purge "${itemToDeleteForever.name}"? This action cannot be undone and all associated child data will be permanently wiped.`}
           confirmLabel="Delete Forever"
@@ -425,7 +455,7 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
       {confirmEmptyOpen && (
         <ConfirmDialog
           open={confirmEmptyOpen}
-          onOpenChange={setConfirmEmptyOpen}
+          onOpenChange={emptyTrashClose}
           title="Empty Entire Recycle Bin?"
           description={`Are you sure you want to permanently purge all ${trashedItems.length} items in the recycle bin? All deleted workspaces, projects, boards, and tasks will be completely unrecoverable.`}
           confirmLabel="Empty Trash"

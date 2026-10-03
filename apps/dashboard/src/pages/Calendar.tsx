@@ -29,6 +29,7 @@ import {
   snapMinutes,
   toISO,
 } from '../components/calendar';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 export function Calendar() {
   const [view, setView] = useState<CalendarView>('week');
@@ -324,6 +325,16 @@ export function Calendar() {
     return format(cursor, 'EEEE, MMM d, yyyy');
   }, [view, cursor]);
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: activeCardId !== null,
+    onClose: () => {
+      setActiveCardId(null);
+      queryClient.invalidateQueries({ queryKey: ['calendar', 'feed'] });
+    },
+  });
+
   return (
     <div className="flex flex-col h-full min-h-0">
       <CalendarHeader
@@ -473,12 +484,7 @@ export function Calendar() {
       <CardModal
         cardId={activeCardId}
         open={!!activeCardId}
-        onOpenChange={(open) => {
-          if (!open) {
-            setActiveCardId(null);
-            queryClient.invalidateQueries({ queryKey: ['calendar', 'feed'] });
-          }
-        }}
+        onOpenChange={handleOpenChange}
         onSelectCard={(id) => setActiveCardId(id)}
       />
 

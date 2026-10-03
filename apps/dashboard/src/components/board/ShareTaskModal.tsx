@@ -21,7 +21,7 @@ import {
   getMarkdownLink,
   copyTextToClipboard,
 } from '../../utils/taskIdentifier';
-import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 interface ShareTaskModalProps {
   card: any;
@@ -30,7 +30,10 @@ interface ShareTaskModalProps {
 }
 
 export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
-  useEscapeKey(onClose, open);
+  // Single close path (AGENTS.md §11). This is a hand-rolled portal, so the
+  // backdrop gets handleOverlayClick (it previously had no click handler at all,
+  // leaving touch users with no way to dismiss) and Esc goes through requestClose.
+  const { requestClose, handleOverlayClick } = useDialogClose({ isOpen: open, onClose });
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -63,7 +66,10 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
   )}`;
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in-50 duration-150">
+    <div
+      onClick={handleOverlayClick}
+      className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in-50 duration-150"
+    >
       <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-muted/20">
@@ -82,7 +88,7 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
-            onClick={onClose}
+            onClick={requestClose}
           >
             <X className="w-4 h-4" />
           </Button>

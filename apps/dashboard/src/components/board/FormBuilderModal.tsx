@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@boardly/ui/dialog';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 interface FormBuilderModalProps {
   boardId: string;
@@ -80,8 +81,15 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per open
+  // session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen,
+    onClose,
+  });
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] h-[85vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
         {/* ─── Fixed Header ─── */}
         <DialogHeader className="p-5 sm:px-6 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">

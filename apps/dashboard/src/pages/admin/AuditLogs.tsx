@@ -12,6 +12,7 @@ import {
 } from '@boardly/ui/dialog';
 import { EnterpriseDataGrid, type ColumnDef } from '../../components/common/EnterpriseDataGrid';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 export function AuditLogs() {
   const [dateRange, setDateRange] = useState<string>('30days');
@@ -156,6 +157,13 @@ export function AuditLogs() {
     []
   );
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: !!inspectMetadata,
+    onClose: () => setInspectMetadata(null),
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -213,7 +221,7 @@ export function AuditLogs() {
       />
 
       {/* JSON Metadata Inspector Dialog */}
-      <Dialog open={!!inspectMetadata} onOpenChange={(open) => !open && setInspectMetadata(null)}>
+      <Dialog open={!!inspectMetadata} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-lg max-h-[85vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
           {/* ─── Fixed Header ─── */}
           <DialogHeader className="p-5 sm:px-6 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">

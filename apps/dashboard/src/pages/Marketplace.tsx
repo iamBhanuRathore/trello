@@ -31,6 +31,7 @@ import {
   DialogDescription,
 } from '@boardly/ui/dialog';
 import { QueryError } from '../components/common/QueryError';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 const CATEGORIES = [
   { id: 'all', label: 'All Apps' },
@@ -112,6 +113,13 @@ export function Marketplace() {
         return <Sparkles className="w-5 h-5 text-indigo-500" />;
     }
   };
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: !!configuringApp,
+    onClose: () => setConfiguringApp(null),
+  });
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-16">
@@ -277,7 +285,7 @@ export function Marketplace() {
       )}
 
       {/* APP CONFIGURATION MODAL */}
-      <Dialog open={!!configuringApp} onOpenChange={(open) => !open && setConfiguringApp(null)}>
+      <Dialog open={!!configuringApp} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

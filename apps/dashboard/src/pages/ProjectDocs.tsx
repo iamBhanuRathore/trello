@@ -34,6 +34,7 @@ import {
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 export function ProjectDocs() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -167,6 +168,22 @@ export function ProjectDocs() {
   const filteredDocs = docs.filter((d: any) =>
     d.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per open
+  // session, so X / backdrop / Esc cannot double-close. Two dialogs share this
+  // scope, so each gets a renamed handler. They are mutually exclusive in
+  // practice; handleEscape keeps a stray Esc from closing both.
+  const { handleOpenChange: deleteConfirmClose } = useDialogClose({
+    isOpen: docToDelete !== null,
+    onClose: () => setDocToDelete(null),
+    handleEscape: docToDelete !== null && !isCreateModalOpen,
+  });
+
+  const { handleOpenChange: createModalClose } = useDialogClose({
+    isOpen: isCreateModalOpen,
+    onClose: () => setIsCreateModalOpen(false),
+    handleEscape: isCreateModalOpen && docToDelete === null,
+  });
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-16">
@@ -527,7 +544,7 @@ export function ProjectDocs() {
       {/* Create Document Modal */}
       <CreateDocumentModal
         open={isCreateModalOpen}
-        onOpenChange={setIsCreateModalOpen}
+        onOpenChange={createModalClose}
         isLoading={createMutation.isPending}
         onCreate={(doc) => {
           createMutation.mutate(doc);
@@ -537,9 +554,7 @@ export function ProjectDocs() {
       {/* Delete Document Confirmation Dialog */}
       <ConfirmDialog
         open={!!docToDelete}
-        onOpenChange={(open) => {
-          if (!open) setDocToDelete(null);
-        }}
+        onOpenChange={deleteConfirmClose}
         title="Delete Document"
         description={`Are you sure you want to permanently delete "${docToDelete?.title || 'this document'}"? This action cannot be undone.`}
         confirmLabel="Delete Document"

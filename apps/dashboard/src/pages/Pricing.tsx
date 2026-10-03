@@ -14,6 +14,7 @@ import {
 import { Input } from '@boardly/ui/input';
 import { CheckCircle2, Sparkles, Zap, Building2, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 export const Pricing: React.FC = () => {
   const navigate = useNavigate();
@@ -84,6 +85,13 @@ export const Pricing: React.FC = () => {
       setIsSubmittingQuote(false);
     }
   };
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: isEnterpriseModalOpen,
+    onClose: () => setIsEnterpriseModalOpen(false),
+  });
 
   return (
     <div className="min-h-screen bg-background text-foreground selection:bg-primary/20">
@@ -587,7 +595,7 @@ export const Pricing: React.FC = () => {
       </section>
 
       {/* Enterprise Quote Modal */}
-      <Dialog open={isEnterpriseModalOpen} onOpenChange={setIsEnterpriseModalOpen}>
+      <Dialog open={isEnterpriseModalOpen} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

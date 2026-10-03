@@ -29,6 +29,7 @@ import {
   ChatMessageItem,
   TaskChatComposer,
 } from './task-chat';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 export type { ChatMessage, PendingAttachment };
 
@@ -525,6 +526,13 @@ export function TaskChatPane({
     setPendingDeleteId(null);
   };
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: pendingDeleteId !== null,
+    onClose: () => setPendingDeleteId(null),
+  });
+
   return (
     <div className="flex flex-col h-full bg-[#f8fbfa] dark:bg-card/90 border-l border-border/70 relative">
       <TaskChatHeader
@@ -690,9 +698,7 @@ export function TaskChatPane({
       {/* ─── Delete Message Confirmation ─── */}
       <ConfirmDialog
         open={!!pendingDeleteId}
-        onOpenChange={(open) => {
-          if (!open) setPendingDeleteId(null);
-        }}
+        onOpenChange={handleOpenChange}
         title="Delete this message?"
         description="The message will be permanently removed for everyone. This cannot be undone."
         confirmLabel="Delete"

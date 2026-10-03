@@ -30,6 +30,7 @@ import {
   Receipt,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 export const Billing: React.FC = () => {
   const queryClient = useQueryClient();
@@ -246,6 +247,41 @@ export const Billing: React.FC = () => {
   const isPaidPlan = plan.tier === 'pro' || plan.tier === 'business' || plan.tier === 'enterprise';
   const isCanceledAtPeriodEnd = subscription.cancelAtPeriodEnd;
   const isPastDueDowngradePending = subscription.status === 'past_due_downgrade_pending';
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange: isAddSeatsOpenOpenChange } = useDialogClose({
+    isOpen: isAddSeatsOpen,
+    onClose: () => setIsAddSeatsOpen(false),
+  });
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange: isDownsizeOpenOpenChange } = useDialogClose({
+    isOpen: isDownsizeOpen,
+    onClose: () => setIsDownsizeOpen(false),
+  });
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange: isUpgradeOpenOpenChange } = useDialogClose({
+    isOpen: isUpgradeOpen,
+    onClose: () => setIsUpgradeOpen(false),
+  });
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange: isCancelOpenOpenChange } = useDialogClose({
+    isOpen: isCancelOpen,
+    onClose: () => setIsCancelOpen(false),
+  });
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange: isEnterpriseModalOpenOpenChange } = useDialogClose({
+    isOpen: isEnterpriseModalOpen,
+    onClose: () => setIsEnterpriseModalOpen(false),
+  });
 
   return (
     <div className="space-y-8 max-w-6xl">
@@ -605,7 +641,7 @@ export const Billing: React.FC = () => {
       )}
 
       {/* ─── ADD SEATS MODAL (With Live Proration Preview) ─── */}
-      <Dialog open={isAddSeatsOpen} onOpenChange={setIsAddSeatsOpen}>
+      <Dialog open={isAddSeatsOpen} onOpenChange={isAddSeatsOpenOpenChange}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -714,7 +750,7 @@ export const Billing: React.FC = () => {
       </Dialog>
 
       {/* ─── DOWNSIZE SEATS MODAL (Scheduled Decrease) ─── */}
-      <Dialog open={isDownsizeOpen} onOpenChange={setIsDownsizeOpen}>
+      <Dialog open={isDownsizeOpen} onOpenChange={isDownsizeOpenOpenChange}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -779,7 +815,7 @@ export const Billing: React.FC = () => {
       </Dialog>
 
       {/* ─── UPGRADE PLAN MODAL ─── */}
-      <Dialog open={isUpgradeOpen} onOpenChange={setIsUpgradeOpen}>
+      <Dialog open={isUpgradeOpen} onOpenChange={isUpgradeOpenOpenChange}>
         <DialogContent className="sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -913,7 +949,7 @@ export const Billing: React.FC = () => {
       </Dialog>
 
       {/* ─── CANCEL SUBSCRIPTION CONFIRMATION MODAL ─── */}
-      <Dialog open={isCancelOpen} onOpenChange={setIsCancelOpen}>
+      <Dialog open={isCancelOpen} onOpenChange={isCancelOpenOpenChange}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle className="text-destructive flex items-center gap-2">
@@ -961,7 +997,7 @@ export const Billing: React.FC = () => {
       </Dialog>
 
       {/* ─── ENTERPRISE QUOTE MODAL ─── */}
-      <Dialog open={isEnterpriseModalOpen} onOpenChange={setIsEnterpriseModalOpen}>
+      <Dialog open={isEnterpriseModalOpen} onOpenChange={isEnterpriseModalOpenOpenChange}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

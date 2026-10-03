@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@boardly/ui/card';
 import { api } from '../lib/api';
 import { QueryError } from '../components/common/QueryError';
 import { usePermissions, permissionReason } from '../hooks/usePermissions';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 export const ProjectPhases = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -296,10 +297,18 @@ function CreatePhaseDialog({
     });
   };
 
+  // Single close path (AGENTS.md §11): Radix's onOpenChange routes through
+  // handleOpenChange, which drops open=true and fires requestClose at most
+  // once per session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: open,
+    onClose: () => setOpen(false),
+  });
+
   if (!canCreatePhase) return null;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button>Add Phase</Button>
       </DialogTrigger>

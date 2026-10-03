@@ -38,6 +38,7 @@ import {
   AddListForm,
   KanbanCardView,
 } from '../components/board/kanban';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 // Heavy modals are code-split: each loads on first open, not with the board.
 const CardModal = lazy(() =>
@@ -410,6 +411,15 @@ export function BoardView() {
 
   const sensors = useSensors(pointerSensor, touchSensor, keyboardSensor);
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: activeCard !== null,
+    onClose: () => {
+      handleCloseModal();
+    },
+  });
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <BoardHeader
@@ -534,11 +544,7 @@ export function BoardView() {
           <CardModal
             cardId={selectedCardId}
             open={!!selectedCardId}
-            onOpenChange={(open) => {
-              if (!open) {
-                handleCloseModal();
-              }
-            }}
+            onOpenChange={handleOpenChange}
             onSelectCard={(id) => handleCardClick(id)}
           />
         </Suspense>

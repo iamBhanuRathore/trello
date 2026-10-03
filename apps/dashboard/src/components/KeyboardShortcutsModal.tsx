@@ -8,6 +8,7 @@ import {
 } from '@boardly/ui/dialog';
 import { Keyboard, Search, Command, X } from 'lucide-react';
 import { isMac } from '../lib/platform';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 export interface KeyboardShortcutsModalProps {
   open: boolean;
@@ -25,6 +26,11 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   open,
   onOpenChange,
 }) => {
+  // Single close path (AGENTS.md §11) — see useDialogClose.
+  const { requestClose, handleOpenChange } = useDialogClose({
+    isOpen: open,
+    onClose: () => onOpenChange(false),
+  });
   const [filterQuery, setFilterQuery] = useState('');
   const mac = isMac();
   const modKey = mac ? '⌘' : 'Ctrl';
@@ -217,7 +223,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   }, [filteredShortcuts]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] h-[85vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
         {/* Header */}
         <DialogHeader className="p-5 sm:px-6 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">
@@ -315,7 +321,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={() => onOpenChange(false)}
+            onClick={requestClose}
             className="px-3 py-1 rounded-lg bg-background hover:bg-muted border border-border text-xs font-semibold text-foreground transition-colors cursor-pointer"
           >
             Got it (Esc)

@@ -11,6 +11,7 @@ import { Label } from '@boardly/ui/label';
 import { Input } from '@boardly/ui/input';
 import { Sun, Moon, Laptop, Check, Sparkles, Palette, Eye, Sliders, RotateCcw } from 'lucide-react';
 import { useThemeStore, THEME_PALETTES, ACCENT_PRESETS, type ThemeMode } from '../store/themeStore';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 interface AppearanceModalProps {
   open: boolean;
@@ -18,6 +19,11 @@ interface AppearanceModalProps {
 }
 
 export const AppearanceModal: React.FC<AppearanceModalProps> = ({ open, onOpenChange }) => {
+  // Single close path (AGENTS.md §11) — see useDialogClose.
+  const { requestClose, handleOpenChange } = useDialogClose({
+    isOpen: open,
+    onClose: () => onOpenChange(false),
+  });
   const {
     mode,
     palette,
@@ -45,7 +51,7 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({ open, onOpenCh
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[88vh] h-[88vh] p-0 flex flex-col overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
         {/* ─── Fixed Header ─── */}
         <DialogHeader className="p-5 sm:px-8 sm:py-5 border-b border-border/80 bg-card/90 backdrop-blur-md shrink-0 space-y-1">
@@ -54,7 +60,9 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({ open, onOpenCh
               <div className="p-2 rounded-xl bg-primary/10 text-primary">
                 <Palette className="h-5 w-5" />
               </div>
-              <DialogTitle className="text-xl font-bold tracking-tight">Theme & Appearance</DialogTitle>
+              <DialogTitle className="text-xl font-bold tracking-tight">
+                Theme & Appearance
+              </DialogTitle>
             </div>
             <Button
               variant="ghost"
@@ -307,19 +315,10 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({ open, onOpenCh
             Changes are saved automatically to your workspace.
           </div>
           <div className="flex items-center gap-3 ml-auto">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              className="cursor-pointer"
-            >
+            <Button variant="outline" size="sm" onClick={requestClose} className="cursor-pointer">
               Close
             </Button>
-            <Button
-              onClick={() => onOpenChange(false)}
-              size="sm"
-              className="px-6 cursor-pointer"
-            >
+            <Button onClick={requestClose} size="sm" className="px-6 cursor-pointer">
               Save &amp; Apply
             </Button>
           </div>

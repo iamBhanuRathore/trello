@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Info,
 } from 'lucide-react';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 const PRESET_AVATARS = [
   'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
@@ -245,6 +246,13 @@ export function ProfileSettings() {
       </div>
     );
   }
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: isPermissionsModalOpen,
+    onClose: () => setIsPermissionsModalOpen(false),
+  });
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-4 pb-16" aria-busy={showLoading}>
@@ -699,7 +707,7 @@ export function ProfileSettings() {
 
           {/* ─── Detailed Permissions Matrix Modal ─── */}
           {isPermissionsModalOpen && (
-            <Dialog open={isPermissionsModalOpen} onOpenChange={setIsPermissionsModalOpen}>
+            <Dialog open={isPermissionsModalOpen} onOpenChange={handleOpenChange}>
               <DialogContent className="sm:max-w-2xl w-[92vw] max-h-[85vh] p-0 overflow-hidden flex flex-col bg-card border border-border rounded-2xl shadow-2xl">
                 {/* Header */}
                 <div className="p-5 pr-14 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">

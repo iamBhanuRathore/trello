@@ -32,6 +32,7 @@ import { useChatStore } from '../../store/chatStore';
 import { PresenceBadge } from './PresenceBadge';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { getInitials } from '../../utils/avatar';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 interface ChatDetailsPaneProps {
   channel: ChatChannel;
@@ -266,6 +267,13 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
   }, [members, memberSearch]);
 
   const otherPresence = otherUserId ? presenceMap[otherUserId] : null;
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: isLeaveConfirmOpen,
+    onClose: () => setIsLeaveConfirmOpen(false),
+  });
 
   return (
     <>
@@ -809,7 +817,7 @@ export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClo
         {/* Confirm Leave Channel Modal */}
         <ConfirmDialog
           open={isLeaveConfirmOpen}
-          onOpenChange={setIsLeaveConfirmOpen}
+          onOpenChange={handleOpenChange}
           title={`Leave #${channel.name}?`}
           description="You will stop receiving notifications and messages from this channel. To rejoin, an active channel member must invite you back."
           confirmLabel="Leave Channel"

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { CreateWorkspaceDialog } from './CreateWorkspaceDialog';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 const PARAM = 'createWorkspace';
 
@@ -28,11 +29,18 @@ export function GlobalCreateWorkspaceDialog() {
   if (!open) return null;
   // Hidden wrapper: CreateWorkspaceDialog always renders its DialogTrigger
   // button (used by the Workspaces page); the shell only wants the portal.
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: open,
+    onClose: () => setOpen(false),
+  });
+
   return (
     <div className="hidden" aria-hidden="true">
       <CreateWorkspaceDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={handleOpenChange}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['workspaces'] });
           queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });

@@ -94,15 +94,25 @@ export const ListColumn = memo(function ListColumn({
   const [isDeletingList, setIsDeletingList] = useState(false);
   const [editListName, setEditListName] = useState(list.name);
 
-  const { requestClose: closeRenameList } = useDialogClose({
-    isOpen: isEditingList,
-    onClose: () => setIsEditingList(false),
-  });
+  // Single close path per dialog (AGENTS.md §11). ONE hook per dialog: a hook
+  // owns its own `closedRef`, so two instances for the same dialog would each
+  // fire on a single Esc. handleOpenChange serves Radix (X / backdrop / Esc) and
+  // requestClose serves the Cancel button.
+  const { requestClose: closeRenameList, handleOpenChange: isEditingListOpenChange } =
+    useDialogClose({
+      isOpen: isEditingList,
+      onClose: () => setIsEditingList(false),
+      // These dialogs are siblings: only the open one may own Escape, otherwise
+      // one Esc closes both.
+      handleEscape: isEditingList && !isDeletingList,
+    });
 
-  const { requestClose: closeDeleteList } = useDialogClose({
-    isOpen: isDeletingList,
-    onClose: () => setIsDeletingList(false),
-  });
+  const { requestClose: closeDeleteList, handleOpenChange: isDeletingListOpenChange } =
+    useDialogClose({
+      isOpen: isDeletingList,
+      onClose: () => setIsDeletingList(false),
+      handleEscape: isDeletingList && !isEditingList,
+    });
 
   // Sync default assignee to current user
   useEffect(() => {
@@ -290,7 +300,7 @@ export const ListColumn = memo(function ListColumn({
 
       {/* Rename List Dialog */}
       {isEditingList && canUpdateList && (
-        <Dialog open={isEditingList} onOpenChange={setIsEditingList}>
+        <Dialog open={isEditingList} onOpenChange={isEditingListOpenChange}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Rename List</DialogTitle>
@@ -333,7 +343,7 @@ export const ListColumn = memo(function ListColumn({
 
       {/* Delete List Confirmation Dialog */}
       {isDeletingList && canDeleteList && (
-        <Dialog open={isDeletingList} onOpenChange={setIsDeletingList}>
+        <Dialog open={isDeletingList} onOpenChange={isDeletingListOpenChange}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-destructive">

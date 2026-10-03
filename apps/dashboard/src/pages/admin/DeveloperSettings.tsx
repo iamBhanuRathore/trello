@@ -24,6 +24,7 @@ import {
 } from '@boardly/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { QueryError } from '../../components/common/QueryError';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 const AVAILABLE_SCOPES = [
   { id: '*', label: 'Full Access (All Scopes)' },
@@ -162,6 +163,21 @@ export function DeveloperSettings() {
     );
   }
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per open
+  // session, so X / backdrop / Esc cannot double-close. Two dialogs share this
+  // scope, so each gets a renamed handler.
+  const { handleOpenChange: createKeyClose } = useDialogClose({
+    isOpen: isCreating,
+    onClose: () => setIsCreating(false),
+    handleEscape: isCreating && !generatedKey,
+  });
+
+  const { handleOpenChange: revealKeyClose } = useDialogClose({
+    isOpen: !!generatedKey,
+    onClose: () => setGeneratedKey(null),
+    handleEscape: !isCreating && !!generatedKey,
+  });
+
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-16">
       {/* Header */}
@@ -275,7 +291,7 @@ export function DeveloperSettings() {
       </div>
 
       {/* CREATE API KEY DIALOG */}
-      <Dialog open={isCreating} onOpenChange={(open) => !open && setIsCreating(false)}>
+      <Dialog open={isCreating} onOpenChange={createKeyClose}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Generate Developer API Key</DialogTitle>
@@ -362,7 +378,7 @@ export function DeveloperSettings() {
       </Dialog>
 
       {/* REVEAL SECRET KEY DIALOG */}
-      <Dialog open={!!generatedKey} onOpenChange={(open) => !open && setGeneratedKey(null)}>
+      <Dialog open={!!generatedKey} onOpenChange={revealKeyClose}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-emerald-500">

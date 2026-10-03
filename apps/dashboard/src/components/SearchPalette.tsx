@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { chatService } from '../lib/chatService';
 import { useDebouncedValue as useDebounceValue } from '../hooks/useDebouncedValue';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 interface SearchItem {
   id: string;
@@ -350,8 +351,15 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
     setOpen(false);
   };
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: open,
+    onClose: () => setOpen(false),
+  });
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       {triggerContext === 'navbar' ? (
         <DialogTrigger
           render={

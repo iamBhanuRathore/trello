@@ -28,6 +28,7 @@ import {
   type AutomationEvent,
   type RulePayload,
 } from '../../lib/automationService';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 export interface RuleEditorProps {
   orgId?: string;
@@ -276,6 +277,13 @@ export function RuleEditor({
     if (!canSave || isSaving) return;
     onSave(draft);
   };
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: confirmDiscard,
+    onClose: () => setConfirmDiscard(false),
+  });
 
   return (
     <form
@@ -543,7 +551,7 @@ export function RuleEditor({
 
       <ConfirmDialog
         open={confirmDiscard}
-        onOpenChange={setConfirmDiscard}
+        onOpenChange={handleOpenChange}
         title="Discard unsaved changes?"
         description="Your rule edits will be lost."
         confirmLabel="Discard"

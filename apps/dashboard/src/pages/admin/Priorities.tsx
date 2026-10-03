@@ -45,6 +45,7 @@ import { priorityService, type Priority } from '../../lib/priorityService';
 import { QueryError } from '../../components/common/QueryError';
 import { ConfirmDialog } from '../../components/common/ConfirmDialog';
 import { PriorityBadge } from '../../components/board/PriorityBadge';
+import { useDialogClose } from '../../hooks/useDialogClose';
 
 /** Jira/Linear-style swatch palette + freeform custom color. */
 const COLOR_PRESETS = [
@@ -263,6 +264,13 @@ export function Priorities() {
 
   const canCreate = Boolean(newName.trim()) && !createMutation.isPending;
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: deleteTarget !== null,
+    onClose: () => setDeleteTarget(null),
+  });
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto pb-12 animate-in fade-in duration-300">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/80 pb-6">
@@ -379,7 +387,7 @@ export function Priorities() {
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onOpenChange={handleOpenChange}
         title={`Delete “${deleteTarget?.name}”?`}
         description={`Tasks using ${deleteTarget?.name || 'this level'} will move to the default level (${defaultPriority?.name || 'default'}). This cannot be undone.`}
         confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete Level'}

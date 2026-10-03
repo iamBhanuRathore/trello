@@ -18,7 +18,7 @@ import { api } from '../../lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { orgService } from '../../lib/orgService';
 import { useAuthStore } from '../../store/authStore';
-import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useDialogClose } from '../../hooks/useDialogClose';
 import type { ChatMessage } from './TaskChatPane';
 
 interface CreateTaskFromMessageModalProps {
@@ -40,7 +40,9 @@ export function CreateTaskFromMessageModal({
   defaultListId,
   onTaskCreated,
 }: CreateTaskFromMessageModalProps) {
-  useEscapeKey(onClose, isOpen);
+  // Single close path (AGENTS.md §11). The inline e.target === e.currentTarget
+  // overlay check is replaced by handleOverlayClick, and Esc is idempotent.
+  const { requestClose, handleOverlayClick } = useDialogClose({ isOpen, onClose });
 
   const user = useAuthStore((state) => state.user);
   const orgId = user?.organizationId;
@@ -154,9 +156,7 @@ export function CreateTaskFromMessageModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={handleOverlayClick}
     >
       <div
         className="bg-card w-full max-w-lg rounded-2xl border border-border/80 shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
@@ -189,7 +189,7 @@ export function CreateTaskFromMessageModal({
               </button>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={requestClose}
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                 title="Close"
               >
@@ -313,7 +313,7 @@ export function CreateTaskFromMessageModal({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               className="px-4 py-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 text-xs font-medium transition-colors cursor-pointer"
             >
               Cancel

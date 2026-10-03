@@ -32,6 +32,7 @@ import {
   type ProjectAutomationRule,
   type RulePayload,
 } from '../lib/automationService';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 const LABEL_COLORS = [
   '#ef4444',
@@ -188,6 +189,13 @@ export function ProjectAutomation() {
     };
   }, [editor]);
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: !!deleteTarget,
+    onClose: () => setDeleteTarget(null),
+  });
+
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-6 pb-16 px-4 sm:px-6 lg:px-8 pt-6">
       <header className="flex flex-col gap-3 justify-between border-b pb-5 lg:flex-row lg:items-center">
@@ -305,7 +313,7 @@ export function ProjectAutomation() {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        onOpenChange={handleOpenChange}
         title={`Delete “${deleteTarget?.name}”?`}
         description="Run history is kept for the audit log. This cannot be undone."
         confirmLabel="Delete"

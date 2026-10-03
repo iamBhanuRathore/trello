@@ -25,6 +25,7 @@ import { PriorityBadge } from '../components/board/PriorityBadge';
 import { priorityService } from '../lib/priorityService';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { format } from 'date-fns';
+import { useDialogClose } from '../hooks/useDialogClose';
 
 type FilterTab = 'all' | 'assigned' | 'observing' | 'participating' | 'created';
 type ViewMode = 'grid' | 'list';
@@ -147,6 +148,16 @@ export function MyTasks() {
   const projects = Array.from(
     new Map(tasks.map((t) => [t.projectId, { id: t.projectId, name: t.projectName }])).values()
   ).filter((p) => p.id && p.name);
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  const { handleOpenChange } = useDialogClose({
+    isOpen: activeCardId !== null,
+    onClose: () => {
+      setActiveCardId(null);
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
+    },
+  });
 
   return (
     <div className="space-y-6 max-w-7xl lg:w-7xl mx-auto pb-12 animate-in fade-in duration-300">
@@ -880,12 +891,7 @@ export function MyTasks() {
       <CardModal
         cardId={activeCardId}
         open={!!activeCardId}
-        onOpenChange={(open) => {
-          if (!open) {
-            setActiveCardId(null);
-            queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
-          }
-        }}
+        onOpenChange={handleOpenChange}
         onSelectCard={(id) => setActiveCardId(id)}
       />
     </div>
