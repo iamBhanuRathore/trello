@@ -22,7 +22,7 @@
 
 ## Current State
 
-**Last updated:** 2026-10-03
+**Last updated:** 2026-10-03 — File Size Discipline rule added (AGENTS.md §10): new files over 400 lines require a stated reason, over 600 must split by concern.
 **Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED; 4.1 Calendar substantially done (views, time-blocking, Google 2-way sync, overlays; Outlook deferred); 4.3 Git automations DONE. Recent: sliding refresh-token families, URL-synced task dialog fix, My Tasks sidebar badge, automation builder UI, 5.5 Media + 4.6 triage inbox / inbound email, and backend entrypoint modularization + Redis/worker service singletons (see Roadmap). Next: 4.4 CRDT docs / 4.5 huddles, plus check-docs follow-ups below.
 
 ### What exists
@@ -110,6 +110,13 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - Tests added:
 - What's next:
 ```
+
+### 2026-10-03 — File Size Discipline rule (AGENTS.md §10)
+
+- What was done: codified a hard size budget as a project rule — new files over 400 lines need a stated reason, over 600 must be split; split by concern (hooks, sub-components, columns/config tables, service helpers) not by line count. Backend pattern already exists (`organizations/service.ts` facade) and is now the stated precedent. Recorded the reasoning in Decisions.md.
+- Why: the largest files (`TaskDetailView.tsx` 1324, `ChatMessageCard.tsx` 1119, `Billing.tsx` 1040) are where features keep being appended, and they show up as thin weakly-connected communities in the knowledge graph — navigation degrades exactly where complexity is highest.
+- Tests: none (docs/rules change).
+- What's next: refactoring the existing >600-line files is its own task per file, not a side effect of feature work.
 
 ### 2026-10-03 — Task importer label support (import parity fix)
 

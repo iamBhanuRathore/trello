@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-03 — File Size Discipline: small modules by default
+
+**Context:** Feature work repeatedly landed in the largest existing component instead of a new sibling module — `TaskDetailView.tsx` (1324), `ChatMessageCard.tsx` (1119), `Billing.tsx` (1040) keep growing. Symptom is visible in the knowledge graph: those files form thin, weakly-connected communities, so the graph stops being a useful navigation index exactly where the code is most complex. Large files also inflate diff/review cost and make regressions hard to isolate.
+
+**Decision:** Adopt an explicit size budget as a hard project rule (now AGENTS.md §10). A new file over 400 lines needs a stated reason; over 600 lines must be split before the change is considered done. Splitting is by concern — hooks, sub-components, column/config tables, service helpers into sibling modules — not by arbitrary line count. The backend already demonstrates the pattern: `organizations/service.ts` is a 9-line re-export facade over `org-common` / `org-manage` / `org-members` / `org-invitations`.
+
+**Alternatives considered:** A hard line limit with no escape hatch (rejected — generated registries like `db/schema/index.ts` and `seedOrganization.ts` legitimately exceed it); leaving it as advisory style advice (rejected — this session's bug, an unguarded one-click delete in a 464-line page, was exactly the class of omission that survives in files nobody re-reads).
+
+**Consequences:** New work splits by default instead of appending. Existing files over budget are not retroactively rewritten — refactoring `TaskDetailView` or `db/schema` is its own task, not a side effect of an unrelated feature.
+
 ### 2026-10-03 — Task-list importer now honors per-task labels
 
 **Context:** Follow-up to the "missing tags" report: boards built through the structured-tasks importer always landed 100% tag-less — the schema had no labels field (`labelsCount: 0` hardcoded) while the Trello importer carried labels. Import parity gap, not a renderer bug.

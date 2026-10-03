@@ -62,7 +62,16 @@ Every page in `apps/dashboard` (and `apps/super-admin`) MUST be usable at all of
 - **Dialogs/sheets**: `w-full` with `max-w-*`, `max-h-[90vh]` scrollable bodies; side panes become overlays (`fixed inset-y-0 right-0`) below `2xl:` where the layout already does so.
 - **Verify by resizing**: before committing UI work, resize to 390px and 820px widths and confirm no horizontal overflow (`overflow-x` on `document.body`), no clipped primary actions, no wrapped-blob badges.
 
-## 10. Dialog Close Contract (STRICT — NO EXCEPTIONS)
+## 10. File Size Discipline (STRICT — NO EXCEPTIONS)
+
+- **Do not create large files until it is very necessary.** Default to small, single-responsibility modules. A new file over **400 lines** requires a stated reason; over **600 lines** requires splitting before the change is considered done.
+- **Split by concern, not by line count**: extract hooks, sub-components, columns/config tables, and service helpers into sibling modules (`components/`, `columns/`, `hooks/`) instead of letting one component grow into every state, query, mutation, and renderer for a page.
+- **Prefer editing over growing**: when adding a feature to an already-large file, decide explicitly whether the new code belongs in a new file. Appending to a 900-line component is a defect, not the path of least resistance.
+- **Data belongs in config, not JSX**: long static maps (permission descriptions, role metadata, category labels) live in a typed const or a shared-types module — never inline in a render function.
+- **Backend mirrors this**: `service.ts` files split into domain submodules behind a re-export facade (see `organizations/service.ts` → `org-common` / `org-manage` / `org-members` / `org-invitations`).
+- **Why**: oversized files defeat the knowledge-graph navigation in §1 (thin, weakly-connected communities), blow up diff/review cost, and make regressions hard to isolate — the largest files in this repo are the ones that keep producing defects.
+
+## 11. Dialog Close Contract (STRICT — NO EXCEPTIONS)
 
 - **One close path**: every dialog (Radix or hand-rolled portal) MUST close exclusively through `useDialogClose({ isOpen, onClose, ... })` (`apps/dashboard/src/hooks/useDialogClose.ts`) — X button → `requestClose`, backdrop → `handleOverlayClick`, Radix → `handleOpenChange`. Never wire `onClose`, `useEscapeKey`, or inline overlay checks directly.
 - **Why**: duplicate close gestures (double Esc listeners, overlay+button both firing, focus-strand shortcut refires) caused the recurring "close twice / reopens" bug class. `requestClose` is idempotent per open session; Esc is capture-phase so it can't double-fire with inner handlers; invoker focus restores automatically.
