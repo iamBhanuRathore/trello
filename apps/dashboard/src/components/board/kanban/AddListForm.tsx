@@ -70,7 +70,7 @@ export function AddListForm({
   if (!canCreateList) return null;
 
   return (
-    <div className="w-72 flex-shrink-0">
+    <div className="w-[85vw] max-w-72 sm:w-72 flex-shrink-0">
       {adding ? (
         <Card className="p-3">
           <Input

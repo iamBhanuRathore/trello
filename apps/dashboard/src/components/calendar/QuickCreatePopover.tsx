@@ -65,7 +65,7 @@ export const QuickCreatePopover: React.FC<{
     <div
       ref={boxRef}
       style={{ left: pos.left, top: pos.top }}
-      className="fixed z-50 w-80 rounded-2xl border border-border bg-popover shadow-2xl p-3.5 space-y-3 animate-in fade-in-50 zoom-in-95 duration-100"
+      className="fixed z-50 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-popover shadow-2xl p-3.5 space-y-3 animate-in fade-in-50 zoom-in-95 duration-100"
       role="dialog"
       aria-label="Create calendar entry"
     >

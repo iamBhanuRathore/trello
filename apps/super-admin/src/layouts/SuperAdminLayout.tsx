@@ -4,6 +4,8 @@ import { useAuthStore } from '../store/authStore';
 import { Button } from '@boardly/ui/button';
 import {
   Building2,
+  Menu,
+  X,
   Package,
   KanbanSquare,
   LogOut,
@@ -16,6 +18,14 @@ import {
 export const SuperAdminLayout: React.FC = () => {
   const { user, logout } = useAuthStore();
   const location = useLocation();
+  // The sidebar is hidden below md and there was no mobile alternative, so
+  // Tenants / Users / Plans were unreachable under 768px.
+  const [isNavOpen, setIsNavOpen] = React.useState(false);
+
+  // Close the drawer on navigation.
+  React.useEffect(() => {
+    setIsNavOpen(false);
+  }, [location.pathname]);
 
   const navItems = [
     { name: 'Platform Overview', path: '/', icon: LayoutDashboard },
@@ -28,13 +38,24 @@ export const SuperAdminLayout: React.FC = () => {
     <div className="flex h-screen w-full flex-col bg-[#09090b] text-foreground transition-colors overflow-hidden">
       {/* Top Header */}
       <header className="shrink-0 z-30 flex h-14 items-center gap-3 border-b border-border/80 bg-card/60 backdrop-blur-md px-4 sm:px-6 py-3 shadow-xs">
+        <button
+          type="button"
+          onClick={() => setIsNavOpen((v) => !v)}
+          aria-expanded={isNavOpen}
+          aria-label="Toggle navigation"
+          className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer"
+        >
+          {isNavOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+        </button>
         <div className="flex items-center gap-2">
           <Link to="/" className="flex items-center gap-2.5 font-semibold group">
             <div className="p-1.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 group-hover:scale-105 transition-transform">
               <KanbanSquare className="h-5 w-5" />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-base font-bold tracking-tight text-white">Boardly Super Admin</span>
+              <span className="text-base font-bold tracking-tight text-white">
+                Boardly Super Admin
+              </span>
               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
                 PLATFORM OPS
               </span>
@@ -76,6 +97,35 @@ export const SuperAdminLayout: React.FC = () => {
         </div>
       </header>
 
+      {/* Mobile nav drawer — the sidebar is hidden below md */}
+      {isNavOpen && (
+        <div className="md:hidden shrink-0 border-b border-border/80 bg-card/40 backdrop-blur-md">
+          <nav className="flex flex-col gap-1 p-3" aria-label="Platform">
+            {navItems.map((item) => {
+              const isActive =
+                item.path === '/'
+                  ? location.pathname === '/'
+                  : location.pathname.startsWith(item.path);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-purple-500/10 text-purple-400'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {item.name}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
       {/* Main Content Layout */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left Nav Sidebar */}
@@ -102,7 +152,9 @@ export const SuperAdminLayout: React.FC = () => {
                           : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
                       }`}
                     >
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-purple-400' : 'text-muted-foreground'}`} />
+                      <Icon
+                        className={`w-4 h-4 ${isActive ? 'text-purple-400' : 'text-muted-foreground'}`}
+                      />
                       <span>{item.name}</span>
                     </NavLink>
                   );
@@ -117,7 +169,8 @@ export const SuperAdminLayout: React.FC = () => {
                 <span>Dedicated DB Routing</span>
               </div>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Configure enterprise tenant database connection strings and isolated PostgreSQL schemas.
+                Configure enterprise tenant database connection strings and isolated PostgreSQL
+                schemas.
               </p>
             </div>
           </div>

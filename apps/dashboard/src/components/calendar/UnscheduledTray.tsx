@@ -20,7 +20,12 @@ export function UnscheduledTray({
   const hasDueDates = (feed?.dueDates || []).length > 0;
 
   return (
-    <aside className="w-64 shrink-0 border-l border-border bg-card/40 flex flex-col min-h-0">
+    <aside
+      className="shrink-0 border-l border-border bg-card/40 flex flex-col min-h-0
+                 w-64
+                 max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:w-[min(20rem,85vw)]
+                 max-lg:shadow-2xl"
+    >
       <div className="px-3 py-2.5 border-b border-border flex items-center justify-between shrink-0">
         <p className="text-xs font-bold">Unscheduled</p>
         <button

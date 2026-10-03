@@ -231,7 +231,7 @@ export const ListColumn = memo(function ListColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`w-72 border rounded-2xl p-3 flex flex-col max-h-full flex-shrink-0 shadow-xs backdrop-blur-sm transition-colors duration-150 ${
+      className={`w-[85vw] max-w-72 sm:w-72 border rounded-2xl p-3 flex flex-col max-h-full flex-shrink-0 shadow-xs backdrop-blur-sm transition-colors duration-150 ${
         isOver && isDraggingActive
           ? 'bg-muted/70 border-primary/50 ring-2 ring-primary/20'
           : 'bg-muted/40 border-border/70'

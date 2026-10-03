@@ -123,7 +123,7 @@ export const EventPopover: React.FC<{
     <div
       ref={ref}
       style={{ left: pos.left, top: pos.top }}
-      className="fixed z-50 w-72 rounded-2xl border border-border bg-popover shadow-2xl p-3.5 space-y-2.5 animate-in fade-in-50 zoom-in-95 duration-100"
+      className="fixed z-50 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-popover shadow-2xl p-3.5 space-y-2.5 animate-in fade-in-50 zoom-in-95 duration-100"
       role="dialog"
       aria-label="Event details"
     >

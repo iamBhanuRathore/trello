@@ -477,7 +477,7 @@ export function BoardView() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="w-72 shrink-0 rounded-xl border border-border/60 bg-card/40 p-3 space-y-3 animate-pulse"
+                className="w-[85vw] max-w-72 sm:w-72 shrink-0 rounded-xl border border-border/60 bg-card/40 p-3 space-y-3 animate-pulse"
               >
                 <div className="flex items-center justify-between">
                   <div className="h-4 w-24 rounded bg-muted" />
@@ -566,7 +566,7 @@ export function BoardView() {
 
             <DragOverlay dropAnimation={dropAnimation}>
               {activeCard ? (
-                <div className="w-72 pointer-events-none">
+                <div className="w-[85vw] max-w-72 sm:w-72 pointer-events-none">
                   <KanbanCardView card={activeCard} isOverlay />
                 </div>
               ) : null}

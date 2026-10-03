@@ -15,7 +15,7 @@ export function WorkspacesOverview({
   isLoading = false,
 }: WorkspacesOverviewProps) {
   return (
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
       <div className="p-4 rounded-xl border border-border/80 bg-card/60 backdrop-blur-xs flex items-center gap-3">
         <div className="p-2.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
           <Briefcase className="w-5 h-5" />

@@ -202,7 +202,7 @@ export const TaskMetadataGrid: React.FC<TaskMetadataGridProps> = ({
             {showAssigneePicker && orgId && (
               <div
                 ref={assigneePickerRef}
-                className="absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96"
+                className="absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96 max-w-[calc(100vw-2rem)]"
               >
                 <MemberPicker
                   orgId={orgId}
@@ -480,7 +480,7 @@ export const TaskMetadataGrid: React.FC<TaskMetadataGridProps> = ({
           {showParticipantPicker && orgId && (
             <div
               ref={participantPickerRef}
-              className="absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96"
+              className="absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96 max-w-[calc(100vw-2rem)]"
             >
               <MemberPicker
                 orgId={orgId}
@@ -570,7 +570,7 @@ export const TaskMetadataGrid: React.FC<TaskMetadataGridProps> = ({
           {showWatcherPicker && orgId && (
             <div
               ref={watcherPickerRef}
-              className="absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96"
+              className="absolute z-50 top-full left-0 mt-1.5 w-80 sm:w-96 max-w-[calc(100vw-2rem)]"
             >
               <MemberPicker
                 orgId={orgId}

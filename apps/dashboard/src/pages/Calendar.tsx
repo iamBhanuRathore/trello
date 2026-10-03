@@ -36,7 +36,11 @@ export function Calendar() {
   const [cursor, setCursor] = useState(() => new Date());
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [placeTaskId, setPlaceTaskId] = useState<string | null>(null);
-  const [isTrayOpen, setIsTrayOpen] = useState(true);
+  // Below lg the tray is an overlay, so opening it by default would bury the
+  // calendar behind it on first paint. The header toggle always reopens it.
+  const [isTrayOpen, setIsTrayOpen] = useState(
+    () => typeof window === 'undefined' || window.matchMedia('(min-width: 1024px)').matches
+  );
   const [selection, setSelection] = useState<{
     selection: CalendarSelection;
     anchor: { x: number; y: number };
@@ -472,12 +476,22 @@ export function Calendar() {
 
         {/* Unscheduled tray */}
         {isTrayOpen && (
-          <UnscheduledTray
-            feed={feed}
-            placeTaskId={placeTaskId}
-            onTogglePlaceTask={(id) => setPlaceTaskId((prev) => (prev === id ? null : id))}
-            onClose={() => setIsTrayOpen(false)}
-          />
+          <>
+            {/* Below lg the tray is an overlay; without a scrim, taps land on the
+                calendar behind it and the panel reads as part of the grid. */}
+            <button
+              type="button"
+              aria-label="Close unscheduled panel"
+              onClick={() => setIsTrayOpen(false)}
+              className="hidden max-lg:fixed max-lg:inset-0 max-lg:z-30 max-lg:block max-lg:cursor-default"
+            />
+            <UnscheduledTray
+              feed={feed}
+              placeTaskId={placeTaskId}
+              onTogglePlaceTask={(id) => setPlaceTaskId((prev) => (prev === id ? null : id))}
+              onClose={() => setIsTrayOpen(false)}
+            />
+          </>
         )}
       </div>
 

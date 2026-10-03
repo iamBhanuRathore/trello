@@ -253,7 +253,7 @@ export function MentionCommentBox({
       {showMentionMenu && (
         <div
           ref={menuRef}
-          className="absolute z-50 bottom-full left-0 mb-1.5 w-72 rounded-xl border border-border bg-popover/95 backdrop-blur-md shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+          className="absolute z-50 bottom-full left-0 mb-1.5 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-popover/95 backdrop-blur-md shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
         >
           <div className="px-3 py-1.5 bg-muted/60 border-b border-border text-[11px] font-semibold text-muted-foreground flex items-center justify-between">
             <span className="flex items-center gap-1">
