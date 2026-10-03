@@ -498,14 +498,22 @@ export async function acceptInvitation(
     }
   }
 
+  // Hash BEFORE opening the transaction: bcrypt at cost 10 is ~100ms of pure CPU,
+  // and it used to run inside db.transaction(), pinning a pooled connection for
+  // the duration of a deliberately slow operation.
+  let passwordHash: string | null = null;
+  if (!hasExistingPassword && password) {
+    passwordHash = await Bun.password.hash(password, {
+      algorithm: 'bcrypt',
+      cost: 10,
+    });
+  }
+
   await db.transaction(async (tx) => {
     const updateData: Record<string, any> = { updatedAt: new Date() };
     if (name?.trim() && name.trim() !== user.name) updateData.name = name.trim();
-    if (!hasExistingPassword && password) {
-      updateData.passwordHash = await Bun.password.hash(password, {
-        algorithm: 'bcrypt',
-        cost: 10,
-      });
+    if (passwordHash) {
+      updateData.passwordHash = passwordHash;
     }
     await tx.update(users).set(updateData).where(eq(users.id, user.id));
 

@@ -425,6 +425,41 @@ export async function increaseSeats(
   additionalSeats: number,
   idempotencyKey: string
 ) {
+  // Read the subscription BEFORE opening a transaction.
+  //
+  // The Stripe call is network I/O with a 10s timeout. It used to run inside
+  // db.transaction() while holding a SELECT ... FOR UPDATE row lock and one of
+  // the five pooled connections, so a slow Stripe response pinned the row and
+  // blocked every concurrent billing request for the org. The transaction below
+  // now only contains the two writes, and re-validates the quantity it was
+  // given so a concurrent change cannot be silently overwritten.
+  const [pre] = await db
+    .select({
+      id: subscriptions.id,
+      seatCount: subscriptions.seatCount,
+      stripeSubscriptionId: subscriptions.stripeSubscriptionId,
+      stripeSubscriptionItemId: subscriptions.stripeSubscriptionItemId,
+    })
+    .from(subscriptions)
+    .where(eq(subscriptions.organizationId, orgId))
+    .limit(1);
+
+  if (!pre) {
+    throw new Error('Subscription not found');
+  }
+
+  const newQuantity = (pre.seatCount ?? 1) + additionalSeats;
+
+  if (pre.stripeSubscriptionId && pre.stripeSubscriptionItemId && env.STRIPE_SECRET_KEY) {
+    await updateSubscriptionSeatQuantity({
+      subscriptionId: pre.stripeSubscriptionId,
+      subscriptionItemId: pre.stripeSubscriptionItemId,
+      newQuantity,
+      prorationBehavior: 'create_prorations',
+      idempotencyKey,
+    });
+  }
+
   return await db.transaction(async (tx) => {
     const [sub] = await tx
       .select()
@@ -436,8 +471,11 @@ export async function increaseSeats(
       throw new Error('Subscription not found');
     }
 
-    const currentQuantity = sub.seatCount ?? 1;
-    const newQuantity = currentQuantity + additionalSeats;
+    if ((sub.seatCount ?? 1) + additionalSeats !== newQuantity) {
+      throw new Error(
+        'Subscription seat count changed while the request was in flight — please retry.'
+      );
+    }
 
     // Record seat change request
     await tx
@@ -450,17 +488,6 @@ export async function increaseSeats(
         status: SeatChangeStatus.Pending,
       })
       .onConflictDoNothing();
-
-    // Call Stripe if connected
-    if (sub.stripeSubscriptionId && sub.stripeSubscriptionItemId && env.STRIPE_SECRET_KEY) {
-      await updateSubscriptionSeatQuantity({
-        subscriptionId: sub.stripeSubscriptionId,
-        subscriptionItemId: sub.stripeSubscriptionItemId,
-        newQuantity,
-        prorationBehavior: 'create_prorations',
-        idempotencyKey,
-      });
-    }
 
     // Set pendingSeatChange flag (seatCount will be updated by webhook for strict single-source-of-truth)
     await tx
@@ -485,6 +512,51 @@ export async function scheduleSeatDecrease(
   targetSeatCount: number,
   idempotencyKey: string
 ) {
+  // Read + validate + call Stripe BEFORE opening a transaction — see the note on
+  // increaseSeats above. The member-count gate needs no row lock, and the Stripe
+  // schedule call must not hold one.
+  const [pre] = await db
+    .select({
+      id: subscriptions.id,
+      currentPeriodEnd: subscriptions.currentPeriodEnd,
+      stripeSubscriptionId: subscriptions.stripeSubscriptionId,
+      stripeSubscriptionItemId: subscriptions.stripeSubscriptionItemId,
+    })
+    .from(subscriptions)
+    .where(eq(subscriptions.organizationId, orgId))
+    .limit(1);
+
+  if (!pre) {
+    throw new Error('Subscription not found');
+  }
+
+  const activeCount = await db
+    .select({ count: count() })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, orgId),
+        eq(organizationMembers.status, 'active'),
+        sql`${organizationMembers.role} IN ('org_owner', 'org_admin', 'billing_manager', 'workspace_admin', 'member')`
+      )
+    );
+  const activeBillable = Number(activeCount[0]?.count ?? 0);
+
+  if (targetSeatCount < activeBillable) {
+    throw new Error(
+      `Cannot downsize to ${targetSeatCount} seats. You currently have ${activeBillable} active billable members. Deactivate members first.`
+    );
+  }
+
+  if (pre.stripeSubscriptionId && pre.stripeSubscriptionItemId && env.STRIPE_SECRET_KEY) {
+    await scheduleSubscriptionSeatDecrease({
+      subscriptionId: pre.stripeSubscriptionId,
+      subscriptionItemId: pre.stripeSubscriptionItemId,
+      newQuantity: targetSeatCount,
+      idempotencyKey,
+    });
+  }
+
   return await db.transaction(async (tx) => {
     const [sub] = await tx
       .select()
@@ -494,25 +566,6 @@ export async function scheduleSeatDecrease(
 
     if (!sub) {
       throw new Error('Subscription not found');
-    }
-
-    // Check that target seat count is >= active billable members
-    const activeCount = await tx
-      .select({ count: count() })
-      .from(organizationMembers)
-      .where(
-        and(
-          eq(organizationMembers.organizationId, orgId),
-          eq(organizationMembers.status, 'active'),
-          sql`${organizationMembers.role} IN ('org_owner', 'org_admin', 'billing_manager', 'workspace_admin', 'member')`
-        )
-      );
-    const activeBillable = Number(activeCount[0]?.count ?? 0);
-
-    if (targetSeatCount < activeBillable) {
-      throw new Error(
-        `Cannot downsize to ${targetSeatCount} seats. You currently have ${activeBillable} active billable members. Deactivate members first.`
-      );
     }
 
     // Record seat change request
@@ -526,16 +579,6 @@ export async function scheduleSeatDecrease(
         status: SeatChangeStatus.Pending,
       })
       .onConflictDoNothing();
-
-    // Call Stripe Schedule
-    if (sub.stripeSubscriptionId && sub.stripeSubscriptionItemId && env.STRIPE_SECRET_KEY) {
-      await scheduleSubscriptionSeatDecrease({
-        subscriptionId: sub.stripeSubscriptionId,
-        subscriptionItemId: sub.stripeSubscriptionItemId,
-        newQuantity: targetSeatCount,
-        idempotencyKey,
-      });
-    }
 
     await tx
       .update(subscriptions)
@@ -555,47 +598,68 @@ export async function scheduleSeatDecrease(
 }
 
 // ─── Cancellation Gate ────────────────────────────────────────────────────────
-export async function requestSubscriptionCancellation(orgId: string) {
+/** Declared explicitly: the gate short-circuits before the transaction, so the
+ * inferred return type is a union the callers would otherwise have to narrow. */
+export type CancellationResult =
+  | {
+      allowed: false;
+      activeBillableMembers: number;
+      maxAllowedForFree: number;
+      message: string;
+    }
+  | {
+      allowed: true;
+      cancelAtPeriodEnd: boolean;
+      currentPeriodEnd: Date | null;
+      message: string;
+    };
+
+export async function requestSubscriptionCancellation(orgId: string): Promise<CancellationResult> {
+  const [sub] = await db
+    .select({
+      id: subscriptions.id,
+      currentPeriodEnd: subscriptions.currentPeriodEnd,
+      stripeSubscriptionId: subscriptions.stripeSubscriptionId,
+    })
+    .from(subscriptions)
+    .where(eq(subscriptions.organizationId, orgId))
+    .limit(1);
+
+  if (!sub) {
+    throw new Error('Subscription not found');
+  }
+
+  // Check active billable members
+  const activeCount = await db
+    .select({ count: count() })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.organizationId, orgId),
+        eq(organizationMembers.status, 'active'),
+        sql`${organizationMembers.role} IN ('org_owner', 'org_admin', 'billing_manager', 'workspace_admin', 'member')`
+      )
+    );
+  const activeBillable = Number(activeCount[0]?.count ?? 0);
+
+  if (activeBillable > 5) {
+    return {
+      allowed: false,
+      activeBillableMembers: activeBillable,
+      maxAllowedForFree: 5,
+      message: `You currently have ${activeBillable} active billable members. The Free plan supports a maximum of 5 members. Please deactivate or remove members down to 5 before canceling.`,
+    };
+  }
+
+  // Stripe call outside the transaction — see increaseSeats.
+  if (sub.stripeSubscriptionId && env.STRIPE_SECRET_KEY) {
+    const s = stripe();
+    await s.subscriptions.update(sub.stripeSubscriptionId, {
+      cancel_at_period_end: true,
+    });
+  }
+
   return await db.transaction(async (tx) => {
-    const [sub] = await tx
-      .select()
-      .from(subscriptions)
-      .where(eq(subscriptions.organizationId, orgId))
-      .for('update');
-
-    if (!sub) {
-      throw new Error('Subscription not found');
-    }
-
-    // Check active billable members
-    const activeCount = await tx
-      .select({ count: count() })
-      .from(organizationMembers)
-      .where(
-        and(
-          eq(organizationMembers.organizationId, orgId),
-          eq(organizationMembers.status, 'active'),
-          sql`${organizationMembers.role} IN ('org_owner', 'org_admin', 'billing_manager', 'workspace_admin', 'member')`
-        )
-      );
-    const activeBillable = Number(activeCount[0]?.count ?? 0);
-
-    if (activeBillable > 5) {
-      return {
-        allowed: false,
-        activeBillableMembers: activeBillable,
-        maxAllowedForFree: 5,
-        message: `You currently have ${activeBillable} active billable members. The Free plan supports a maximum of 5 members. Please deactivate or remove members down to 5 before canceling.`,
-      };
-    }
-
-    if (sub.stripeSubscriptionId && env.STRIPE_SECRET_KEY) {
-      const s = stripe();
-      await s.subscriptions.update(sub.stripeSubscriptionId, {
-        cancel_at_period_end: true,
-      });
-    }
-
     await tx
       .update(subscriptions)
       .set({

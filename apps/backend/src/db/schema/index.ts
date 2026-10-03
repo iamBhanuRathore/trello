@@ -1046,29 +1046,41 @@ export const savedSearches = pgTable(
   (t) => [index('saved_searches_user_idx').on(t.userId)]
 );
 
-export const webhooks = pgTable('webhooks', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  url: varchar('url', { length: 2048 }).notNull(),
-  events: jsonb('events').notNull(),
-  secret: varchar('secret', { length: 255 }).notNull(),
-  isEnabled: boolean('is_enabled').notNull().default(true),
-  ...timestamps,
-});
+export const webhooks = pgTable(
+  'webhooks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    url: varchar('url', { length: 2048 }).notNull(),
+    events: jsonb('events').notNull(),
+    secret: varchar('secret', { length: 255 }).notNull(),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    // The dispatcher looks up enabled webhooks on every internal domain event.
+    index('webhooks_org_enabled_idx').on(t.organizationId, t.isEnabled),
+    index('webhooks_org_created_idx').on(t.organizationId, t.createdAt),
+  ]
+);
 
-export const integrations = pgTable('integrations', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  organizationId: uuid('organization_id')
-    .notNull()
-    .references(() => organizations.id),
-  provider: integrationProviderEnum('provider').notNull(),
-  accessToken: varchar('access_token', { length: 2048 }),
-  refreshToken: varchar('refresh_token', { length: 2048 }),
-  metadata: jsonb('metadata').default('{}'),
-  ...timestamps,
-});
+export const integrations = pgTable(
+  'integrations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id),
+    provider: integrationProviderEnum('provider').notNull(),
+    accessToken: varchar('access_token', { length: 2048 }),
+    refreshToken: varchar('refresh_token', { length: 2048 }),
+    metadata: jsonb('metadata').default('{}'),
+    ...timestamps,
+  },
+  (t) => [index('integrations_org_provider_idx').on(t.organizationId, t.provider)]
+);
 
 // ─── Card Events (append-only for reporting) ──────────────────────────────────
 export const cardEvents = pgTable(

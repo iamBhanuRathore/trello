@@ -142,20 +142,22 @@ export async function acceptInvitation(
 
   const normalizedEmail = invitation.email.toLowerCase().trim();
 
+  // Hash BEFORE opening the transaction: bcrypt at cost 12 is ~300ms of CPU,
+  // and it used to hold a pooled connection for the whole hash.
+  let passwordHash: string | undefined;
+  if (password && password.trim().length > 0) {
+    if (password.length < 8) {
+      throw httpError(400, 'Password must be at least 8 characters long.');
+    }
+    passwordHash = await Bun.password.hash(password, { algorithm: 'bcrypt', cost: 12 });
+  }
+
   const user = await db.transaction(async (tx) => {
     let [existingUser] = await tx
       .select()
       .from(users)
       .where(and(eq(users.email, normalizedEmail), isNull(users.deletedAt)))
       .limit(1);
-
-    let passwordHash: string | undefined;
-    if (password && password.trim().length > 0) {
-      if (password.length < 8) {
-        throw httpError(400, 'Password must be at least 8 characters long.');
-      }
-      passwordHash = await Bun.password.hash(password, { algorithm: 'bcrypt', cost: 12 });
-    }
 
     if (!existingUser) {
       if (!passwordHash) {

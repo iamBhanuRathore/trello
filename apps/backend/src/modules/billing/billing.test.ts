@@ -10,6 +10,8 @@ import {
   checkAndReserveSeatSlot,
   getBillingOverview,
   requestSubscriptionCancellation,
+  increaseSeats,
+  scheduleSeatDecrease,
   processStripeWebhook,
 } from './service';
 import { inviteMember, deactivateMember, acceptInvitation } from '../organizations/service';
@@ -170,7 +172,91 @@ describe('Billing & Per-Head Seat Engine', () => {
     // Attempt cancellation with only 1 member (owner) -> allowed!
     const cancelRes1 = await requestSubscriptionCancellation(organization.id);
     expect(cancelRes1.allowed).toBe(true);
-    expect(cancelRes1.cancelAtPeriodEnd).toBe(true);
+    if (cancelRes1.allowed) {
+      expect(cancelRes1.cancelAtPeriodEnd).toBe(true);
+    }
+  });
+
+  // The Stripe call was moved OUT of db.transaction() so a slow Stripe response
+  // no longer pins a pooled connection and a SELECT ... FOR UPDATE row lock.
+  // These cover the resulting two-phase flow: record the intent, flag the
+  // subscription pending, and refuse to overwrite a concurrent change.
+  it('should record a seat increase intent and flag the subscription pending', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { organization } = await signUp(db, {
+      name: 'Seat Increase Owner',
+      email: `seat_inc_${id}@test.com`,
+      password: 'password123',
+      orgName: `Seat Inc Org ${id}`,
+      orgSlug: `seat-inc-${id}`,
+    });
+
+    await db
+      .update(schema.subscriptions)
+      .set({ seatCount: 4 })
+      .where(eq(schema.subscriptions.organizationId, organization.id));
+
+    const key = `inc_${id}`;
+    const res = await increaseSeats(organization.id, 3, key);
+    expect(res.success).toBe(true);
+    expect(res.pendingQuantity).toBe(7);
+
+    const [row] = await db
+      .select()
+      .from(schema.seatChangeRequests)
+      .where(eq(schema.seatChangeRequests.stripeIdempotencyKey, key));
+    expect(row).toBeDefined();
+    expect(row!.requestedQuantity).toBe(7);
+    expect(row!.direction).toBe('increase');
+    expect(row!.status).toBe('pending');
+
+    const [sub] = await db
+      .select({ pendingSeatChange: schema.subscriptions.pendingSeatChange })
+      .from(schema.subscriptions)
+      .where(eq(schema.subscriptions.organizationId, organization.id));
+    expect(sub!.pendingSeatChange).toBe(true);
+
+    // seatCount itself is owned by the webhook, not by this path.
+    const [unchanged] = await db
+      .select({ seatCount: schema.subscriptions.seatCount })
+      .from(schema.subscriptions)
+      .where(eq(schema.subscriptions.organizationId, organization.id));
+    expect(unchanged!.seatCount).toBe(4);
+  });
+
+  it('should schedule a seat decrease and reject one below the active billable count', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { organization, user: owner } = await signUp(db, {
+      name: 'Seat Decrease Owner',
+      email: `seat_dec_${id}@test.com`,
+      password: 'password123',
+      orgName: `Seat Dec Org ${id}`,
+      orgSlug: `seat-dec-${id}`,
+    });
+
+    await db
+      .update(schema.subscriptions)
+      .set({ seatCount: 10 })
+      .where(eq(schema.subscriptions.organizationId, organization.id));
+
+    // The owner is the only active billable member, so 1 seat is legal.
+    const key = `dec_${id}`;
+    const res = await scheduleSeatDecrease(organization.id, 1, key);
+    expect(res.success).toBe(true);
+    expect(res.scheduledQuantity).toBe(1);
+
+    const [row] = await db
+      .select()
+      .from(schema.seatChangeRequests)
+      .where(eq(schema.seatChangeRequests.stripeIdempotencyKey, key));
+    expect(row).toBeDefined();
+    expect(row!.direction).toBe('decrease');
+
+    // Downsize to 0 while 1 member is active must be refused.
+    await expect(scheduleSeatDecrease(organization.id, 0, `dec0_${id}`)).rejects.toThrow(
+      /Cannot downsize/
+    );
+    void owner;
   });
 
   it('should process webhook events idempotently', async () => {
