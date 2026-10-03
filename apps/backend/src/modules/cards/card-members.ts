@@ -10,7 +10,6 @@ import {
   cardViews,
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
-import { bumpCardAndBoard } from '../../lib/cache';
 import { eventBus } from '../../lib/event-bus';
 import {
   isValidUuid,
@@ -19,6 +18,7 @@ import {
   getBoardIdForCard,
   logCardHistory,
   getUserDisplayName,
+  bumpForCard,
 } from './card-helpers';
 
 // ─── Assignees (Single Assignee Model) ─────────────────────────────────────────
@@ -67,7 +67,10 @@ export async function assignUserToCard(
       });
     }
   }
-  await bumpCardAndBoard(cardId, boardId ?? null);
+  // bumpForCard (not bumpCardAndBoard) so a parent card's embedded
+  // subtask list is invalidated too — assignees/participants/watchers are
+  // part of the parent's cached getCard payload.
+  await bumpForCard(db, cardId, boardId ?? null);
   return { success: true };
 }
 
@@ -93,7 +96,10 @@ export async function removeUserFromCard(
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.unassigned', { cardId, userId });
   }
-  await bumpCardAndBoard(cardId, boardId ?? null);
+  // bumpForCard (not bumpCardAndBoard) so a parent card's embedded
+  // subtask list is invalidated too — assignees/participants/watchers are
+  // part of the parent's cached getCard payload.
+  await bumpForCard(db, cardId, boardId ?? null);
   return { success: true };
 }
 
@@ -141,7 +147,10 @@ export async function addParticipantToCard(
       });
     }
   }
-  await bumpCardAndBoard(cardId, boardId ?? null);
+  // bumpForCard (not bumpCardAndBoard) so a parent card's embedded
+  // subtask list is invalidated too — assignees/participants/watchers are
+  // part of the parent's cached getCard payload.
+  await bumpForCard(db, cardId, boardId ?? null);
   return { success: true };
 }
 
@@ -167,7 +176,10 @@ export async function removeParticipantFromCard(
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.participant_removed', { cardId, userId });
   }
-  await bumpCardAndBoard(cardId, boardId ?? null);
+  // bumpForCard (not bumpCardAndBoard) so a parent card's embedded
+  // subtask list is invalidated too — assignees/participants/watchers are
+  // part of the parent's cached getCard payload.
+  await bumpForCard(db, cardId, boardId ?? null);
   return { success: true };
 }
 
@@ -229,7 +241,10 @@ export async function watchCard(
       });
     }
   }
-  await bumpCardAndBoard(cardId, boardId ?? null);
+  // bumpForCard (not bumpCardAndBoard) so a parent card's embedded
+  // subtask list is invalidated too — assignees/participants/watchers are
+  // part of the parent's cached getCard payload.
+  await bumpForCard(db, cardId, boardId ?? null);
   return { success: true, watched: true };
 }
 
@@ -269,7 +284,10 @@ export async function unwatchCard(
       });
     }
   }
-  await bumpCardAndBoard(cardId, boardId ?? null);
+  // bumpForCard (not bumpCardAndBoard) so a parent card's embedded
+  // subtask list is invalidated too — assignees/participants/watchers are
+  // part of the parent's cached getCard payload.
+  await bumpForCard(db, cardId, boardId ?? null);
   return { success: true, watched: false };
 }
 

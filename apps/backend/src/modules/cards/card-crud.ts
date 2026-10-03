@@ -267,6 +267,13 @@ export async function createCard(db: Database, organizationId: string, input: Cr
   }
   // Subtask creation must invalidate the parent card modal (subtasksTotal/Done cached under cv).
   if (input.parentCardId) {
+    // Maintain the denormalised counter getCard reads. It was only ever bumped
+    // in the cache, never in the row, so a subtask created through the normal
+    // API left the parent's subtasksTotal at 0.
+    await db
+      .update(cards)
+      .set({ subtasksTotal: sql`${cards.subtasksTotal} + 1` })
+      .where(and(eq(cards.id, input.parentCardId), eq(cards.organizationId, organizationId)));
     await bumpForCard(db, input.parentCardId);
   }
   return card;
@@ -838,6 +845,14 @@ export async function deleteCard(db: Database, id: string, organizationId: strin
   if (!card) throw httpError(404, 'Card not found');
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.deleted', { cardId: id });
+  }
+  // Keep the parent's denormalised subtask counter truthful.
+  if (card.parentCardId) {
+    await db
+      .update(cards)
+      .set({ subtasksTotal: sql`GREATEST(0, ${cards.subtasksTotal} - 1)` })
+      .where(and(eq(cards.id, card.parentCardId), eq(cards.organizationId, organizationId)));
+    await bumpCardCache(card.parentCardId);
   }
   await bumpCardAndBoard(id, boardId ?? null);
   return { success: true, id };

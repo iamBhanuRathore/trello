@@ -73,7 +73,14 @@ export async function moveCard(
   // 409/404 (no history written), and only the winning writer logs — so the
   // recorded "from" is always a list the card actually left.
   const [previous] = await db
-    .select({ listId: cards.listId, listName: lists.name })
+    .select({
+      listId: cards.listId,
+      listName: lists.name,
+      // Source board, captured BEFORE the write. After the move the card's board
+      // resolves to the destination, so reading it later cannot tell us which
+      // board needs invalidating.
+      sourceBoardId: lists.boardId,
+    })
     .from(cards)
     .leftJoin(lists, eq(lists.id, cards.listId))
     .where(and(eq(cards.id, id), eq(cards.organizationId, organizationId)))
@@ -125,10 +132,20 @@ export async function moveCard(
       actorId: actorId || 'system',
       organizationId,
     });
-    // New board always bumped; old board (if different) via cached card->board map.
     await bumpBoardCache(boardId);
   }
-  await bumpForCard(db, id);
+
+  // A cross-board move must invalidate BOTH boards. The destination is known
+  // now; the source was captured before the write. Previously the source relied
+  // on the cached card->board map, which may hold the pre-move board, a stale
+  // board, or nothing at all — leaving the source board's list stale for viewers.
+  const sourceBoardId = previous?.sourceBoardId ?? null;
+  if (sourceBoardId && sourceBoardId !== boardId) {
+    await bumpBoardCache(sourceBoardId);
+  }
+
+  // Pin the destination board so bumpForCard cannot resolve a stale one.
+  await bumpForCard(db, id, boardId ?? null);
   // Fractional positions lose precision after ~20 repeated midpoint inserts.
   // One cheap aggregate per move detects crowding; rewrite is transactional.
   await maybeRebalanceList(db, newListId).catch(() => {});
@@ -189,8 +206,16 @@ export async function archiveCard(
     });
   }
   await bumpCardAndBoard(id, boardId ?? null);
-  // Subtasks are embedded in the parent's cached payload — bump it too.
-  if (card.parentCardId) await bumpCardCache(card.parentCardId);
+  // Subtasks are embedded in the parent's cached payload — bump it too, and keep
+  // the parent's denormalised counter in step: getCard's subtask query excludes
+  // archived cards, so archiving a subtask decrements subtasksTotal.
+  if (card.parentCardId) {
+    await db
+      .update(cards)
+      .set({ subtasksTotal: sql`GREATEST(0, ${cards.subtasksTotal} - 1)` })
+      .where(and(eq(cards.id, card.parentCardId), eq(cards.organizationId, organizationId)));
+    await bumpCardCache(card.parentCardId);
+  }
   if (actorId) {
     const projectId = await getProjectIdForCard(db, id, organizationId).catch(() => null);
     if (projectId) {

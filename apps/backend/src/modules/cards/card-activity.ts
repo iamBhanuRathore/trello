@@ -12,7 +12,6 @@ import {
 import { httpError } from '../organizations/service';
 import { clampLimit } from '../../lib/pagination';
 import { eventBus } from '../../lib/event-bus';
-import { bumpCardAndBoard } from '../../lib/cache';
 import { verifyCardAccess, getBoardIdForCard, bumpForCard } from './card-helpers';
 
 // ─── Comments ─────────────────────────────────────────────────────────────────
@@ -232,7 +231,8 @@ export async function updateComment(
     });
   }
 
-  await bumpCardAndBoard(comment.cardId, boardId ?? null);
+  // Comments on a subtask appear in the parent's cached payload.
+  await bumpForCard(db, comment.cardId, boardId ?? null);
   return updated;
 }
 
@@ -300,7 +300,8 @@ export async function deleteComment(
     });
   }
 
-  await bumpCardAndBoard(comment.cardId, boardId ?? null);
+  // Comments on a subtask appear in the parent's cached payload.
+  await bumpForCard(db, comment.cardId, boardId ?? null);
   return { success: true, id: commentId };
 }
 
