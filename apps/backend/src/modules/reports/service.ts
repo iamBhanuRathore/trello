@@ -136,9 +136,13 @@ export async function getProjectSummaryReport(db: Database, projectId: string, o
       .innerJoin(users, eq(cardAssignees.userId, users.id))
       .where(inArray(cardAssignees.cardId, cardIds));
 
+    // Map lookup instead of `projectCards.find(...)` inside the loop — that was
+    // O(assignees x cards) on every workload report.
+    const cardById = new Map(projectCards.map((c) => [c.card.id, c.card]));
+
     for (const item of assignees) {
-      const cardItem = projectCards.find((c) => c.card.id === item.cardId);
-      const points = cardItem?.card.storyPoints || 0;
+      const card = cardById.get(item.cardId);
+      const points = card?.storyPoints || 0;
 
       if (!assigneeWorkload[item.user.id]) {
         assigneeWorkload[item.user.id] = {
@@ -429,6 +433,11 @@ export async function getBoardSummaryReport(db: Database, boardId: string, orgId
     stageCategories[cat] = (stageCategories[cat] || 0) + 1;
   }
 
+  const boardCardsByList = new Map<string, number>();
+  for (const { card } of boardCards) {
+    boardCardsByList.set(card.listId, (boardCardsByList.get(card.listId) ?? 0) + 1);
+  }
+
   return {
     board: {
       id: board.id,
@@ -444,7 +453,8 @@ export async function getBoardSummaryReport(db: Database, boardId: string, orgId
     lists: boardLists.map((l) => ({
       id: l.id,
       name: l.name,
-      cardsCount: boardCards.filter((c) => c.card.listId === l.id).length,
+      // Grouped once instead of re-filtering every card row per list.
+      cardsCount: boardCardsByList.get(l.id) ?? 0,
     })),
   };
 }
@@ -551,26 +561,36 @@ export async function getLeadAndCycleTime(db: Database, projectId: string, orgId
   const projectBoards = await db.select().from(boards).where(eq(boards.projectId, projectId));
 
   const boardIds = projectBoards.map((b) => b.id);
-  let completedCards: (typeof cards.$inferSelect)[] = [];
+  // Only the four columns the lead/cycle-time maths below reads.
+  let completedCards: { id: string; title: string; createdAt: Date; updatedAt: Date }[] = [];
 
   if (boardIds.length > 0) {
     const projectLists = await db.select().from(lists).where(inArray(lists.boardId, boardIds));
 
     const listIds = projectLists.map((l) => l.id);
     if (listIds.length > 0) {
-      const allCards = await db
-        .select({ card: cards, stage: stages })
+      // Push the "done" filter into SQL and select only the four columns the
+      // lead/cycle-time maths needs, instead of fetching every card row (body
+      // text included) across the project and filtering in JS.
+      const doneCards = await db
+        .select({
+          id: cards.id,
+          title: cards.title,
+          createdAt: cards.createdAt,
+          updatedAt: cards.updatedAt,
+        })
         .from(cards)
-        .leftJoin(stages, eq(cards.stageId, stages.id))
+        .innerJoin(stages, eq(cards.stageId, stages.id))
         .where(
           and(
             eq(cards.organizationId, orgId),
             inArray(cards.listId, listIds),
-            isNull(cards.deletedAt)
+            isNull(cards.deletedAt),
+            eq(stages.category, 'done')
           )
         );
 
-      completedCards = allCards.filter((c) => c.stage?.category === 'done').map((c) => c.card);
+      completedCards = doneCards;
     }
   }
 

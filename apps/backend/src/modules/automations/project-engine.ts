@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { eq, and, isNull, sql } from 'drizzle-orm';
+import { eq, and, isNull, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   projectAutomationRules,
@@ -899,7 +899,9 @@ export async function flagStaleRules(
         isNull(projectAutomationRules.deletedAt)
       )
     );
-  let flagged = 0;
+  // One UPDATE for every matched rule. This ran a serial UPDATE per rule with no
+  // bound on how many rules could match.
+  const hitIds: string[] = [];
   for (const rule of rules) {
     const actions = (rule.actionJson ?? []) as AutomationAction[];
     const hits = actions.some((a) => {
@@ -911,20 +913,21 @@ export async function flagStaleRules(
         return a.pool.userIds.includes(refId);
       return false;
     });
-    if (hits) {
-      await db
-        .update(projectAutomationRules)
-        .set({
-          needsAttention: true,
-          attentionReason: `Referenced ${kind} ${refId} was removed or deactivated`,
-          updatedAt: new Date(),
-        })
-        .where(eq(projectAutomationRules.id, rule.id))
-        .catch(() => {});
-      flagged++;
-    }
+    if (hits) hitIds.push(rule.id);
   }
-  return flagged;
+
+  if (hitIds.length === 0) return 0;
+
+  await db
+    .update(projectAutomationRules)
+    .set({
+      needsAttention: true,
+      attentionReason: `Referenced ${kind} ${refId} was removed or deactivated`,
+      updatedAt: new Date(),
+    })
+    .where(inArray(projectAutomationRules.id, hitIds))
+    .catch(() => {});
+  return hitIds.length;
 }
 
 export async function getProjectRuleCount(db: Database, projectId: string): Promise<number> {

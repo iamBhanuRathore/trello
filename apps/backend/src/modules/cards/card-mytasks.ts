@@ -1,4 +1,4 @@
-import { eq, and, isNull, desc, ne, or, ilike, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, and, isNull, desc, ne, or, ilike, inArray, exists, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   cards,
@@ -33,70 +33,100 @@ export async function getMyTasks(
   userId: string,
   options?: GetMyTasksOptions
 ) {
-  // 1. Fetch user's assigned, watching, participating, and created card IDs.
-  // Independent lookups — fan out concurrently (was 4 sequential round-trips).
-  const [assignedRows, watchingRows, participatingRows, createdRows] = await Promise.all([
-    db
-      .select({ cardId: cardAssignees.cardId })
-      .from(cardAssignees)
-      .where(eq(cardAssignees.userId, userId)),
-    db
-      .select({ cardId: cardWatchers.cardId })
-      .from(cardWatchers)
-      .where(eq(cardWatchers.userId, userId)),
-    db
-      .select({ cardId: comments.cardId })
-      .from(comments)
-      .where(and(eq(comments.userId, userId), isNull(comments.deletedAt))),
-    db
-      .select({ cardId: cardAssignees.cardId })
-      .from(cardAssignees)
-      .where(eq(cardAssignees.assignedBy, userId)),
-  ]);
-  const assignedCardIds = new Set(assignedRows.map((r) => r.cardId));
-  const watchingCardIds = new Set(watchingRows.map((r) => r.cardId));
-  const participatingCardIds = new Set(participatingRows.map((r) => r.cardId));
-  const createdCardIds = new Set(createdRows.map((r) => r.cardId));
+  // The relationship to the user is expressed as EXISTS predicates instead of
+  // `WHERE cards.id IN (<every card id this user ever touched>)`.
+  //
+  // The previous shape read every assigned/watched/commented/assigned-by card id
+  // for the user with four unbounded queries and bound the union back into the
+  // page, count and badge queries. For a long-tenured user that is thousands of
+  // ids bound as query parameters — past Postgres' 65535-parameter ceiling, and a
+  // seq-scan-sized IN list even well before that. Each predicate below is an
+  // index seek, and the per-card flags are resolved only for the returned page.
+  const isAssigned = () =>
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(cardAssignees)
+        .where(and(eq(cardAssignees.cardId, cards.id), eq(cardAssignees.userId, userId)))
+    );
+  const isObserving = () =>
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(cardWatchers)
+        .where(and(eq(cardWatchers.cardId, cards.id), eq(cardWatchers.userId, userId)))
+    );
+  const isParticipant = () =>
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(comments)
+        .where(
+          and(
+            eq(comments.cardId, cards.id),
+            eq(comments.userId, userId),
+            isNull(comments.deletedAt)
+          )
+        )
+    );
+  // 'created' has always meant "cards this user assigned someone on", not
+  // "cards whose created_by is this user" — preserved deliberately.
+  const isCreator = () =>
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(cardAssignees)
+        .where(and(eq(cardAssignees.cardId, cards.id), eq(cardAssignees.assignedBy, userId)))
+    );
 
-  // Determine target card IDs based on filter
-  const filter = options?.filter || 'all';
-  let targetCardIds: Set<string>;
-
-  if (filter === 'assigned') {
-    targetCardIds = assignedCardIds;
-  } else if (filter === 'observing') {
-    targetCardIds = watchingCardIds;
-  } else if (filter === 'participating') {
-    targetCardIds = participatingCardIds;
-  } else if (filter === 'created') {
-    targetCardIds = createdCardIds;
-  } else {
-    // 'all' = union of all
-    targetCardIds = new Set([
-      ...assignedCardIds,
-      ...watchingCardIds,
-      ...participatingCardIds,
-      ...createdCardIds,
-    ]);
-  }
-
-  const targetIdsArray = Array.from(targetCardIds);
+  // One row, four scalar subqueries: the sidebar tab totals. These are global to
+  // the user (not org-scoped), exactly as the previous in-memory Set sizes were.
+  // Expressed via db.execute because drizzle's builder needs a FROM clause.
+  const summaryResult = await db.execute(sql`
+    SELECT
+      (SELECT count(distinct ${cardAssignees.cardId})::int FROM ${cardAssignees}
+        WHERE ${cardAssignees.userId} = ${userId}) AS "totalAssigned",
+      (SELECT count(distinct ${cardWatchers.cardId})::int FROM ${cardWatchers}
+        WHERE ${cardWatchers.userId} = ${userId}) AS "totalObserving",
+      (SELECT count(distinct ${comments.cardId})::int FROM ${comments}
+        WHERE ${comments.userId} = ${userId} AND ${comments.deletedAt} IS NULL)
+        AS "totalParticipating",
+      (SELECT count(distinct ${cardAssignees.cardId})::int FROM ${cardAssignees}
+        WHERE ${cardAssignees.assignedBy} = ${userId}) AS "totalCreated"
+  `);
+  const summaryRow = (summaryResult as unknown as Array<Record<string, number | null>>)[0] ?? {};
+  const summaryTotals = {
+    totalAssigned: Number(summaryRow.totalAssigned ?? 0),
+    totalObserving: Number(summaryRow.totalObserving ?? 0),
+    totalParticipating: Number(summaryRow.totalParticipating ?? 0),
+    totalCreated: Number(summaryRow.totalCreated ?? 0),
+  };
 
   const limit = Math.min(Math.max(options?.limit ?? 50, 1), 100);
   const offset = Math.max(options?.offset ?? 0, 0);
 
-  if (targetIdsArray.length === 0) {
+  const filter = options?.filter || 'all';
+  const relationshipFilter: Record<string, SQL | undefined> = {
+    assigned: isAssigned(),
+    observing: isObserving(),
+    participating: isParticipant(),
+    created: isCreator(),
+    all: or(isAssigned(), isObserving(), isParticipant(), isCreator()),
+  };
+
+  // Fast path: no relationship of any kind means no page and no badge, so skip
+  // the four aggregate queries entirely (this is what the old empty-IN guard did).
+  const hasAnyRelationship =
+    summaryTotals.totalAssigned +
+      summaryTotals.totalObserving +
+      summaryTotals.totalParticipating +
+      summaryTotals.totalCreated >
+    0;
+
+  if (!hasAnyRelationship) {
     return {
       tasks: [],
-      summary: {
-        totalAssigned: assignedCardIds.size,
-        totalObserving: watchingCardIds.size,
-        totalParticipating: participatingCardIds.size,
-        totalCreated: createdCardIds.size,
-        openAssignedCount: 0,
-        overdueCount: 0,
-        dueSoonCount: 0,
-      },
+      summary: { ...summaryTotals, openAssignedCount: 0, overdueCount: 0, dueSoonCount: 0 },
       total: 0,
       hasMore: false,
       limit,
@@ -105,12 +135,12 @@ export async function getMyTasks(
   }
 
   // Build query
-  const conditions: (SQL<unknown> | undefined)[] = [
-    inArray(cards.id, targetIdsArray),
+  const conditions: (SQL | undefined)[] = [
+    relationshipFilter[filter],
     eq(workspaces.organizationId, organizationId),
     isNull(cards.deletedAt),
     eq(cards.isArchived, false),
-  ];
+  ].filter((c): c is SQL => c !== undefined);
 
   if (options?.search && options.search.trim()) {
     // Escape LIKE wildcards so a literal `%`/`_` can't turn into a full scan.
@@ -143,70 +173,126 @@ export async function getMyTasks(
     );
   }
 
-  const rawTasks = await db
-    .select({
-      id: cards.id,
-      taskNumber: cards.taskNumber,
-      key: cards.key,
-      title: cards.title,
-      description: cards.description,
-      dueDate: cards.dueDate,
-      storyPoints: cards.storyPoints,
-      estimateMinutes: cards.estimateMinutes,
-      createdAt: cards.createdAt,
-      updatedAt: cards.updatedAt,
-      listId: cards.listId,
-      listName: lists.name,
-      boardId: lists.boardId,
-      boardName: boards.name,
-      projectId: boards.projectId,
-      projectKey: projects.key,
-      projectName: projects.name,
-      workspaceId: projects.workspaceId,
-      workspaceName: workspaces.name,
-      stageId: cards.stageId,
-      stageName: stages.name,
-      stageColor: stages.color,
-      stageCategory: stages.category,
-      priorityId: cards.priorityId,
-      priorityName: priorities.name,
-      priorityColor: priorities.color,
-    })
-    .from(cards)
-    .innerJoin(lists, eq(lists.id, cards.listId))
-    .innerJoin(boards, eq(boards.id, lists.boardId))
-    .innerJoin(projects, eq(projects.id, boards.projectId))
-    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
-    .leftJoin(stages, eq(stages.id, cards.stageId))
-    .leftJoin(priorities, eq(priorities.id, cards.priorityId))
-    .where(and(...conditions))
-    .orderBy(desc(cards.updatedAt))
-    .limit(limit)
-    .offset(offset);
-
   // Full-set counts (summary + pagination) — same joins/filters, no limit/offset.
-  const [counts] = await db
-    .select({
-      total: sql<number>`count(distinct ${cards.id})::int`,
-      overdue: sql<number>`count(distinct ${cards.id}) filter (where ${cards.dueDate} < now())::int`,
-      dueSoon: sql<number>`count(distinct ${cards.id}) filter (where ${cards.dueDate} >= now() and ${cards.dueDate} <= now() + interval '7 days')::int`,
-    })
-    .from(cards)
-    .innerJoin(lists, eq(lists.id, cards.listId))
-    .innerJoin(boards, eq(boards.id, lists.boardId))
-    .innerJoin(projects, eq(projects.id, boards.projectId))
-    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
-    .leftJoin(stages, eq(stages.id, cards.stageId))
-    .leftJoin(priorities, eq(priorities.id, cards.priorityId))
-    .where(and(...conditions));
+  // The badge aggregate is independent of the page, so all three run together.
+  const [rawTasks, [counts], [openAssignedRow]] = await Promise.all([
+    db
+      .select({
+        id: cards.id,
+        taskNumber: cards.taskNumber,
+        key: cards.key,
+        title: cards.title,
+        description: cards.description,
+        dueDate: cards.dueDate,
+        storyPoints: cards.storyPoints,
+        estimateMinutes: cards.estimateMinutes,
+        createdAt: cards.createdAt,
+        updatedAt: cards.updatedAt,
+        listId: cards.listId,
+        listName: lists.name,
+        boardId: lists.boardId,
+        boardName: boards.name,
+        projectId: boards.projectId,
+        projectKey: projects.key,
+        projectName: projects.name,
+        workspaceId: projects.workspaceId,
+        workspaceName: workspaces.name,
+        stageId: cards.stageId,
+        stageName: stages.name,
+        stageColor: stages.color,
+        stageCategory: stages.category,
+        priorityId: cards.priorityId,
+        priorityName: priorities.name,
+        priorityColor: priorities.color,
+      })
+      .from(cards)
+      .innerJoin(lists, eq(lists.id, cards.listId))
+      .innerJoin(boards, eq(boards.id, lists.boardId))
+      .innerJoin(projects, eq(projects.id, boards.projectId))
+      .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+      .leftJoin(stages, eq(stages.id, cards.stageId))
+      .leftJoin(priorities, eq(priorities.id, cards.priorityId))
+      .where(and(...conditions))
+      .orderBy(desc(cards.updatedAt))
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({
+        total: sql<number>`count(distinct ${cards.id})::int`,
+        overdue: sql<number>`count(distinct ${cards.id}) filter (where ${cards.dueDate} < now())::int`,
+        dueSoon: sql<number>`count(distinct ${cards.id}) filter (where ${cards.dueDate} >= now() and ${cards.dueDate} <= now() + interval '7 days')::int`,
+      })
+      .from(cards)
+      .innerJoin(lists, eq(lists.id, cards.listId))
+      .innerJoin(boards, eq(boards.id, lists.boardId))
+      .innerJoin(projects, eq(projects.id, boards.projectId))
+      .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+      .leftJoin(stages, eq(stages.id, cards.stageId))
+      .leftJoin(priorities, eq(priorities.id, cards.priorityId))
+      .where(and(...conditions)),
+    // Open assigned: the sidebar badge slice. Assigned to me, not
+    // archived/deleted, stage not done (or unstaged). Scoped by EXISTS rather
+    // than by binding every assigned card id.
+    db
+      .select({ n: sql<number>`count(distinct ${cards.id})::int` })
+      .from(cards)
+      .innerJoin(lists, eq(lists.id, cards.listId))
+      .innerJoin(boards, eq(boards.id, lists.boardId))
+      .innerJoin(projects, eq(projects.id, boards.projectId))
+      .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+      .leftJoin(stages, eq(stages.id, cards.stageId))
+      .where(
+        and(
+          isAssigned(),
+          eq(workspaces.organizationId, organizationId),
+          isNull(cards.deletedAt),
+          eq(cards.isArchived, false),
+          or(isNull(stages.category), ne(stages.category, 'done'))
+        )
+      ),
+  ]);
 
   const cardIds = rawTasks.map((t) => t.id);
 
-  // Assignees + watchers are independent — fetch concurrently.
-  const [allAssignees, allWatchers] =
-    cardIds.length > 0
-      ? await Promise.all([
-          db
+  // Per-card relationship flags, resolved ONLY for the returned page (≤100 ids)
+  // instead of from the user's entire history. These join the enrichment batch
+  // below, which was already concurrent.
+  const [pageAssigned, pageWatching, pageParticipating, pageCreated, allAssignees, allWatchers] =
+    await Promise.all([
+      cardIds.length > 0
+        ? db
+            .select({ cardId: cardAssignees.cardId })
+            .from(cardAssignees)
+            .where(and(inArray(cardAssignees.cardId, cardIds), eq(cardAssignees.userId, userId)))
+        : Promise.resolve([]),
+      cardIds.length > 0
+        ? db
+            .select({ cardId: cardWatchers.cardId })
+            .from(cardWatchers)
+            .where(and(inArray(cardWatchers.cardId, cardIds), eq(cardWatchers.userId, userId)))
+        : Promise.resolve([]),
+      cardIds.length > 0
+        ? db
+            .select({ cardId: comments.cardId })
+            .from(comments)
+            .where(
+              and(
+                inArray(comments.cardId, cardIds),
+                eq(comments.userId, userId),
+                isNull(comments.deletedAt)
+              )
+            )
+        : Promise.resolve([]),
+      cardIds.length > 0
+        ? db
+            .select({ cardId: cardAssignees.cardId })
+            .from(cardAssignees)
+            .where(
+              and(inArray(cardAssignees.cardId, cardIds), eq(cardAssignees.assignedBy, userId))
+            )
+        : Promise.resolve([]),
+      cardIds.length > 0
+        ? db
             .select({
               cardId: cardAssignees.cardId,
               userId: users.id,
@@ -216,16 +302,23 @@ export async function getMyTasks(
             })
             .from(cardAssignees)
             .innerJoin(users, eq(users.id, cardAssignees.userId))
-            .where(inArray(cardAssignees.cardId, cardIds)),
-          db
+            .where(inArray(cardAssignees.cardId, cardIds))
+        : Promise.resolve([]),
+      cardIds.length > 0
+        ? db
             .select({
               cardId: cardWatchers.cardId,
               userId: cardWatchers.userId,
             })
             .from(cardWatchers)
-            .where(inArray(cardWatchers.cardId, cardIds)),
-        ])
-      : [[], []];
+            .where(inArray(cardWatchers.cardId, cardIds))
+        : Promise.resolve([]),
+    ]);
+
+  const assignedCardIds = new Set(pageAssigned.map((r) => r.cardId));
+  const watchingCardIds = new Set(pageWatching.map((r) => r.cardId));
+  const participatingCardIds = new Set(pageParticipating.map((r) => r.cardId));
+  const createdCardIds = new Set(pageCreated.map((r) => r.cardId));
 
   const assigneesByCard = new Map<string, any[]>();
   allAssignees.forEach((a) => {
@@ -302,39 +395,13 @@ export async function getMyTasks(
     };
   });
 
-  // Open assigned: the sidebar badge slice. Assigned to me, not
-  // archived/deleted, stage not done (or unstaged). Separate aggregate from
-  // the counts above, which are scoped to the active filter union — the badge
-  // needs the assigned slice on every tab.
-  let openAssignedCount = 0;
-  if (assignedCardIds.size > 0) {
-    const [openRow] = await db
-      .select({ n: sql<number>`count(distinct ${cards.id})::int` })
-      .from(cards)
-      .innerJoin(lists, eq(lists.id, cards.listId))
-      .innerJoin(boards, eq(boards.id, lists.boardId))
-      .innerJoin(projects, eq(projects.id, boards.projectId))
-      .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
-      .leftJoin(stages, eq(stages.id, cards.stageId))
-      .where(
-        and(
-          inArray(cards.id, Array.from(assignedCardIds)),
-          eq(workspaces.organizationId, organizationId),
-          isNull(cards.deletedAt),
-          eq(cards.isArchived, false),
-          or(isNull(stages.category), ne(stages.category, 'done'))
-        )
-      );
-    openAssignedCount = openRow?.n ?? 0;
-  }
+  // Open assigned was resolved above, concurrently with the page and counts.
+  const openAssignedCount = Number(openAssignedRow?.n ?? 0);
 
   return {
     tasks,
     summary: {
-      totalAssigned: assignedCardIds.size,
-      totalObserving: watchingCardIds.size,
-      totalParticipating: participatingCardIds.size,
-      totalCreated: createdCardIds.size,
+      ...summaryTotals,
       openAssignedCount,
       overdueCount: counts?.overdue ?? 0,
       dueSoonCount: counts?.dueSoon ?? 0,

@@ -746,13 +746,18 @@ export function setupNotificationListeners(db: Database) {
               userId: notifications.userId,
             });
             // Live inbox bump per recipient (fire-and-forget; broadcast never rejects).
+            // The TTL drops were awaited one recipient at a time, so a fan-out to
+            // N members cost N serial Redis round trips before this event could
+            // finish. Broadcast stays fire-and-forget; the drops go together.
             for (const row of inserted) {
               void eventBus.broadcast(`user:inbox:${row.userId}`, 'notifications:new', {
                 id: row.id,
                 eventType: event,
               });
-              await invalidateTTL(unreadCountKey(row.userId, organizationId));
             }
+            await Promise.all(
+              inserted.map((row) => invalidateTTL(unreadCountKey(row.userId, organizationId)))
+            );
           }
         }
       } catch (err) {

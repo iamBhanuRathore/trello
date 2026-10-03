@@ -175,18 +175,19 @@ export async function inviteMember(
       throw httpError(500, 'Failed to save organization member record.');
     }
 
-    // Assign initial workspaces if provided
+    // Assign initial workspaces if provided — one multi-row insert instead of one
+    // round trip per workspace, all inside the invitation transaction.
     if (validWorkspaceIds.length > 0) {
-      for (const wsId of validWorkspaceIds) {
-        await tx
-          .insert(workspaceMembers)
-          .values({
+      await tx
+        .insert(workspaceMembers)
+        .values(
+          validWorkspaceIds.map((wsId) => ({
             workspaceId: wsId,
             userId: user.id,
-            role: 'member',
-          })
-          .onConflictDoNothing();
-      }
+            role: 'member' as const,
+          }))
+        )
+        .onConflictDoNothing();
     }
 
     // Create invitation record

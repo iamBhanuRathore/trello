@@ -780,11 +780,21 @@ export async function getCard(
     const stage = stageRows[0] || null;
     const parentCard = parentRows[0] || null;
 
+    // Grouped in one pass — this filtered every item row per checklist, so opening a
+    // card cost O(checklists x items).
+    const checklistItemsByChecklistId = new Map<
+      string,
+      (typeof checklistItemRows)[number]['checklist_items'][]
+    >();
+    for (const row of checklistItemRows) {
+      const list = checklistItemsByChecklistId.get(row.checklist_items.checklistId);
+      if (list) list.push(row.checklist_items);
+      else checklistItemsByChecklistId.set(row.checklist_items.checklistId, [row.checklist_items]);
+    }
+
     const checklistsWithItems = checklistRows.map((cl) => ({
       ...cl,
-      items: checklistItemRows
-        .filter((item) => item.checklist_items.checklistId === cl.id)
-        .map((i) => i.checklist_items),
+      items: checklistItemsByChecklistId.get(cl.id) ?? [],
     }));
 
     const subtaskAssigneesByCard = new Map<string, any>();

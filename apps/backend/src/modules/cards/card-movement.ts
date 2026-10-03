@@ -84,7 +84,10 @@ export async function moveCard(
   actorId?: string,
   expectedVersion?: number
 ) {
-  await verifyListAccess(db, newListId, organizationId);
+  // verifyListAccess already resolves the destination board; its return value was
+  // discarded and the same board was re-queried later via cards ⋈ lists.
+  const destination = await verifyListAccess(db, newListId, organizationId);
+  const destinationBoardId = destination.boardId;
 
   // Source list for the move-history entry. Best-effort provenance: the read
   // and the guarded write below aren't atomic, but a lost race surfaces as
@@ -141,7 +144,9 @@ export async function moveCard(
     }
     throw httpError(404, 'Card not found');
   }
-  const boardId = await getBoardIdForCard(db, id);
+  // Post-move the card's board IS the destination board, so reuse what
+  // verifyListAccess already returned instead of re-joining cards ⋈ lists.
+  const boardId = destinationBoardId;
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.moved', card);
     eventBus.emit('internal', {

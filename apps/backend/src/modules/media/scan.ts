@@ -525,44 +525,48 @@ export function startScanWorker(db: Database, opts: { pollMs?: number } = {}): (
       // in-process queue lost (crash/restart) plus rows a failed attempt left
       // behind. Every attempt stamps scanned_at, so the window grows with
       // scan_attempts instead of hot-looping against a dead sidecar.
-      const cards = await db
-        .select({
-          id: attachments.id,
-          attempts: attachments.scanAttempts,
-          scannedAt: attachments.scannedAt,
-          scanStatus: attachments.scanStatus,
-        })
-        .from(attachments)
-        .where(
-          and(
-            eq(attachments.status, MediaStatus.Scanning),
-            inArray(attachments.scanStatus, [MediaScanStatus.Pending, MediaScanStatus.Error]),
-            or(
-              isNull(attachments.scannedAt),
-              lt(attachments.scannedAt, new Date(Date.now() - pollMs))
+      // Both attachment tables are polled on every tick; they are independent, so
+      // they are fetched together instead of one after the other.
+      const [cards, chat] = await Promise.all([
+        db
+          .select({
+            id: attachments.id,
+            attempts: attachments.scanAttempts,
+            scannedAt: attachments.scannedAt,
+            scanStatus: attachments.scanStatus,
+          })
+          .from(attachments)
+          .where(
+            and(
+              eq(attachments.status, MediaStatus.Scanning),
+              inArray(attachments.scanStatus, [MediaScanStatus.Pending, MediaScanStatus.Error]),
+              or(
+                isNull(attachments.scannedAt),
+                lt(attachments.scannedAt, new Date(Date.now() - pollMs))
+              )
             )
           )
-        )
-        .limit(100);
-      const chat = await db
-        .select({
-          id: chatAttachments.id,
-          attempts: chatAttachments.scanAttempts,
-          scannedAt: chatAttachments.scannedAt,
-          scanStatus: chatAttachments.scanStatus,
-        })
-        .from(chatAttachments)
-        .where(
-          and(
-            eq(chatAttachments.status, MediaStatus.Scanning),
-            inArray(chatAttachments.scanStatus, [MediaScanStatus.Pending, MediaScanStatus.Error]),
-            or(
-              isNull(chatAttachments.scannedAt),
-              lt(chatAttachments.scannedAt, new Date(Date.now() - pollMs))
+          .limit(100),
+        db
+          .select({
+            id: chatAttachments.id,
+            attempts: chatAttachments.scanAttempts,
+            scannedAt: chatAttachments.scannedAt,
+            scanStatus: chatAttachments.scanStatus,
+          })
+          .from(chatAttachments)
+          .where(
+            and(
+              eq(chatAttachments.status, MediaStatus.Scanning),
+              inArray(chatAttachments.scanStatus, [MediaScanStatus.Pending, MediaScanStatus.Error]),
+              or(
+                isNull(chatAttachments.scannedAt),
+                lt(chatAttachments.scannedAt, new Date(Date.now() - pollMs))
+              )
             )
           )
-        )
-        .limit(100);
+          .limit(100),
+      ]);
       for (const r of [...cards, ...chat]) {
         const window =
           r.scanStatus === MediaScanStatus.Error ? backoffMs(r.attempts ?? 0, pollMs) : pollMs;
@@ -574,28 +578,30 @@ export function startScanWorker(db: Database, opts: { pollMs?: number } = {}): (
       // exception eventually drains. Only rows with a resolvable key qualify.
       if (Date.now() - lastLegacyRun >= legacyMs) {
         lastLegacyRun = Date.now();
-        const legacyCards = await db
-          .select({ id: attachments.id })
-          .from(attachments)
-          .where(
-            and(
-              eq(attachments.status, MediaStatus.Ready),
-              eq(attachments.scanStatus, MediaScanStatus.Pending),
-              isNotNull(attachments.storageKey)
+        const [legacyCards, legacyChat] = await Promise.all([
+          db
+            .select({ id: attachments.id })
+            .from(attachments)
+            .where(
+              and(
+                eq(attachments.status, MediaStatus.Ready),
+                eq(attachments.scanStatus, MediaScanStatus.Pending),
+                isNotNull(attachments.storageKey)
+              )
             )
-          )
-          .limit(legacyBatch);
-        const legacyChat = await db
-          .select({ id: chatAttachments.id })
-          .from(chatAttachments)
-          .where(
-            and(
-              eq(chatAttachments.status, MediaStatus.Ready),
-              eq(chatAttachments.scanStatus, MediaScanStatus.Pending),
-              isNotNull(chatAttachments.storageKey)
+            .limit(legacyBatch),
+          db
+            .select({ id: chatAttachments.id })
+            .from(chatAttachments)
+            .where(
+              and(
+                eq(chatAttachments.status, MediaStatus.Ready),
+                eq(chatAttachments.scanStatus, MediaScanStatus.Pending),
+                isNotNull(chatAttachments.storageKey)
+              )
             )
-          )
-          .limit(legacyBatch);
+            .limit(legacyBatch),
+        ]);
         for (const r of [...legacyCards, ...legacyChat]) enqueueScan(r.id);
         if (legacyCards.length + legacyChat.length > 0) {
           logger.info(

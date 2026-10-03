@@ -1,4 +1,5 @@
 import { eq, and, desc, isNull } from 'drizzle-orm';
+import { clampLimit } from '../../lib/pagination';
 import type { Database } from '../../db/index';
 import {
   documents,
@@ -17,11 +18,13 @@ export function httpError(status: number, message: string): Error & { status: nu
 }
 
 function generateSlug(title: string): string {
-  return title
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'document';
+  return (
+    title
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'document'
+  );
 }
 
 export async function createDocument(
@@ -66,8 +69,14 @@ export async function createDocument(
 export async function listProjectDocuments(
   db: Database,
   organizationId: string,
-  projectId: string
+  projectId: string,
+  options?: { limit?: number | string }
 ) {
+  const limit = clampLimit(options?.limit, { def: 100, max: 200 });
+
+  // `content` is deliberately NOT selected. The list endpoint fed every document
+  // body in the project to the client; the dashboard fetches the body it is
+  // actually about to render via GET /docs/:id, so this was pure payload.
   const docs = await db
     .select({
       id: documents.id,
@@ -75,7 +84,6 @@ export async function listProjectDocuments(
       projectId: documents.projectId,
       title: documents.title,
       slug: documents.slug,
-      content: documents.content,
       isArchived: documents.isArchived,
       createdAt: documents.createdAt,
       updatedAt: documents.updatedAt,
@@ -94,7 +102,8 @@ export async function listProjectDocuments(
         isNull(documents.deletedAt)
       )
     )
-    .orderBy(desc(documents.updatedAt));
+    .orderBy(desc(documents.updatedAt))
+    .limit(limit);
 
   return docs;
 }

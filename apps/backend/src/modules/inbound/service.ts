@@ -111,16 +111,20 @@ async function matchMentionedUsers(
       )
     )
     .limit(500);
+  // Materialize the token Set once. It was re-spread into a fresh array on every
+  // member (`[...tokens].some(...)`), so this was O(members x tokens) allocations
+  // on top of the comparisons — up to 500 members per inbound email.
+  const tokenList = Array.from(tokens);
   const ids: string[] = [];
   for (const m of members) {
     if (m.userId === authorId || ids.length >= 10) continue;
+    const lowerName = m.name.toLowerCase();
     const needles = [
-      m.name.toLowerCase().replace(/\s+/g, ''),
-      m.name.toLowerCase(),
+      lowerName.replace(/\s+/g, ''),
+      lowerName,
       m.email.split('@')[0]!.toLowerCase(),
     ];
-    if ([...tokens].some((t) => needles.includes(t) || needles[0]!.startsWith(t)))
-      ids.push(m.userId);
+    if (tokenList.some((t) => needles.includes(t) || needles[0]!.startsWith(t))) ids.push(m.userId);
   }
   return ids;
 }

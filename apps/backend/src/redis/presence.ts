@@ -199,22 +199,27 @@ export class RedisPresenceStore implements PresenceStore {
 
       const now = Date.now();
 
-      for (const boardId of activeBoards) {
-        const expiredUserIds = await redis.zrangebyscore(this.ttlKey(boardId), '-inf', now);
-        if (expiredUserIds && expiredUserIds.length > 0) {
-          const pipeline = redis.pipeline();
-          for (const uid of expiredUserIds) {
-            pipeline.hdel(this.boardKey(boardId), uid);
-            pipeline.zrem(this.ttlKey(boardId), uid);
-          }
-          await pipeline.exec();
+      // Concurrently across boards. The sweep ran one ZRANGEBYSCORE (plus a
+      // follow-up read per board) strictly in sequence, so a deployment with many
+      // active boards paid a full Redis round trip per board every interval.
+      await Promise.all(
+        activeBoards.map(async (boardId) => {
+          const expiredUserIds = await redis.zrangebyscore(this.ttlKey(boardId), '-inf', now);
+          if (expiredUserIds && expiredUserIds.length > 0) {
+            const pipeline = redis.pipeline();
+            for (const uid of expiredUserIds) {
+              pipeline.hdel(this.boardKey(boardId), uid);
+              pipeline.zrem(this.ttlKey(boardId), uid);
+            }
+            await pipeline.exec();
 
-          const remainingUsers = await this.getUsers(boardId);
-          if (onEvicted) {
-            onEvicted(boardId, remainingUsers);
+            const remainingUsers = await this.getUsers(boardId);
+            if (onEvicted) {
+              onEvicted(boardId, remainingUsers);
+            }
           }
-        }
-      }
+        })
+      );
     } catch (err) {
       logger.warn({ err }, 'Error during Redis presence expiration cleanup');
     }

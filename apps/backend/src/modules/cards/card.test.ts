@@ -498,6 +498,115 @@ describe('Cards Service', () => {
     );
   });
 
+  // The relationship to the user is resolved with EXISTS predicates rather than by
+  // binding every card id the user has ever touched. Cover each filter and the
+  // per-card flags, which are now computed only for the returned page.
+  it('scopes each getMyTasks filter to its relationship and flags rows correctly', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { organization, user: me } = await signUp(db, {
+      name: 'Me',
+      email: `mt_me_${id}@card.com`,
+      password: 'pass',
+      orgName: `MT Org ${id}`,
+      orgSlug: `mt-org-${id}`,
+    });
+    const other = await signUp(db, {
+      name: 'Other',
+      email: `mt_other_${id}@card.com`,
+      password: 'pass',
+      orgName: `MT Other Org ${id}`,
+      orgSlug: `mt-other-${id}`,
+    });
+    // Bring them into this org so a card can be assigned to them.
+    await db.insert(schema.organizationMembers).values({
+      organizationId: organization.id,
+      userId: other.user.id,
+      role: 'member',
+      status: 'active',
+    });
+
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board',
+    });
+    const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
+
+    // assigned to me
+    const assigned = await createCard(db, organization.id, {
+      listId: list!.id,
+      title: 'Assigned to me',
+      assigneeId: me.id,
+    });
+    // watched by me
+    const watched = await createCard(db, organization.id, {
+      listId: list!.id,
+      title: 'I watch this',
+    });
+    await watchCard(db, watched!.id, me.id, organization.id);
+    // I commented on it
+    const commented = await createCard(db, organization.id, {
+      listId: list!.id,
+      title: 'I commented',
+    });
+    await createComment(db, commented!.id, organization.id, me.id, 'hi');
+    // I assigned someone else to it -> 'created' (assignedBy = actorId)
+    const delegated = await createCard(db, organization.id, {
+      listId: list!.id,
+      title: 'I delegated',
+      assigneeId: other.user.id,
+      actorId: me.id,
+    });
+    // unrelated
+    await createCard(db, organization.id, { listId: list!.id, title: 'Nothing to do with me' });
+
+    const idsOf = (res: { tasks: { id: string }[] }) => res.tasks.map((t) => t.id).sort();
+
+    const all = await getMyTasks(db, organization.id, me.id, { filter: 'all' });
+    expect(idsOf(all)).toEqual([assigned!.id, watched!.id, commented!.id, delegated!.id].sort());
+    expect(all.summary.totalAssigned).toBe(1);
+    expect(all.summary.totalObserving).toBe(1);
+    expect(all.summary.totalParticipating).toBe(1);
+    expect(all.summary.totalCreated).toBe(1);
+
+    const onlyAssigned = await getMyTasks(db, organization.id, me.id, { filter: 'assigned' });
+    expect(idsOf(onlyAssigned)).toEqual([assigned!.id]);
+    expect(onlyAssigned.tasks[0]!.isAssignee).toBe(true);
+
+    const onlyWatching = await getMyTasks(db, organization.id, me.id, { filter: 'observing' });
+    expect(idsOf(onlyWatching)).toEqual([watched!.id]);
+    expect(onlyWatching.tasks[0]!.isObserver).toBe(true);
+
+    const onlyParticipating = await getMyTasks(db, organization.id, me.id, {
+      filter: 'participating',
+    });
+    expect(idsOf(onlyParticipating)).toEqual([commented!.id]);
+    expect(onlyParticipating.tasks[0]!.isParticipant).toBe(true);
+
+    const onlyCreated = await getMyTasks(db, organization.id, me.id, { filter: 'created' });
+    expect(idsOf(onlyCreated)).toEqual([delegated!.id]);
+    expect(onlyCreated.tasks[0]!.isCreator).toBe(true);
+
+    // A user with no relationship at all gets the empty fast path.
+    const stranger = await signUp(db, {
+      name: 'Stranger',
+      email: `mt_stranger_${id}@card.com`,
+      password: 'pass',
+      orgName: `MT Stranger Org ${id}`,
+      orgSlug: `mt-stranger-${id}`,
+    });
+    const none = await getMyTasks(db, organization.id, stranger.user.id, { filter: 'all' });
+    expect(none.tasks).toHaveLength(0);
+    expect(none.total).toBe(0);
+    expect(none.summary.openAssignedCount).toBe(0);
+  });
+
   it('reports openAssignedCount excluding done-stage cards (sidebar badge slice)', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const { organization, user } = await signUp(db, {

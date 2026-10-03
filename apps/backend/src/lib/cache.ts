@@ -370,6 +370,25 @@ export async function bumpCardCache(cardId: string): Promise<void> {
 }
 
 /**
+ * Bump many card versions in one pipelined round trip.
+ *
+ * Used where a single logical change invalidates a whole set of cards (a list
+ * rename, for example). `Promise.all` over `bumpCardCache` issued N separate
+ * INCR commands; a pipeline sends them in one round trip for the same result.
+ */
+export async function bumpCardCaches(cardIds: string[]): Promise<void> {
+  const redis = redisOrNull();
+  if (!redis || cardIds.length === 0) return;
+  try {
+    const pipeline = redis.pipeline();
+    for (const id of cardIds) pipeline.incr(cardVersionKey(id));
+    await pipeline.exec();
+  } catch {
+    // Best-effort; TTL bounds staleness.
+  }
+}
+
+/**
  * Resolve boardId for a card without a Neon query when the map is warm.
  * Returns null when unknown (caller falls back to DB lookup).
  */

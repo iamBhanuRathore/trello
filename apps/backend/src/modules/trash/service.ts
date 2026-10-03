@@ -1,4 +1,4 @@
-import { eq, and, isNotNull, isNull, inArray } from 'drizzle-orm';
+import { eq, and, isNotNull, isNull, inArray, desc } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   workspaces,
@@ -35,6 +35,7 @@ import {
   workspaceMembers,
 } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
+import { clampLimit } from '../../lib/pagination';
 import {
   bumpOrgCache,
   bumpWorkspaceCache,
@@ -61,18 +62,87 @@ function calculateDaysRemaining(deletedAt: Date): number {
 }
 
 // ─── List All Trashed Items ──────────────────────────────────────────────────
-export async function listTrash(db: Database, organizationId: string): Promise<TrashedItem[]> {
+export async function listTrash(
+  db: Database,
+  organizationId: string,
+  options?: { limit?: number | string }
+): Promise<TrashedItem[]> {
   const trashedItems: TrashedItem[] = [];
 
+  // Each type is scanned with its own cap, ordered newest-first, then merged.
+  //
+  // The four scans used to run sequentially, unbounded, over every trashed row in
+  // the org and were merged with a JS sort. Because each branch is already
+  // ordered, taking the top N per branch is sufficient to compute the correct
+  // global top N — so this bounds the work without changing the result.
+  const limit = clampLimit(options?.limit, { def: 200, max: 500 });
+
   // 1. Trashed Workspaces
-  const trashedWorkspaces = await db
-    .select({
-      id: workspaces.id,
-      name: workspaces.name,
-      deletedAt: workspaces.deletedAt,
-    })
-    .from(workspaces)
-    .where(and(eq(workspaces.organizationId, organizationId), isNotNull(workspaces.deletedAt)));
+  const [trashedWorkspaces, trashedProjects, trashedBoards, trashedCards] = await Promise.all([
+    db
+      .select({
+        id: workspaces.id,
+        name: workspaces.name,
+        deletedAt: workspaces.deletedAt,
+      })
+      .from(workspaces)
+      .where(and(eq(workspaces.organizationId, organizationId), isNotNull(workspaces.deletedAt)))
+      .orderBy(desc(workspaces.deletedAt))
+      .limit(limit),
+
+    // 2. Trashed Projects
+    db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        deletedAt: projects.deletedAt,
+        workspaceName: workspaces.name,
+      })
+      .from(projects)
+      // leftJoin, not innerJoin: a trashed project must stay listed (and purgeable)
+      // even if its workspace was hard-deleted. innerJoin silently hid it.
+      .leftJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+      .where(and(eq(projects.organizationId, organizationId), isNotNull(projects.deletedAt)))
+      .orderBy(desc(projects.deletedAt))
+      .limit(limit),
+
+    // 3. Trashed Boards
+    db
+      .select({
+        id: boards.id,
+        name: boards.name,
+        deletedAt: boards.deletedAt,
+        projectName: projects.name,
+      })
+      .from(boards)
+      // Same reasoning as projects: keep orphaned trashed boards visible.
+      .leftJoin(projects, eq(projects.id, boards.projectId))
+      .where(and(eq(boards.organizationId, organizationId), isNotNull(boards.deletedAt)))
+      .orderBy(desc(boards.deletedAt))
+      .limit(limit),
+
+    // 4. Trashed Cards
+    db
+      .select({
+        id: cards.id,
+        title: cards.title,
+        deletedAt: cards.deletedAt,
+        listName: lists.name,
+        boardName: boards.name,
+      })
+      .from(cards)
+      .innerJoin(lists, eq(lists.id, cards.listId))
+      .innerJoin(boards, eq(boards.id, lists.boardId))
+      .where(
+        and(
+          eq(boards.organizationId, organizationId),
+          isNotNull(cards.deletedAt),
+          isNull(boards.deletedAt)
+        )
+      )
+      .orderBy(desc(cards.deletedAt))
+      .limit(limit),
+  ]);
 
   trashedWorkspaces.forEach((ws) => {
     if (ws.deletedAt) {
@@ -87,20 +157,6 @@ export async function listTrash(db: Database, organizationId: string): Promise<T
     }
   });
 
-  // 2. Trashed Projects
-  const trashedProjects = await db
-    .select({
-      id: projects.id,
-      name: projects.name,
-      deletedAt: projects.deletedAt,
-      workspaceName: workspaces.name,
-    })
-    .from(projects)
-    // leftJoin, not innerJoin: a trashed project must stay listed (and purgeable)
-    // even if its workspace was hard-deleted. innerJoin silently hid it.
-    .leftJoin(workspaces, eq(workspaces.id, projects.workspaceId))
-    .where(and(eq(projects.organizationId, organizationId), isNotNull(projects.deletedAt)));
-
   trashedProjects.forEach((p) => {
     if (p.deletedAt) {
       trashedItems.push({
@@ -113,19 +169,6 @@ export async function listTrash(db: Database, organizationId: string): Promise<T
       });
     }
   });
-
-  // 3. Trashed Boards
-  const trashedBoards = await db
-    .select({
-      id: boards.id,
-      name: boards.name,
-      deletedAt: boards.deletedAt,
-      projectName: projects.name,
-    })
-    .from(boards)
-    // Same reasoning as projects: keep orphaned trashed boards visible.
-    .leftJoin(projects, eq(projects.id, boards.projectId))
-    .where(and(eq(boards.organizationId, organizationId), isNotNull(boards.deletedAt)));
 
   trashedBoards.forEach((b) => {
     if (b.deletedAt) {
@@ -140,26 +183,6 @@ export async function listTrash(db: Database, organizationId: string): Promise<T
     }
   });
 
-  // 4. Trashed Cards
-  const trashedCards = await db
-    .select({
-      id: cards.id,
-      title: cards.title,
-      deletedAt: cards.deletedAt,
-      listName: lists.name,
-      boardName: boards.name,
-    })
-    .from(cards)
-    .innerJoin(lists, eq(lists.id, cards.listId))
-    .innerJoin(boards, eq(boards.id, lists.boardId))
-    .where(
-      and(
-        eq(boards.organizationId, organizationId),
-        isNotNull(cards.deletedAt),
-        isNull(boards.deletedAt)
-      )
-    );
-
   trashedCards.forEach((c) => {
     if (c.deletedAt) {
       trashedItems.push({
@@ -173,10 +196,10 @@ export async function listTrash(db: Database, organizationId: string): Promise<T
     }
   });
 
-  // Sort descending by deletedAt
-  return trashedItems.sort(
-    (a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime()
-  );
+  // Merge newest-first and cap the union. Each branch was already limited and
+  // ordered, so this slice is the true global top N.
+  trashedItems.sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime());
+  return trashedItems.slice(0, limit);
 }
 
 function pProjectName(name?: string) {
@@ -342,27 +365,41 @@ async function hardDeleteItemCascade(
 const EMPTY_TRASH_BATCH_SIZE = 50;
 
 export async function emptyTrash(db: Database, organizationId: string) {
-  const trashed = await listTrash(db, organizationId);
   let purgedCount = 0;
 
-  // Deepest-first: purging a workspace/project/board also purges its children,
-  // so walking the list in reverse means the child entries are already gone by
-  // the time their parent is processed and we never 404 on an item we just
-  // deleted as part of a parent's cascade.
-  const ordered = [...trashed].sort((a, b) => depth(b.itemType) - depth(a.itemType));
+  // Page through the trash rather than listing it in one shot.
+  //
+  // `listTrash` is now bounded (the HTTP route must not stream every trashed row
+  // in the org into one response), so a single call here would purge only the
+  // newest page and silently leave the rest. Each pass purges the newest
+  // EMPTY_TRASH_BATCH_SIZE entries; the loop ends when a pass comes back empty.
+  for (;;) {
+    const page = await listTrash(db, organizationId, { limit: EMPTY_TRASH_BATCH_SIZE });
+    if (page.length === 0) break;
 
-  for (let i = 0; i < ordered.length; i += EMPTY_TRASH_BATCH_SIZE) {
-    const batch = ordered.slice(i, i + EMPTY_TRASH_BATCH_SIZE);
+    // Deepest-first: purging a workspace/project/board also purges its
+    // children, so walking the page in reverse means the child entries are
+    // already gone by the time their parent is processed and we never 404 on an
+    // item we just deleted as part of a parent's cascade.
+    const ordered = [...page].sort((a, b) => depth(b.itemType) - depth(a.itemType));
+
     await db.transaction(async (tx) => {
-      for (const item of batch) {
-        await hardDeleteItemCascade(
-          tx as unknown as Database,
-          organizationId,
-          item.itemType,
-          item.id
-        );
+      const client = tx as unknown as Database;
+
+      // Cards are the deepest type and sort first. They share one cascade
+      // function, so running them as a single call issues one set of deletes
+      // instead of a full ~17-statement cascade per card.
+      const cardIds = ordered.filter((i) => i.itemType === 'card').map((i) => i.id);
+      if (cardIds.length > 0) {
+        await deleteCardCascade(client, cardIds, organizationId);
+      }
+
+      for (const item of ordered) {
+        if (item.itemType === 'card') continue;
+        await hardDeleteItemCascade(client, organizationId, item.itemType, item.id);
         purgedCount++;
       }
+      purgedCount += cardIds.length;
     });
   }
 
@@ -404,21 +441,27 @@ async function deleteCardCascade(db: Database, cardIds: string[], organizationId
 
   // card_id tables with NO ACTION referential action — these MUST be removed
   // explicitly or the final `delete(cards)` fails with a foreign-key violation.
-  await db.delete(documentCards).where(inArray(documentCards.cardId, ownedCardIds));
-  await db.delete(formSubmissions).where(inArray(formSubmissions.cardId, ownedCardIds));
-  await db.delete(cardEvents).where(inArray(cardEvents.cardId, ownedCardIds));
-  await db.delete(calendarEventLinks).where(inArray(calendarEventLinks.cardId, ownedCardIds));
-  await db.delete(gitLinks).where(inArray(gitLinks.cardId, ownedCardIds));
-
-  await db.delete(cardAssignees).where(inArray(cardAssignees.cardId, ownedCardIds));
-  await db.delete(cardParticipants).where(inArray(cardParticipants.cardId, ownedCardIds));
-  await db.delete(cardWatchers).where(inArray(cardWatchers.cardId, ownedCardIds));
-  await db.delete(cardLabels).where(inArray(cardLabels.cardId, ownedCardIds));
-  await db.delete(cardSprints).where(inArray(cardSprints.cardId, ownedCardIds));
-  await db.delete(cardPhase).where(inArray(cardPhase.cardId, ownedCardIds));
-  await db.delete(timeLogs).where(inArray(timeLogs.cardId, ownedCardIds));
-  await db.delete(comments).where(inArray(comments.cardId, ownedCardIds));
-  await db.delete(attachments).where(inArray(attachments.cardId, ownedCardIds));
+  //
+  // None of them references another (verified: no schema FK points at any of
+  // these fourteen), so the only ordering that matters is that all of them
+  // precede checklistItems -> checklists -> cards below. Issued as one pipelined
+  // batch instead of fourteen sequential round trips.
+  await Promise.all([
+    db.delete(documentCards).where(inArray(documentCards.cardId, ownedCardIds)),
+    db.delete(formSubmissions).where(inArray(formSubmissions.cardId, ownedCardIds)),
+    db.delete(cardEvents).where(inArray(cardEvents.cardId, ownedCardIds)),
+    db.delete(calendarEventLinks).where(inArray(calendarEventLinks.cardId, ownedCardIds)),
+    db.delete(gitLinks).where(inArray(gitLinks.cardId, ownedCardIds)),
+    db.delete(cardAssignees).where(inArray(cardAssignees.cardId, ownedCardIds)),
+    db.delete(cardParticipants).where(inArray(cardParticipants.cardId, ownedCardIds)),
+    db.delete(cardWatchers).where(inArray(cardWatchers.cardId, ownedCardIds)),
+    db.delete(cardLabels).where(inArray(cardLabels.cardId, ownedCardIds)),
+    db.delete(cardSprints).where(inArray(cardSprints.cardId, ownedCardIds)),
+    db.delete(cardPhase).where(inArray(cardPhase.cardId, ownedCardIds)),
+    db.delete(timeLogs).where(inArray(timeLogs.cardId, ownedCardIds)),
+    db.delete(comments).where(inArray(comments.cardId, ownedCardIds)),
+    db.delete(attachments).where(inArray(attachments.cardId, ownedCardIds)),
+  ]);
 
   const checklistRows = await db
     .select({ id: checklists.id })
@@ -430,6 +473,7 @@ async function deleteCardCascade(db: Database, cardIds: string[], organizationId
     await db.delete(checklists).where(inArray(checklists.id, checklistIds));
   }
 
+  // cards last: it is the parent of everything above.
   await db.delete(cards).where(inArray(cards.id, ownedCardIds));
 }
 

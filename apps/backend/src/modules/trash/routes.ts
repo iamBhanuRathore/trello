@@ -10,14 +10,17 @@ export const trashRoutes = new Elysia({ prefix: '/trash' })
   // GET /v1/trash — List all trashed items in user's org
   .get(
     '/',
-    async ({ user, set }) => {
+    async ({ user, query, set }) => {
       try {
-        return await listTrash(db, user.organizationId);
+        return await listTrash(db, user.organizationId, { limit: query.limit });
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
     },
     {
+      query: t.Object({
+        limit: t.Optional(t.String()),
+      }),
       beforeHandle: requirePermission('org.read'),
     }
   )

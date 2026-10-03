@@ -1,4 +1,4 @@
-import { eq, and, isNull, inArray, gt, sql, max } from 'drizzle-orm';
+import { eq, and, isNull, inArray, gt, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   boards,
@@ -490,10 +490,27 @@ async function loadBoardFull(
   };
 }
 
-/** Highest sequence value in use — the safe starting cursor for an empty board. */
+/**
+ * Safe starting change cursor for a board with no lists.
+ *
+ * Reads the shared `board_change_seq` sequence's current value instead of
+ * `SELECT max(change_seq) FROM cards`, which had no WHERE clause and therefore
+ * aggregated the whole cards table across every tenant to answer a question
+ * about one empty board. The sequence is global and monotonic, so its last value
+ * is >= any row's change_seq — which is exactly what "safe starting cursor"
+ * means (starting later can skip nothing).
+ */
 async function currentChangeCursor(db: Database): Promise<number> {
-  const [row] = await db.select({ seq: max(sql`${cards.changeSeq}`) }).from(cards);
-  return Number(row?.seq ?? 0);
+  try {
+    const rows = (await db.execute(
+      sql`SELECT last_value FROM board_change_seq`
+    )) as unknown as Array<Record<string, unknown>>;
+    return Number(rows[0]?.['last_value'] ?? 0);
+  } catch {
+    // Sequence missing (pre-0029 database): fall back to "start from zero",
+    // which the client treats as a full initial load.
+    return 0;
+  }
 }
 
 // Hard delete for permanent purge

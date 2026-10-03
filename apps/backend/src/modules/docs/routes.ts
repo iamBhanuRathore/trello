@@ -38,9 +38,9 @@ export const docRoutes = new Elysia({ tags: ['Docs'] })
   // GET /v1/projects/:id/docs
   .get(
     '/projects/:id/docs',
-    async ({ params: { id }, user, set }) => {
+    async ({ params: { id }, query, user, set }) => {
       try {
-        return await listProjectDocuments(db, user.organizationId, id);
+        return await listProjectDocuments(db, user.organizationId, id, { limit: query.limit });
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -48,6 +48,7 @@ export const docRoutes = new Elysia({ tags: ['Docs'] })
     {
       beforeHandle: requirePermission('project.read'),
       params: t.Object({ id: t.String() }),
+      query: t.Object({ limit: t.Optional(t.String()) }),
     }
   )
 
