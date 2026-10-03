@@ -167,7 +167,11 @@ function applyDOMTheme(
     root.setAttribute('data-theme', palette);
   } else {
     root.classList.remove('dark');
-    root.removeAttribute('data-theme');
+    // Previously the attribute was REMOVED in light mode, which discarded the
+    // stored palette — switching back to dark lost the user's choice. The
+    // dark-only palettes are styled under `.dark`, so setting it here is inert
+    // in light mode but keeps the selection.
+    root.setAttribute('data-theme', palette);
   }
 
   // Apply accent color
@@ -190,21 +194,24 @@ function applyDOMTheme(
 
 export const useThemeStore = create<ThemeState>((set, get) => {
   // Read initial from localStorage if available
-  const savedMode = (typeof localStorage !== 'undefined'
-    ? (localStorage.getItem(STORAGE_KEYS.mode) as ThemeMode)
-    : null) || 'system';
+  const savedMode =
+    (typeof localStorage !== 'undefined'
+      ? (localStorage.getItem(STORAGE_KEYS.mode) as ThemeMode)
+      : null) || 'system';
 
-  const savedPalette = (typeof localStorage !== 'undefined'
-    ? (localStorage.getItem(STORAGE_KEYS.palette) as ThemePalette)
-    : null) || 'default';
+  const savedPalette =
+    (typeof localStorage !== 'undefined'
+      ? (localStorage.getItem(STORAGE_KEYS.palette) as ThemePalette)
+      : null) || 'default';
 
-  const savedAccentId = (typeof localStorage !== 'undefined'
-    ? localStorage.getItem(STORAGE_KEYS.accentId)
-    : null) || 'indigo';
+  const savedAccentId =
+    (typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.accentId) : null) ||
+    'indigo';
 
-  const savedCustomAccentHex = (typeof localStorage !== 'undefined'
-    ? localStorage.getItem(STORAGE_KEYS.customAccentHex)
-    : null) || null;
+  const savedCustomAccentHex =
+    (typeof localStorage !== 'undefined'
+      ? localStorage.getItem(STORAGE_KEYS.customAccentHex)
+      : null) || null;
 
   return {
     mode: savedMode,
@@ -223,15 +230,12 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     setPalette: (palette) => {
       localStorage.setItem(STORAGE_KEYS.palette, palette);
       const { mode, accentId, customAccentHex } = get();
-      // If choosing a themed dark palette, ensure mode allows viewing it
-      let nextMode = mode;
-      const paletteInfo = THEME_PALETTES.find((p) => p.id === palette);
-      if (paletteInfo?.isDarkOnly && mode === 'light') {
-        nextMode = 'dark';
-        localStorage.setItem(STORAGE_KEYS.mode, nextMode);
-      }
-      const resolvedIsDark = applyDOMTheme(nextMode, palette, accentId, customAccentHex);
-      set({ palette, mode: nextMode, resolvedIsDark });
+      // A dark-only palette used to silently rewrite mode light -> dark, so
+      // choosing a colour changed the user's theme with no indication. The
+      // constraint is surfaced in the Appearance modal instead; setPalette only
+      // records the choice.
+      const resolvedIsDark = applyDOMTheme(mode, palette, accentId, customAccentHex);
+      set({ palette, resolvedIsDark });
     },
 
     setAccentId: (accentId) => {
@@ -264,7 +268,12 @@ export const useThemeStore = create<ThemeState>((set, get) => {
         const handleChange = () => {
           const currentMode = get().mode;
           if (currentMode === 'system') {
-            const isDark = applyDOMTheme('system', get().palette, get().accentId, get().customAccentHex);
+            const isDark = applyDOMTheme(
+              'system',
+              get().palette,
+              get().accentId,
+              get().customAccentHex
+            );
             set({ resolvedIsDark: isDark });
           }
         };

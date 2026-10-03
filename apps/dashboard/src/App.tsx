@@ -115,8 +115,13 @@ const SettingsLayout = lazy(() =>
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
+  // Unresolved means "a token exists but the server has not confirmed it".
+  // Rendering children then flashed private UI before an expired token was
+  // rejected; treating it as unauthenticated would bounce a valid session
+  // during a 5xx. Wait for a definitive answer instead.
+  const authResolved = useAuthStore((state) => state.authResolved);
 
-  if (isLoading)
+  if (isLoading || !authResolved)
     return <div className="flex h-screen w-screen items-center justify-center">Loading...</div>;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 

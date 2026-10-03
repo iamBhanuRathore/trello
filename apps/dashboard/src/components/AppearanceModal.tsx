@@ -124,10 +124,15 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({ open, onOpenCh
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {THEME_PALETTES.map((preset) => {
                 const isSelected = palette === preset.id;
+                // Dark-only palettes used to flip the user's light theme to dark
+                // silently. The store now only records the choice, so say so
+                // here instead of changing their mode behind their back.
+                const needsDark = Boolean(preset.isDarkOnly) && mode !== 'dark';
                 return (
                   <button
                     key={preset.id}
                     type="button"
+                    aria-describedby={needsDark ? `palette-hint-${preset.id}` : undefined}
                     onClick={() => setPalette(preset.id)}
                     className={`flex flex-col text-left p-3.5 rounded-xl border-2 transition-all relative overflow-hidden group ${
                       isSelected
@@ -135,6 +140,14 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({ open, onOpenCh
                         : 'border-border bg-card hover:border-muted-foreground/30 hover:shadow-xs'
                     }`}
                   >
+                    {needsDark && (
+                      <span
+                        id={`palette-hint-${preset.id}`}
+                        className="absolute top-2 right-2 text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                      >
+                        Dark theme
+                      </span>
+                    )}
                     {/* Mini Visual Palette Preview */}
                     <div
                       className="w-full h-16 rounded-lg p-2 flex flex-col justify-between mb-3 border shadow-xs"

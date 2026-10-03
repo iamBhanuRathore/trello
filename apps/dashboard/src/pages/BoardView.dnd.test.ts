@@ -177,18 +177,21 @@ describe('position derived from the final ordering', () => {
 });
 
 describe('page source holds the fixed invariants', () => {
+  // Prettier freely rewraps these expressions, so compare against a
+  // whitespace-stripped copy rather than a line break that may move.
+  const flat = (src: string) => src.replace(/\s+/g, '');
   const read = async () =>
-    (await Bun.file(new URL('../pages/BoardView.tsx', import.meta.url)).text()) as string;
+    flat((await Bun.file(new URL('../pages/BoardView.tsx', import.meta.url)).text()) as string);
 
   it('captures the snapshot in a ref, unconditionally, at drag start', async () => {
     const src = await read();
     // The snapshot must be taken BEFORE the permission gate, otherwise a denied
     // drag reads a previous drag's leftover state.
-    const startIdx = src.indexOf('const handleDragStart');
-    const endIdx = src.indexOf('const handleDragOver');
+    const startIdx = src.indexOf('consthandleDragStart');
+    const endIdx = src.indexOf('consthandleDragOver');
     const body = src.slice(startIdx, endIdx);
-    const snapAt = body.indexOf('dragSnapshotRef.current = lists');
-    const gateAt = body.indexOf('if (!canMoveCard) return;');
+    const snapAt = body.indexOf('dragSnapshotRef.current=lists');
+    const gateAt = body.indexOf('if(!canMoveCard)return;');
     expect(snapAt).toBeGreaterThan(-1);
     expect(gateAt).toBeGreaterThan(-1);
     expect(snapAt).toBeLessThan(gateAt);
@@ -203,20 +206,20 @@ describe('page source holds the fixed invariants', () => {
   it('skips arrayMove when the card moved across lists', async () => {
     const src = await read();
     expect(src.includes('movedAcrossLists')).toBe(true);
-    expect(src.includes('if (!movedAcrossLists && activeIndex !== -1')).toBe(true);
+    expect(src.includes('if(!movedAcrossLists&&activeIndex!==-1')).toBe(true);
   });
 
   it('rolls back from the captured snapshot, not the query cache', async () => {
     const src = await read();
     const onErr = src.slice(src.indexOf('onErrorExtra'), src.indexOf('errorMessage:'));
-    expect(onErr.includes('setLists(variables.snapshot)')).toBe(true);
-    expect(onErr.includes('getQueryData')).toBe(false);
+    expect(flat(onErr).includes('setLists(variables.snapshot)')).toBe(true);
+    expect(flat(onErr).includes('getQueryData')).toBe(false);
   });
 
   it('sets touch-action on the draggable so touch drag does not scroll', async () => {
-    const src = (await Bun.file(
+    const src = await Bun.file(
       new URL('../components/board/kanban/SortableCard.tsx', import.meta.url)
-    ).text()) as string;
-    expect(src.includes("touchAction: 'none'")).toBe(true);
+    ).text();
+    expect(flat(src)).toContain("touchAction:'none'");
   });
 });

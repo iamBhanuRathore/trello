@@ -19,6 +19,44 @@
     <meta name="twitter:title" content="Boardly — Enterprise Project Management" />
     <meta name="twitter:description" content="Collaborate on boards, track sprints, log billable hours, and manage enterprise project roadmaps with Boardly." />
     <meta name="twitter:image" content="/favicon.svg" />
+    <!--
+      Apply the stored theme BEFORE first paint.
+
+      The theme used to be applied from an effect in the theme store, which runs
+      after React mounts, so every reload painted one frame of default light
+      before switching — a visible white flash for dark-mode users. This inline
+      script reads the same localStorage keys the store uses and sets the same
+      `dark` class and `data-theme` attribute on <html>, so the very first paint
+      is already correct.
+
+      Kept intentionally tiny and dependency-free: it runs before the module
+      bundle, so it must not import anything. Keep the storage keys in sync with
+      STORAGE_KEYS in src/store/themeStore.ts.
+    -->
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem('boardly_theme_mode') || 'system';
+          var palette = localStorage.getItem('boardly_theme_palette') || 'default';
+          var root = document.documentElement;
+          var prefersDark =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var isDark = mode === 'dark' || (mode === 'system' && prefersDark);
+          // A dark-only palette implies dark, matching the store's rule.
+          if (isDark) {
+            root.classList.add('dark');
+            root.setAttribute('data-theme', palette);
+          } else {
+            root.classList.remove('dark');
+            // Keep the attribute even in light mode: removing it discarded the
+            // user's palette choice, so switching back to dark lost it.
+            root.setAttribute('data-theme', palette);
+          }
+        } catch (e) {
+          /* localStorage blocked (private mode) — fall back to the light default. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

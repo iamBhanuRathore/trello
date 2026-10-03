@@ -14,6 +14,11 @@ import { useAuthStore } from '../store/authStore';
 export function usePermissions() {
   const permissions = useAuthStore((s) => s.user?.permissions);
   const isLoading = useAuthStore((s) => s.isLoading);
+  // Unresolved session => no permission data yet. Without this, a 5xx during
+  // checkAuth left `granted` empty and every permission-gated control silently
+  // disappeared, which reads as "you lost access" rather than "we could not
+  // verify".
+  const authResolved = useAuthStore((s) => s.authResolved);
 
   const granted = useMemo(
     () => (Array.isArray(permissions) ? new Set<string>(permissions) : new Set<string>()),
@@ -23,11 +28,13 @@ export function usePermissions() {
   const value = useMemo(
     () => ({
       permissions: granted,
-      isLoading,
+      // Still "loading" until the session is resolved, so callers gate on
+      // `isLoading` rather than acting on an empty set.
+      isLoading: isLoading || !authResolved,
       can: (...keys: PermissionKey[]): boolean => keys.some((k) => granted.has(k)),
       canAll: (...keys: PermissionKey[]): boolean => keys.every((k) => granted.has(k)),
     }),
-    [granted, isLoading]
+    [granted, isLoading, authResolved]
   );
 
   return value;
