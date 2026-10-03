@@ -2817,3 +2817,20 @@ The push of `9cc2b57..cec6d1a` surfaced two CI breakages, one of them mine.
 **Not code: `Build and Deploy Boardly Backend` fails at "Configure AWS credentials".** The OIDC/credential step fails before any build, push or Helm step runs, so it is an environment or repository-secrets problem, not a regression from this pass. It needs attention separately.
 
 `scripts/db.sh.test.sh` is now 25 assertions and passes in all three relevant environments: with a local `.env`, in a `.env`-less checkout with `CI=true` set, and locally with `CI` unset.
+
+### 2026-10-04 — Two CI failures that predate this pass, now visible
+
+Fixing the E2E job's browser install made a failure surface that had never been visible: the Playwright smoke suite **has never run in CI**, because `Install Playwright browsers` was step 6 of 9 and had been failing since the job was added. Two failures are now on the record, and **neither is a regression from P0–P4.**
+
+**`Lint · Typecheck · Test` fails at "Run unit & integration test suites".** It failed at the same step on the P0 push (`9cc2b57`), before any commit in this pass. It could not be reproduced locally under conditions matched to CI as closely as possible — a freshly migrated and seeded database, `DATABASE_URL == DATABASE_TEST_URL` (as CI sets them), the full CI environment block, Redis running, and `bun run test` through turbo so the backend runs with `--coverage`: **459 pass / 1 skip / 0 fail**. Retrieving the actual failure needs admin rights on the repository's Actions logs, so the specific assertion is not identified here. This is an open item, not a closed one.
+
+**`E2E smoke` has 7 pre-existing failures** across `dialog-close.spec.ts` (4), `board-virtualization.spec.ts` (2) and `boards.spec.ts` (1). Verified unrelated to this pass:
+
+- `CardModal.tsx` and `KanbanCardView.tsx` — the components that decide what a card click opens — are **unchanged** in `9cc2b57..HEAD`.
+- The only click-related line in `BoardView.tsx`'s diff is whitespace: `setActiveCard(null)` re-indented.
+- The `mode === 'modal' && onClose` guard that renders the `Close (Esc)` button was introduced in `b322daa`, before the P0 push.
+- Diagnosed directly: the specs click a card title and assert the CardModal, but the board opens **"Quick View Details"** instead, so there is no `Close (Esc)` control to click and `?card=` is never cleared. That is spec-versus-UI drift that predates this pass.
+
+Local reproduction of the smoke suite: 14 passed, 7 failed, 1 skipped.
+
+**`Build and Deploy Boardly Backend` fails at "Configure AWS credentials"**, before any build, push or Helm step, so it is an environment or repository-secrets problem rather than anything in this pass.
