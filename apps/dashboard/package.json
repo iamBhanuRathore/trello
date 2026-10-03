@@ -9,6 +9,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint",
     "preview": "vite preview",
+    "test": "bun test src",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test --project=smoke",
     "test:e2e:full": "playwright test --project=full"

@@ -1,0 +1,8 @@
+# `bun test` with no arguments globs the whole package, which swept up the
+# Playwright specs in e2e/ and reported 17 phantom failures ("Playwright Test did
+# not expect test.describe() to be called here") — noise that trains you to
+# ignore a red test run. Scoping the root to src/ is what the package's unit
+# tests actually are; e2e has its own scripts (test:e2e, test:e2e:smoke,
+# test:e2e:full) and its own runner.
+[test]
+root = "src"
