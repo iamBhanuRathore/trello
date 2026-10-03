@@ -2,7 +2,7 @@ import { Elysia } from 'elysia';
 import { eq } from 'drizzle-orm';
 import { verifyAccessToken, assertActiveOrgMembership } from '../../middleware/auth';
 import { eventBus } from '../../lib/event-bus';
-import { presenceStore, initializeRedisPubSub, onRedisBroadcast } from '../../redis';
+import { presenceStore, initializeRedisPubSub, onRedisBroadcast, INSTANCE_ID } from '../../redis';
 import type { PresenceUser } from '../../redis';
 import { db } from '../../db/index';
 import { boards } from '../../db/schema/index';
@@ -254,14 +254,27 @@ export const realtimeRoutes = new Elysia({ prefix: '/realtime' }).ws('/ws', {
   },
 });
 
+/**
+ * True when a Redis broadcast originated from this instance.
+ *
+ * Redis delivers a published message back to the publisher's own subscriber, so
+ * an event that failed the 1.5s publish race (falling back to a local emit) and
+ * *then* landed late in Redis reaches this instance's sockets twice unless we
+ * drop our own messages.
+ */
+export function isOwnBroadcast(instanceId: string): boolean {
+  return instanceId === INSTANCE_ID;
+}
+
 export function setupRealtimeEventBus(
   server: {
     publish: (topic: string, message: string) => unknown;
   } | null
 ) {
-  // 1. Hook up Redis Pub/Sub receiver to local server publish
+  // 1. Hook up Redis Pub/Sub receiver to local server publish.
   initializeRedisPubSub().catch(() => {});
-  onRedisBroadcast(({ topic, event, payload }) => {
+  onRedisBroadcast(({ topic, event, payload, instanceId }) => {
+    if (isOwnBroadcast(instanceId)) return;
     if (server) {
       server.publish(topic, JSON.stringify({ type: event, payload }));
     }

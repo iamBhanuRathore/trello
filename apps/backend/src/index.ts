@@ -48,6 +48,14 @@ export const app = new Elysia()
     return undefined;
   })
   .onAfterResponse(() => {
+    // The single decrement point for every request.
+    //
+    // onAfterResponse fires for successful responses AND for responses produced
+    // by onError (verified: a thrown handler fires onRequest -> onError ->
+    // onAfterResponse, as does an unmatched route). The old code also decremented
+    // inside onError, so every error decremented twice. The Math.max(0, …) clamp
+    // hid that, but it made the shutdown drain below believe the server was idle
+    // while requests were still running — so a deploy could sever live requests.
     inFlight = Math.max(0, inFlight - 1);
   })
 
@@ -82,7 +90,8 @@ export const app = new Elysia()
 
   // ── Global Error Handler ───────────────────────────────────────────────────
   .onError(({ error, code, set, request }) => {
-    inFlight = Math.max(0, inFlight - 1);
+    // No inFlight decrement here on purpose: onAfterResponse always follows an
+    // error response, so decrementing in both places double-counted every error.
 
     if (!set.headers) set.headers = {};
     applyCorsHeaders(set.headers as Record<string, any>, request);
