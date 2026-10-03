@@ -118,9 +118,17 @@ export const TaskChecklistsCard: React.FC<TaskChecklistsCardProps> = ({
                       </div>
                     ) : (
                       <div className="space-y-0.5">
-                        <h4 className="text-sm sm:text-base font-bold text-foreground hover:text-primary cursor-pointer truncate transition-colors inline-block">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingChecklistId(cl.id);
+                            setEditingChecklistTitle(cl.title || 'Checklist #1');
+                          }}
+                          title="Rename checklist"
+                          className="block max-w-full text-left text-sm sm:text-base font-bold text-foreground hover:text-primary cursor-pointer truncate transition-colors"
+                        >
                           {cl.title || 'Checklist #1'}
-                        </h4>
+                        </button>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground font-normal">
                           <span>
                             Completed {doneItems} out of {totalItems}

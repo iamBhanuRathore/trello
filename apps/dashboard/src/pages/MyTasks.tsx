@@ -100,16 +100,16 @@ export function MyTasks() {
   // covered by the same ['my-tasks'] invalidations, so counts stay fresh —
   // and TanStack retains the previous value during background refetch, so
   // they never flash. limit=1: we only need the summary envelope.
-  const { data: liveSummary } = useQuery({
+  const { data: liveCounts } = useQuery({
     queryKey: ['my-tasks', 'summary'],
     queryFn: async () => {
       const res = await api.get('/cards/my-tasks?limit=1');
-      return res.data?.summary;
+      return { summary: res.data?.summary, total: res.data?.total ?? 0 };
     },
     staleTime: 60_000,
     placeholderData: (prev) => prev,
   });
-  const summary = liveSummary || {
+  const summary = liveCounts?.summary || {
     totalAssigned: 0,
     totalObserving: 0,
     totalParticipating: 0,
@@ -117,6 +117,11 @@ export function MyTasks() {
     overdueCount: 0,
     dueSoonCount: 0,
   };
+  // "All Tasks" is the deduplicated union of the four sets, so its count has to
+  // come from the backend's `total` (count(distinct cards.id) over the union).
+  // Summing the four Set sizes double-counts any card the user both works on
+  // and comments on, which made the badge permanently disagree with its list.
+  const allTasksCount = liveCounts?.total ?? 0;
 
   // Infinite scroll — prefetch next page before the user hits the bottom.
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -315,10 +320,7 @@ export function MyTasks() {
             >
               <span>All Tasks</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-background/20 font-bold min-w-[18px] text-center">
-                {summary.totalAssigned +
-                  summary.totalObserving +
-                  summary.totalParticipating +
-                  summary.totalCreated || tasks.length}
+                {allTasksCount}
               </span>
             </button>
             <button

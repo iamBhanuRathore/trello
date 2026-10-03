@@ -1,0 +1,234 @@
+import { describe, it, expect } from 'bun:test';
+import { readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+/**
+ * Dead / misleading UI contracts (P3-5).
+ *
+ * AGENTS.md §7: "every visible button must either act or be disabled with an
+ * explanatory tooltip. A control that silently does nothing is a defect."
+ *
+ * This pins four confirmed cases from the dead-control audit. The generic guard
+ * at the bottom is the reusable part: a NON-interactive element (h4/span/div)
+ * carrying `cursor-pointer` is, by definition, advertising a click it does not
+ * handle — the exact signature of the checklist-title bug.
+ */
+
+const APP = import.meta.dir;
+const read = (rel: string) => readFile(join(APP, rel), 'utf-8');
+
+async function tsxFiles(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const entry of await readdir(join(APP, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) out.push(...(await tsxFiles(rel)));
+    else if (entry.name.endsWith('.tsx')) out.push(rel);
+  }
+  return out;
+}
+
+/**
+ * Locates opening tags that advertise a click (`cursor-pointer`) without
+ * handling one.
+ *
+ * Two things make this non-trivial, and both produced false positives in the
+ * first version of this guard:
+ *
+ * 1. `className` template literals contain nested `${…}` braces and JSX
+ *    conditionals, so a regex cannot reliably find the end of a tag. This walks
+ *    the tag with a brace/backtick counter instead.
+ * 2. Base UI / Radix `render={<div …>}` and `asChild` inject their own
+ *    onClick/onKeyDown at runtime, so those elements look handler-less in source
+ *    but are not. Any tag lexically inside an open `render={` brace is skipped.
+ *
+ * Components (capitalised tags) are skipped too: they may forward handlers via
+ * props or spread, which source inspection cannot see.
+ */
+function deadPointerTags(src: string): string[] {
+  const dead: string[] = [];
+
+  // Ranges of `render={ … }` / `asChild={ … }` attribute values, by brace depth.
+  const injected: Array<[number, number]> = [];
+  {
+    const stack: number[] = [];
+    for (let i = 0; i < src.length; i++) {
+      if (src[i] === '{') stack.push(i);
+      else if (src[i] === '}') {
+        const open = stack.pop();
+        if (open !== undefined) {
+          const before = src.slice(Math.max(0, open - 24), open);
+          if (/render\s*=\s*$/.test(before) || /asChild\s*=\s*$/.test(before)) {
+            injected.push([open, i]);
+          }
+        }
+      }
+    }
+  }
+  const isInjected = (idx: number) => injected.some(([a, b]) => idx > a && idx < b);
+
+  for (let i = src.indexOf('cursor-pointer'); i !== -1; i = src.indexOf('cursor-pointer', i + 1)) {
+    // Walk back to the `<` that opens this tag, stepping over `key={…}`-style
+    // attribute expressions rather than stopping at their closing brace.
+    let start = -1;
+    let back = 0;
+    for (let j = i; j >= 0; j--) {
+      const c = src[j];
+      if (c === '}') back++;
+      else if (c === '{') {
+        if (back === 0) break;
+        back--;
+      } else if (back === 0 && c === '>') break;
+      else if (back === 0 && c === '<') {
+        start = j;
+        break;
+      }
+    }
+    if (start === -1 || isInjected(start)) continue;
+
+    const nameMatch = /^<([A-Za-z][\w.]*)/.exec(src.slice(start));
+    if (!nameMatch) continue;
+    const tag = nameMatch[1];
+    // Native interactive elements handle clicks by definition; components may
+    // forward handlers we cannot see.
+    if (!/^[a-z]/.test(tag) || /^(button|a|label|summary|input|select|textarea|option)$/.test(tag))
+      continue;
+
+    // Walk forward to the tag's closing `>`, tracking `{}` and template literals.
+    let depth = 0;
+    let inTemplate = false;
+    let end = -1;
+    for (let j = start + 1; j < src.length; j++) {
+      const c = src[j];
+      if (c === '\\') {
+        j++;
+        continue;
+      }
+      if (c === '`') inTemplate = !inTemplate;
+      else if (!inTemplate && c === '{') depth++;
+      else if (!inTemplate && c === '}') depth--;
+      else if (!inTemplate && depth === 0 && c === '>') {
+        end = j;
+        break;
+      }
+    }
+    if (end === -1) continue;
+
+    const attrs = src.slice(start, end + 1);
+    if (/\bon(Click|MouseDown|PointerDown|KeyDown|Press)\s*=/.test(attrs)) continue;
+    dead.push(`<${tag}> @${src.slice(0, start).split('\n').length}`);
+  }
+  return dead;
+}
+
+describe('dead control guard', () => {
+  it('no native element advertises cursor-pointer without handling a click', async () => {
+    const files = await tsxFiles('.');
+    const offenders: string[] = [];
+    for (const f of files) {
+      const dead = deadPointerTags(await read(f));
+      if (dead.length) offenders.push(`${f}: ${dead.join(', ')}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('checklist title is a real rename control', () => {
+  it('renders a button that opens the existing inline rename editor', async () => {
+    const src = await read('components/board/task-detail/TaskChecklistsCard.tsx');
+    // The audit found `cursor-pointer hover:text-primary` on an <h4> with no
+    // handler — the only such pair in the file, so it read as tappable and was
+    // inert. Touch users had no cue at all.
+    expect(src).not.toMatch(/<h4[^>]*cursor-pointer/);
+    expect(src).toMatch(/<button[\s\S]{0,400}?title="Rename checklist"/);
+    // …and it must drive the same state the "Rename checklist" menu item does,
+    // so the two entry points cannot drift.
+    const titleBlock = src.slice(
+      src.indexOf('title="Rename checklist"') - 400,
+      src.indexOf('title="Rename checklist"')
+    );
+    expect(titleBlock).toContain('setEditingChecklistId(cl.id)');
+    expect(titleBlock).toContain('setEditingChecklistTitle(');
+  });
+});
+
+describe('My Tasks counters match their lists', () => {
+  it('the All Tasks badge uses the deduplicated union count, not a sum of sets', async () => {
+    const src = await read('pages/MyTasks.tsx');
+    // The backend builds `all` as a Set union and returns `count(distinct id)`
+    // as `total`; the four summary fields are four independent Set sizes. Any
+    // card both assigned and commented on was counted twice, so the badge
+    // permanently over-reported against the list it labels.
+    expect(src).not.toMatch(/totalAssigned\s*\+\s*\n?\s*summary\.totalObserving/);
+    expect(src).toContain('const allTasksCount = liveCounts?.total ?? 0;');
+    expect(src).toContain(
+      "queryFn: async () => {\n      const res = await api.get('/cards/my-tasks?limit=1');\n      return { summary: res.data?.summary, total: res.data?.total ?? 0 };"
+    );
+  });
+});
+
+describe('automation rule rows do not look editable', () => {
+  it('no rule tile carries a click affordance it does not implement', async () => {
+    const src = await read('components/board/AutomationsModal.tsx');
+    // There is no edit path for a rule anywhere in the file — only create and
+    // delete. The hover tint advertised a row click that did nothing, so the
+    // affordance was removed rather than a half-built editor added (adding rule
+    // editing would be a feature, and this pass is fix-only).
+    expect(src).not.toMatch(/hover:bg-muted\/20/);
+    const ruleRow = src.slice(
+      src.indexOf('automations.map('),
+      src.indexOf('automations.map(') + 900
+    );
+    expect(ruleRow).not.toContain('cursor-pointer');
+  });
+});
+
+describe('disabled controls explain themselves', () => {
+  it('Timesheets Export CSV says why it is disabled', async () => {
+    const src = await read('pages/Timesheets.tsx');
+    const btn = src.slice(
+      src.indexOf('onClick={exportCSV}') - 200,
+      src.indexOf('onClick={exportCSV}') + 400
+    );
+    expect(btn).toContain('disabled={entries.length === 0}');
+    expect(btn).toContain('title={');
+    expect(btn).toContain('No timesheet entries match the current filters');
+  });
+});
+
+describe('presence avatars are informational', () => {
+  it('does not claim to be clickable — nothing handles the click', async () => {
+    const src = await read('components/board/PresenceAvatars.tsx');
+    // Found by the generic guard above, not the manual audit: the avatar
+    // wrapper carried `cursor-pointer` and a tooltip, but BoardHeader renders
+    // <PresenceAvatars> bare, so a click did nothing.
+    expect(src).not.toContain('cursor-pointer');
+    expect(src).toContain('group-hover:flex'); // tooltip stays — it is information
+  });
+});
+
+describe('saved-search rows are fully clickable and touch-deletable', () => {
+  it('the whole row label is a button, not a padded dead zone', async () => {
+    const src = await read('components/SearchPalette.tsx');
+    const row = src.slice(
+      src.indexOf('savedSearches.map('),
+      src.indexOf('savedSearches.map(') + 2000
+    );
+    // Previously the row advertised hover + cursor-pointer while only the inner
+    // <div> carried the onClick, so the row's padding was inert.
+    expect(row).toContain('<button');
+    expect(row).toContain('onClick={() => setQuery(ss.query)}');
+    expect(row).toContain('cursor-pointer');
+  });
+
+  it('the delete action is not hover-only', async () => {
+    const src = await read('components/SearchPalette.tsx');
+    const row = src.slice(
+      src.indexOf('savedSearches.map('),
+      src.indexOf('savedSearches.map(') + 2000
+    );
+    // `opacity-0 group-hover:opacity-100` hid delete from touch entirely
+    // (AGENTS.md §9: hover-only actions need a touch equivalent).
+    expect(row).not.toMatch(/opacity-0\s+group-hover:opacity-100/);
+    expect(row).toContain('sm:opacity-0 sm:group-hover:opacity-100');
+  });
+});

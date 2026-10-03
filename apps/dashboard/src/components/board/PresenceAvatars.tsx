@@ -38,7 +38,7 @@ export function PresenceAvatars({ users }: PresenceAvatarsProps) {
           return (
             <div
               key={user.id}
-              className="relative group cursor-pointer"
+              className="relative group"
               title={`${user.name} (${user.email}) - ${
                 isTyping ? 'Typing...' : user.activeCardId ? 'Viewing card' : 'Active on board'
               }`}

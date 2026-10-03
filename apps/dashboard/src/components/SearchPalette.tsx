@@ -531,25 +531,25 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
                 {savedSearches.map((ss: any) => (
                   <div
                     key={ss.id}
-                    className="group flex items-center justify-between px-3 py-2 rounded-xl text-xs hover:bg-muted/50 cursor-pointer transition-colors"
+                    className="group flex items-center justify-between rounded-xl text-xs"
                   >
-                    <div
-                      className="flex items-center gap-2.5 flex-1 min-w-0"
+                    <button
+                      type="button"
                       onClick={() => setQuery(ss.query)}
+                      className="flex items-center gap-2.5 flex-1 min-w-0 px-3 py-2 text-left rounded-xl hover:bg-muted/50 cursor-pointer transition-colors"
                     >
                       <Bookmark className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                       <span className="truncate font-medium">{ss.name}</span>
                       <span className="text-[10px] text-muted-foreground font-mono truncate">
                         ({ss.query})
                       </span>
-                    </div>
+                    </button>
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteSavedSearchMutation.mutate(ss.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose-500 rounded-md transition-all"
+                      onClick={() => deleteSavedSearchMutation.mutate(ss.id)}
+                      // Always visible on coarse pointers: `opacity-0` until hover
+                      // left the delete action unreachable on touch (AGENTS.md §9).
+                      className="p-1 mr-3 text-muted-foreground hover:text-rose-500 rounded-md transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                       title="Delete saved search"
                     >
                       <X className="w-3.5 h-3.5" />

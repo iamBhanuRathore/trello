@@ -299,6 +299,11 @@ export function Timesheets() {
             size="sm"
             onClick={exportCSV}
             disabled={entries.length === 0}
+            title={
+              entries.length === 0
+                ? 'No timesheet entries match the current filters'
+                : 'Export the entries currently listed as CSV'
+            }
             className="gap-1.5 ml-auto"
           >
             <Download className="w-4 h-4" /> Export CSV

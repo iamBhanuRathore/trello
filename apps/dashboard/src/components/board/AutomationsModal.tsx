@@ -375,7 +375,7 @@ function BoardRulesPanel(props: {
         {automations.map((auto: any) => (
           <div
             key={auto.id}
-            className="flex justify-between items-center gap-2 p-3.5 border border-border rounded-xl bg-card hover:bg-muted/20 shadow-xs transition-colors"
+            className="flex justify-between items-center gap-2 p-3.5 border border-border rounded-xl bg-card shadow-xs"
           >
             <div className="flex items-center gap-3 min-w-0">
               <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500 shrink-0">
@@ -699,7 +699,7 @@ function ProjectDefaultsPanel(props: {
             return (
               <div
                 key={r.id}
-                className="flex justify-between items-center gap-2 p-3.5 border border-border rounded-xl bg-card hover:bg-muted/20 shadow-xs transition-colors"
+                className="flex justify-between items-center gap-2 p-3.5 border border-border rounded-xl bg-card shadow-xs"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
