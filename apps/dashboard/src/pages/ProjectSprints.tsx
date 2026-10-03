@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@boardly/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { api } from '../lib/api';
 import { QueryError } from '../components/common/QueryError';
+import { usePermissions, permissionReason } from '../hooks/usePermissions';
 
 export const ProjectSprints = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -165,6 +166,8 @@ function SprintCard({
   onUpdateStatus?: (s: string) => void;
   readOnly?: boolean;
 }) {
+  const { can, isLoading: permsLoading } = usePermissions();
+
   // Fetch cards for this sprint
   const {
     data: sprintCards,
@@ -175,12 +178,17 @@ function SprintCard({
     queryFn: () => sprintsService.getSprintCards(sprint.id),
   });
 
+  // The route behind these transitions requires sprint.update; only Org
+  // Owner/Admin hold it today, so without this a member sees buttons that 403.
+  const canUpdateSprint = permsLoading ? false : can('sprint.update');
+  const blockedReason = permissionReason('sprint.update');
+
   return (
     <Card className="shadow-sm">
       <CardHeader className="pb-3 border-b bg-muted/20">
         <div className="flex justify-between items-start">
           <CardTitle className="text-lg">{sprint.name}</CardTitle>
-          {!readOnly && (
+          {!readOnly && canUpdateSprint && (
             <div>
               {sprint.status === 'planned' && (
                 <Button size="sm" onClick={() => onUpdateStatus?.('active')}>
@@ -193,6 +201,11 @@ function SprintCard({
                 </Button>
               )}
             </div>
+          )}
+          {!readOnly && !canUpdateSprint && (
+            <span className="text-xs text-muted-foreground" title={blockedReason}>
+              {blockedReason}
+            </span>
           )}
         </div>
         <div className="text-sm text-muted-foreground flex gap-4 mt-2">
@@ -264,6 +277,12 @@ function SprintCardItem({ cardId }: { cardId: string }) {
 }
 
 function CreateSprintDialog({ projectId }: { projectId: string }) {
+  const { can, isLoading: permsLoading } = usePermissions();
+  // POST /sprints requires sprint.create. Rendering a trigger that 403s is a
+  // dead control, so the whole dialog is withheld instead. The check sits after
+  // every hook so hook order stays stable while permissions are loading.
+  const canCreateSprint = permsLoading ? false : can('sprint.create');
+
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
 
@@ -287,6 +306,8 @@ function CreateSprintDialog({ projectId }: { projectId: string }) {
     e.preventDefault();
     createMutation.mutate(formData);
   };
+
+  if (!canCreateSprint) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

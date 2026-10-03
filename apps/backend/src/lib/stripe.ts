@@ -15,6 +15,13 @@ function getStripeClient(): Stripe {
   return new Stripe(env.STRIPE_SECRET_KEY, {
     apiVersion: '2026-08-26.dahlia',
     typescript: true,
+    // Bound every outbound call. stripe-node otherwise defaults to an 80s
+    // timeout, which is long enough to pin a request handler (and, before the
+    // rate limiter's own 400ms race, the whole event loop) on an unresponsive
+    // Stripe API. Billing callers — the webhook receiver especially — must fail
+    // fast so the claim state and Stripe's own retry drive recovery.
+    timeout: 10_000,
+    maxNetworkRetries: 2,
   });
 }
 
@@ -43,7 +50,9 @@ export interface CreateCheckoutOptions {
   metadata?: Record<string, string>;
 }
 
-export async function createCheckoutSession(opts: CreateCheckoutOptions): Promise<Stripe.Checkout.Session> {
+export async function createCheckoutSession(
+  opts: CreateCheckoutOptions
+): Promise<Stripe.Checkout.Session> {
   const s = stripe();
 
   return s.checkout.sessions.create(
@@ -84,7 +93,9 @@ export interface CreatePortalOptions {
   returnUrl: string;
 }
 
-export async function createBillingPortalSession(opts: CreatePortalOptions): Promise<Stripe.BillingPortal.Session> {
+export async function createBillingPortalSession(
+  opts: CreatePortalOptions
+): Promise<Stripe.BillingPortal.Session> {
   const s = stripe();
   return s.billingPortal.sessions.create({
     customer: opts.stripeCustomerId,
@@ -244,7 +255,10 @@ export async function previewProratedInvoice(opts: {
 
 // ─── Invoices ─────────────────────────────────────────────────────────────────
 
-export async function listInvoices(stripeCustomerId: string, limit = 10): Promise<Stripe.Invoice[]> {
+export async function listInvoices(
+  stripeCustomerId: string,
+  limit = 10
+): Promise<Stripe.Invoice[]> {
   const s = stripe();
   const invoices = await s.invoices.list({ customer: stripeCustomerId, limit });
   return invoices.data;

@@ -74,6 +74,13 @@ function getSMTPTransport(): nodemailer.Transporter | null {
     // Opportunistic STARTTLS off localhost is credential theft via MITM.
     requireTLS: !isLocal,
     tls: isLocal ? undefined : { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
+    // Bound the connection lifecycle. Without these a dead SMTP server or a
+    // black-holed socket leaves the transporter awaiting a reply indefinitely:
+    // nodemailer sends from billing, invite and webhook paths, so an unbounded
+    // wait there holds a request open and a socket in the pool.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
   });
   return _smtpTransport;
 }

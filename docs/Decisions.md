@@ -1400,3 +1400,24 @@ Separately, `createClientOptions.retryStrategy` returned `null` after 10 attempt
 **Consequences:** a Redis outage now degrades enforcement instead of removing it, SSO keeps CSRF/replay protection without Redis, and presence cannot split-brain within an instance's lifetime. `memory-token-bucket.test.ts` pins the bucket's parity with the Lua script (including a spoofed-header flood bounded to the burst, which the old fail-open path allowed to run to 500); `presence-pinning.test.ts` covers the flip-resistance and single-sweeper behaviour; `sso-state.test.ts` covers durability, expiry, single-use claim and the absence of Redis. Four of the SSO tests fail against the pre-fix code.
 
 **Operational note:** Redis `commandTimeout` is 2000ms while the limiter's own race gives up at 400ms, so a slow Redis degrades to the local bucket rather than adding latency.
+
+---
+
+### 2026-10-03 — Sprint/Phase Permissions: Guards Already Existed; the Gap Was Ungated UI
+
+**Context:** P0-8 in the fix plan assumed `phases/*` and `sprints/*` routes had no `requirePermission` guards and needed wiring. That assumption was wrong — all eight handlers in each file have been guarded. Verifying rather than assuming changed the shape of the work.
+
+The real risk was the opposite one. `POST/PATCH/DELETE /sprints` require `sprint.create|update|delete` and the phase equivalents, but the **seeded system roles only grant those keys to Org Owner and Org Admin** — the `Member` role receives `card.sprint.assign` and nothing at project level. So a member can open a sprint board and see `Start Sprint`, `Complete`, `Create Sprint`, `Add Phase`, `Start Phase`, all of which return 403. Neither `ProjectSprints.tsx` nor `ProjectPhases.tsx` consulted `usePermissions` at all.
+
+**Alternatives considered:**
+
+- Add `sprint.*`/`phase.*` to the seeded Member role (rejected for now — that is a product decision about who may run a sprint, not a bug fix, and it would widen every member's grant without being asked).
+- Leave the UI as-is (rejected — dead controls that fail on click, which AGENTS.md §7 treats as a defect).
+
+**Decision:**
+
+1. Gates the dashboard on the keys the routes actually require: `CreateSprintDialog` and `CreatePhaseDialog` return `null` without `sprint.create`/`phase.create` (matching the existing `Create*Dialog` pattern for workspaces, projects and boards), and the status-transition buttons are replaced by a `permissionReason` label when the role lacks `sprint.update`/`phase.update`. Reads are untouched, so members keep full visibility.
+2. The permission check sits **after** every hook and treats `permsLoading` as "no permission", because `usePermissions` reads the auth store and permissions arrive asynchronously — an early `return null` before the hooks would change hook order between renders.
+3. Added `sprint-phase-permissions.test.ts` to pin the contract: every handler is guarded, reads use `project.read` while mutations use their specific key, Owner/Admin hold all six keys, Viewer reads but cannot mutate, Member reads but cannot mutate, and no role can mutate without being able to read. The Member assertion is deliberately pinned so that granting Member these keys later produces a deliberate signal to revisit the gating rather than a silent UI inconsistency.
+
+**Consequences:** members and viewers get a coherent read-only sprint/phase view with an explicit reason instead of buttons that 403. Custom production roles are covered by the same gate, since it reads the effective permission set rather than a role name. If sprint management is later opened up to members, the pinned Member assertion is the tripwire.

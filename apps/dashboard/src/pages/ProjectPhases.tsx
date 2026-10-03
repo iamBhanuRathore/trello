@@ -18,6 +18,7 @@ import { Calendar, ArrowLeft, Flag, GitBranch } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@boardly/ui/card';
 import { api } from '../lib/api';
 import { QueryError } from '../components/common/QueryError';
+import { usePermissions, permissionReason } from '../hooks/usePermissions';
 
 export const ProjectPhases = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -149,6 +150,12 @@ export const ProjectPhases = () => {
 };
 
 function PhaseCard({ phase, onUpdateStatus }: { phase: any; onUpdateStatus: (s: string) => void }) {
+  const { can } = usePermissions();
+  // Status transitions hit PATCH /phases/:id, which requires phase.update. Only
+  // Org Owner/Admin hold it, so without this gate a member gets dead buttons.
+  const canUpdatePhase = can('phase.update');
+  const blockedReason = permissionReason('phase.update');
+
   // Fetch cards for this phase
   const {
     data: phaseCards,
@@ -172,18 +179,23 @@ function PhaseCard({ phase, onUpdateStatus }: { phase: any; onUpdateStatus: (s: 
             <CardTitle className="text-lg">{phase.name}</CardTitle>
           </div>
           <div>
-            {phase.status === 'not_started' && (
+            {canUpdatePhase && phase.status === 'not_started' && (
               <Button size="sm" onClick={() => onUpdateStatus('active')}>
                 Start Phase
               </Button>
             )}
-            {phase.status === 'active' && (
+            {canUpdatePhase && phase.status === 'active' && (
               <Button size="sm" variant="secondary" onClick={() => onUpdateStatus('completed')}>
                 Complete
               </Button>
             )}
             {phase.status === 'completed' && (
               <span className="text-sm font-medium text-primary">Completed</span>
+            )}
+            {!canUpdatePhase && phase.status !== 'completed' && (
+              <span className="text-xs text-muted-foreground" title={blockedReason}>
+                {blockedReason}
+              </span>
             )}
           </div>
         </div>
@@ -253,6 +265,11 @@ function CreatePhaseDialog({
 }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { can, isLoading: permsLoading } = usePermissions();
+  // POST /phases requires phase.create; withhold the trigger rather than render
+  // a control that 403s. Checked after every hook so hook order stays stable
+  // while permissions are still loading.
+  const canCreatePhase = permsLoading ? false : can('phase.create');
 
   const [formData, setFormData] = useState({
     name: 'Discovery',
@@ -278,6 +295,8 @@ function CreatePhaseDialog({
       endDate: formData.endDate || undefined,
     });
   };
+
+  if (!canCreatePhase) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
