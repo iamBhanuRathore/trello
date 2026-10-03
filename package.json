@@ -23,6 +23,7 @@
     "db:logs": "./scripts/db.sh logs",
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:db-cli": "./scripts/db.sh.test.sh",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --ignore-path .gitignore",

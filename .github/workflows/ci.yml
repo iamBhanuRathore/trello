@@ -62,6 +62,12 @@ jobs:
       - name: Lint across all workspaces
         run: bun run lint
 
+      - name: Database CLI target-resolution tests
+        # db.sh can drop a schema. This asserts it refuses a non-local
+        # DATABASE_URL, which is the defect that put migration 0040 on the
+        # shared remote database.
+        run: ./scripts/db.sh.test.sh
+
       - name: Build monorepo packages
         run: bun run build
 
