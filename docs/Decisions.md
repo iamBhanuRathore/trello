@@ -1369,3 +1369,34 @@ Idempotency was also weaker than it looked. `billing_events.stripe_event_id` is 
 **Consequences:** a crash between side effects and completion is now recoverable instead of duplicating, and a failed event is retried instead of being silently skipped. `webhook-idempotency.test.ts` covers the claim lifecycle including the crash-between and stale-takeover cases; `webhook-status-signed.test.ts` stubs `lib/stripe` so the 500 path is exercised offline with no credentials and no network. Two of these fail against the pre-fix code with 400 where 500 is correct.
 
 **Migration note:** `db:migrate` reads `process.env.DATABASE_URL` and ignores `DATABASE_TEST_URL`, so it targets the configured development database unless the URL is passed explicitly (`DATABASE_URL=… bun run db:migrate`). `0040` is additive and idempotent (`IF NOT EXISTS` throughout, plus a backfill), so applying it to a database that already has it is a no-op.
+
+---
+
+### 2026-10-03 — Degraded Modes Enforce Locally; SSO State Moves to the Database
+
+**Context:** Three subsystems shared a "if the backing store is unavailable, do nothing" shape, each of which removed a protection precisely when an attacker could least afford its absence.
+
+1. **Rate limiter.** All three failure paths (Redis absent, >400ms timeout, Redis exception) returned `undefined`, i.e. fail-open. The pre-auth bucket (`2 rps / 30 burst`, keyed by client IP) protected sign-in, sign-up, refresh, SSO and invites — so a Redis outage converted them into an unthrottled credential-stuffing target.
+2. **SSO `state`.** The callback read state from Redis inside `if (redis && isRedisAvailable())`, with the comment "Without Redis the WorkOS code exchange below is still required auth." When Redis was down the CSRF and replay check was skipped entirely.
+3. **Presence store.** `HybridPresenceStore.activeStore` was re-evaluated per call, so a flapping connection split state mid-flight: a heartbeat written to Redis followed by a read from the empty in-memory map, producing flickering avatars and ghost users. Its sweeper also ran against both stores with one callback, so a single eviction could broadcast `presence:update` twice.
+
+Separately, `createClientOptions.retryStrategy` returned `null` after 10 attempts, which stops ioredis permanently: after a long outage the process stayed degraded until a pod restart.
+
+**Alternatives considered:**
+
+- Fail closed on the rate limiter (rejected — turns a Redis outage into a total application outage, trading a security control for availability with no middle ground).
+- Leave the limiter fail-open and rely on other layers (rejected — there is no other throttle on the pre-auth endpoints).
+- Keep SSO state in Redis and reject when it is unreachable (rejected — that denies SSO login whenever Redis is down, which is its own outage).
+- Re-evaluate the presence store per call (rejected — that is the bug).
+- Per-pod Redis standby via a second URL (rejected — new infrastructure, i.e. a feature).
+
+**Decision:**
+
+1. **Rate limiter enforces from an in-process bucket** (`lib/memory-token-bucket.ts`) on every degraded path. It mirrors `TOKEN_BUCKET_LUA` exactly — lazy refill, `Math.floor` on remaining, `reset = ceil((capacity - tokens)/rate)`, and the same `EXPIRE` window via `bucketTtlSeconds` — so a Redis outage does not silently change anyone's effective limit. The accepted tradeoff is per-pod rather than cluster-wide limits: an attacker gets N× budget for N instances instead of unlimited. A new `rateLimiterMemoryFallbackTotal` metric distinguishes degradation from the historical fail-open counter, and the store is LRU-bounded at 10k buckets because pre-auth keys come from `x-forwarded-for`, which is attacker-controlled and would otherwise grow the map without limit.
+2. **SSO state is stored in the database** (new `sso_login_states` table, migration `0041_sso_login_states.sql`). `expires_at` replaces the Redis TTL, `consumed_at` makes it single-use, and the claim is a conditional `UPDATE … WHERE consumed_at IS NULL` so two concurrent callbacks cannot both win. There is deliberately no "skip if the store is unavailable" branch: if the lookup cannot be completed, the callback is not authenticated. The service no longer imports the Redis client at all, which a test asserts structurally so the branch cannot return. If the database is also unavailable the request fails — the alternative (denying all SSO) is the same outage, just moved.
+3. **Presence store is pinned once per instance** via `pinStore()`, and the sweeper starts on the pinned store only. `destroy()` clears the pin so a rebuilt store re-pins.
+4. **Redis retries forever** with capped exponential backoff plus jitter, warning every 25 attempts.
+
+**Consequences:** a Redis outage now degrades enforcement instead of removing it, SSO keeps CSRF/replay protection without Redis, and presence cannot split-brain within an instance's lifetime. `memory-token-bucket.test.ts` pins the bucket's parity with the Lua script (including a spoofed-header flood bounded to the burst, which the old fail-open path allowed to run to 500); `presence-pinning.test.ts` covers the flip-resistance and single-sweeper behaviour; `sso-state.test.ts` covers durability, expiry, single-use claim and the absence of Redis. Four of the SSO tests fail against the pre-fix code.
+
+**Operational note:** Redis `commandTimeout` is 2000ms while the limiter's own race gives up at 400ms, so a slow Redis degrades to the local bucket rather than adding latency.

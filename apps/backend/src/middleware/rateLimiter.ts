@@ -3,6 +3,7 @@ import type { PlanTier } from '@boardly/shared-types';
 import { getDataClient, isRedisAvailable } from '../redis/client';
 import { logger } from '../lib/logger';
 import { resolveOrgPlanTier } from './auth';
+import { bucketTtlSeconds, memoryRateLimiterStore } from '../lib/memory-token-bucket';
 
 export interface RateLimitConfig {
   rps: number;
@@ -66,7 +67,26 @@ let scriptSha: string | null = null;
 export const metrics = {
   rateLimiterFailOpenTotal: 0,
   rateLimit429Total: 0,
+  /** Enforced by the in-process bucket because Redis was unavailable. */
+  rateLimiterMemoryFallbackTotal: 0,
 };
+
+/**
+ * Evaluates the bucket in-process. Used whenever Redis is unavailable, slow, or
+ * throws, so a Redis outage degrades per-instance enforcement instead of
+ * removing the limit altogether.
+ */
+function enforceInMemory(
+  key: string,
+  config: RateLimitConfig,
+  nowSec: number
+): { allowed: boolean; remaining: number; reset: number } {
+  metrics.rateLimiterMemoryFallbackTotal++;
+  const decision = memoryRateLimiterStore.consume(key, config.burst, config.rps, nowSec);
+  // Opportunistic cleanup keeps idle buckets from accumulating.
+  memoryRateLimiterStore.sweep(nowSec, bucketTtlSeconds(config.burst, config.rps));
+  return decision;
+}
 
 async function executeLuaTokenBucket(
   key: string,
@@ -194,15 +214,28 @@ export const rateLimiterMiddleware = () =>
       const nowSec = Date.now() / 1000;
 
       if (!isRedisAvailable() || !getDataClient()) {
-        // Fail-open
-        metrics.rateLimiterFailOpenTotal++;
-        logger.warn({ key }, 'Rate limiter fail-open: Redis is unavailable');
+        // Redis down: keep enforcing from the in-process bucket rather than
+        // removing the limit (which left pre-auth endpoints brute-forceable)
+        // and rather than failing closed (which would be a full outage).
+        logger.warn({ key, tier }, 'Rate limiter degraded to in-memory bucket (Redis unavailable)');
+        const local = enforceInMemory(key, config, nowSec);
+        if (!local.allowed) {
+          metrics.rateLimit429Total++;
+          if (!set.headers) set.headers = {};
+          set.status = 429;
+          set.headers['Retry-After'] = Math.max(1, local.reset).toString();
+          return {
+            error: 'Too Many Requests',
+            message: `Rate limit exceeded for tier '${tier}'. Retry after ${Math.max(1, local.reset)}s.`,
+            retryAfter: Math.max(1, local.reset),
+          };
+        }
         return undefined;
       }
 
       try {
         // 400ms hard timeout: local Redis answers in ~1ms, remote (Upstash)
-        // in ~50-100ms. Failing open on timeout keeps latency bounded.
+        // in ~50-100ms. Falling back locally keeps latency bounded.
         const resultPromise = executeLuaTokenBucket(key, config.burst, config.rps, nowSec, 1);
         const timeoutPromise = new Promise<{ timeout: true }>((resolve) =>
           setTimeout(() => resolve({ timeout: true }), 400)
@@ -212,7 +245,22 @@ export const rateLimiterMiddleware = () =>
 
         if ('timeout' in outcome) {
           metrics.rateLimiterFailOpenTotal++;
-          logger.warn({ key }, 'Rate limiter fail-open: Redis check timed out (>400ms)');
+          logger.warn(
+            { key },
+            'Rate limiter degraded to in-memory bucket: Redis check timed out (>400ms)'
+          );
+          const local = enforceInMemory(key, config, nowSec);
+          if (!local.allowed) {
+            metrics.rateLimit429Total++;
+            if (!set.headers) set.headers = {};
+            set.status = 429;
+            set.headers['Retry-After'] = Math.max(1, local.reset).toString();
+            return {
+              error: 'Too Many Requests',
+              message: `Rate limit exceeded for tier '${tier}'. Retry after ${Math.max(1, local.reset)}s.`,
+              retryAfter: Math.max(1, local.reset),
+            };
+          }
           return undefined;
         }
 
@@ -235,10 +283,25 @@ export const rateLimiterMiddleware = () =>
           };
         }
       } catch (err: unknown) {
-        // Fail-open on any Redis exception
+        // Redis threw — enforce locally instead of dropping the limit entirely.
         const errMsg = err instanceof Error ? err.message : String(err);
         metrics.rateLimiterFailOpenTotal++;
-        logger.error({ err: errMsg, key }, 'Rate limiter evaluation error — failing open');
+        logger.error(
+          { err: errMsg, key },
+          'Rate limiter Redis error — enforcing with in-memory bucket'
+        );
+        const local = enforceInMemory(key, config, nowSec);
+        if (!local.allowed) {
+          metrics.rateLimit429Total++;
+          if (!set.headers) set.headers = {};
+          set.status = 429;
+          set.headers['Retry-After'] = Math.max(1, local.reset).toString();
+          return {
+            error: 'Too Many Requests',
+            message: `Rate limit exceeded for tier '${tier}'. Retry after ${Math.max(1, local.reset)}s.`,
+            retryAfter: Math.max(1, local.reset),
+          };
+        }
       }
       return undefined;
     }

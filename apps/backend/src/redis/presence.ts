@@ -415,14 +415,34 @@ export class InMemoryPresenceStore implements PresenceStore {
 export class HybridPresenceStore implements PresenceStore {
   private redisStore: RedisPresenceStore;
   private memoryStore: InMemoryPresenceStore;
+  private pinnedStore: RedisPresenceStore | InMemoryPresenceStore | null = null;
 
   constructor() {
     this.redisStore = new RedisPresenceStore();
     this.memoryStore = new InMemoryPresenceStore();
   }
 
+  /**
+   * Picks the backing store ONCE per instance and keeps it.
+   *
+   * This used to be resolved per call via `isRedisAvailable()`. A flapping Redis
+   * connection therefore split state mid-flight: a heartbeat could land in Redis
+   * while the next read came from the in-memory map (empty), producing flickering
+   * avatars and ghost users. Pinning means one instance reads and writes the same
+   * store for its whole lifetime; a genuinely unavailable Redis at boot still
+   * falls back to memory.
+   */
+  public pinStore(
+    useRedis: boolean = isRedisAvailable()
+  ): RedisPresenceStore | InMemoryPresenceStore {
+    if (!this.pinnedStore) {
+      this.pinnedStore = useRedis ? this.redisStore : this.memoryStore;
+    }
+    return this.pinnedStore;
+  }
+
   private get activeStore(): PresenceStore {
-    return isRedisAvailable() ? this.redisStore : this.memoryStore;
+    return this.pinStore();
   }
 
   public async setUser(
@@ -469,11 +489,13 @@ export class HybridPresenceStore implements PresenceStore {
     intervalMs: number = 15000,
     onEvicted?: (boardId: string, remainingUsers: PresenceUser[]) => void
   ): void {
-    this.redisStore.startSweeper(intervalMs, onEvicted);
-    this.memoryStore.startSweeper(intervalMs, onEvicted);
+    // Sweep only the pinned store. Previously both stores ran with the same
+    // callback, so a single eviction could broadcast `presence:update` twice.
+    this.pinStore().startSweeper(intervalMs, onEvicted);
   }
 
   public destroy(): void {
+    this.pinnedStore = null;
     this.redisStore.destroy();
     this.memoryStore.destroy();
   }

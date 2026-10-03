@@ -1401,6 +1401,27 @@ export const ssoConfigurations = pgTable('sso_configurations', {
   ...timestamps,
 });
 
+// ─── SSO Login State (CSRF + replay protection) ───────────────────────────────
+/**
+ * Durable storage for the SSO `state` parameter.
+ *
+ * This lived only in Redis, and the callback skipped the state check entirely
+ * when Redis was unavailable — downgrading CSRF/replay protection to nothing
+ * during exactly the incidents where an attacker can least afford a working
+ * control plane. The database is the single source of truth here; `expiresAt`
+ * replaces the Redis TTL and `consumedAt` makes each state single-use.
+ */
+export const ssoLoginStates = pgTable('sso_login_states', {
+  state: varchar('state', { length: 128 }).primaryKey(),
+  domain: varchar('domain', { length: 255 }).notNull(),
+  organizationId: uuid('organization_id').references(() => organizations.id, {
+    onDelete: 'cascade',
+  }),
+  expiresAt: timestamp('expires_at').notNull(),
+  consumedAt: timestamp('consumed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 // ─── Public Developer API Keys ───────────────────────────────────────────────
 export const apiKeys = pgTable('api_keys', {
   id: uuid('id').primaryKey().defaultRandom(),

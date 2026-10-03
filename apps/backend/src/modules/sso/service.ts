@@ -1,8 +1,9 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   ssoConfigurations,
+  ssoLoginStates,
   organizations,
   users,
   organizationMembers,
@@ -10,8 +11,10 @@ import {
 import { issueTokenPair } from '../auth/service';
 import type { RefreshContext } from '../auth/service';
 import { getWorkOS, getRedirectUri, verifyWorkOSCode } from '../auth/workos.service';
-import { getDataClient, isRedisAvailable } from '../../redis/client';
 import { env } from '../../lib/env';
+
+/** SSO `state` lifetime. Mirrors the previous Redis TTL of 600 seconds. */
+const SSO_STATE_TTL_MS = 10 * 60_000;
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -165,16 +168,17 @@ export async function generateSSOLoginUrl(
   }
 
   const redirectUri = getRedirectUri(customRedirectUri);
-  // Unpredictable CSRF state, bound to the domain server-side (Redis, 10min TTL).
+  // Unpredictable CSRF state, bound to the domain server-side and single-use.
+  // Stored in the database, not Redis: the callback used to skip verification
+  // entirely when Redis was unavailable, leaving SSO logins with no CSRF or
+  // replay protection during a Redis outage. TTL is enforced by `expiresAt`.
   const state = `sso_${randomBytes(16).toString('hex')}`;
-  const redis = getDataClient();
-  if (redis && isRedisAvailable()) {
-    try {
-      await redis.set(`sso:state:${state}`, cleanDomain, 'EX', 600);
-    } catch {
-      // Best-effort: the WorkOS code exchange below remains the primary auth.
-    }
-  }
+  await db.insert(ssoLoginStates).values({
+    state,
+    domain: cleanDomain,
+    organizationId: config.organizationId,
+    expiresAt: new Date(Date.now() + SSO_STATE_TTL_MS),
+  });
   let loginUrl: string;
 
   try {
@@ -231,25 +235,31 @@ export async function processSSOCallback(
   },
   ctx: RefreshContext = {}
 ) {
+  // CSRF + replay check. The state must exist, be unexpired, and be unused.
+  // There is deliberately no "skip if the store is unavailable" branch: if this
+  // lookup cannot be completed we cannot authenticate the callback, so we fail.
   if (input.state) {
-    const redis = getDataClient();
-    if (redis && isRedisAvailable()) {
-      let expected: string | null = null;
-      try {
-        expected = await redis.get(`sso:state:${input.state}`);
-      } catch {
-        expected = null;
-      }
-      if (!expected) {
-        throw httpError(401, 'Invalid or expired SSO state');
-      }
-      try {
-        await redis.del(`sso:state:${input.state}`);
-      } catch {
-        // Single-use best-effort; TTL expiry bounds reuse.
-      }
+    const [row] = await db
+      .select()
+      .from(ssoLoginStates)
+      .where(eq(ssoLoginStates.state, input.state))
+      .limit(1);
+
+    if (!row) throw httpError(401, 'Invalid or expired SSO state');
+    if (row.consumedAt) throw httpError(401, 'SSO state already used');
+    if (row.expiresAt.getTime() <= Date.now()) {
+      throw httpError(401, 'Invalid or expired SSO state');
     }
-    // Without Redis the WorkOS code exchange below is still required auth.
+
+    // Single-use: mark consumed before the code exchange so a replay racing the
+    // first request cannot both succeed.
+    const claimed = await db
+      .update(ssoLoginStates)
+      .set({ consumedAt: new Date() })
+      .where(and(eq(ssoLoginStates.state, input.state), isNull(ssoLoginStates.consumedAt)))
+      .returning({ state: ssoLoginStates.state });
+
+    if (claimed.length === 0) throw httpError(401, 'SSO state already used');
   }
 
   const { email: cleanEmail, name } = await verifyWorkOSCode(input.code);

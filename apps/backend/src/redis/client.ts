@@ -30,15 +30,25 @@ function createClientOptions(url: string): RedisOptions {
     commandTimeout: 2000,
     // Upstash requires TLS; auto-upgrade plain `redis://…upstash.io` URLs.
     ...(isUpstashUrl(url) && !url.startsWith('rediss://') ? { tls: {} } : {}),
+    /**
+     * Retry forever with capped exponential backoff plus jitter.
+     *
+     * This used to return `null` after 10 attempts, which permanently stops
+     * ioredis for the life of the process: after a long outage the app stayed on
+     * in-memory fallbacks (split presence, per-pod rate limits, no cross-instance
+     * fan-out) until someone restarted the pod. Returning a delay forever lets
+     * the client recover on its own.
+     */
     retryStrategy(times) {
-      if (times > 10) {
+      const base = Math.min(times * 100, 3000);
+      const jitter = Math.floor(Math.random() * 250);
+      if (times % 25 === 0) {
         logger.warn(
-          { attempt: times },
-          'Redis connection retry limit reached. Continuing with in-memory fallback.'
+          { attempt: times, backoffMs: base + jitter },
+          'Redis still unreachable after repeated retries — continuing to retry in the background'
         );
-        return null;
       }
-      return Math.min(times * 100, 3000);
+      return base + jitter;
     },
     reconnectOnError(err) {
       logger.warn({ err: err.message }, 'Redis encountered error, reconnecting...');
