@@ -3,18 +3,20 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq } from 'drizzle-orm';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { signUp } from '../auth/service';
 
-const TEST_DB_URL = process.env['DATABASE_TEST_URL'] ?? 'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
+const TEST_DB_URL =
+  process.env['DATABASE_TEST_URL'] ??
+  'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
 
 describe('Super Admin Routes', () => {
   let testPlanId: string;
   let client: ReturnType<typeof postgres>;
   let db: Database;
   let orgId: string;
-  let regularUserId: string;
-  let adminUserId: string;
+  let regularEmail: string;
+  let adminEmail: string;
 
   beforeAll(async () => {
     client = postgres(TEST_DB_URL, { max: 1 });
@@ -22,42 +24,35 @@ describe('Super Admin Routes', () => {
 
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
     // 1. Create a regular organization with users
-    const { organization: org, user: regUser } = await signUp(db, {
+    regularEmail = `regular_${id}@example.com`;
+    const { organization: org } = await signUp(db, {
       name: 'Regular',
-      email: `regular_${id}@example.com`,
+      email: regularEmail,
       password: 'pass',
       orgName: `Reg Org ${id}`,
       orgSlug: `reg-org-${id}`,
     });
     orgId = org.id;
-    regularUserId = regUser.id;
 
     // 2. Make one of the users a platform admin manually
-    const [adminUser] = await db.insert(schema.users).values({
-      email: `superadmin_${id}@example.com`,
+    adminEmail = `superadmin_${id}@example.com`;
+    await db.insert(schema.users).values({
+      email: adminEmail,
       name: 'Super Admin',
       isPlatformAdmin: true,
-    }).returning();
-    if (adminUser) adminUserId = adminUser.id;
+    });
 
     testPlanId = (org as any).planId ?? '';
   });
 
   afterAll(async () => {
-    try {
-      if (orgId) {
-        await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
-        await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
-      }
-      if (adminUserId) {
-        await db.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, adminUserId));
-        await db.delete(schema.users).where(eq(schema.users.id, adminUserId));
-      }
-      if (regularUserId) {
-        await db.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, regularUserId));
-        await db.delete(schema.users).where(eq(schema.users.id, regularUserId));
-      }
-    } catch {}
+    // This chain deleted organizationMembers then organizations, with no roles,
+    // rolePermissions or subscriptions delete, so the org delete threw on a
+    // restrict FK and `catch {}` swallowed it — the org and both users survived
+    // every run with no signal. deleteTestOrg orders the leaves first.
+    if (orgId) await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, regularEmail);
+    await deleteTestUser(db, adminEmail);
     await client.end();
   });
 

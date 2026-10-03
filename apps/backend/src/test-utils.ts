@@ -36,6 +36,13 @@ export async function deleteTestOrg(db: Database, orgId: string): Promise<void> 
     .where(inArray(schema.seatChangeRequests.subscriptionId, orgSubs));
   await db.delete(schema.guestSeats).where(eq(schema.guestSeats.organizationId, orgId));
   await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, orgId));
+  // sso_configurations.organization_id is NO ACTION (verified against
+  // information_schema), so the org delete below trips on it. Three suites were
+  // each hand-rolling this one statement because the helper could not be used
+  // without it.
+  await db
+    .delete(schema.ssoConfigurations)
+    .where(eq(schema.ssoConfigurations.organizationId, orgId));
   await db
     .delete(schema.organizationRoleMembers)
     .where(eq(schema.organizationRoleMembers.organizationId, orgId));

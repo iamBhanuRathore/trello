@@ -4,6 +4,7 @@ import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { eq } from 'drizzle-orm';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { signUp } from '../auth/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
@@ -20,6 +21,7 @@ describe('Time Tracking Service', () => {
   let db: Database;
   let orgId: string;
   let userId: string;
+  let email: string;
   let projectId: string;
   let boardId: string;
   let listId: string;
@@ -30,7 +32,7 @@ describe('Time Tracking Service', () => {
     client = postgres(TEST_DB_URL, { max: 1 });
     db = drizzle(client, { schema });
 
-    const email = `timetrack_${Date.now()}@example.com`;
+    email = `timetrack_${Date.now()}@example.com`;
     const slug = `timetrack-org-${Date.now()}`;
 
     const { user, organization } = await signUp(db, {
@@ -85,17 +87,13 @@ describe('Time Tracking Service', () => {
     await db.delete(schema.boards).where(eq(schema.boards.id, boardId));
     await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
     await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
-    await db
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, orgId));
-    await db
-      .delete(schema.roles)
-      .where(eq(schema.roles.organizationId, orgId))
-      .catch(() => {});
-    await db
-      .delete(schema.organizations)
-      .where(eq(schema.organizations.id, orgId))
-      .catch(() => {});
+    // The roles and organizations deletes each carried `.catch(() => {})`, which
+    // is what hid the real failure: there was no rolePermissions delete, so the
+    // roles delete threw on the restrict FK, was swallowed, and the org delete
+    // after it was swallowed too. Nothing was ever cleaned up and nothing said
+    // so. deleteTestOrg orders rolePermissions before roles.
+    await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, email);
     await client.end();
   });
 

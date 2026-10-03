@@ -112,6 +112,54 @@ describe('no test deletes a shared table wholesale', () => {
   });
 });
 
+describe('teardown cannot fail silently', () => {
+  it('no teardown swallows a delete error', async () => {
+    const files = await testFiles('.');
+    const offenders: string[] = [];
+    for (const f of files) {
+      const src = stripComments(await read(f));
+      // `.catch(() => {})` on a raw `delete(schema.x)` turns an FK violation
+      // into silence. Three suites had it: each was missing a rolePermissions
+      // or subscriptions delete, so the roles delete threw, was swallowed, and
+      // so was the org delete after it. Nothing was ever cleaned up and the run
+      // stayed green. Scoped to raw schema deletes — a swallowed reject on a
+      // *service* call (deleteCard on an already-deleted row) is legitimate and
+      // is deliberately not flagged.
+      if (/delete\(\s*schema\.[A-Za-z.]+\s*\)[\s\S]{0,300}?\.catch\s*\(/.test(src)) {
+        offenders.push(`${f}: .catch(...) on a db.delete(schema.*)`);
+      }
+      // An empty catch block around a teardown is the same failure with more
+      // statements hidden inside it.
+      if (/\}\s*catch\s*\{\s*\}/.test(src)) {
+        offenders.push(`${f}: empty catch block`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('deleteTestOrg covers every NO ACTION FK to organizations that a suite can create', async () => {
+    const utils = await stripComments(await read('test-utils.ts'));
+    // Verified against information_schema: 30 tables reference organizations
+    // with NO ACTION. The helper is the root of the teardown chain, so anything
+    // it misses forces a suite to hand-roll the statement — which is how
+    // sso_configurations ended up copied into three files. It must at least
+    // cover the rows every signUp creates.
+    for (const table of [
+      'schema.subscriptions',
+      'schema.guestSeats',
+      'schema.ssoConfigurations',
+      'schema.organizationRoleMembers',
+      'schema.rolePermissions',
+      'schema.roles',
+      'schema.invitations',
+      'schema.organizationMembers',
+      'schema.organizations',
+    ]) {
+      expect(utils).toContain(table);
+    }
+  });
+});
+
 describe('tests do not delete rows they do not own', () => {
   it('no test deletes a global (organizationId = null) system role', async () => {
     const files = await testFiles('.');

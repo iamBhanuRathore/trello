@@ -4,6 +4,7 @@ import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { eq } from 'drizzle-orm';
+import { deleteTestOrg } from '../../test-utils';
 import { signUp } from '../auth/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
@@ -64,32 +65,28 @@ describe('Search Service', () => {
 
   afterAll(async () => {
     if (!orgId) return;
-    try {
-      // saved_searches is scoped by user, not organization. A bare
-      // `db.delete(schema.savedSearches)` deleted every saved search in
-      // boardly_test.
-      if (userId)
-        await db.delete(schema.savedSearches).where(eq(schema.savedSearches.userId, userId));
-      await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
-      const orgBoards = await db
-        .select()
-        .from(schema.boards)
-        .where(eq(schema.boards.organizationId, orgId));
-      for (const b of orgBoards) {
-        await db.delete(schema.lists).where(eq(schema.lists.boardId, b.id));
-      }
-      await db.delete(schema.boards).where(eq(schema.boards.organizationId, orgId));
-      await db.delete(schema.projects).where(eq(schema.projects.organizationId, orgId));
-      await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
-      await db
-        .delete(schema.organizationMembers)
-        .where(eq(schema.organizationMembers.organizationId, orgId));
-      await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
-      if (userId) {
-        await db.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, userId));
-        await db.delete(schema.users).where(eq(schema.users.id, userId));
-      }
-    } catch {}
+    // Leaf cleanup, then the sanctioned helper. This chain previously had no
+    // rolePermissions or subscriptions delete, so the roles delete threw on the
+    // restrict FK and `catch {}` swallowed it — along with every statement after
+    // it. The org, its workspace, project, board, lists, cards and the user all
+    // survived, on every run, with no signal.
+    await db.delete(schema.savedSearches).where(eq(schema.savedSearches.userId, userId));
+    await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
+    const orgBoards = await db
+      .select()
+      .from(schema.boards)
+      .where(eq(schema.boards.organizationId, orgId));
+    for (const b of orgBoards) {
+      await db.delete(schema.lists).where(eq(schema.lists.boardId, b.id));
+    }
+    await db.delete(schema.boards).where(eq(schema.boards.organizationId, orgId));
+    await db.delete(schema.projects).where(eq(schema.projects.organizationId, orgId));
+    await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
+    await deleteTestOrg(db, orgId);
+    if (userId) {
+      await db.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, userId));
+      await db.delete(schema.users).where(eq(schema.users.id, userId));
+    }
     await client.end();
   });
 
