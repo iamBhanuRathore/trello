@@ -25,7 +25,28 @@ export function uniqueTestSlug(prefix: string): string {
   return uniqueTestId(prefix);
 }
 
-/** FK-safe org teardown, leaf → root. Must run AFTER suite leaf cleanup. */
+/**
+ * FK-safe org teardown, leaf → root. Must run AFTER suite leaf cleanup.
+ *
+ * `organizations` has 30 NO ACTION foreign keys pointing at it (verified by
+ * querying information_schema, not assumed), plus a second tier of tables that
+ * hang off those — `cards` owns assignees, labels, checklists and comments, none
+ * of which carry an `organization_id` of their own. Every one of them has to be
+ * gone before the org row is.
+ *
+ * That is why suites kept writing their own delete chains and kept getting them
+ * wrong: three of them were silently failing (see the empty-catch guard in
+ * test-isolation.contract.test.ts). The statements below are the org-scoped
+ * rows a signup or an org's normal lifecycle creates — audit and activity logs,
+ * SSO state and config, invitations, notifications, subscription and seat rows,
+ * RBAC — which is everything `signUp` alone produces. A suite that builds cards
+ * or chat channels still deletes those itself first; chat-test-teardown.ts is
+ * the worked example.
+ *
+ * Delete failures are deliberately not swallowed. A teardown that cannot finish
+ * has to be loud, because the alternative is a suite that reports success while
+ * leaking rows into the shared database forever.
+ */
 export async function deleteTestOrg(db: Database, orgId: string): Promise<void> {
   const orgSubs = db
     .select({ id: schema.subscriptions.id })
@@ -43,6 +64,16 @@ export async function deleteTestOrg(db: Database, orgId: string): Promise<void> 
   await db
     .delete(schema.ssoConfigurations)
     .where(eq(schema.ssoConfigurations.organizationId, orgId));
+  await db.delete(schema.ssoLoginStates).where(eq(schema.ssoLoginStates.organizationId, orgId));
+  await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, orgId));
+  await db.delete(schema.activityLog).where(eq(schema.activityLog.organizationId, orgId));
+  await db.delete(schema.apiKeys).where(eq(schema.apiKeys.organizationId, orgId));
+  await db.delete(schema.billingEvents).where(eq(schema.billingEvents.organizationId, orgId));
+  await db.delete(schema.invitations).where(eq(schema.invitations.organizationId, orgId));
+  await db
+    .delete(schema.notificationPreferences)
+    .where(eq(schema.notificationPreferences.organizationId, orgId));
+  await db.delete(schema.notifications).where(eq(schema.notifications.organizationId, orgId));
   await db
     .delete(schema.organizationRoleMembers)
     .where(eq(schema.organizationRoleMembers.organizationId, orgId));
@@ -58,7 +89,6 @@ export async function deleteTestOrg(db: Database, orgId: string): Promise<void> 
       )
     );
   await db.delete(schema.roles).where(eq(schema.roles.organizationId, orgId));
-  await db.delete(schema.invitations).where(eq(schema.invitations.organizationId, orgId));
   await db
     .delete(schema.organizationMembers)
     .where(eq(schema.organizationMembers.organizationId, orgId));

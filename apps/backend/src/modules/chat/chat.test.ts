@@ -5,6 +5,8 @@ import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestUser } from '../../test-utils';
+import { purgeChatOrg } from './chat-test-teardown';
 import { inviteMember } from '../organizations/service';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
@@ -39,7 +41,17 @@ beforeAll(() => {
   db = drizzle(client, { schema });
 });
 
+// Every setupOrgWithProject call used to leak an org, an owner user, a
+// workspace, a project and its channels. This file makes 21 of them per run, so
+// a single run left 21 orgs behind in the shared boardly_test DB — measured
+// against the database, not estimated. See chat-test-teardown.ts for the delete
+// order, which is forced by the self-referential chat_messages FKs.
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
 afterAll(async () => {
+  for (const orgId of createdOrgIds) await purgeChatOrg(db, orgId);
+  for (const email of createdEmails) await deleteTestUser(db, email);
   await client.end();
 });
 
@@ -52,6 +64,8 @@ async function setupOrgWithProject(tag: string) {
     orgName: `Chat Org ${id}`,
     orgSlug: `chat-org-${id}`,
   });
+  createdOrgIds.push(organization.id);
+  createdEmails.push(user.email);
   const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS' });
   const proj = await createProject(db, {
     organizationId: organization.id,
@@ -157,6 +171,7 @@ describe('Channel ↔ Project Linking & Activity Feed', () => {
   it('rejects linking for non-admin members', async () => {
     const { user, organization, proj } = await setupOrgWithProject('link403');
     const bobEmail = `bob_403_${Date.now()}@chat.com`;
+    createdEmails.push(bobEmail);
     const [bob] = await db
       .insert(schema.users)
       .values({ name: 'Bob', email: bobEmail, passwordHash: 'hash' })
@@ -186,6 +201,7 @@ describe('Channel ↔ Project Linking & Activity Feed', () => {
   it('rejects linking DM channels to a project', async () => {
     const { user, organization, proj } = await setupOrgWithProject('dmLink');
     const bobEmail = `bob_dm_${Date.now()}@chat.com`;
+    createdEmails.push(bobEmail);
     const [bob] = await db
       .insert(schema.users)
       .values({ name: 'Bob', email: bobEmail, passwordHash: 'hash' })
