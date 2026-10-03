@@ -22,6 +22,7 @@ import {
   issueTokenPair,
   refreshReuseWindow,
 } from './service';
+import { deleteTestUserTokens } from '../../test-utils';
 
 const TEST_DB_URL =
   process.env['DATABASE_TEST_URL'] ??
@@ -40,7 +41,10 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await db.delete(schema.refreshTokens);
+  // Scoped to this suite's users. A bare `db.delete(refreshTokens)` wiped every
+  // live token in the shared boardly_test DB, so an unrelated suite could fail
+  // with a 401 purely from file execution order.
+  await deleteTestUserTokens(db, ['refresh@test.example']);
   // FK-safe teardown: seeded team roles reference the org without cascade.
   const [org] = await db
     .select({ id: schema.organizations.id })

@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { signUp } from '../auth/service';
 import { deleteTestOrg, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 import { createProject } from '../projects/service';
@@ -87,7 +87,19 @@ describe('Docs & Wiki Service', () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.documentCards);
+    // Scoped to this suite's documents. A bare `db.delete(schema.documentCards)`
+    // deleted every card↔document link in boardly_test.
+    await db
+      .delete(schema.documentCards)
+      .where(
+        inArray(
+          schema.documentCards.documentId,
+          db
+            .select({ id: schema.documents.id })
+            .from(schema.documents)
+            .where(eq(schema.documents.organizationId, orgId))
+        )
+      );
     await db.delete(schema.documents).where(eq(schema.documents.organizationId, orgId));
     await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
     await db.delete(schema.lists).where(eq(schema.lists.boardId, boardId));

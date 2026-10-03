@@ -54,9 +54,26 @@ describe('Importers Service', () => {
 
   afterAll(async () => {
     const boardIds = [importedBoardId, genericBoardId].filter(Boolean);
-    await db.delete(schema.cardLabels);
-    await db.delete(schema.checklistItems);
-    await db.delete(schema.checklists);
+    // These three were bare `db.delete(...)` with no WHERE, so they emptied
+    // cardLabels / checklistItems / checklists for every suite sharing the DB.
+    // Scope each through this suite's own cards.
+    const ownCardIds = db
+      .select({ id: schema.cards.id })
+      .from(schema.cards)
+      .where(eq(schema.cards.organizationId, orgId));
+    await db.delete(schema.cardLabels).where(inArray(schema.cardLabels.cardId, ownCardIds));
+    await db
+      .delete(schema.checklistItems)
+      .where(
+        inArray(
+          schema.checklistItems.checklistId,
+          db
+            .select({ id: schema.checklists.id })
+            .from(schema.checklists)
+            .where(inArray(schema.checklists.cardId, ownCardIds))
+        )
+      );
+    await db.delete(schema.checklists).where(inArray(schema.checklists.cardId, ownCardIds));
     await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
     if (boardIds.length > 0) {
       await db.delete(schema.lists).where(inArray(schema.lists.boardId, boardIds));

@@ -8,6 +8,7 @@ import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp, signIn, refreshTokens, signOut, getMe } from './service';
+import { deleteTestUserTokens } from '../../test-utils';
 import { eq } from 'drizzle-orm';
 
 const TEST_DB_URL =
@@ -29,7 +30,10 @@ afterAll(async () => {
 // Clean test users between tests (FK-safe order: seeded team roles,
 // subscriptions and audit rows reference the org without cascade).
 beforeEach(async () => {
-  await db.delete(schema.refreshTokens);
+  // Scoped to this suite's users. A bare `db.delete(refreshTokens)` wiped every
+  // live token in the shared boardly_test DB, so an unrelated suite could fail
+  // with a 401 purely from file execution order.
+  await deleteTestUserTokens(db, ['alice@test.example', 'alice2@test.example', 'bob@test.example']);
   for (const slug of ['alice-corp', 'alice-corp-2']) {
     const [org] = await db
       .select({ id: schema.organizations.id })

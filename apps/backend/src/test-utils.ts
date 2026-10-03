@@ -69,3 +69,27 @@ export async function deleteTestUser(db: Database, email: string): Promise<void>
   await db.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, user.id));
   await db.delete(schema.users).where(eq(schema.users.id, user.id));
 }
+
+/**
+ * Deletes refresh tokens for the named users only.
+ *
+ * Several suites reset token state with a bare `db.delete(refreshTokens)` and
+ * no WHERE. `refresh_tokens` is shared, so that wiped every live token in
+ * boardly_test — including other suites' — so an unrelated suite's mid-test
+ * sign-in could fail with a 401 depending on file execution order. Use this, or
+ * `deleteTestUser`, instead.
+ */
+export async function deleteTestUserTokens(db: Database, emails: string[]): Promise<void> {
+  if (emails.length === 0) return;
+  await db
+    .delete(schema.refreshTokens)
+    .where(
+      inArray(
+        schema.refreshTokens.userId,
+        db
+          .select({ id: schema.users.id })
+          .from(schema.users)
+          .where(inArray(schema.users.email, emails))
+      )
+    );
+}

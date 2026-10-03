@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { signUp } from '../auth/service';
 import { deleteTestOrg, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 import { createProject } from '../projects/service';
@@ -78,9 +78,31 @@ describe('Intake Forms & SLAs Service', () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.formSubmissions);
+    // Both of these were bare `db.delete(...)` with no WHERE, so they emptied
+    // formSubmissions and cardAssignees for every suite sharing the DB.
+    await db
+      .delete(schema.formSubmissions)
+      .where(
+        inArray(
+          schema.formSubmissions.formId,
+          db
+            .select({ id: schema.intakeForms.id })
+            .from(schema.intakeForms)
+            .where(eq(schema.intakeForms.organizationId, orgId))
+        )
+      );
     await db.delete(schema.intakeForms).where(eq(schema.intakeForms.organizationId, orgId));
-    await db.delete(schema.cardAssignees);
+    await db
+      .delete(schema.cardAssignees)
+      .where(
+        inArray(
+          schema.cardAssignees.cardId,
+          db
+            .select({ id: schema.cards.id })
+            .from(schema.cards)
+            .where(eq(schema.cards.organizationId, orgId))
+        )
+      );
     await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
     await db.delete(schema.lists).where(eq(schema.lists.boardId, boardId));
     await db.delete(schema.boards).where(eq(schema.boards.id, boardId));

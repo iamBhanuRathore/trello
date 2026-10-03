@@ -488,22 +488,22 @@ describe('Project Automation Engine', () => {
     // System roles live on organizationMembers.role, never in the grants table.
     // Reuse the seeded role when present (unique partial index on the name).
     let sysRole = (await db.select().from(roles).where(eq(roles.name, 'Member')).limit(1))[0];
-    let owned = false;
     if (!sysRole) {
       [sysRole] = await db
         .insert(roles)
         .values({ organizationId: null, name: 'Member', isSystemRole: true })
         .returning();
-      owned = true;
     }
     const holders = await resolveRolePool(db, f.orgId, sysRole!.id);
     // Fixture members carry the member enum tier → all three resolve.
     expect(new Set(holders)).toEqual(new Set(f.qa));
-    if (owned)
-      await db
-        .delete(roles)
-        .where(eq(roles.id, sysRole!.id))
-        .catch(() => {});
+    // Deliberately NOT deleted when this suite created it. `organizationId` is
+    // null, so the row is global: under parallel workers one worker could delete
+    // the role another worker was resolving against, and the delete is also how a
+    // seeded role could be removed for the rest of the run. The name is fixed at
+    // 'Member' because resolveRolePool matches systemRoleName(role) by name, so
+    // the row cannot be scoped to this suite — leaving the canonical seeded row
+    // in place is the correct terminal state.
   });
 
   it('add_participant adds a collaborator once, then skips as duplicate', async () => {

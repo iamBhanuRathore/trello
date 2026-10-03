@@ -8,6 +8,7 @@ import { signUp } from '../auth/service';
 import { updatePreferences, setupNotificationListeners } from './service';
 import { processNotificationDigests } from './digest.cron';
 import { eventBus } from '../../lib/event-bus';
+import { deleteTestUser } from '../../test-utils';
 
 const TEST_DB_URL =
   process.env['DATABASE_TEST_URL'] ??
@@ -125,9 +126,12 @@ describe('Notifications Engine', () => {
       await db.delete(schema.organizations).where(eq(schema.organizations.id, org2.id));
     }
 
-    await db.delete(schema.refreshTokens);
-    await db.delete(schema.users).where(eq(schema.users.email, 'notif3@example.com'));
-    await db.delete(schema.users).where(eq(schema.users.email, 'notif4@example.com'));
+    // deleteTestUser removes the user's refresh tokens first; the previous
+    // `db.delete(schema.refreshTokens)` had no WHERE and wiped every live token
+    // in the shared boardly_test DB, and the bare users delete would then have
+    // tripped the refresh_tokens.user_id restrict FK.
+    await deleteTestUser(db, 'notif3@example.com');
+    await deleteTestUser(db, 'notif4@example.com');
     await client.end();
   });
 

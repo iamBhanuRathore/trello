@@ -11,7 +11,9 @@ import { createList } from '../lists/service';
 import { createCard } from '../cards/service';
 import { performSearch, listSavedSearches, createSavedSearch, deleteSavedSearch } from './service';
 
-const TEST_DB_URL = process.env['DATABASE_TEST_URL'] ?? 'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
+const TEST_DB_URL =
+  process.env['DATABASE_TEST_URL'] ??
+  'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
 
 describe('Search Service', () => {
   let client: ReturnType<typeof postgres>;
@@ -35,28 +37,53 @@ describe('Search Service', () => {
     orgId = organization.id;
     userId = user.id;
 
-    const [workspace] = await db.insert(schema.workspaces).values({ organizationId: orgId, name: 'Search WS' }).returning();
-    const project = await createProject(db, { organizationId: orgId, workspaceId: workspace!.id, name: 'Search Project' });
-    const board = await createBoard(db, { organizationId: orgId, projectId: project!.id, name: 'Global Search Board' });
+    const [workspace] = await db
+      .insert(schema.workspaces)
+      .values({ organizationId: orgId, name: 'Search WS' })
+      .returning();
+    const project = await createProject(db, {
+      organizationId: orgId,
+      workspaceId: workspace!.id,
+      name: 'Search Project',
+    });
+    const board = await createBoard(db, {
+      organizationId: orgId,
+      projectId: project!.id,
+      name: 'Global Search Board',
+    });
     const list = await createList(db, orgId, { boardId: board!.id, name: 'To Do', position: 1 });
-    
-    await createCard(db, orgId, { listId: list!.id, title: 'Fix search bug', position: 1, description: 'Elasticsearch' });
+
+    await createCard(db, orgId, {
+      listId: list!.id,
+      title: 'Fix search bug',
+      position: 1,
+      description: 'Elasticsearch',
+    });
     await createCard(db, orgId, { listId: list!.id, title: 'Update Postgres FTS', position: 2 });
   });
 
   afterAll(async () => {
     if (!orgId) return;
     try {
-      await db.delete(schema.savedSearches);
+      // saved_searches is scoped by user, not organization. A bare
+      // `db.delete(schema.savedSearches)` deleted every saved search in
+      // boardly_test.
+      if (userId)
+        await db.delete(schema.savedSearches).where(eq(schema.savedSearches.userId, userId));
       await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
-      const orgBoards = await db.select().from(schema.boards).where(eq(schema.boards.organizationId, orgId));
+      const orgBoards = await db
+        .select()
+        .from(schema.boards)
+        .where(eq(schema.boards.organizationId, orgId));
       for (const b of orgBoards) {
         await db.delete(schema.lists).where(eq(schema.lists.boardId, b.id));
       }
       await db.delete(schema.boards).where(eq(schema.boards.organizationId, orgId));
       await db.delete(schema.projects).where(eq(schema.projects.organizationId, orgId));
       await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
-      await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, orgId));
+      await db
+        .delete(schema.organizationMembers)
+        .where(eq(schema.organizationMembers.organizationId, orgId));
       await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
       if (userId) {
         await db.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, userId));
@@ -82,7 +109,7 @@ describe('Search Service', () => {
   it('should search for boards by name', async () => {
     const results = await performSearch(db, orgId, 'Global Search');
     expect(results.length).toBeGreaterThan(0);
-    expect(results.some(r => r.type === 'board' && r.title === 'Global Search Board')).toBe(true);
+    expect(results.some((r) => r.type === 'board' && r.title === 'Global Search Board')).toBe(true);
   });
 
   it('should create a saved search', async () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import postgres from 'postgres';
-import { and, eq, isNull, lt } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '../../db/schema/index';
 import { db as appDb } from '../../db/index';
 import { generateSSOLoginUrl } from './service';
@@ -37,7 +37,10 @@ afterAll(async () => {
   for (const s of states) {
     await appDb.delete(schema.ssoLoginStates).where(eq(schema.ssoLoginStates.state, s));
   }
-  await appDb.delete(schema.ssoLoginStates).where(lt(schema.ssoLoginStates.expiresAt, new Date(0)));
+  // Removed: this deleted EVERY expired SSO login state in boardly_test, not
+  // this suite's. It was also a no-op for its own rows, whose expiresAt is
+  // `now - 1000`, not a date before the epoch. The per-state loop above and
+  // the per-org deletes below already cover everything this suite creates.
   for (const orgId of orgIds) {
     // Leaf -> root: sso_configurations and any states cascade from the org, but
     // deleting the org first trips the organization_id foreign keys.

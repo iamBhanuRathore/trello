@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { signUp } from '../auth/service';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
@@ -45,7 +45,20 @@ beforeEach(async () => {
       .from(schema.boards)
       .where(eq(schema.boards.organizationId, existingOrg.id));
     for (const b of orgBoards) {
-      await db.delete(schema.cardLabels);
+      // Scoped to this board's labels. The bare `db.delete(schema.cardLabels)`
+      // had no WHERE, so it deleted every label link in boardly_test on every
+      // board iteration — including links owned by other suites.
+      await db
+        .delete(schema.cardLabels)
+        .where(
+          inArray(
+            schema.cardLabels.labelId,
+            db
+              .select({ id: schema.labels.id })
+              .from(schema.labels)
+              .where(eq(schema.labels.boardId, b.id))
+          )
+        );
       await db.delete(schema.labels).where(eq(schema.labels.boardId, b.id));
       await db.delete(schema.automations).where(eq(schema.automations.boardId, b.id));
       await db.delete(schema.intakeForms).where(eq(schema.intakeForms.boardId, b.id));
