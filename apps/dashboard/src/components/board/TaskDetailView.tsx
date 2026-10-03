@@ -171,22 +171,26 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       staleTime: 5 * 60_000,
     });
 
-    const { data: stageTemplates } = useQuery({
+    // The catch used to `return []`, which made a failed request indistinguishable
+    // from "this org has no stage templates": the Stage picker silently rendered
+    // empty with no error and no retry. Rethrow so TanStack Query owns the error
+    // state and the panel can surface it.
+    const {
+      data: stageTemplates,
+      isError: stagesError,
+      isLoading: stagesLoading,
+      refetch: refetchStages,
+    } = useQuery({
       queryKey: ['stageTemplatesWithStages', orgId],
       queryFn: async () => {
-        try {
-          const ts = await stagesService.getTemplates(orgId!);
-          if (ts && ts.length > 0) {
-            const fullTemplate = await stagesService.getTemplate(ts[0].id);
-            ts[0].stages = fullTemplate?.stages || [];
-          }
-          return ts || [];
-        } catch {
-          return [];
+        const ts = await stagesService.getTemplates(orgId!);
+        if (ts && ts.length > 0) {
+          const fullTemplate = await stagesService.getTemplate(ts[0].id);
+          ts[0].stages = fullTemplate?.stages || [];
         }
+        return ts || [];
       },
       enabled: !!orgId,
-      retry: false,
       staleTime: 5 * 60_000,
     });
 
@@ -1032,6 +1036,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               lists={lists}
               priorities={priorities}
               stageTemplates={stageTemplates}
+              stagesError={stagesError}
+              stagesLoading={stagesLoading}
+              onRetryStages={() => void refetchStages()}
               sprints={sprints}
               phases={phases}
               orgId={orgId}

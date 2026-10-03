@@ -22,6 +22,7 @@ import { NewDirectMessageModal } from './NewDirectMessageModal';
 import { WorkingHoursModal } from './WorkingHoursModal';
 import { KeyboardShortcutsModal } from '../KeyboardShortcutsModal';
 import { getInitials } from '../../utils/avatar';
+import { QueryError } from '../common/QueryError';
 
 interface ChatSidebarProps {
   onSelectChannel?: (channelId: string) => void;
@@ -42,7 +43,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
   // Fetch channels list.
   // No local interval: ChatPage polls this same key every 10s. A second
   // interval here interleaves refetches and stacks slow requests.
-  const { data: channels = [], isLoading } = useQuery({
+  const {
+    data: channels = [],
+    isLoading,
+    // A failed fetch rendered the "No conversations found" empty state, so an
+    // outage looked like an empty inbox with no retry.
+    isError: channelsError,
+    refetch: refetchChannels,
+  } = useQuery({
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
   });
@@ -386,7 +394,16 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => 
           </div>
         )}
 
-        {!isLoading && filteredChannels.length === 0 && (
+        {channelsError && (
+          <QueryError
+            compact
+            className="m-2"
+            message="Couldn't load conversations."
+            onRetry={() => void refetchChannels()}
+          />
+        )}
+
+        {!isLoading && !channelsError && filteredChannels.length === 0 && (
           <div className="p-8 text-center text-xs text-muted-foreground space-y-2">
             <p>No conversations found</p>
             <button

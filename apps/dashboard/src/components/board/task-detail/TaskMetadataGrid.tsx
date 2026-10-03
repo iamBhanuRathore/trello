@@ -23,6 +23,10 @@ interface TaskMetadataGridProps {
   lists: any[];
   priorities: any[];
   stageTemplates?: any[];
+  /** Stage templates failed to load — surfaced instead of an empty select. */
+  stagesError?: boolean;
+  stagesLoading?: boolean;
+  onRetryStages?: () => void;
   sprints?: any[];
   phases?: any[];
   orgId?: string;
@@ -46,6 +50,9 @@ export const TaskMetadataGrid: React.FC<TaskMetadataGridProps> = ({
   lists,
   priorities,
   stageTemplates,
+  stagesError,
+  stagesLoading,
+  onRetryStages,
   sprints,
   phases,
   orgId,
@@ -310,7 +317,22 @@ export const TaskMetadataGrid: React.FC<TaskMetadataGridProps> = ({
           <div className="flex items-center gap-3 min-w-0">
             <span className="w-24 text-muted-foreground font-medium shrink-0">Stage:</span>
             <div className="flex-1 max-w-[200px] min-w-0">
-              {stageTemplates && stageTemplates.length > 0 && stageTemplates[0].stages ? (
+              {stagesError ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Couldn&apos;t load stages.</span>
+                  {onRetryStages && (
+                    <button
+                      type="button"
+                      onClick={onRetryStages}
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              ) : stagesLoading && !stageTemplates ? (
+                <div className="h-8 w-full max-w-[200px] rounded bg-muted/40 animate-pulse" />
+              ) : stageTemplates && stageTemplates.length > 0 && stageTemplates[0].stages ? (
                 <SearchableSelect
                   options={[
                     { value: '', label: 'No Stage Assigned' },

@@ -11,15 +11,9 @@ import {
 } from '@boardly/ui/dialog';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
-import {
-  Layers,
-  Sparkles,
-  Sliders,
-  HardDrive,
-  Users,
-  LayoutGrid,
-} from 'lucide-react';
+import { Layers, Sparkles, Sliders, HardDrive, Users, LayoutGrid } from 'lucide-react';
 import { toast } from 'sonner';
+import { AdminQueryError } from '../components/AdminQueryError';
 
 export const Plans: React.FC = () => {
   const queryClient = useQueryClient();
@@ -29,14 +23,15 @@ export const Plans: React.FC = () => {
   const [maxSeats, setMaxSeats] = useState<number | ''>('');
   const [maxStorageGb, setMaxStorageGb] = useState<number | ''>('');
 
-  const { data: plans = [], isLoading } = useQuery({
-    queryKey: ['superAdminPlans'],
-    queryFn: superAdminService.getPlans,
-  });
+  const {
+    data: plans = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({ queryKey: ['superAdminPlans'], queryFn: superAdminService.getPlans });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) =>
-      superAdminService.updatePlan(id, data),
+    mutationFn: ({ id, data }: { id: string; data: any }) => superAdminService.updatePlan(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['superAdminPlans'] });
       setEditingPlan(null);
@@ -81,13 +76,20 @@ export const Plans: React.FC = () => {
           </span>
         </h1>
         <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-          Configure resource limits, feature flags, storage allocations, and seat caps across subscription tiers.
+          Configure resource limits, feature flags, storage allocations, and seat caps across
+          subscription tiers.
         </p>
       </div>
 
       {/* Plans Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {isLoading ? (
+        {isError ? (
+          <AdminQueryError
+            className="col-span-4"
+            message="Couldn't load plan configurations."
+            onRetry={() => void refetch()}
+          />
+        ) : isLoading ? (
           <div className="col-span-4 p-12 text-center text-xs text-muted-foreground">
             Loading plan configurations...
           </div>
@@ -109,9 +111,7 @@ export const Plans: React.FC = () => {
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 uppercase">
                       {plan.tier}
                     </div>
-                    {isEnterprise && (
-                      <Sparkles className="w-4 h-4 text-purple-400" />
-                    )}
+                    {isEnterprise && <Sparkles className="w-4 h-4 text-purple-400" />}
                   </div>
 
                   <div>
@@ -204,7 +204,9 @@ export const Plans: React.FC = () => {
                     type="number"
                     placeholder="Unlimited"
                     value={maxSeats}
-                    onChange={(e) => setMaxSeats(e.target.value === '' ? '' : Number(e.target.value))}
+                    onChange={(e) =>
+                      setMaxSeats(e.target.value === '' ? '' : Number(e.target.value))
+                    }
                     className="text-xs bg-background text-white border-border"
                   />
                 </div>
@@ -215,7 +217,9 @@ export const Plans: React.FC = () => {
                     type="number"
                     placeholder="Unlimited"
                     value={maxWorkspaces}
-                    onChange={(e) => setMaxWorkspaces(e.target.value === '' ? '' : Number(e.target.value))}
+                    onChange={(e) =>
+                      setMaxWorkspaces(e.target.value === '' ? '' : Number(e.target.value))
+                    }
                     className="text-xs bg-background text-white border-border"
                   />
                 </div>
@@ -226,7 +230,9 @@ export const Plans: React.FC = () => {
                     type="number"
                     placeholder="Unlimited"
                     value={maxBoards}
-                    onChange={(e) => setMaxBoards(e.target.value === '' ? '' : Number(e.target.value))}
+                    onChange={(e) =>
+                      setMaxBoards(e.target.value === '' ? '' : Number(e.target.value))
+                    }
                     className="text-xs bg-background text-white border-border"
                   />
                 </div>
@@ -237,14 +243,21 @@ export const Plans: React.FC = () => {
                     type="number"
                     placeholder="Unlimited"
                     value={maxStorageGb}
-                    onChange={(e) => setMaxStorageGb(e.target.value === '' ? '' : Number(e.target.value))}
+                    onChange={(e) =>
+                      setMaxStorageGb(e.target.value === '' ? '' : Number(e.target.value))
+                    }
                     className="text-xs bg-background text-white border-border"
                   />
                 </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-border">
-                <Button variant="outline" size="sm" type="button" onClick={() => setEditingPlan(null)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  onClick={() => setEditingPlan(null)}
+                >
                   Cancel
                 </Button>
                 <Button

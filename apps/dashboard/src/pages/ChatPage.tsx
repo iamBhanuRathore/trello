@@ -13,6 +13,7 @@ import { NewDirectMessageModal } from '../components/chat/NewDirectMessageModal'
 import { NewChannelModal } from '../components/chat/NewChannelModal';
 import { WorkingHoursModal } from '../components/chat/WorkingHoursModal';
 import { useGlobalShortcuts } from '../hooks/useGlobalShortcuts';
+import { QueryError } from '../components/common/QueryError';
 
 export const ChatPage: React.FC = () => {
   const { channelId: routeChannelId } = useParams<{ channelId?: string }>();
@@ -38,7 +39,11 @@ export const ChatPage: React.FC = () => {
   // Fetch channels. While the realtime socket is open, WS events drive cache
   // updates (see useChatRealtime) — polling is a disconnected fallback only.
   // An always-on interval stacked slow refetches behind each other.
-  const { data: channels = [] } = useQuery({
+  const {
+    data: channels = [],
+    isError: channelsError,
+    refetch: refetchChannels,
+  } = useQuery({
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
     refetchInterval: wsConnected ? false : 15000,
@@ -111,6 +116,14 @@ export const ChatPage: React.FC = () => {
       >
         {activeChannel ? (
           <ChatFeed key={activeChannel.id} channel={activeChannel} onBack={handleBackToList} />
+        ) : channelsError ? (
+          // A failed channel fetch used to render the Welcome state, so a network
+          // error looked identical to "you have no channels" — with no retry.
+          <QueryError
+            className="flex-1"
+            message="Couldn't load channels. Check your connection and try again."
+            onRetry={() => void refetchChannels()}
+          />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shadow-inner">

@@ -2,14 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { superAdminService, type TenantOrg } from '../lib/superAdminService';
 import { format } from 'date-fns';
-import {
-  Database,
-  Server,
-  Building2,
-  Users,
-  AlertCircle,
-  RotateCcw,
-} from 'lucide-react';
+import { Database, Server, Building2, Users, AlertCircle, RotateCcw } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import {
   Dialog,
@@ -31,10 +24,12 @@ export const Tenants: React.FC = () => {
   const [planFilter, setPlanFilter] = useState('all');
   const [dbFilter, setDbFilter] = useState<'all' | 'dedicated' | 'shared'>('all');
 
-  const { data: orgs = [], isLoading } = useQuery({
-    queryKey: ['superAdminOrgs'],
-    queryFn: superAdminService.getOrgs,
-  });
+  const {
+    data: orgs = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({ queryKey: ['superAdminOrgs'], queryFn: superAdminService.getOrgs });
 
   const openDedicatedModal = (org: TenantOrg) => {
     setSelectedOrg(org);
@@ -123,7 +118,8 @@ export const Tenants: React.FC = () => {
         header: 'Team Members',
         sortable: true,
         accessorFn: (o) => o.memberCounts?.total || 1,
-        exportValue: (o) => `${o.memberCounts?.total || 1} Total (${o.memberCounts?.active || 1} Active)`,
+        exportValue: (o) =>
+          `${o.memberCounts?.total || 1} Total (${o.memberCounts?.active || 1} Active)`,
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
             <Users className="w-3.5 h-3.5 text-muted-foreground" />
@@ -142,7 +138,8 @@ export const Tenants: React.FC = () => {
         sortable: true,
         filterable: true,
         accessorFn: (o) => (o.isDedicatedDb ? 'Dedicated Database' : 'Shared Cluster'),
-        exportValue: (o) => (o.isDedicatedDb ? `Dedicated DB (${o.dedicatedDbUrl || 'Active'})` : 'Shared Cluster'),
+        exportValue: (o) =>
+          o.isDedicatedDb ? `Dedicated DB (${o.dedicatedDbUrl || 'Active'})` : 'Shared Cluster',
         cell: ({ row }) =>
           row.isDedicatedDb ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
@@ -202,7 +199,8 @@ export const Tenants: React.FC = () => {
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Manage multi-tenant isolation, enterprise dedicated PostgreSQL databases, and subscription tiers.
+            Manage multi-tenant isolation, enterprise dedicated PostgreSQL databases, and
+            subscription tiers.
           </p>
         </div>
       </div>
@@ -336,6 +334,9 @@ export const Tenants: React.FC = () => {
         data={filteredOrgs}
         columns={columns}
         isLoading={isLoading}
+        isError={isError}
+        errorMessage="Couldn't load tenants from the platform API."
+        onRetry={() => void refetch()}
         searchable={true}
         globalSearchPlaceholder="Search organizations or slugs..."
         enableExport={true}
@@ -366,7 +367,9 @@ export const Tenants: React.FC = () => {
                 <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">
                   <div>
                     <div className="text-xs font-semibold text-white">Dedicated Database Mode</div>
-                    <div className="text-[10px] text-muted-foreground">Route all tenant queries to custom DB</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      Route all tenant queries to custom DB
+                    </div>
                   </div>
                   <input
                     type="checkbox"

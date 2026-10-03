@@ -2,31 +2,55 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { superAdminService } from '../lib/superAdminService';
 import { Link } from 'react-router-dom';
-import {
-  Building2,
-  Users,
-  Package,
-  Sparkles,
-  ArrowRight,
-  Database,
-} from 'lucide-react';
+import { Building2, Users, Package, Sparkles, ArrowRight, Database } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
+import { AdminQueryError } from '../components/AdminQueryError';
 
 export const Overview: React.FC = () => {
-  const { data: orgs = [], isLoading: isLoadingOrgs } = useQuery({
-    queryKey: ['superAdminOrgs'],
-    queryFn: superAdminService.getOrgs,
-  });
+  const {
+    data: orgs = [],
+    isLoading: isLoadingOrgs,
+    isError: orgsError,
+    refetch: refetchOrgs,
+  } = useQuery({ queryKey: ['superAdminOrgs'], queryFn: superAdminService.getOrgs });
 
-  const { data: users = [], isLoading: isLoadingUsers } = useQuery({
-    queryKey: ['superAdminUsers'],
-    queryFn: superAdminService.getUsers,
-  });
+  const {
+    data: users = [],
+    isLoading: isLoadingUsers,
+    isError: usersError,
+    refetch: refetchUsers,
+  } = useQuery({ queryKey: ['superAdminUsers'], queryFn: superAdminService.getUsers });
 
-  const { data: plans = [], isLoading: isLoadingPlans } = useQuery({
-    queryKey: ['superAdminPlans'],
-    queryFn: superAdminService.getPlans,
-  });
+  const {
+    data: plans = [],
+    isLoading: isLoadingPlans,
+    isError: plansError,
+    refetch: refetchPlans,
+  } = useQuery({ queryKey: ['superAdminPlans'], queryFn: superAdminService.getPlans });
+
+  // A failed fetch used to render `0` for every count, which is exactly what a
+  // genuinely empty platform looks like — the wrong thing to show an operator.
+  if (orgsError || usersError || plansError) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold text-foreground">Platform Overview</h1>
+        <AdminQueryError
+          message={
+            orgsError
+              ? "Couldn't load organizations from the platform API."
+              : usersError
+                ? "Couldn't load platform users."
+                : "Couldn't load plans."
+          }
+          onRetry={() => {
+            void refetchOrgs();
+            void refetchUsers();
+            void refetchPlans();
+          }}
+        />
+      </div>
+    );
+  }
 
   const totalTenants = orgs.length;
   const dedicatedDbCount = orgs.filter((o) => o.isDedicatedDb).length;
@@ -47,7 +71,8 @@ export const Overview: React.FC = () => {
             Cluster Governance & Multi-Tenant Operations
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl leading-relaxed">
-            Monitor tenant health, manage isolated PostgreSQL databases, inspect cross-company employee reach, and configure enterprise plan limits.
+            Monitor tenant health, manage isolated PostgreSQL databases, inspect cross-company
+            employee reach, and configure enterprise plan limits.
           </p>
         </div>
       </div>
@@ -61,7 +86,9 @@ export const Overview: React.FC = () => {
               <Building2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-3xl font-bold text-white">{isLoadingOrgs ? '...' : totalTenants}</div>
+          <div className="text-3xl font-bold text-white">
+            {isLoadingOrgs ? '...' : totalTenants}
+          </div>
           <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
             <span className="text-emerald-400 font-semibold">{dedicatedDbCount} Isolated DBs</span>
             <span>• Active Organizations</span>
@@ -76,9 +103,7 @@ export const Overview: React.FC = () => {
             </div>
           </div>
           <div className="text-3xl font-bold text-white">{isLoadingUsers ? '...' : totalUsers}</div>
-          <div className="text-[11px] text-muted-foreground">
-            Across all tenant workspaces
-          </div>
+          <div className="text-[11px] text-muted-foreground">Across all tenant workspaces</div>
         </div>
 
         <div className="p-5 rounded-2xl border border-purple-500/30 bg-purple-950/10 backdrop-blur-md shadow-xs space-y-2">
@@ -88,10 +113,10 @@ export const Overview: React.FC = () => {
               <Sparkles className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-3xl font-bold text-white">{isLoadingUsers ? '...' : multiCompanyCount}</div>
-          <div className="text-[11px] text-purple-300/80">
-            Users working in &gt;1 company
+          <div className="text-3xl font-bold text-white">
+            {isLoadingUsers ? '...' : multiCompanyCount}
           </div>
+          <div className="text-[11px] text-purple-300/80">Users working in &gt;1 company</div>
         </div>
 
         <div className="p-5 rounded-2xl border border-border/80 bg-card/60 backdrop-blur-md shadow-xs space-y-2">
@@ -101,10 +126,10 @@ export const Overview: React.FC = () => {
               <Package className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-3xl font-bold text-white">{isLoadingPlans ? '...' : plans.length}</div>
-          <div className="text-[11px] text-muted-foreground">
-            Tier policies active
+          <div className="text-3xl font-bold text-white">
+            {isLoadingPlans ? '...' : plans.length}
           </div>
+          <div className="text-[11px] text-muted-foreground">Tier policies active</div>
         </div>
       </div>
 
@@ -118,7 +143,11 @@ export const Overview: React.FC = () => {
               <span>Tenant Organizations</span>
             </h3>
             <Link to="/tenants">
-              <Button variant="ghost" size="sm" className="text-xs text-purple-400 hover:text-purple-300 gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-purple-400 hover:text-purple-300 gap-1"
+              >
                 <span>View All</span>
                 <ArrowRight className="w-3 h-3" />
               </Button>
@@ -137,8 +166,11 @@ export const Overview: React.FC = () => {
                     <span className="text-[10px] text-muted-foreground font-mono">/{org.slug}</span>
                   </div>
                   <div className="text-[11px] text-muted-foreground mt-0.5">
-                    Plan: <span className="text-purple-400 font-semibold">{org.plan?.name || 'Enterprise Tier'}</span> •{' '}
-                    <span>{org.memberCounts?.total || 1} Members</span>
+                    Plan:{' '}
+                    <span className="text-purple-400 font-semibold">
+                      {org.plan?.name || 'Enterprise Tier'}
+                    </span>{' '}
+                    • <span>{org.memberCounts?.total || 1} Members</span>
                   </div>
                 </div>
 
@@ -166,7 +198,11 @@ export const Overview: React.FC = () => {
               <span>Multi-Company User Intelligence</span>
             </h3>
             <Link to="/users">
-              <Button variant="ghost" size="sm" className="text-xs text-purple-400 hover:text-purple-300 gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-purple-400 hover:text-purple-300 gap-1"
+              >
                 <span>Inspect Users</span>
                 <ArrowRight className="w-3 h-3" />
               </Button>
