@@ -1,12 +1,13 @@
 import {
-  useState,
-  useRef,
-  useEffect,
-  useMemo,
-  type KeyboardEvent,
   type ChangeEvent,
   type ClipboardEvent,
   type DragEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare } from 'lucide-react';
@@ -30,6 +31,7 @@ import {
   TaskChatComposer,
 } from './task-chat';
 import { useDialogClose } from '../../hooks/useDialogClose';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 export type { ChatMessage, PendingAttachment };
 
@@ -80,6 +82,20 @@ export function TaskChatPane({
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showMentionMenu, setShowMentionMenu] = useState(false);
+
+  // Escape for the open mention menu is claimed here, not in the textarea's
+  // onKeyDown. The hosting dialog's useDialogClose listens on `document` in
+  // CAPTURE phase, which the DOM delivers before any bubble listener on the
+  // target — so a bubble-phase handler ran too late and one Esc closed the whole
+  // task dialog as well as the menu. useEscapeKey registers on `window` in
+  // capture and calls stopImmediatePropagation, so it wins and the event never
+  // reaches the dialog.
+  useEscapeKey(
+    useCallback(() => {
+      setShowMentionMenu(false);
+    }, []),
+    showMentionMenu
+  );
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -301,11 +317,6 @@ export function TaskChatPane({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (showMentionMenu) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setShowMentionMenu(false);
-        return;
-      }
       if (filteredMembers.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();

@@ -1,4 +1,11 @@
-import { useState, useRef, useEffect, type KeyboardEvent, type ChangeEvent } from 'react';
+import {
+  type ChangeEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Send, AtSign, Loader2 } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
@@ -6,6 +13,7 @@ import { orgService } from '../../lib/orgService';
 import { useAuthStore } from '../../store/authStore';
 import { Kbd } from '../ui/Kbd';
 import { formatShortcut } from '../../lib/platform';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface MentionCommentBoxProps {
   onSubmit: (body: string, mentionedUserIds: string[]) => Promise<void> | void;
@@ -26,6 +34,20 @@ export function MentionCommentBox({
 
   const [text, setText] = useState('');
   const [showMentionMenu, setShowMentionMenu] = useState(false);
+
+  // Escape for the open mention menu is claimed here, not in the textarea's
+  // onKeyDown. The hosting dialog's useDialogClose listens on `document` in
+  // CAPTURE phase, which the DOM delivers before any bubble listener on the
+  // target — so a bubble-phase handler ran too late and one Esc closed the whole
+  // task dialog as well as the menu. useEscapeKey registers on `window` in
+  // capture and calls stopImmediatePropagation, so it wins and the event never
+  // reaches the dialog.
+  useEscapeKey(
+    useCallback(() => {
+      setShowMentionMenu(false);
+    }, []),
+    showMentionMenu
+  );
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -111,11 +133,6 @@ export function MentionCommentBox({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (showMentionMenu) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setShowMentionMenu(false);
-        return;
-      }
       if (filteredMembers.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();

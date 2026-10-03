@@ -40,6 +40,16 @@ async function* walk(dir: string): AsyncGenerator<string> {
 }
 
 /** Every `onOpenChange={...}` value in the file, with its line number. */
+/** Source with comment lines removed, so prose cannot fake a match. */
+function code(src: string): string {
+  return src
+    .split('\n')
+    .filter(
+      (l) => !l.trim().startsWith('//') && !l.trim().startsWith('*') && !l.trim().startsWith('/*')
+    )
+    .join('\n');
+}
+
 /**
  * Every `<Dialog onOpenChange={...}>` in the file.
  *
@@ -128,13 +138,8 @@ describe('dialog close contract', () => {
       const src = await readFile(join(SRC, rel), 'utf-8');
       expect(src.includes('handleOverlayClick')).toBe(true);
       expect(src.includes('useDialogClose')).toBe(true);
-      // The old overlay handler called onClose directly; assert none remains in
-      // code (the phrase may still appear in an explanatory comment).
-      const code = src
-        .split('\n')
-        .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'))
-        .join('\n');
-      expect(code.includes('e.target === e.currentTarget')).toBe(false);
+      // The old overlay handler called onClose directly.
+      expect(code(src).includes('e.target === e.currentTarget')).toBe(false);
       expect(src.includes('useEscapeKey')).toBe(false);
       // (ShareTaskModal has onClick={(e) => ...} on its copy buttons, which is
       // unrelated to dismissal — hence the targeted check above.)
@@ -176,6 +181,43 @@ describe('dialog close contract', () => {
       if (/useEscapeKey\([^)]*,\s*true\s*\)/.test(src)) offenders.push(rel);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('mention menus hosted in a dialog claim Escape above the dialog', async () => {
+    // The bug: Escape was handled in a BUBBLE-phase onKeyDown on the textarea,
+    // but the hosting dialog listens on `document` in CAPTURE phase, which the
+    // DOM delivers first. One Esc therefore closed the whole task dialog as well
+    // as the menu, and the bubble handler's `return` was dead code.
+    //
+    // The fix registers the menu on the useEscapeKey stack: that listener is on
+    // `window` in capture phase and calls stopImmediatePropagation, so it runs
+    // before the dialog's document listener and the event never gets there.
+    const hosted = ['components/board/TaskChatPane.tsx', 'components/board/MentionCommentBox.tsx'];
+    for (const rel of hosted) {
+      const body = code(await readFile(join(SRC, rel), 'utf-8'));
+      // The actual CALL, not the word: a comment mentioning the hook must not
+      // satisfy this assertion, and its absence must not be masked by one.
+      expect(/useEscapeKey\(/.test(body)).toBe(true);
+      // The ineffective bubble-phase branch must be gone.
+      expect(
+        /if \(e\.key === 'Escape'\) \{\s*e\.preventDefault\(\);\s*setShowMentionMenu/.test(body)
+      ).toBe(false);
+    }
+  });
+
+  it('the contract hook captures Escape on document, not in the bubble phase', async () => {
+    // This ordering is the whole reason the mention menus need the stack: capture
+    // on document preempts any bubble-phase handler on a focused child.
+    const src = await readFile(join(SRC, 'hooks/useDialogClose.ts'), 'utf-8');
+    expect(src.includes("document.addEventListener('keydown', onKey, true)")).toBe(true);
+    expect(src.includes("document.addEventListener('keydown', onKey)")).toBe(false);
+
+    // And useEscapeKey is the stack that runs even earlier.
+    const esc = await readFile(join(SRC, 'hooks/useEscapeKey.ts'), 'utf-8');
+    expect(esc.includes("window.addEventListener('keydown', handleGlobalKeyDown, true)")).toBe(
+      true
+    );
+    expect(esc.includes('stopImmediatePropagation')).toBe(true);
   });
 
   it('the contract hook exposes exactly one idempotent close sink', async () => {
