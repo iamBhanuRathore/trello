@@ -84,7 +84,13 @@ export function BoardView() {
   // directly from the URL makes close atomic: no torn pair can exist.
   const selectedCardId = searchParams.get('card');
   const [activeCard, setActiveCard] = useState<KanbanCard | null>(null);
-  const [clonedLists, setClonedLists] = useState<KanbanList[] | null>(null);
+  // Pre-drag snapshot and the card's original list, in refs rather than state.
+  // State made this stale: handleDragStart returns early when !canMoveCard
+  // without setting it, so a denied drag's handleDragEnd read whatever the
+  // PREVIOUS drag had left in state and restored that stale board. A ref is
+  // always current and, being handler-only, costs no re-render.
+  const dragSnapshotRef = useRef<KanbanList[] | null>(null);
+  const dragSourceListRef = useRef<string | null>(null);
   // Timestamp of the last explicit modal close. Closing unmounts the dialog
   // mid-gesture, so the same pointer's click can land on the board tile
   // beneath and instantly reopen it (close → reopen "needs two closes").
@@ -126,21 +132,26 @@ export function BoardView() {
 
   const moveCardMutation = useOptimisticMutation<
     void,
-    { cardId: string; listId: string; position: number; expectedVersion?: number }
+    {
+      cardId: string;
+      listId: string;
+      position: number;
+      expectedVersion?: number;
+      /** Pre-drag board, so a failed move restores what the user was looking at. */
+      snapshot: KanbanList[];
+    }
   >(
     async ({ cardId, listId, position, expectedVersion }) => {
       await api.patch(`/cards/${cardId}/move`, { listId, position, expectedVersion });
     },
     {
       queryKeys: [['board', 'full', boardId]],
-      onErrorExtra: (_variables, err) => {
-        // Roll the optimistic board back to the last server state.
-        const cached = queryClient.getQueryData<{ lists: KanbanList[] }>([
-          'board',
-          'full',
-          boardId,
-        ]);
-        if (cached?.lists) setLists(cached.lists);
+      onErrorExtra: (variables, err) => {
+        // Restore the pre-drag board captured at drag start. This previously
+        // restored the ['board','full'] query cache, which never had the
+        // optimistic move applied — so a failure rolled the board back to a
+        // server snapshot AND discarded any concurrent realtime board update.
+        setLists(variables.snapshot);
         // Version conflicts refetch via onSettled — show the specific
         // message and suppress the generic error toast (return true).
         const status = (err as { response?: { status?: number } })?.response?.status;
@@ -178,12 +189,17 @@ export function BoardView() {
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
+      // Snapshot even when the drag will be refused, so handleDragEnd can tell
+      // "this drag never started" from "restore the pre-drag board".
+      dragSnapshotRef.current = lists;
+      dragSourceListRef.current =
+        lists.find((l) => l.cards.some((c) => c.id === event.active.id))?.id ?? null;
+
       if (!canMoveCard) return;
       const { active } = event;
       const card = lists.flatMap((l) => l.cards).find((c) => c.id === active.id);
       if (card) {
         setActiveCard(card);
-        setClonedLists(lists);
       }
     },
     [lists, canMoveCard]
@@ -248,11 +264,16 @@ export function BoardView() {
     (event: DragEndEvent) => {
       const { active, over } = event;
       setActiveCard(null);
-      setClonedLists(null);
+      const snapshot = dragSnapshotRef.current;
+      const sourceListId = dragSourceListRef.current;
+      dragSnapshotRef.current = null;
+      dragSourceListRef.current = null;
 
       if (!canMoveCard) {
         // Handler-level gate: keyboard sensor can start a drag without buttons.
-        if (over && active.id !== over.id && clonedLists) setLists(clonedLists);
+        // handleDragStart always captured a snapshot, so this restores THIS
+        // drag's pre-state rather than a previous drag's leftovers.
+        if (over && active.id !== over.id && snapshot) setLists(snapshot);
         if (over && active.id !== over.id && !permsLoading) {
           toast.error(permissionReason('card.move'));
         }
@@ -260,7 +281,7 @@ export function BoardView() {
       }
 
       if (!over) {
-        if (clonedLists) setLists(clonedLists);
+        if (snapshot) setLists(snapshot);
         return;
       }
 
@@ -274,7 +295,19 @@ export function BoardView() {
       const overIndex = currentContainer.cards.findIndex((c) => c.id === overId);
 
       let newCards = [...currentContainer.cards];
-      if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
+      // Cross-list drops were landing one slot too far. handleDragOver has
+      // ALREADY spliced the card into the target list at the drop index, so the
+      // card is currently immediately BEFORE `over`; running arrayMove against
+      // overIndex pushed it one position further than the pointer intended.
+      // Only reorder when the drag stayed within one list, where handleDragOver
+      // does not touch the array.
+      const movedAcrossLists = sourceListId !== null && sourceListId !== currentContainer.id;
+      if (
+        !movedAcrossLists &&
+        activeIndex !== -1 &&
+        overIndex !== -1 &&
+        activeIndex !== overIndex
+      ) {
         newCards = arrayMove(newCards, activeIndex, overIndex);
       }
 
@@ -313,21 +346,23 @@ export function BoardView() {
         listId: currentContainer.id,
         position: newPos,
         expectedVersion: newCards[targetIndex]?.version,
+        // Carried so a failed move restores the pre-drag board. Rolling back to
+        // the query cache instead restored a server snapshot that never had the
+        // optimistic move applied, discarding any concurrent realtime update too.
+        snapshot: snapshot ?? lists,
       });
     },
-    [lists, clonedLists, moveCardMutation, canMoveCard, permsLoading]
+    [lists, moveCardMutation, canMoveCard, permsLoading]
   );
 
-  const handleDragCancel = useCallback(
-    (_event: DragCancelEvent) => {
-      if (clonedLists) {
-        setLists(clonedLists);
-      }
-      setActiveCard(null);
-      setClonedLists(null);
-    },
-    [clonedLists]
-  );
+  const handleDragCancel = useCallback((_event: DragCancelEvent) => {
+    if (dragSnapshotRef.current) {
+      setLists(dragSnapshotRef.current);
+    }
+    setActiveCard(null);
+    dragSnapshotRef.current = null;
+    dragSourceListRef.current = null;
+  }, []);
 
   const user = useAuthStore((state) => state.user);
   const [isAutomationsOpen, setIsAutomationsOpen] = useState(false);

@@ -21,6 +21,11 @@ export function SortableCard({ card, isDraggingActive, onClick }: SortableCardPr
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    // BoardView activates dragging with TouchSensor, but nothing set
+    // `touch-action: none` on the draggable, so on a coarse pointer the browser
+    // treated the gesture as a scroll and the card never picked up. dnd-kit's
+    // `attributes` do not include this.
+    touchAction: 'none',
   };
 
   return (
