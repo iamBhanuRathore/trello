@@ -24,20 +24,20 @@ export const PERMISSION_DENIED_CODE = 'PERMISSION_DENIED';
  * Alias map — a check for the key passes when ANY of the listed keys is granted.
  * Single source of truth shared by requirePermission() and the UI's can().
  *
- * Declared with `satisfies` rather than a `Record<string, …>` annotation on
- * purpose. The old annotation type-checked the VALUES but left the KEYS as bare
- * strings, so `'card.mvoe'` compiled, passed CI, and silently cost every caller
- * the `card.update` → `card.move` fallback — a runtime 403 with no build error.
- * `satisfies` validates both sides against the registry union without widening
- * the exported type, so `PERMISSION_ALIASES[someString]` still works for callers.
+ * Declared as `Partial<Record<PermissionKey, …>>` rather than
+ * `Record<string, …>` on purpose. The old annotation type-checked the VALUES but
+ * left the KEYS as bare strings, so `'card.mvoe'` compiled, passed CI, and
+ * silently cost every caller the `card.update` → `card.move` fallback — a
+ * runtime 403 with no build error. Keying the annotation by `PermissionKey`
+ * (not `string`) checks both sides against the registry union, and every
+ * consumer indexes it with a `PermissionKey`, so the wide-string escape hatch
+ * is no longer needed.
  */
-const ALIAS_DEFINITIONS = {
+export const PERMISSION_ALIASES: Partial<Record<PermissionKey, readonly PermissionKey[]>> = {
   [CARD_PERMISSIONS.MOVE]: [CARD_PERMISSIONS.MOVE, CARD_PERMISSIONS.UPDATE],
   [CARD_PERMISSIONS.ARCHIVE]: [CARD_PERMISSIONS.ARCHIVE, CARD_PERMISSIONS.DELETE],
   [BOARD_PERMISSIONS.ARCHIVE]: [BOARD_PERMISSIONS.ARCHIVE, BOARD_PERMISSIONS.DELETE],
-} satisfies Partial<Record<PermissionKey, readonly PermissionKey[]>>;
-
-export const PERMISSION_ALIASES: Record<string, readonly PermissionKey[]> = ALIAS_DEFINITIONS;
+};
 
 /**
  * Baseline grants that the role tables do not carry.
@@ -87,7 +87,7 @@ const SYSTEM_ROLE_NAME_BY_ORG_ROLE: Partial<Record<OrgMemberRole, string>> = {
 const ALL_ACCESS_ROLES: readonly OrgMemberRole[] = [OrgMemberRole.OrgOwner, OrgMemberRole.OrgAdmin];
 
 /** Body for permission denials — additive `details` object (never an array). */
-export function permissionDenied(permissionKey: string): {
+export function permissionDenied(permissionKey: PermissionKey): {
   error: string;
   details: { code: string; permission: string };
 } {
@@ -97,8 +97,14 @@ export function permissionDenied(permissionKey: string): {
   };
 }
 
-/** True when the granted set satisfies a single-key check (alias-aware). */
-export function satisfiesPermission(granted: Set<string>, key: string): boolean {
+/**
+ * True when the granted set satisfies a single-key check (alias-aware).
+ *
+ * `key` is a `PermissionKey`, not a string: the alias lookup and the fallback
+ * `granted.has()` below are both key-exact, so a misspelling would quietly
+ * degrade to "deny" instead of failing the build.
+ */
+export function satisfiesPermission(granted: ReadonlySet<string>, key: PermissionKey): boolean {
   const aliases = PERMISSION_ALIASES[key];
   if (aliases) return aliases.some((k) => granted.has(k));
   return granted.has(key);
@@ -185,10 +191,10 @@ export async function resolveUserPermissions(
   }
 
   // Expand alias-implied keys so single-key has() matches requirePermission().
-  // Derived from ALIAS_DEFINITIONS rather than hand-written: the three `if`
+  // Derived from PERMISSION_ALIASES rather than hand-written: the three `if`
   // lines that used to live here duplicated the alias table with no compiler
   // link, so renaming a constant in one place silently broke the other.
-  for (const [key, aliases] of Object.entries(ALIAS_DEFINITIONS)) {
+  for (const [key, aliases] of Object.entries(PERMISSION_ALIASES)) {
     if (aliases.some((alias) => granted.has(alias))) granted.add(key);
   }
   return granted;
