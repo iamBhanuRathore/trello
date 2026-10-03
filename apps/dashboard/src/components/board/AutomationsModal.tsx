@@ -15,6 +15,7 @@ import { SearchableSelect, ListSearchableSelect } from '@boardly/ui/searchable-s
 import { AsyncMemberSearchableSelect } from '../ui/AsyncMemberSelect';
 import { useDialogClose } from '../../hooks/useDialogClose';
 import { useAuthStore } from '../../store/authStore';
+import { permissionReason } from '../../hooks/usePermissions';
 
 interface AutomationsModalProps {
   boardId: string;
@@ -343,6 +344,7 @@ function BoardRulesPanel(props: {
               size="sm"
               onClick={props.onSave}
               disabled={!canSave}
+              title={canSave ? undefined : permissionReason('board.update')}
               className="text-xs px-4 cursor-pointer"
             >
               {isSaving ? 'Saving...' : 'Save Rule'}
@@ -652,6 +654,7 @@ function ProjectDefaultsPanel(props: {
             onClick={() => saveMutation.mutate()}
             disabled={!canSave || saveMutation.isPending}
             className="text-xs px-4 cursor-pointer"
+            title={canSave ? undefined : permissionReason('board.update')}
           >
             {saveMutation.isPending
               ? 'Saving...'

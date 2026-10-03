@@ -29,6 +29,7 @@ import {
   type RulePayload,
 } from '../../lib/automationService';
 import { useDialogClose } from '../../hooks/useDialogClose';
+import { permissionReason } from '../../hooks/usePermissions';
 
 export interface RuleEditorProps {
   orgId?: string;
@@ -535,7 +536,12 @@ export function RuleEditor({
         <Button type="button" variant="outline" onClick={requestCancel} className="cursor-pointer">
           Cancel
         </Button>
-        <Button type="submit" disabled={!canSave || !dirty || isSaving} className="cursor-pointer">
+        <Button
+          type="submit"
+          disabled={!canSave || !dirty || isSaving}
+          className="cursor-pointer"
+          title={!canSave ? permissionReason('board.update') : 'No changes to save yet'}
+        >
           {isSaving ? 'Saving…' : 'Save rule'}
         </Button>
       </div>

@@ -153,6 +153,7 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
                   size="sm"
                   className="h-7 text-xs gap-1 disabled:cursor-not-allowed"
                   disabled={!canImport}
+                  title={canImport ? undefined : permissionReason('board.create')}
                   onClick={() => {
                     setImportProjectId(proj.id);
                     setImportProjectName(proj.name);

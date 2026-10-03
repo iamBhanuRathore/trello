@@ -305,6 +305,7 @@ export function Priorities() {
           <Button
             size="sm"
             disabled={!canCreate}
+            title={newName.trim() ? undefined : 'Enter a name for the new level'}
             onClick={() => createMutation.mutate()}
             className="h-9 text-xs gap-1.5 shrink-0 cursor-pointer"
           >
