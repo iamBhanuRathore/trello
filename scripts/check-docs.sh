@@ -28,7 +28,16 @@ fi
 ranges=()
 head_ref="${2:-HEAD}"
 if [[ $# -ge 1 ]]; then
-  ranges+=("$1...$head_ref")
+  # Accept either a base ref or a full range. Building "$1...$head_ref" from an
+  # argument that is already a range produced "A...B...C", which git resolves to
+  # the empty set — so `check-docs.sh origin/main...HEAD` reported OK on every
+  # commit. A gate that passes when given the wrong argument is worse than one
+  # that fails, because the mistake is invisible.
+  if [[ "$1" == *...* ]]; then
+    ranges+=("$1")
+  else
+    ranges+=("$1...$head_ref")
+  fi
 elif [[ -t 0 ]]; then
   ranges+=("origin/main...HEAD")
 else
@@ -52,12 +61,19 @@ for range in "${ranges[@]}"; do
     [[ -z "$sha" ]] && continue
     subject=$(git log -1 --format="%s%n%b" "$sha")
     if echo "$subject" | grep -qiE "$BYPASS_TRAILER"; then bypassed="$sha"; fi
+    # Record docs/ BEFORE the exempt-type skip. A commit whose subject is
+    # `docs: …` matches EXEMPT_TYPES, so the `continue` below used to skip the
+    # docs check entirely — which made the gate impossible to satisfy with the
+    # documentation commit it is asking for. Every earlier push of this pass
+    # failed here despite a real docs/ commit in the range. Exempting a
+    # `docs:` commit from *counting as a code change* is correct; exempting it
+    # from *counting as documentation* is the bug.
+    if git diff-tree --no-commit-id --name-only -r "$sha" | grep -qE "^$DOCS_PATH/"; then
+      docs_touched="$sha"
+    fi
     if echo "$subject" | grep -qiE "$EXEMPT_TYPES"; then continue; fi
     if git diff-tree --no-commit-id --name-only -r "$sha" | grep -qE "^($(IFS='|'; echo "${CODE_PATHS[*]}"))/"; then
       code_commits+="$(git log -1 --format='%h %s' "$sha")"$'\n'
-    fi
-    if git diff-tree --no-commit-id --name-only -r "$sha" | grep -qE "^$DOCS_PATH/"; then
-      docs_touched="$sha"
     fi
   done < <(git log --no-merges --format="%H" "$range" 2>/dev/null || true)
 done

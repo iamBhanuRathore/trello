@@ -68,6 +68,11 @@ jobs:
         # shared remote database.
         run: ./scripts/db.sh.test.sh
 
+      - name: Documentation-gate tests
+        # check-docs.sh is itself a gate, so it needs the same treatment: it had
+        # an ordering bug that made it unsatisfiable by a `docs:` commit.
+        run: ./scripts/check-docs.sh.test.sh
+
       - name: Build monorepo packages
         run: bun run build
 

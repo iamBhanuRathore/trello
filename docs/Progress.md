@@ -2792,3 +2792,12 @@ Five commits. **The headline is that two of the repo's gates were not actually r
 **Validation across P4:** backend `tsc --noEmit` clean, `oxlint` clean apart from the pre-existing `chat-messages.ts:610` warning, **459 pass / 1 skip / 0 fail across 60 files**. `scripts/db.sh.test.sh` **23/23**, with and without a `.env` present. Monorepo `bun run test` **3/3 tasks**.
 
 **Fix-only pass (P0–P4) status: complete.** 20 local commits on `main`. Deferred by design: P0 item 5 step 2 (empty-org → 400) stays instrumented until logs are quiet; sprint/phase grants for `Member` remain a product decision; the historical cross-org exploitation audit is blocked because access logs do not record organization and entity ids together; automation **rule editing** is an open product item found during P3-5.
+
+**Follow-up found while running the gates: `check-docs.sh` was unsatisfiable** (`scripts/check-docs.sh`)
+
+Two bugs in the documentation gate itself, both found because it blocked this push.
+
+1. **A `docs:` commit could never satisfy the gate.** `EXEMPT_TYPES` includes `docs`, so the loop hit `continue` on the exempt-type check _before_ the `docs/` check, and `docs_touched` was never set for a documentation commit. Exempting a `docs:` commit from counting as a _code change_ is correct; exempting it from counting as _documentation_ is the bug. The `docs/` check now runs first.
+2. **Passing a full range as the base silently passed everything.** `ranges+=("$1...$head_ref")` turned `check-docs.sh origin/main...HEAD` into `origin/main...HEAD...HEAD`, which git resolves to the empty set — so the gate reported `OK: no non-exempt code changes in range` on any input. A gate that passes when handed the wrong argument is worse than one that fails, because the mistake is invisible. A range-shaped `$1` is now used as-is.
+
+New `scripts/check-docs.sh.test.sh` (18 assertions, also in CI). It builds throwaway git repos, so it never touches the real history. **4 fail against the pre-fix script.** Two of my own test expectations were wrong first and were corrected rather than worked around: a `[skip-docs]` trailer only bypasses a commit _inside_ the range (the gate scans the range, not the branch), and a single-commit repo makes `HEAD~1...HEAD` an invalid range.
