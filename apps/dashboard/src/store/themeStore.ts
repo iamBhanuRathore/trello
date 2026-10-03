@@ -144,6 +144,9 @@ const STORAGE_KEYS = {
   customAccentHex: 'boardly_theme_custom_accent',
 };
 
+/** Disposer for the single registered prefers-color-scheme listener. */
+let themeMediaListenerCleanup: (() => void) | null = null;
+
 function getSystemPrefersDark(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -262,27 +265,33 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       const resolvedIsDark = applyDOMTheme(mode, palette, accentId, customAccentHex);
       set({ resolvedIsDark });
 
-      // Listen to OS system preference changes
-      if (typeof window !== 'undefined' && window.matchMedia) {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        const handleChange = () => {
-          const currentMode = get().mode;
-          if (currentMode === 'system') {
-            const isDark = applyDOMTheme(
-              'system',
-              get().palette,
-              get().accentId,
-              get().customAccentHex
-            );
-            set({ resolvedIsDark: isDark });
-          }
-        };
-
-        mediaQuery.addEventListener('change', handleChange);
-        return () => mediaQuery.removeEventListener('change', handleChange);
+      // Listen to OS system preference changes.
+      //
+      // initTheme() is called once from main.tsx, which discards the returned
+      // disposer — so this listener was never removable and every additional
+      // call (React StrictMode double-invoke, HMR) stacked another one. Guard on
+      // a module-level flag and keep the disposer for callers that do own it.
+      if (themeMediaListenerCleanup || typeof window === 'undefined' || !window.matchMedia) {
+        return () => {};
       }
 
-      return () => {};
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => {
+        const currentMode = get().mode;
+        if (currentMode === 'system') {
+          const isDark = applyDOMTheme(
+            'system',
+            get().palette,
+            get().accentId,
+            get().customAccentHex
+          );
+          set({ resolvedIsDark: isDark });
+        }
+      };
+
+      mediaQuery.addEventListener('change', handleChange);
+      themeMediaListenerCleanup = () => mediaQuery.removeEventListener('change', handleChange);
+      return themeMediaListenerCleanup;
     },
   };
 });

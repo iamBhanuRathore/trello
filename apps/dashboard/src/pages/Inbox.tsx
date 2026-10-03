@@ -98,13 +98,25 @@ export function Inbox() {
 
   const archiveMany = useMutation({
     mutationFn: async (targets: InboxItem[]) => {
-      for (const t of targets) await api.post(`/inbox/${t.source}/${t.refId}/archive`);
+      // Independent per-item calls — a 50-item bulk archive used to pay 50
+      // sequential round trips.
+      const results = await Promise.allSettled(
+        targets.map((t) => api.post(`/inbox/${t.source}/${t.refId}/archive`))
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0 && failed === targets.length) {
+        throw (results.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason;
+      }
+      return { failed };
     },
-    onSuccess: (_d, targets) => {
+    onSuccess: (result, targets) => {
       invalidate();
       setSelected(new Set());
       setSelectMode(false);
-      setAnnouncement(`${targets.length} archived`);
+      setAnnouncement(`${targets.length - result.failed} archived`);
+      if (result.failed > 0) {
+        toast.error(`${result.failed} of ${targets.length} items could not be archived.`);
+      }
     },
     onError: (err) => toast.error(getApiErrorMessage(err, 'Could not archive. Please try again.')),
   });
@@ -120,9 +132,17 @@ export function Inbox() {
               onClick: () =>
                 (async () => {
                   try {
-                    for (const t of targets) await api.post(`/inbox/${t.source}/${t.refId}/undo`);
+                    // Independent per-item calls, issued together.
+                    const results = await Promise.allSettled(
+                      targets.map((t) => api.post(`/inbox/${t.source}/${t.refId}/undo`))
+                    );
+                    const failed = results.filter((r) => r.status === 'rejected').length;
                     invalidate();
-                    setAnnouncement('Archive undone');
+                    if (failed === 0) {
+                      setAnnouncement('Archive undone');
+                    } else {
+                      setAnnouncement(`${targets.length - failed} of ${targets.length} restored`);
+                    }
                   } catch (err) {
                     toast.error(getApiErrorMessage(err, 'Could not undo archive.'));
                   }
@@ -196,6 +216,11 @@ export function Inbox() {
     },
   });
 
+  // Stable across renders in TanStack Query v5. Depending on the whole
+  // `starMutation` result object re-bound the document keydown listener on every
+  // render of this page.
+  const { mutate: starNotification } = starMutation;
+
   // Keyboard triage: j/k move, Enter open, S snooze, I subtask, T star, E archive.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -243,7 +268,7 @@ export function Inbox() {
         e.preventDefault();
         const item = items[idx]!;
         if (item.source !== 'notification') toast.error('Only notifications can be starred.');
-        else starMutation.mutate(item.refId);
+        else starNotification(item.refId);
       } else if ((e.key === 'e' || e.key === 'E') && idx >= 0) {
         e.preventDefault();
         archiveWithUndo([items[idx]!]);
@@ -262,7 +287,7 @@ export function Inbox() {
     subtaskFor,
     openItem,
     archiveWithUndo,
-    starMutation,
+    starNotification,
   ]);
 
   // Infinite scroll sentinel.

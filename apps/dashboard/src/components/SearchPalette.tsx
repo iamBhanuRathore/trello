@@ -75,9 +75,17 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
   });
 
   // 2. Fetch saved searches
+  //
+  // Both of these used to be unguarded, so every authenticated app boot paid two
+  // requests for a dialog that renders nothing until Cmd+K — and `['workspaces']`
+  // is invalidated by every workspace mutation, so those refetches cascaded
+  // through this always-mounted component. Gate them on `open` like the channels
+  // query above.
   const { data: savedSearches = [] } = useQuery({
     queryKey: ['savedSearches'],
     queryFn: () => searchService.getSavedSearches(),
+    enabled: open,
+    staleTime: 60000,
   });
 
   // 3. Fetch workspaces to build instant board & project suggestions
@@ -87,6 +95,8 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
       const res = await api.get('/workspaces');
       return res.data;
     },
+    enabled: open,
+    staleTime: 60000,
   });
 
   const saveSearchMutation = useMutation({

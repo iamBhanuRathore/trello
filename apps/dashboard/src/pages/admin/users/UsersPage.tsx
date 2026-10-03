@@ -137,6 +137,15 @@ export const UsersPage: React.FC = () => {
   }, [members, statusFilter, roleFilter, searchQuery]);
 
   // DataGrid Columns
+  //
+  // Depend on the stable `mutate` functions, NOT the useMutation result objects:
+  // a fresh result object per render made both memos miss every render, which
+  // rebuilt the grid's column set and row model on every render of this page.
+  const { mutate: reactivateMember } = reactivateMutation;
+  const { mutate: forceLogoutMember } = forceLogoutMutation;
+  const { mutate: resendInvitation } = resendInviteMutation;
+  const { mutate: revokeInvitation } = revokeInviteMutation;
+
   const memberColumns = useMemo(
     () =>
       getMemberColumns({
@@ -144,20 +153,20 @@ export const UsersPage: React.FC = () => {
         onSelectMember: (id) => setDrawerMemberId(id),
         onOpenChangeRole: (member) => setSelectedMember(member),
         onOpenDeactivate: (member) => setMemberToDeactivate(member),
-        onReactivate: (id) => reactivateMutation.mutate(id),
-        onForceLogout: (id) => forceLogoutMutation.mutate(id),
+        onReactivate: (id) => reactivateMember(id),
+        onForceLogout: (id) => forceLogoutMember(id),
         onRemoveMember: (member) => setMemberToDelete(member),
       }),
-    [user?.id, reactivateMutation, forceLogoutMutation]
+    [user?.id, reactivateMember, forceLogoutMember]
   );
 
   const invitationColumns = useMemo(
     () =>
       getInvitationColumns({
-        onResend: (id) => resendInviteMutation.mutate(id),
-        onRevoke: (id) => revokeInviteMutation.mutate(id),
+        onResend: (id) => resendInvitation(id),
+        onRevoke: (id) => revokeInvitation(id),
       }),
-    [resendInviteMutation, revokeInviteMutation]
+    [resendInvitation, revokeInvitation]
   );
 
   return (

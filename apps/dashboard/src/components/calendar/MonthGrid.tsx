@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { format, isToday } from 'date-fns';
 import { Flag } from 'lucide-react';
 import type { CalendarFeed, CalendarExternal } from '../../lib/calendarService';
+import { buildDayBuckets } from './dayBuckets';
 
 interface MonthGridProps {
   days: Date[];
@@ -33,6 +35,9 @@ export function MonthGrid({
 }: MonthGridProps) {
   const inMonth = (d: Date) => d.getMonth() === cursor.getMonth();
 
+  // Bucket the feed once instead of re-filtering it in every cell.
+  const buckets = useMemo(() => buildDayBuckets(feed), [feed]);
+
   return (
     <div className="grid grid-cols-7 auto-rows-fr min-h-full" style={{ minHeight: '100%' }}>
       {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
@@ -45,15 +50,9 @@ export function MonthGrid({
       ))}
       {days.map((day) => {
         const key = format(day, 'yyyy-MM-dd');
-        const blocks = (feed?.blocks || []).filter(
-          (b) => format(new Date(b.start), 'yyyy-MM-dd') === key
-        );
-        const dues = (feed?.dueDates || []).filter(
-          (d) => format(new Date(d.start), 'yyyy-MM-dd') === key
-        );
-        const externals = (feed?.external || []).filter(
-          (e) => e.start && format(new Date(e.start), 'yyyy-MM-dd') === key
-        );
+        const blocks = buckets.blocksByDay.get(key) || [];
+        const dues = buckets.dueByDay.get(key) || [];
+        const externals = buckets.externalByDay.get(key) || [];
         return (
           <button
             key={key + day.getMonth()}

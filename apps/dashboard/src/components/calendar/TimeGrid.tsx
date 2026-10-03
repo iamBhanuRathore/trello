@@ -1,7 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { format, isSameDay, isToday } from 'date-fns';
 import { Flag } from 'lucide-react';
 import type { CalendarFeed, CalendarExternal } from '../../lib/calendarService';
+import { buildDayBuckets } from './dayBuckets';
 import { HOUR_H, type DragState, type PendingPress } from './types';
 import { snapMinutes, layoutDayColumns, columnStyle } from './calendar-utils';
 import { NowLine } from './NowLine';
@@ -52,6 +53,8 @@ export function TimeGrid({
   const gridRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef<PendingPress | null>(null);
   const downRef = useRef<{ x: number; y: number; t: number } | null>(null);
+
+  const buckets = useMemo(() => buildDayBuckets(feed), [feed]);
 
   // Header height varies with all-day chips — measure the target column.
   const headerOffset = useCallback((dayIndex: number): number => {
@@ -292,16 +295,7 @@ export function TimeGrid({
               {format(day, 'd')}
             </span>
           </div>
-          {(feed?.external || [])
-            .filter((e) => {
-              const dayKey = format(day, 'yyyy-MM-dd');
-              if (!e.allDay) return false;
-              if (e.start) return format(new Date(e.start), 'yyyy-MM-dd') === dayKey;
-              if (e.end) {
-                return format(new Date(new Date(e.end).getTime() - 1), 'yyyy-MM-dd') === dayKey;
-              }
-              return false;
-            })
+          {(buckets.allDayExternalByDay.get(format(day, 'yyyy-MM-dd')) || [])
             .slice(0, 2)
             .map((e) => (
               <a
@@ -330,19 +324,11 @@ export function TimeGrid({
           </div>
           {days.map((day) => {
             const key = format(day, 'yyyy-MM-dd');
-            const dayBlocks = (feed?.blocks || []).filter(
-              (b) => format(new Date(b.start), 'yyyy-MM-dd') === key
-            );
-            const dayDues = (feed?.dueDates || []).filter(
-              (d) =>
-                format(new Date(d.start), 'yyyy-MM-dd') === key &&
-                new Date(d.start).getHours() === h
-            );
+            const dayBlocks = buckets.blocksByDay.get(key) || [];
+            const dayDues = buckets.dueByDayHour.get(`${key}#${h}`) || [];
             // External blocks render once in the midnight cell below with
             // absolute offsets — no hour filter (it hid non-midnight events).
-            const dayExt = (feed?.external || []).filter(
-              (e) => e.start && !e.allDay && format(new Date(e.start), 'yyyy-MM-dd') === key
-            );
+            const dayExt = buckets.timedExternalByDay.get(key) || [];
             return (
               <div
                 key={key + h}

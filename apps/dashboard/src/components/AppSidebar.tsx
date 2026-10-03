@@ -149,13 +149,17 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   const overdueTasksCount = tasksSummary?.overdueCount ?? 0;
 
   // Notification Center badge — same key as the inbox hook, shared cache.
+  // This duplicate query owned a SECOND 30s interval on the same key (on top of
+  // the one in useNotifications.useUnreadCount), so the timers drifted and the
+  // key was fetched roughly twice per window. It is the badge's only consumer,
+  // so it now drives the interval for everyone.
   const { data: notifUnreadCount = 0 } = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: async () => {
       const res = await api.get('/notifications/unread-count');
       return res.data?.unreadCount ?? 0;
     },
-    staleTime: 15_000,
+    staleTime: 30_000,
     refetchInterval: 30_000,
     placeholderData: (prev) => prev,
   });

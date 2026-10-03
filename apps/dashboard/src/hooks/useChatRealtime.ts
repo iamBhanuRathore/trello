@@ -300,7 +300,7 @@ export function useChatRealtime(passedChannelId?: string | null) {
     return () => {
       isMounted = false;
       setWsConnected(false);
-      if (heartbeatTimer) clearTimeout(heartbeatTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       reconnectTimer.current = null;
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {

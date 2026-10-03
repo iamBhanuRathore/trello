@@ -185,6 +185,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       queryFn: async () => {
         const ts = await stagesService.getTemplates(orgId!);
         if (ts && ts.length > 0) {
+          // The detail call depends on the id from the list call, so it cannot
+          // be issued in parallel — but the whole thing is behind a 5-minute
+          // staleTime and only runs on first open of the task modal.
           const fullTemplate = await stagesService.getTemplate(ts[0].id);
           ts[0].stages = fullTemplate?.stages || [];
         }

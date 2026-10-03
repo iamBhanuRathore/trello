@@ -124,6 +124,12 @@ export function useNotificationRealtime(enabled = true): void {
     };
     return () => {
       mounted = false;
+      // The pending backoff timer outlived the unmount otherwise, and fired
+      // setTick on a dead component (and kept the socket reconnecting).
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
       try {
         ws.close();
       } catch {
@@ -134,7 +140,12 @@ export function useNotificationRealtime(enabled = true): void {
   }, [enabled, token, user?.id, tick, queryClient]);
 }
 
-// ─── List / strip / badge ────────────────────────────────────────────────────
+// List / strip / badge
+//
+// These deliberately do NOT opt back into `refetchOnWindowFocus`: the global
+// default in lib/queryClient.ts is false, and the realtime socket already
+// invalidates `notifKeys.root` on every `notifications:new` frame. Three keys
+// refetched on each tab focus against a 15s freshness window.
 
 const LIST_LIMIT = 30;
 
@@ -146,9 +157,8 @@ export function useNotificationsInfinite(filters: NotificationFilters, enabled =
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled,
-    staleTime: 15_000,
+    staleTime: 30_000,
     gcTime: 5 * 60_000,
-    refetchOnWindowFocus: true,
     placeholderData: (prev) => prev,
   });
 }
@@ -158,19 +168,20 @@ export function useNeedsAction(enabled = true) {
     queryKey: notifKeys.needsAction,
     queryFn: () => fetchNeedsAction(5),
     enabled,
-    staleTime: 15_000,
-    refetchOnWindowFocus: true,
+    staleTime: 30_000,
     placeholderData: (prev) => prev,
   });
 }
 
+// Exactly one owner for the unread-count interval in the app: AppSidebar's copy
+// is removed, otherwise the two timers drift and this key is fetched ~2x per
+// window.
 export function useUnreadCount() {
   return useQuery({
     queryKey: notifKeys.unreadCount,
     queryFn: fetchUnreadCount,
-    staleTime: 15_000,
+    staleTime: 30_000,
     refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
     placeholderData: (prev) => prev,
   });
 }
