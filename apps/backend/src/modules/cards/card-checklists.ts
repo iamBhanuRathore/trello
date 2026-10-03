@@ -60,11 +60,18 @@ export async function getCardChecklists(db: Database, cardId: string, organizati
       .orderBy(checklistItems.position),
   ]);
 
+  // Group in one pass. This filtered the full item array per checklist, so a card
+  // with N checklists and M items cost O(N*M) on every card open.
+  const itemsByChecklistId = new Map<string, (typeof allItems)[number]['checklist_items'][]>();
+  for (const row of allItems) {
+    const list = itemsByChecklistId.get(row.checklist_items.checklistId);
+    if (list) list.push(row.checklist_items);
+    else itemsByChecklistId.set(row.checklist_items.checklistId, [row.checklist_items]);
+  }
+
   return allChecklists.map((cl) => ({
     ...cl,
-    items: allItems
-      .filter((item) => item.checklist_items.checklistId === cl.id)
-      .map((i) => i.checklist_items),
+    items: itemsByChecklistId.get(cl.id) ?? [],
   }));
 }
 

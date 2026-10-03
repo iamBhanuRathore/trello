@@ -130,26 +130,39 @@ export async function listRoles(db: Database, organizationId: string) {
     return a.name.localeCompare(b.name);
   });
 
-  // Fetch permissions for each role
-  const results = [];
-  for (const r of uniqueRoles) {
-    const perms = await db
+  // Fetch permissions for every role in ONE query. This looped a
+  // role_permissions join per role, so the page cost 6 system roles + N custom
+  // roles round trips, serially.
+  const permsByRole = new Map<string, { id: string; key: string; description: string | null }[]>();
+  if (uniqueRoles.length > 0) {
+    const permRows = await db
       .select({
+        roleId: rolePermissions.roleId,
         id: permissions.id,
         key: permissions.key,
         description: permissions.description,
       })
       .from(rolePermissions)
       .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
-      .where(eq(rolePermissions.roleId, r.id));
+      .where(
+        inArray(
+          rolePermissions.roleId,
+          uniqueRoles.map((r) => r.id)
+        )
+      );
 
-    results.push({
-      ...r,
-      permissions: perms,
-    });
+    for (const row of permRows) {
+      const list = permsByRole.get(row.roleId);
+      const entry = { id: row.id, key: row.key, description: row.description };
+      if (list) list.push(entry);
+      else permsByRole.set(row.roleId, [entry]);
+    }
   }
 
-  return results;
+  return uniqueRoles.map((r) => ({
+    ...r,
+    permissions: permsByRole.get(r.id) ?? [],
+  }));
 }
 
 export async function createCustomRole(

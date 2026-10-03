@@ -168,16 +168,25 @@ export async function listRepositories(db: Database, organizationId: string) {
     .select()
     .from(gitRepositories)
     .where(eq(gitRepositories.organizationId, organizationId));
-  const withCounts = await Promise.all(
-    rows.map(async (r) => {
-      const [cnt] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(gitLinks)
-        .where(eq(gitLinks.repositoryId, r.id));
-      return { ...sanitizeRepo(r), linkCount: Number(cnt?.count || 0) };
-    })
-  );
-  return withCounts;
+  if (rows.length === 0) return [];
+
+  // One grouped count instead of a count(*) per repository, issued serially.
+  const countRows = await db
+    .select({ repositoryId: gitLinks.repositoryId, count: sql<number>`count(*)` })
+    .from(gitLinks)
+    .where(
+      inArray(
+        gitLinks.repositoryId,
+        rows.map((r) => r.id)
+      )
+    )
+    .groupBy(gitLinks.repositoryId);
+
+  const countByRepo = new Map(countRows.map((row) => [row.repositoryId, Number(row.count || 0)]));
+  return rows.map((r) => ({
+    ...sanitizeRepo(r),
+    linkCount: countByRepo.get(r.id) ?? 0,
+  }));
 }
 
 export async function disconnectRepository(db: Database, organizationId: string, repoId: string) {

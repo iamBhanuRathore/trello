@@ -195,31 +195,40 @@ export async function createCard(db: Database, organizationId: string, input: Cr
 
   // Full-composer relations: labels, participants, observers + initial checklist.
   // Best-effort per row so one bad id never fails the creation.
+  //
+  // One bulk insert per relation instead of one per id — the composer allows
+  // multiple labels, participants and observers, and each used to be a separate
+  // serial round trip on the create path.
   if (card) {
     const validIds = (ids?: string[]) => (ids || []).filter((id) => isValidUuid(id));
-    for (const labelId of validIds(input.labelIds)) {
+    const labelIds = validIds(input.labelIds);
+    if (labelIds.length > 0) {
       await db
         .insert(cardLabels)
-        .values({ cardId: card.id, labelId })
+        .values(labelIds.map((labelId) => ({ cardId: card.id, labelId })))
         .onConflictDoNothing()
         .catch(() => {});
     }
-    for (const participantId of validIds(input.participantIds)) {
+    const participantIds = validIds(input.participantIds);
+    if (participantIds.length > 0) {
       await db
         .insert(cardParticipants)
-        .values({
-          cardId: card.id,
-          userId: participantId,
-          addedBy: input.actorId,
-          addedAt: new Date(),
-        })
+        .values(
+          participantIds.map((userId) => ({
+            cardId: card.id,
+            userId,
+            addedBy: input.actorId,
+            addedAt: new Date(),
+          }))
+        )
         .onConflictDoNothing()
         .catch(() => {});
     }
-    for (const watcherId of validIds(input.watcherIds)) {
+    const watcherIds = validIds(input.watcherIds);
+    if (watcherIds.length > 0) {
       await db
         .insert(cardWatchers)
-        .values({ cardId: card.id, userId: watcherId, subscribedAt: new Date() })
+        .values(watcherIds.map((userId) => ({ cardId: card.id, userId, subscribedAt: new Date() })))
         .onConflictDoNothing()
         .catch(() => {});
     }

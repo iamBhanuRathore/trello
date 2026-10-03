@@ -1,4 +1,4 @@
-import { eq, and, isNull, desc } from 'drizzle-orm';
+import { eq, and, isNull, inArray, desc } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   cards,
@@ -61,80 +61,87 @@ export async function createComment(
   const targetMentionIds = new Set<string>(mentionedUserIds || []);
 
   // Also auto-extract mentions from markdown tags: @[Name](uuid) or @uuid
-  const mentionMatches = body.match(/@\[([^\]]+)\]\(([a-f0-9-]+)\)/g);
-  if (mentionMatches) {
-    for (const m of mentionMatches) {
-      const matchId = m.match(/@\[([^\]]+)\]\(([a-f0-9-]+)\)/);
-      if (matchId && matchId[2]) {
-        targetMentionIds.add(matchId[2]);
-      }
-    }
+  // Single pass with matchAll — the body used to be matched once to count and
+  // then re-matched per hit with the same regex.
+  const mentionTagIds: string[] = [];
+  for (const match of body.matchAll(/@\[([^\]]+)\]\(([a-f0-9-]+)\)/g)) {
+    if (match[2]) mentionTagIds.push(match[2]);
   }
+  for (const id of mentionTagIds) targetMentionIds.add(id);
 
   // Auto-add mentioned users as observers / watchers if not already watching.
   // Only organization members can be pulled in — guessed cross-org UUIDs are ignored.
   // Enrichment (actor/task names) is hoisted once — shared by every mention below.
   const { enrichNotificationPayload } = await import('../notifications/service');
   const mentionEnriched = await enrichNotificationPayload(db, { actorId: userId, cardId });
-  for (const mentionedId of targetMentionIds) {
-    if (mentionedId && mentionedId !== userId) {
-      const [isMember] = await db
-        .select({ userId: organizationMembers.userId })
-        .from(organizationMembers)
-        .where(
-          and(
-            eq(organizationMembers.organizationId, orgId),
-            eq(organizationMembers.userId, mentionedId),
-            isNull(organizationMembers.deletedAt)
-          )
-        )
-        .limit(1);
-      if (!isMember) continue;
-      // 1. Add as card watcher
-      await db.insert(cardWatchers).values({ cardId, userId: mentionedId }).onConflictDoNothing();
 
-      // 2. Broadcast realtime watcher update
+  // One membership probe for every candidate, then two bulk inserts. This used
+  // to be 3 serial queries PER mention (membership check, watcher insert,
+  // notification insert) — 5 mentions cost 15 round trips on the comment path.
+  const candidateIds = Array.from(targetMentionIds).filter((id) => !!id && id !== userId);
+  if (candidateIds.length > 0) {
+    const memberRows = await db
+      .select({ userId: organizationMembers.userId })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.organizationId, orgId),
+          inArray(organizationMembers.userId, candidateIds),
+          isNull(organizationMembers.deletedAt)
+        )
+      );
+    const eligible = memberRows.map((m) => m.userId);
+
+    if (eligible.length > 0) {
+      await db
+        .insert(cardWatchers)
+        .values(eligible.map((userId) => ({ cardId, userId })))
+        .onConflictDoNothing();
+
       if (boardId) {
-        eventBus.broadcast(`board:${boardId}`, 'card.watched', { cardId, userId: mentionedId });
+        for (const mentionedId of eligible) {
+          eventBus.broadcast(`board:${boardId}`, 'card.watched', { cardId, userId: mentionedId });
+        }
       }
 
-      // 3. Create notification for mentioned user (+ threaded mention email, 4.6b:
-      //    its Reply-To carries the card's inbound capability so replying lands a
-      //    comment on this card).
       if (orgId) {
         await db
           .insert(notifications)
-          .values({
-            userId: mentionedId,
-            organizationId: orgId,
-            eventType: 'card.mentioned',
-            payload: {
-              cardId,
-              commentId: comment?.id,
-              actorId: userId,
-              commentSnippet: body.slice(0, 150),
-              ...mentionEnriched,
-            },
-          })
-          .catch(() => {});
-        void (async () => {
-          try {
-            const { emailChannelAllowed, sendThreadedCardEmail } =
-              await import('../inbound/threading');
-            if (await emailChannelAllowed(db, orgId, mentionedId, 'card.mentioned')) {
-              await sendThreadedCardEmail(db, {
-                organizationId: orgId,
+          .values(
+            eligible.map((mentionedId) => ({
+              userId: mentionedId,
+              organizationId: orgId,
+              eventType: 'card.mentioned',
+              payload: {
                 cardId,
-                recipientUserId: mentionedId,
+                commentId: comment?.id,
                 actorId: userId,
-                commentText: body,
-                event: 'card.mentioned',
-              });
+                commentSnippet: body.slice(0, 150),
+                ...mentionEnriched,
+              },
+            }))
+          )
+          .catch(() => {});
+        for (const mentionedId of eligible) {
+          void (async () => {
+            try {
+              const { emailChannelAllowed, sendThreadedCardEmail } =
+                await import('../inbound/threading');
+              if (await emailChannelAllowed(db, orgId, mentionedId, 'card.mentioned')) {
+                await sendThreadedCardEmail(db, {
+                  organizationId: orgId,
+                  cardId,
+                  recipientUserId: mentionedId,
+                  actorId: userId,
+                  commentText: body,
+                  event: 'card.mentioned',
+                });
+              }
+            } catch {
+              // Never let mail break the comment write.
             }
-          } catch {
-            // Never let mail break the comment write.
-          }
-        })();
+          })();
+        }
       }
     }
   }

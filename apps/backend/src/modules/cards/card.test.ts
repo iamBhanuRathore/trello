@@ -9,6 +9,7 @@ import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
 import { createList } from '../lists/service';
+import { rebalanceListPositions } from './card-movement';
 import {
   createCard,
   getCard,
@@ -108,6 +109,91 @@ describe('Cards Service', () => {
     const moved = await moveCard(db, card!.id, organization.id, list2!.id, 100);
     expect(moved.listId).toBe(list2!.id);
     expect(moved.position).toBe(100);
+  });
+
+  // The renumbering is a single set-based UPDATE with a bound VALUES list
+  // (it used to be one UPDATE per card). Verify the numbering, the gaps, the
+  // version bump and the archived/deleted exclusion all still hold.
+  it('should renumber a list in one statement, preserving order and skipping archived cards', async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { organization } = await signUp(db, {
+      name: 'Rebalance Owner',
+      email: `rebal_${id}@card.com`,
+      password: 'pass',
+      orgName: `Rebal Org ${id}`,
+      orgSlug: `rebal-org-${id}`,
+    });
+
+    const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board',
+    });
+    const list = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
+
+    // Deliberately colliding positions, so ordering must come from the update's
+    // ORDER BY position, id tiebreak — not from insertion order.
+    const created: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const c = await createCard(db, organization.id, { listId: list!.id, title: `T${i}` });
+      created.push(c!.id);
+      await db.update(schema.cards).set({ position: 1 }).where(eq(schema.cards.id, c!.id));
+    }
+
+    const versionsBefore = new Map<string, number>();
+    for (const cardId of created) {
+      const [row] = await db
+        .select({ version: schema.cards.version })
+        .from(schema.cards)
+        .where(eq(schema.cards.id, cardId));
+      versionsBefore.set(cardId, row!.version);
+    }
+
+    // Exclude the last card from the renumbering.
+    const archivedId = created[4]!;
+    await db.update(schema.cards).set({ isArchived: true }).where(eq(schema.cards.id, archivedId));
+
+    const renamed = await rebalanceListPositions(db, list!.id);
+    expect(renamed).toBe(4);
+
+    const rows = await db
+      .select({ id: schema.cards.id, position: schema.cards.position })
+      .from(schema.cards)
+      .where(eq(schema.cards.listId, list!.id))
+      .orderBy(schema.cards.position);
+
+    const active = rows.filter((r) => r.id !== archivedId);
+    expect(active).toHaveLength(4);
+
+    // Distinct, ascending, evenly spaced — no duplicates left behind.
+    const positions = active.map((r) => Number(r.position));
+    expect(new Set(positions).size).toBe(4);
+    for (let i = 1; i < positions.length; i++) {
+      expect(positions[i]!).toBeGreaterThan(positions[i - 1]!);
+    }
+
+    // Every renumbered card got exactly one version bump.
+    for (const row of active) {
+      const [after] = await db
+        .select({ version: schema.cards.version })
+        .from(schema.cards)
+        .where(eq(schema.cards.id, row.id));
+      expect(after!.version).toBe(versionsBefore.get(row.id)! + 1);
+    }
+
+    // The archived card was left untouched.
+    const [archivedRow] = await db
+      .select({ position: schema.cards.position, version: schema.cards.version })
+      .from(schema.cards)
+      .where(eq(schema.cards.id, archivedId));
+    expect(Number(archivedRow!.position)).toBe(1);
+    expect(archivedRow!.version).toBe(versionsBefore.get(archivedId)!);
   });
 
   it('should log a move-history entry on list change, but not on reorder', async () => {

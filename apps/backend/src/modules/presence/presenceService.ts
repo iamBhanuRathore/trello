@@ -66,34 +66,51 @@ export const DEFAULT_WORKING_SCHEDULE = {
   sunday: { start: '10:00', end: '14:00', active: false },
 };
 
+/**
+ * Intl.DateTimeFormat construction is expensive (~50-100µs each) and this
+ * function is called once per user per presence computation. The three
+ * formatters depend only on the timezone, so cache them per timezone — the
+ * locale is fixed.
+ */
+const formatterCache = new Map<
+  string,
+  { local: Intl.DateTimeFormat; day: Intl.DateTimeFormat; time: Intl.DateTimeFormat }
+>();
+
+function formattersFor(timezone: string) {
+  let cached = formatterCache.get(timezone);
+  if (!cached) {
+    cached = {
+      local: new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true,
+      }),
+      day: new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long' }),
+      time: new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }),
+    };
+    formatterCache.set(timezone, cached);
+  }
+  return cached;
+}
+
 export function isWithinWorkingHours(
   schedule: any = DEFAULT_WORKING_SCHEDULE,
   timezone: string = 'UTC',
   date: Date = new Date()
 ): { isWithin: boolean; localTimeStr: string; currentDay: string; isWorkDay: boolean } {
   try {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: true,
-    });
-    const localTimeStr = formatter.format(date);
+    const { local, day, time } = formattersFor(timezone);
+    const localTimeStr = local.format(date);
+    const currentDay = day.format(date).toLowerCase();
 
-    const dayFormatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      weekday: 'long',
-    });
-    const currentDay = dayFormatter.format(date).toLowerCase();
-
-    const timeParts = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(date);
-
-    const parts = timeParts.split(':');
+    const parts = time.format(date).split(':');
     const curHour = Number(parts[0] ?? 0);
     const curMin = Number(parts[1] ?? 0);
     const curMinutes = curHour * 60 + curMin;
@@ -160,6 +177,46 @@ export async function isUserOnline(userId: string): Promise<boolean> {
 }
 
 /**
+ * Online check for many users at once.
+ *
+ * `isUserOnline` costs one Redis EXISTS round trip each, and the batch path used
+ * to call it per user — a 50-avatar presence panel paid 50 sequential Redis
+ * round trips on top of the per-user SQL. One pipelined MGET instead, chunked so
+ * a pathological id list cannot build an unbounded command.
+ */
+export async function areUsersOnline(userIds: string[]): Promise<Set<string>> {
+  const online = new Set<string>();
+  if (userIds.length === 0) return online;
+
+  const now = Date.now();
+  const needRedis: string[] = [];
+  for (const id of userIds) {
+    const lastActive = onlineUsersMemory.get(id);
+    if (lastActive && now - lastActive < 90_000) {
+      online.add(id);
+    } else {
+      needRedis.push(id);
+    }
+  }
+  if (needRedis.length === 0) return online;
+
+  const redis = getDataClient();
+  if (!redis || !isRedisAvailable()) return online;
+
+  const CHUNK = 500;
+  for (let i = 0; i < needRedis.length; i += CHUNK) {
+    const chunk = needRedis.slice(i, i + CHUNK);
+    try {
+      const values = await redis.mget(chunk.map((id) => `presence:online:${id}`));
+      chunk.forEach((id, idx) => {
+        if (values[idx] != null) online.add(id);
+      });
+    } catch {}
+  }
+  return online;
+}
+
+/**
  * Batch presence for a set of users, restricted to one organization.
  *
  * `GET /v1/presence/users?ids=…` previously accepted any user ids and returned
@@ -193,58 +250,46 @@ export async function batchGetUsersPresenceScoped(
 
 // ─── Presence Computation ─────────────────────────────────────────────────────
 
-export async function computeUserPresence(db: Database, userId: string) {
-  const [u] = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      avatarUrl: users.avatarUrl,
-      timezone: users.timezone,
-    })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+/** One user's rows, prefetched. Lets the batch path share this logic. */
+interface PresenceInputs {
+  user: { id: string; name: string; avatarUrl: string | null; timezone: string | null };
+  override:
+    | {
+        status: 'available' | 'busy' | 'away' | 'leave' | 'offline';
+        customStatusText: string | null;
+        expiresAt: Date | null;
+      }
+    | undefined;
+  workingHours: { schedule: any; timezone: string | null } | undefined;
+  online: boolean;
+}
 
-  if (!u) return null;
+/** Pure: no I/O. Shared by the single-user and batch paths. */
+function buildPresence(userId: string, inputs: PresenceInputs) {
+  const timezone = inputs.user.timezone || 'UTC';
+  const { override, workingHours, online } = inputs;
 
-  const timezone = u.timezone || 'UTC';
-
-  // 1. Check manual presence override
-  const [override] = await db
-    .select()
-    .from(userPresenceOverrides)
-    .where(eq(userPresenceOverrides.userId, userId))
-    .limit(1);
-
-  if (override) {
-    if (!override.expiresAt || new Date(override.expiresAt) > new Date()) {
-      const { localTimeStr, isWithin } = isWithinWorkingHours(DEFAULT_WORKING_SCHEDULE, timezone);
-      return {
-        userId,
-        name: u.name,
-        avatarUrl: u.avatarUrl,
-        status: override.status,
-        customStatusText: override.customStatusText || null,
-        isManualOverride: true,
-        timezone,
-        localTime: localTimeStr,
-        isWithinWorkingHours: isWithin,
-      };
-    }
+  // 1. Manual presence override wins when it has not expired.
+  if (override && (!override.expiresAt || new Date(override.expiresAt) > new Date())) {
+    const { localTimeStr, isWithin } = isWithinWorkingHours(DEFAULT_WORKING_SCHEDULE, timezone);
+    return {
+      userId,
+      name: inputs.user.name,
+      avatarUrl: inputs.user.avatarUrl,
+      status: override.status,
+      customStatusText: override.customStatusText || null,
+      isManualOverride: true,
+      timezone,
+      localTime: localTimeStr,
+      isWithinWorkingHours: isWithin,
+    };
   }
 
-  // 2. Check working hours schedule
-  const [wh] = await db
-    .select()
-    .from(userWorkingHours)
-    .where(eq(userWorkingHours.userId, userId))
-    .limit(1);
-
-  const schedule = wh?.schedule || DEFAULT_WORKING_SCHEDULE;
-  const tz = wh?.timezone || timezone;
+  // 2. Working-hours schedule
+  const schedule = workingHours?.schedule || DEFAULT_WORKING_SCHEDULE;
+  const tz = workingHours?.timezone || timezone;
 
   const { isWithin, localTimeStr } = isWithinWorkingHours(schedule, tz);
-  const online = await isUserOnline(userId);
 
   let status: 'available' | 'busy' | 'away' | 'leave' | 'offline' = 'offline';
   let statusText = 'Offline';
@@ -261,8 +306,8 @@ export async function computeUserPresence(db: Database, userId: string) {
 
   return {
     userId,
-    name: u.name,
-    avatarUrl: u.avatarUrl,
+    name: inputs.user.name,
+    avatarUrl: inputs.user.avatarUrl,
     status,
     customStatusText: statusText,
     isManualOverride: false,
@@ -273,12 +318,73 @@ export async function computeUserPresence(db: Database, userId: string) {
   };
 }
 
+export async function computeUserPresence(db: Database, userId: string) {
+  // Three independent single-row reads plus one Redis check — run them together
+  // instead of four sequential round trips.
+  const [userRows, overrideRows, whRows, online] = await Promise.all([
+    db
+      .select({
+        id: users.id,
+        name: users.name,
+        avatarUrl: users.avatarUrl,
+        timezone: users.timezone,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1),
+    db
+      .select()
+      .from(userPresenceOverrides)
+      .where(eq(userPresenceOverrides.userId, userId))
+      .limit(1),
+    db.select().from(userWorkingHours).where(eq(userWorkingHours.userId, userId)).limit(1),
+    isUserOnline(userId),
+  ]);
+
+  const u = userRows[0];
+  if (!u) return null;
+
+  return buildPresence(userId, {
+    user: u,
+    override: overrideRows[0],
+    workingHours: whRows[0],
+    online,
+  });
+}
+
 export async function batchGetUsersPresence(db: Database, userIds: string[]) {
   if (!userIds || userIds.length === 0) return [];
   const distinct = Array.from(new Set(userIds));
 
-  const results = await Promise.all(distinct.map((uid) => computeUserPresence(db, uid)));
-  return results.filter(Boolean);
+  // This used to be `Promise.all(distinct.map(computeUserPresence))`, i.e. 3
+  // serial SQL queries AND one Redis EXISTS per user — 50 users meant 150
+  // queries against a five-connection pool. Four batched round trips total.
+  const [userRows, overrideRows, whRows, onlineSet] = await Promise.all([
+    db
+      .select({
+        id: users.id,
+        name: users.name,
+        avatarUrl: users.avatarUrl,
+        timezone: users.timezone,
+      })
+      .from(users)
+      .where(inArray(users.id, distinct)),
+    db.select().from(userPresenceOverrides).where(inArray(userPresenceOverrides.userId, distinct)),
+    db.select().from(userWorkingHours).where(inArray(userWorkingHours.userId, distinct)),
+    areUsersOnline(distinct),
+  ]);
+
+  const overrideByUser = new Map(overrideRows.map((o) => [o.userId, o]));
+  const whByUser = new Map(whRows.map((w) => [w.userId, w]));
+
+  return userRows.map((u) =>
+    buildPresence(u.id, {
+      user: u,
+      override: overrideByUser.get(u.id),
+      workingHours: whByUser.get(u.id),
+      online: onlineSet.has(u.id),
+    })
+  );
 }
 
 // ─── Presence Overrides & Working Hours Settings ──────────────────────────────

@@ -1,4 +1,4 @@
-import { eq, and, isNull, sql } from 'drizzle-orm';
+import { eq, and, isNull, inArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { Database } from '../../db/index';
 import { cards, lists } from '../../db/schema/index';
@@ -21,6 +21,12 @@ const REBALANCE_SPACING = 65536;
 export async function rebalanceListPositions(db: Database, listId: string): Promise<number> {
   // Single transaction: snapshot + renumber + bump versions so concurrent
   // movers conflict loudly (409) instead of interleaving with the rewrite.
+  //
+  // The renumbering is ONE set-based UPDATE. It used to issue a separate UPDATE
+  // per card inside the open transaction, so a large list meant thousands of
+  // round trips while holding the transaction (and a pooled connection) open for
+  // all of them. The id→position mapping travels as a bound VALUES list, so the
+  // numbering, the version bumps and the single-writer snapshot are unchanged.
   type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
   return await db.transaction(async (tx: Tx) => {
     const rows = await (tx as unknown as Database)
@@ -28,15 +34,27 @@ export async function rebalanceListPositions(db: Database, listId: string): Prom
       .from(cards)
       .where(and(eq(cards.listId, listId), eq(cards.isArchived, false), isNull(cards.deletedAt)))
       .orderBy(cards.position, cards.id);
+    if (rows.length === 0) return 0;
+
     const client = tx as unknown as Database;
-    let pos = REBALANCE_SPACING;
-    for (const row of rows) {
-      await client
-        .update(cards)
-        .set({ position: pos, version: sql`${cards.version} + 1`, updatedAt: new Date() })
-        .where(eq(cards.id, row.id));
-      pos += REBALANCE_SPACING;
-    }
+    const values = rows.map(
+      (row, i) => sql`(${row.id}::uuid, ${(i + 1) * REBALANCE_SPACING}::float8)`
+    );
+
+    await client
+      .update(cards)
+      .set({
+        position: sql`(SELECT v.pos FROM (VALUES ${sql.join(values, sql`, `)}) AS v(id, pos) WHERE v.id = ${cards.id})`,
+        version: sql`${cards.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(
+        inArray(
+          cards.id,
+          rows.map((r) => r.id)
+        )
+      );
+
     return rows.length;
   });
 }

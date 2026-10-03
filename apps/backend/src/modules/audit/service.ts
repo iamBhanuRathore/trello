@@ -75,36 +75,40 @@ export async function getAuditLogs(
   const limit = Math.min(filters?.limit || 50, 200);
   const offset = filters?.offset || 0;
 
-  const [countRes] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(auditLog)
-    .where(whereClause);
-
-  const logs = await db
-    .select({
-      id: auditLog.id,
-      organizationId: auditLog.organizationId,
-      actorId: auditLog.actorId,
-      action: auditLog.action,
-      target: auditLog.target,
-      targetId: auditLog.targetId,
-      metadata: auditLog.metadata,
-      ipAddress: auditLog.ipAddress,
-      userAgent: auditLog.userAgent,
-      createdAt: auditLog.createdAt,
-      actor: {
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        avatarUrl: users.avatarUrl,
-      },
-    })
-    .from(auditLog)
-    .leftJoin(users, eq(auditLog.actorId, users.id))
-    .where(whereClause)
-    .orderBy(desc(auditLog.createdAt))
-    .limit(limit)
-    .offset(offset);
+  // Independent queries — run them together rather than paying the count round
+  // trip before the page even starts.
+  const [countRows, logs] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(auditLog)
+      .where(whereClause),
+    db
+      .select({
+        id: auditLog.id,
+        organizationId: auditLog.organizationId,
+        actorId: auditLog.actorId,
+        action: auditLog.action,
+        target: auditLog.target,
+        targetId: auditLog.targetId,
+        metadata: auditLog.metadata,
+        ipAddress: auditLog.ipAddress,
+        userAgent: auditLog.userAgent,
+        createdAt: auditLog.createdAt,
+        actor: {
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          avatarUrl: users.avatarUrl,
+        },
+      })
+      .from(auditLog)
+      .leftJoin(users, eq(auditLog.actorId, users.id))
+      .where(whereClause)
+      .orderBy(desc(auditLog.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ]);
+  const [countRes] = countRows;
 
   return {
     logs,

@@ -1,12 +1,22 @@
 import { db } from '../../db';
 import { integrations } from '../../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
 export const integrationsService = {
   async listIntegrations(organizationId: string) {
+    // Project only what the response needs. `select()` pulled every access and
+    // refresh token off the row for every tenant purely to compute a boolean,
+    // so a multi-tenant org streamed its whole OAuth token set into memory.
     const results = await db
-      .select()
+      .select({
+        id: integrations.id,
+        organizationId: integrations.organizationId,
+        provider: integrations.provider,
+        metadata: integrations.metadata,
+        createdAt: integrations.createdAt,
+        hasToken: sql<boolean>`${integrations.accessToken} IS NOT NULL`,
+      })
       .from(integrations)
       .where(eq(integrations.organizationId, organizationId));
 
@@ -17,7 +27,7 @@ export const integrationsService = {
       provider: integration.provider,
       metadata: integration.metadata,
       createdAt: integration.createdAt,
-      isConnected: !!integration.accessToken,
+      isConnected: !!integration.hasToken,
     }));
   },
 
@@ -27,10 +37,7 @@ export const integrationsService = {
       .select()
       .from(integrations)
       .where(
-        and(
-          eq(integrations.organizationId, organizationId),
-          eq(integrations.provider, provider)
-        )
+        and(eq(integrations.organizationId, organizationId), eq(integrations.provider, provider))
       )
       .limit(1);
 
@@ -40,7 +47,7 @@ export const integrationsService = {
       const [updated] = await db
         .update(integrations)
         .set({ accessToken: mockAccessToken, updatedAt: new Date() })
-        .where(eq(integrations.id, existing[0]?.id || ""))
+        .where(eq(integrations.id, existing[0]?.id || ''))
         .returning();
 
       return updated;
@@ -63,17 +70,12 @@ export const integrationsService = {
   async disconnectIntegration(organizationId: string, id: string) {
     const [deleted] = await db
       .delete(integrations)
-      .where(
-        and(
-          eq(integrations.id, id),
-          eq(integrations.organizationId, organizationId)
-        )
-      )
+      .where(and(eq(integrations.id, id), eq(integrations.organizationId, organizationId)))
       .returning();
 
     if (!deleted) {
       throw new Error('Integration not found');
     }
     return deleted;
-  }
+  },
 };

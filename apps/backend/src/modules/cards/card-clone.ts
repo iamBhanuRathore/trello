@@ -1,4 +1,4 @@
-import { and, eq, max, sql } from 'drizzle-orm';
+import { and, eq, inArray, max, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import {
   cards,
@@ -98,35 +98,51 @@ export async function cloneCard(
       .where(eq(checklists.cardId, cardId))
       .orderBy(checklists.position);
 
-    for (const cl of originalChecklists) {
-      const [newCl] = await db
+    // Batched: this used to insert each checklist and then read+insert its items in
+    // its own round trips — 3 queries per checklist, serially.
+    if (originalChecklists.length > 0) {
+      const newChecklists = await db
         .insert(checklists)
-        .values({
-          cardId: cloned.id,
-          title: cl.title,
-          position: cl.position,
-        })
+        .values(
+          originalChecklists.map((cl) => ({
+            cardId: cloned.id,
+            title: cl.title,
+            position: cl.position,
+          }))
+        )
         .returning();
 
-      if (!newCl) continue;
+      const newIdByOriginalId = new Map(
+        originalChecklists
+          .map((cl, i) => [cl.id, newChecklists[i]?.id])
+          .filter((pair): pair is [string, string] => !!pair[1])
+      );
 
-      const originalItems = await db
-        .select()
-        .from(checklistItems)
-        .where(eq(checklistItems.checklistId, cl.id))
-        .orderBy(checklistItems.position);
+      if (newIdByOriginalId.size > 0) {
+        const originalItems = await db
+          .select()
+          .from(checklistItems)
+          .where(inArray(checklistItems.checklistId, Array.from(newIdByOriginalId.keys())))
+          .orderBy(checklistItems.position);
 
-      if (originalItems.length > 0) {
-        await db.insert(checklistItems).values(
-          originalItems.map((item) => ({
-            checklistId: newCl.id,
-            text: item.text,
-            isDone: false,
-            position: item.position,
-            assignedTo: item.assignedTo,
-            dueDate: item.dueDate,
-          }))
-        );
+        const rows = originalItems
+          .map((item) => {
+            const newChecklistId = newIdByOriginalId.get(item.checklistId);
+            if (!newChecklistId) return null;
+            return {
+              checklistId: newChecklistId,
+              text: item.text,
+              isDone: false,
+              position: item.position,
+              assignedTo: item.assignedTo,
+              dueDate: item.dueDate,
+            };
+          })
+          .filter((r): r is NonNullable<typeof r> => r !== null);
+
+        if (rows.length > 0) {
+          await db.insert(checklistItems).values(rows);
+        }
       }
     }
   }

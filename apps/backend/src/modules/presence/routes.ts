@@ -23,7 +23,11 @@ export const presenceRoutes = new Elysia({ prefix: '/presence', tags: ['Presence
           set.status = 400;
           return { error: 'Bad Request — no organization selected' };
         }
-        const userIds = query.ids ? query.ids.split(',').filter(Boolean) : [];
+        // A presence panel is a handful of avatars; the id list was unbounded, so one
+        // request could name thousands of users and fan out that many lookups.
+        const MAX_PRESENCE_IDS = 200;
+        const requested = query.ids ? query.ids.split(',').filter(Boolean) : [];
+        const userIds = requested.slice(0, MAX_PRESENCE_IDS);
         return await batchGetUsersPresenceScoped(db, userIds, user.organizationId);
       } catch (err: unknown) {
         return handleRouteError(err, set);
