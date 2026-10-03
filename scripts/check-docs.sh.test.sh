@@ -172,6 +172,32 @@ case "$out" in
   *) no "reports the bypass" "bypassed in output" "$out" ;;
 esac
 
+echo "mentioning the trailer in prose does NOT bypass (the regression)"
+# The previous check grepped the token across subject+body, so a commit whose
+# explanation merely mentioned `[skip-docs]` — including the commit that
+# documented this rule — disabled the gate for its whole range.
+dir="$TMP/mention$RANDOM"
+mkdir -p "$dir/apps/demo/src"
+git -C "$dir" init -q
+git -C "$dir" config user.email t@example.com
+git -C "$dir" config user.name Test
+echo 'export const a = 1;' >"$dir/apps/demo/src/a.ts"
+git -C "$dir" add -A
+git -C "$dir" commit -q -m 'fix(demo): first'
+echo 'export const b = 2;' >"$dir/apps/demo/src/b.ts"
+git -C "$dir" add -A
+git -C "$dir" commit -q -m 'fix(demo): tighten the gate
+
+A commit that mentions the [skip-docs] escape hatch in its prose must not
+disable the gate for its whole range.'
+out="$( (cd "$dir" && "$CHECK_DOCS" HEAD~1...HEAD 2>&1) )"; st=$?
+assert_eq "exit 1" "1" "$st"
+case "$out" in
+  *bypassed*) no "does not report a bypass" "no bypass" "$out" ;;
+  *FAIL*) ok "still enforces the gate" ;;
+  *) no "still enforces the gate" "FAIL in output" "$out" ;;
+esac
+
 echo "SKIP_DOCS_CHECK=1 still short-circuits"
 dir="$TMP/envbypass$RANDOM"
 mkdir -p "$dir/apps/demo/src"

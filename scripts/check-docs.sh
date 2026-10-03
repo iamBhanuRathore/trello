@@ -18,8 +18,13 @@ CODE_PATHS=(apps packages)
 DOCS_PATH=docs
 # Everything touching code triggers, except explicitly exempt housekeeping.
 EXEMPT_TYPES="^(docs|chore|ci|build|test)(\(.+\))?[:!]"
-BYPASS_TRAILER="\[skip-docs\]"
-
+# The bypass is a git-style TRAILER: a line that is exactly `[skip-docs]`.
+# It must not match the token appearing anywhere in the message. The previous
+# `grep -qE "\[skip-docs\]"` ran over subject+body, so a commit whose
+# explanation merely *mentioned* the trailer — for instance the commit that
+# documented this very rule — disabled the gate for its whole range. Any prose
+# about the escape hatch silenced it.
+BYPASS_TRAILER_RE='^[[:space:]]*\[skip-docs\][[:space:]]*$'
 if [[ "${SKIP_DOCS_CHECK:-}" == "1" ]]; then
   echo "[check-docs] bypassed via SKIP_DOCS_CHECK=1"
   exit 0
@@ -60,7 +65,7 @@ for range in "${ranges[@]}"; do
   while IFS= read -r sha; do
     [[ -z "$sha" ]] && continue
     subject=$(git log -1 --format="%s%n%b" "$sha")
-    if echo "$subject" | grep -qiE "$BYPASS_TRAILER"; then bypassed="$sha"; fi
+    if echo "$subject" | grep -qE "$BYPASS_TRAILER_RE"; then bypassed="$sha"; fi
     # Record docs/ BEFORE the exempt-type skip. A commit whose subject is
     # `docs: …` matches EXEMPT_TYPES, so the `continue` below used to skip the
     # docs check entirely — which made the gate impossible to satisfy with the
