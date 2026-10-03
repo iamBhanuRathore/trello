@@ -24,16 +24,14 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({ open, onOpenCh
     isOpen: open,
     onClose: () => onOpenChange(false),
   });
-  const {
-    mode,
-    palette,
-    accentId,
-    customAccentHex,
-    setMode,
-    setPalette,
-    setAccentId,
-    setCustomAccentHex,
-  } = useThemeStore();
+  const mode = useThemeStore((s) => s.mode);
+  const palette = useThemeStore((s) => s.palette);
+  const accentId = useThemeStore((s) => s.accentId);
+  const customAccentHex = useThemeStore((s) => s.customAccentHex);
+  const setMode = useThemeStore((s) => s.setMode);
+  const setPalette = useThemeStore((s) => s.setPalette);
+  const setAccentId = useThemeStore((s) => s.setAccentId);
+  const setCustomAccentHex = useThemeStore((s) => s.setCustomAccentHex);
 
   const [hexInput, setHexInput] = useState(customAccentHex || '#6366f1');
 

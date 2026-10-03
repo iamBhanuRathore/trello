@@ -28,7 +28,8 @@ export const NewDirectMessageModal: React.FC<NewDirectMessageModalProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
-  const { setActiveChannelId, openGlobalDock } = useChatStore();
+  const setActiveChannelId = useChatStore((s) => s.setActiveChannelId);
+  const openGlobalDock = useChatStore((s) => s.openGlobalDock);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
 

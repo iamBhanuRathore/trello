@@ -22,7 +22,8 @@ const COMMON_EMOJIS = ['👍', '❤️', '🔥', '🚀', '👀', '🎉'];
 
 export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, onClose }) => {
   const user = useAuthStore((state) => state.user);
-  const { presenceMap, wsConnected } = useChatStore();
+  const presenceMap = useChatStore((s) => s.presenceMap);
+  const wsConnected = useChatStore((s) => s.wsConnected);
   const queryClient = useQueryClient();
 
   const [replyText, setReplyText] = useState('');

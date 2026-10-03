@@ -26,7 +26,7 @@ export interface QueuedMessage {
   retryCount: number;
 }
 
-interface ChatStoreState {
+export interface ChatStoreState {
   activeChannelId: string | null;
   activeThreadMessage: ChatMessageItem | null;
   isDetailsPaneOpen: boolean;

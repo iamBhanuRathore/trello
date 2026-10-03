@@ -29,15 +29,14 @@ export const GlobalChatDock: React.FC = () => {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
 
-  const {
-    isGlobalDockOpen,
-    isDockMinimized,
-    dockedChannelId,
-    openGlobalDock,
-    closeGlobalDock,
-    toggleMinimizeDock,
-    presenceMap,
-  } = useChatStore();
+  const isGlobalDockOpen = useChatStore((s) => s.isGlobalDockOpen);
+  const isDockMinimized = useChatStore((s) => s.isDockMinimized);
+  const dockedChannelId = useChatStore((s) => s.dockedChannelId);
+  const openGlobalDock = useChatStore((s) => s.openGlobalDock);
+  const closeGlobalDock = useChatStore((s) => s.closeGlobalDock);
+  const toggleMinimizeDock = useChatStore((s) => s.toggleMinimizeDock);
+  const wsConnected = useChatStore((s) => s.wsConnected);
+  const presenceMap = useChatStore((s) => s.presenceMap);
 
   const [quickText, setQuickText] = useState('');
   const [isNewDmOpen, setIsNewDmOpen] = useState(false);
@@ -59,11 +58,16 @@ export const GlobalChatDock: React.FC = () => {
   // Disabled on the full /chat workspace: the dock returns null there, and
   // ChatPage already polls this key — a second poller doubles request volume
   // and stacks slow requests behind each other (see chat poll pile-up fix).
+  // Also stands down while the realtime socket is up: WS events already
+  // invalidate this key (see useChatRealtime), so polling every 10s from the
+  // persistent shell was pure overhead on every non-chat route. The unread
+  // badge on the collapsed launcher still reads from the shared cache.
   const { data: channels = [] } = useQuery({
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
-    refetchInterval: 10000,
+    refetchInterval: wsConnected ? false : 15000,
     enabled: !isChatRoute,
+    staleTime: 15000,
   });
 
   // Calculate total unread count
@@ -84,7 +88,8 @@ export const GlobalChatDock: React.FC = () => {
     queryFn: () =>
       dockedChannelId ? chatService.listMessages(dockedChannelId, undefined, 25) : [],
     enabled: !!dockedChannelId && isGlobalDockOpen && !isDockMinimized && !isChatRoute,
-    refetchInterval: 5000,
+    refetchInterval: wsConnected ? false : 5000,
+    staleTime: 5000,
   });
 
   // Auto-scroll on new message

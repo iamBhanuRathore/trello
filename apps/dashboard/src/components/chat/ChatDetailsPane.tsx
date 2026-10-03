@@ -42,7 +42,9 @@ interface ChatDetailsPaneProps {
 export const ChatDetailsPane: React.FC<ChatDetailsPaneProps> = ({ channel, onClose }) => {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
-  const { activeChannelId, setActiveChannelId, presenceMap } = useChatStore();
+  const activeChannelId = useChatStore((s) => s.activeChannelId);
+  const setActiveChannelId = useChatStore((s) => s.setActiveChannelId);
+  const presenceMap = useChatStore((s) => s.presenceMap);
   const queryClient = useQueryClient();
 
   const [memberSearch, setMemberSearch] = useState('');

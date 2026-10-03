@@ -54,7 +54,7 @@ export function TaskChatPane({
 }: TaskChatPaneProps) {
   const user = useAuthStore((state) => state.user);
   const orgId = user?.organizationId;
-  const { openGlobalDock } = useChatStore();
+  const openGlobalDock = useChatStore((s) => s.openGlobalDock);
   const queryClient = useQueryClient();
   const [dmPendingUserId, setDmPendingUserId] = useState<string | null>(null);
 

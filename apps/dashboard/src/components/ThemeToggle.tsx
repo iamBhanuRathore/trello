@@ -22,7 +22,11 @@ interface ThemeToggleProps {
 }
 
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '', showLabel = false }) => {
-  const { mode, palette, resolvedIsDark, setMode, setPalette } = useThemeStore();
+  const mode = useThemeStore((s) => s.mode);
+  const palette = useThemeStore((s) => s.palette);
+  const resolvedIsDark = useThemeStore((s) => s.resolvedIsDark);
+  const setMode = useThemeStore((s) => s.setMode);
+  const setPalette = useThemeStore((s) => s.setPalette);
   const [modalOpen, setModalOpen] = useState(false);
 
   const getModeIcon = () => {

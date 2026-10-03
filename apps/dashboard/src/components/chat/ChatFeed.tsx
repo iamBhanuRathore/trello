@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Hash, ArrowDown, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
@@ -27,24 +27,21 @@ interface ChatFeedProps {
 
 export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false, onBack }) => {
   const user = useAuthStore((state) => state.user);
-  const {
-    setActiveThreadMessage,
-    toggleDetailsPane,
-    isDetailsPaneOpen,
-    replyingToMessage,
-    setReplyingToMessage,
-    typingUsers,
-    presenceMap,
-    drafts,
-    setDraft,
-    outbox,
-    enqueueOutbox,
-    removeFromOutbox,
-    processOutbox,
-    wsConnected,
-    messageLayout,
-    setMessageLayout,
-  } = useChatStore();
+  const setActiveThreadMessage = useChatStore((s) => s.setActiveThreadMessage);
+  const toggleDetailsPane = useChatStore((s) => s.toggleDetailsPane);
+  const isDetailsPaneOpen = useChatStore((s) => s.isDetailsPaneOpen);
+  const replyingToMessage = useChatStore((s) => s.replyingToMessage);
+  const setReplyingToMessage = useChatStore((s) => s.setReplyingToMessage);
+  const typingUsers = useChatStore((s) => s.typingUsers);
+  const activeChannelDraft = useChatStore((s) => s.drafts[channel.id]);
+  const setDraft = useChatStore((s) => s.setDraft);
+  const outbox = useChatStore((s) => s.outbox);
+  const enqueueOutbox = useChatStore((s) => s.enqueueOutbox);
+  const removeFromOutbox = useChatStore((s) => s.removeFromOutbox);
+  const processOutbox = useChatStore((s) => s.processOutbox);
+  const wsConnected = useChatStore((s) => s.wsConnected);
+  const messageLayout = useChatStore((s) => s.messageLayout);
+  const setMessageLayout = useChatStore((s) => s.setMessageLayout);
   const queryClient = useQueryClient();
 
   const [isOnline, setIsOnline] = useState(
@@ -65,7 +62,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     };
   }, [processOutbox]);
 
-  const [messageText, setMessageText] = useState(drafts[channel.id] || '');
+  const [messageText, setMessageText] = useState(activeChannelDraft || '');
   const [isAnnouncement, setIsAnnouncement] = useState(false);
   const [isSilentSend, setIsSilentSend] = useState(false);
   const [isTaskPickerOpen, setIsTaskPickerOpen] = useState(false);
@@ -108,9 +105,11 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     };
   }, [isPlusOpen]);
 
-  // Sync draft on channel change
+  // Reset per-channel composer state on channel switch ONLY. This used to
+  // depend on the whole `drafts` map, which changes identity on every
+  // keystroke — so typing one character wiped staged attachments, the
+  // selection, and any open forward/translate/seen dialog mid-interaction.
   useEffect(() => {
-    setMessageText(drafts[channel.id] || '');
     setPendingAttachments([]);
     setSelectMode(false);
     setSelectedIds(new Set());
@@ -118,7 +117,12 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     setIsBulkForwardOpen(false);
     setTranslateSource(null);
     setSeenSource(null);
-  }, [channel.id, drafts]);
+  }, [channel.id]);
+
+  // Adopt the stored draft for this channel (also on first mount).
+  useEffect(() => {
+    setMessageText(activeChannelDraft || '');
+  }, [activeChannelDraft]);
 
   // Persist draft on text change
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -145,6 +149,10 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     queryKey: ['chat', 'messages', channel.id],
     queryFn: () => chatService.listMessages(channel.id, undefined, 50),
     refetchInterval: wsConnected ? false : 10000,
+    // Without these, every 10s poll while the socket is down replaced the whole
+    // list object and re-rendered all 50 cards even when nothing had changed.
+    staleTime: 15_000,
+    placeholderData: (prev) => prev,
   });
 
   // Fetch channel details (for members, roles, and read receipts)
@@ -153,7 +161,9 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     queryFn: () => chatService.getChannelDetails(channel.id),
     staleTime: 30000,
   });
-  const channelMembers = channelDetails?.members || [];
+  // Stable identity: this array is passed to every memoized message card, so a
+  // fresh `[]` per render would defeat the memo.
+  const channelMembers = useMemo(() => channelDetails?.members || [], [channelDetails]);
 
   // Merge in pending outbox messages for this channel
   const mergedMessages = useMemo(() => {
@@ -330,7 +340,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     }
   };
 
-  const toggleSelectMessage = (msg: ChatMessageItem) => {
+  const toggleSelectMessage = useCallback((msg: ChatMessageItem) => {
     if (!isPersistedMessage(msg)) {
       toast.error('This message is still sending — try again in a moment.');
       return;
@@ -341,16 +351,16 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
       else next.add(msg.id);
       return next;
     });
-  };
+  }, []);
 
-  const enterSelectMode = (msg: ChatMessageItem) => {
+  const enterSelectMode = useCallback((msg: ChatMessageItem) => {
     if (!isPersistedMessage(msg)) {
       toast.error('This message is still sending — try again in a moment.');
       return;
     }
     setSelectMode(true);
     setSelectedIds(new Set([msg.id]));
-  };
+  }, []);
 
   const exitSelectMode = () => {
     setSelectMode(false);
@@ -407,7 +417,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
       });
   };
 
-  const scrollToMessage = (targetId: string) => {
+  const scrollToMessage = useCallback((targetId: string) => {
     const el = document.getElementById(`msg-${targetId}`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -416,7 +426,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
         el.classList.remove('bg-primary/20', 'ring-1', 'ring-primary/40');
       }, 2000);
     }
-  };
+  }, []);
 
   const handleSendMessage = () => {
     const trimmed = messageText.trim();
@@ -528,9 +538,18 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     }
     setIsUploading(true);
     try {
-      for (const file of files) {
-        const { attachment } = await chatService.stageAttachment(channel.id, file);
-        setPendingAttachments((prev) => [...prev, attachment]);
+      // Staged concurrently — a 10-file drop used to pay 10 sequential round trips.
+      const results = await Promise.allSettled(
+        files.map((file) => chatService.stageAttachment(channel.id, file))
+      );
+      const staged = results
+        .filter((r) => r.status === 'fulfilled')
+        .map((r) => (r as PromiseFulfilledResult<{ attachment: ChatAttachment }>).value.attachment);
+      if (staged.length > 0) setPendingAttachments((prev) => [...prev, ...staged]);
+      if (staged.length < files.length) {
+        toast.error(
+          `${files.length - staged.length} of ${files.length} files failed to upload — try again`
+        );
       }
     } catch (err: any) {
       toast.error(err.response?.data?.message || err.message || 'File upload failed');
@@ -541,6 +560,66 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
   };
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+
+  // Stable per-card callbacks.
+  //
+  // ChatMessageCard is memoized, but the feed used to hand it 13 inline arrow
+  // props — a new identity per render, so every keystroke re-rendered all 50
+  // cards anyway. These depend only on stable references (`mutate` is stable
+  // across renders in TanStack Query v5; store actions and setState are stable),
+  // never on the mutation result objects.
+  const { mutate: editMessage } = editMutation;
+  const { mutate: deleteMessage } = deleteMutation;
+  const { mutate: toggleReaction } = reactionMutation;
+  const { mutate: pinMessage } = pinMutation;
+
+  const handleCancelEdit = useCallback(() => setEditingMessageId(null), []);
+
+  const handleEditMessage = useCallback(
+    (messageId: string, body: string) => {
+      editMessage({ messageId, body });
+      setEditingMessageId(null);
+    },
+    [editMessage]
+  );
+
+  const handleDeleteMessage = useCallback(
+    (messageId: string) => deleteMessage(messageId),
+    [deleteMessage]
+  );
+
+  const handleToggleReaction = useCallback(
+    (messageId: string, emoji: string) => toggleReaction({ messageId, emoji }),
+    [toggleReaction]
+  );
+
+  const handleTogglePin = useCallback(
+    (target: ChatMessageItem) => pinMessage({ messageId: target.id, pinned: !target.isPinned }),
+    [pinMessage]
+  );
+
+  const handleOpenThread = useCallback(
+    (parent: ChatMessageItem) => setActiveThreadMessage(parent),
+    [setActiveThreadMessage]
+  );
+
+  const handleReply = useCallback(
+    (targetMsg: ChatMessageItem) => {
+      setReplyingToMessage(targetMsg);
+      textareaRef.current?.focus();
+    },
+    [setReplyingToMessage]
+  );
+
+  const handleForwardMessage = useCallback(
+    (targetMsg: ChatMessageItem) => setForwardSource(targetMsg),
+    []
+  );
+  const handleTranslateMessage = useCallback(
+    (targetMsg: ChatMessageItem) => setTranslateSource(targetMsg),
+    []
+  );
+  const handleShowSeen = useCallback((targetMsg: ChatMessageItem) => setSeenSource(targetMsg), []);
 
   const insertFormatting = (prefix: string, suffix = prefix) => {
     if (!textareaRef.current) return;
@@ -607,7 +686,9 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
     textareaRef.current?.focus();
   };
 
-  const recipientPresence = channel.otherUser ? presenceMap[channel.otherUser.id] : null;
+  const recipientPresence = useChatStore((s) =>
+    channel.otherUser ? s.presenceMap[channel.otherUser.id] : null
+  );
 
   const activeTyping = (typingUsers[channel.id] || []).filter(
     (t) => t.userId !== user?.id && Date.now() - t.timestamp < 3500
@@ -741,31 +822,21 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({ channel, canModerate = false
                     channelMembers={channelMembers}
                     selectMode={selectMode}
                     isSelected={selectedIds.has(msg.id)}
-                    onCancelEdit={() => setEditingMessageId(null)}
+                    onCancelEdit={handleCancelEdit}
                     canModerate={
                       canModerate || channel.role === 'owner' || channel.role === 'admin'
                     }
-                    onEdit={(id, body) => {
-                      editMutation.mutate({ messageId: id, body });
-                      setEditingMessageId(null);
-                    }}
-                    onDelete={(id) => deleteMutation.mutate(id)}
-                    onToggleReaction={(id, emoji) =>
-                      reactionMutation.mutate({ messageId: id, emoji })
-                    }
-                    onTogglePin={(target) =>
-                      pinMutation.mutate({ messageId: target.id, pinned: !target.isPinned })
-                    }
-                    onOpenThread={(parent) => setActiveThreadMessage(parent)}
-                    onReply={(targetMsg) => {
-                      setReplyingToMessage(targetMsg);
-                      textareaRef.current?.focus();
-                    }}
-                    onForward={(targetMsg) => setForwardSource(targetMsg)}
-                    onSelect={(targetMsg) => enterSelectMode(targetMsg)}
-                    onToggleSelect={(targetMsg) => toggleSelectMessage(targetMsg)}
-                    onTranslate={(targetMsg) => setTranslateSource(targetMsg)}
-                    onShowSeen={(targetMsg) => setSeenSource(targetMsg)}
+                    onEdit={handleEditMessage}
+                    onDelete={handleDeleteMessage}
+                    onToggleReaction={handleToggleReaction}
+                    onTogglePin={handleTogglePin}
+                    onOpenThread={handleOpenThread}
+                    onReply={handleReply}
+                    onForward={handleForwardMessage}
+                    onSelect={enterSelectMode}
+                    onToggleSelect={toggleSelectMessage}
+                    onTranslate={handleTranslateMessage}
+                    onShowSeen={handleShowSeen}
                     onJumpToMessage={scrollToMessage}
                   />
                 ))}

@@ -165,7 +165,7 @@ export const MentionAutocompletePopup: React.FC<{
   onSelect: (m: MentionMember) => void;
   onHover: (idx: number) => void;
 }> = ({ members, activeIndex, query, onSelect, onHover }) => {
-  const { presenceMap } = useChatStore();
+  const presenceMap = useChatStore((s) => s.presenceMap);
   return (
     <div className="absolute z-50 bottom-full mb-2 left-3 right-3 rounded-xl border border-border bg-popover/95 backdrop-blur-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
       <div className="px-3 py-1.5 bg-muted/60 border-b border-border text-[11px] font-semibold text-muted-foreground flex items-center justify-between">

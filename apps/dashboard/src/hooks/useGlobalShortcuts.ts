@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useChatStore } from '../store/chatStore';
 import type { ChatChannel } from '../lib/chatService';
@@ -28,15 +28,21 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
   const location = useLocation();
   const isChat = location.pathname.startsWith('/chat');
 
-  const {
-    activeChannelId,
-    isDetailsPaneOpen,
-    setDetailsPaneOpen,
-    activeThreadMessage,
-    setActiveThreadMessage,
-  } = useChatStore();
+  const activeChannelId = useChatStore((s) => s.activeChannelId);
+  const isDetailsPaneOpen = useChatStore((s) => s.isDetailsPaneOpen);
+  const setDetailsPaneOpen = useChatStore((s) => s.setDetailsPaneOpen);
+  const activeThreadMessage = useChatStore((s) => s.activeThreadMessage);
+  const setActiveThreadMessage = useChatStore((s) => s.setActiveThreadMessage);
 
   const chordRef = useRef<{ key: string; expiresAt: number } | null>(null);
+
+  // The caller passes a fresh object literal every render, so `options` in the
+  // effect deps tore down and re-added the window keydown listener many times a
+  // second while typing. Keep the latest callbacks in a ref instead.
+  const optionsRef = useRef(options);
+  useLayoutEffect(() => {
+    optionsRef.current = options;
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -50,22 +56,22 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
       // 1. Keyboard Shortcuts Cheatsheet: Cmd+/ or ? (when outside inputs)
       if ((e.key === '/' && hasMod) || (e.key === '?' && (!isInput || hasMod))) {
         e.preventDefault();
-        options.onOpenShortcuts?.();
+        optionsRef.current.onOpenShortcuts?.();
         return;
       }
 
       // 2. Working Hours: Cmd+Shift+H / Ctrl+Shift+H
       if (hasMod && e.shiftKey && (e.key === 'H' || e.key === 'h')) {
         e.preventDefault();
-        options.onOpenWorkingHours?.();
+        optionsRef.current.onOpenWorkingHours?.();
         return;
       }
 
       // 3. Channel creation: Cmd+Shift+C / Ctrl+Shift+C (on chat route or globally)
       if (hasMod && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
         e.preventDefault();
-        if (options.onOpenNewChannel) {
-          options.onOpenNewChannel();
+        if (optionsRef.current.onOpenNewChannel) {
+          optionsRef.current.onOpenNewChannel();
         } else {
           navigate('/chat');
         }
@@ -77,7 +83,7 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
         // Alt+Up / Alt+Down: Navigate through channels
         if (hasAlt && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
           e.preventDefault();
-          const channelList = options.channels || [];
+          const channelList = optionsRef.current.channels || [];
           if (channelList.length > 0) {
             const currentIndex = channelList.findIndex((c) => c.id === activeChannelId);
             let nextIndex = 0;
@@ -149,8 +155,8 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
         // 'c': New Direct Message
         if (e.key === 'c' || e.key === 'C') {
           e.preventDefault();
-          if (options.onOpenNewDm) {
-            options.onOpenNewDm();
+          if (optionsRef.current.onOpenNewDm) {
+            optionsRef.current.onOpenNewDm();
           } else {
             navigate('/chat');
           }
@@ -168,9 +174,9 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
         }
 
         // 't': Quick create task
-        if ((e.key === 't' || e.key === 'T') && options.onOpenCreateTask) {
+        if ((e.key === 't' || e.key === 'T') && optionsRef.current.onOpenCreateTask) {
           e.preventDefault();
-          options.onOpenCreateTask();
+          optionsRef.current.onOpenCreateTask();
           return;
         }
       }
@@ -182,7 +188,6 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
     navigate,
     location.pathname,
     isChat,
-    options,
     activeChannelId,
     isDetailsPaneOpen,
     setDetailsPaneOpen,

@@ -17,7 +17,7 @@ import { CreateTaskFromMessageModal } from '../board/CreateTaskFromMessageModal'
 import { PresenceBadge } from './PresenceBadge';
 import type { ChatMessageItem } from '../../lib/chatService';
 import { useAuthStore } from '../../store/authStore';
-import { useChatStore, type ChatMessageLayout } from '../../store/chatStore';
+import { useChatStore, type ChatMessageLayout, type ChatStoreState } from '../../store/chatStore';
 import { getInitials } from '../../utils/avatar';
 import { MessageContextMenu } from './MessageContextMenu';
 import { MediaStatusChip } from '../common/MediaStatus';
@@ -53,7 +53,63 @@ interface ChatMessageCardProps {
 
 const COMMON_EMOJIS = ['👍', '❤️', '🔥', '🚀', '👀', '🎉'];
 
-export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
+function isOnlineStatus(status?: string): boolean {
+  return !!status && status !== 'offline';
+}
+
+/**
+ * Narrow store selectors.
+ *
+ * This card used to subscribe to the entire chat store (`useChatStore()` with no
+ * selector), so a draft keystroke or an outbox write re-rendered all 50 cards in
+ * the feed and re-parsed every message body. Each selector below returns exactly
+ * what this one card renders — a primitive or the single author's presence
+ * object — so a presence tick for one author re-renders one card.
+ *
+ * The tick indicators only ever need two derived values: whether any recipient
+ * is online, and the newest read receipt among them.
+ */
+function selectPeerOnline(
+  state: ChatStoreState,
+  isAuthor: boolean,
+  selfId: string | undefined,
+  channelType: 'direct' | 'group_private' | 'group_public' | 'task_thread',
+  otherUserId: string | null,
+  channelMembers: { userId: string; lastReadAt?: string }[]
+): boolean {
+  if (!isAuthor) return false;
+  if (channelType === 'direct') {
+    return otherUserId ? isOnlineStatus(state.presenceMap[otherUserId]?.status) : false;
+  }
+  return channelMembers.some(
+    (m) => m.userId !== selfId && isOnlineStatus(state.presenceMap[m.userId]?.status)
+  );
+}
+
+function selectNewestReadAt(
+  state: ChatStoreState,
+  isAuthor: boolean,
+  selfId: string | undefined,
+  channelType: 'direct' | 'group_private' | 'group_public' | 'task_thread',
+  otherUserId: string | null,
+  channelMembers: { userId: string; lastReadAt?: string }[],
+  channelId: string
+): string | null {
+  if (!isAuthor) return null;
+  const live = state.readReceipts[channelId];
+  if (channelType === 'direct') {
+    return (otherUserId ? live?.[otherUserId] : null) ?? null;
+  }
+  let newest: string | null = null;
+  for (const m of channelMembers) {
+    if (m.userId === selfId) continue;
+    const at = live?.[m.userId] ?? m.lastReadAt;
+    if (at && (!newest || new Date(at).getTime() > new Date(newest).getTime())) newest = at;
+  }
+  return newest;
+}
+
+const ChatMessageCardInner: React.FC<ChatMessageCardProps> = ({
   message,
   canModerate = false,
   canPin = true,
@@ -80,11 +136,28 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
   onJumpToMessage,
 }) => {
   const user = useAuthStore((state) => state.user);
-  const { presenceMap, readReceipts, messageLayout } = useChatStore();
+  const messageLayout = useChatStore((state) => state.messageLayout);
   const effectiveLayout = layout ?? messageLayout;
 
   const isAuthor = message.userId === user?.id;
   const canDelete = isAuthor || canModerate;
+
+  // Narrow store reads — see selectPeerOnline/selectNewestReadAt above.
+  const authorPresence = useChatStore((state) => state.presenceMap[message.userId]);
+  const peerOnline = useChatStore((state) =>
+    selectPeerOnline(state, isAuthor, user?.id, channelType, otherUserId, channelMembers)
+  );
+  const newestReadAt = useChatStore((state) =>
+    selectNewestReadAt(
+      state,
+      isAuthor,
+      user?.id,
+      channelType,
+      otherUserId,
+      channelMembers,
+      message.channelId
+    )
+  );
 
   const [isEditingInternal, setIsEditingInternal] = useState(false);
   const isEditing = isEditingInternal || isEditingExternal;
@@ -299,10 +372,9 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
     }
   }, [isEditingExternal, message.body]);
 
-  const authorPresence = presenceMap[message.userId];
-
-  // Parse task mentions: [task:ID:TITLE]
-  const renderMessageContent = () => {
+  // Parse task mentions: [task:ID:TITLE] — memoized on the body so a re-render
+  // from an unrelated prop (hover, selection, presence) does not re-tokenize it.
+  const messageContent = React.useMemo(() => {
     const taskMentionRegex = /\[task:([a-f0-9-]+):([^\]]+)\]/g;
     const parts = [];
     let lastIndex = 0;
@@ -327,7 +399,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
     }
 
     return parts;
-  };
+  }, [message.body]);
 
   const handleSaveEdit = () => {
     if (!editBody.trim() || editBody.trim() === message.body) {
@@ -372,44 +444,31 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
         label: 'Failed to send — click to retry',
       };
     }
-
     const messageTime = new Date(message.createdAt).getTime();
 
     // 2. Direct message
     if (channelType === 'direct' && otherUserId) {
-      const liveReadReceipt = readReceipts[message.channelId]?.[otherUserId];
       const memberRecord = channelMembers?.find((m) => m.userId === otherUserId);
-      const lastReadTimeStr = liveReadReceipt || memberRecord?.lastReadAt;
+      const lastReadTimeStr = newestReadAt ?? memberRecord?.lastReadAt ?? null;
 
       if (lastReadTimeStr && new Date(lastReadTimeStr).getTime() >= messageTime) {
         return { type: 'read' as const, label: 'Read' };
       }
 
-      const isRecipientOnline =
-        presenceMap[otherUserId]?.status && presenceMap[otherUserId]?.status !== 'offline';
-      if (isRecipientOnline) {
+      if (peerOnline) {
         return { type: 'delivered' as const, label: 'Delivered' };
       }
 
       return { type: 'sent' as const, label: 'Sent' };
     }
 
-    // 3. Group channel
-    const otherMembers = (channelMembers || []).filter((m) => m.userId !== user?.id);
-    const hasAnyRead = otherMembers.some((m) => {
-      const liveReadReceipt = readReceipts[message.channelId]?.[m.userId];
-      const readTime = liveReadReceipt || m.lastReadAt;
-      return readTime && new Date(readTime).getTime() >= messageTime;
-    });
-
-    if (hasAnyRead) {
+    // 3. Group channel — `newestReadAt` / `peerOnline` already cover every
+    // recipient except the author, so no per-member scan is needed here.
+    if (newestReadAt && new Date(newestReadAt).getTime() >= messageTime) {
       return { type: 'read' as const, label: 'Read' };
     }
 
-    const hasAnyOnline = otherMembers.some(
-      (m) => presenceMap[m.userId]?.status && presenceMap[m.userId]?.status !== 'offline'
-    );
-    if (hasAnyOnline) {
+    if (peerOnline) {
       return { type: 'delivered' as const, label: 'Delivered' };
     }
 
@@ -419,12 +478,11 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
     message.status,
     message.id,
     message.createdAt,
-    message.channelId,
     channelType,
     otherUserId,
-    readReceipts,
     channelMembers,
-    presenceMap,
+    newestReadAt,
+    peerOnline,
     user?.id,
   ]);
 
@@ -622,7 +680,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
                 </button>
               )}
               <div className="text-xs text-foreground/90 leading-relaxed break-words">
-                {renderMessageContent()}
+                {messageContent}
               </div>
             </>
           )}
@@ -963,7 +1021,7 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
                   </button>
                 )}
                 <div className="text-xs text-foreground/90 leading-relaxed break-words">
-                  {renderMessageContent()}
+                  {messageContent}
                 </div>
               </>
             )}
@@ -1117,3 +1175,12 @@ export const ChatMessageCard: React.FC<ChatMessageCardProps> = ({
     </div>
   );
 };
+
+/**
+ * Memoized: the feed renders 50 of these, and every one of them was being
+ * re-rendered (and its markdown re-parsed) on every composer keystroke, presence
+ * tick and outbox write. Callers must pass stable props — see the useCallback
+ * handlers in ChatFeed.tsx; inline arrows here would defeat the memo entirely.
+ */
+export const ChatMessageCard = React.memo(ChatMessageCardInner);
+ChatMessageCard.displayName = 'ChatMessageCard';

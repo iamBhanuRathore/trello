@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import { Copy, Check, ExternalLink, AtSign } from 'lucide-react';
 
 interface MarkdownRendererProps {
@@ -11,6 +11,13 @@ interface MarkdownRendererProps {
  * Blocks javascript:/data:/vbscript: stored-XSS payloads from card text,
  * comments and chat messages. Relative URLs resolve against the app origin. */
 const ALLOWED_URL_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
+
+// Pattern for inline code, mentions, images, links, bold, italic, strikethrough.
+// Hoisted out of the render path: it was rebuilt on every render, and this
+// component renders 50x per chat feed. `lastIndex` is reset before each use
+// because a /g regex is stateful and shared.
+const INLINE_PATTERN =
+  /(`[^`]+`)|(@\[([^\]]+)\]\(([^)]+)\))|(@[A-Za-z0-9_.-]+(?:\s+[A-Za-z0-9_.-]+)?(?=\s|[.,!?]|$))|(!\[([^\]]*)\]\(([^)]+)\))|(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(~~([^~]+)~~)/g;
 
 function safeMarkdownUrl(raw: string | undefined): string | null {
   if (!raw) return null;
@@ -25,7 +32,7 @@ function safeMarkdownUrl(raw: string | undefined): string | null {
   }
 }
 
-export function MarkdownRenderer({ content, className = '', onToggleTask }: MarkdownRendererProps) {
+function MarkdownRendererImpl({ content, className = '', onToggleTask }: MarkdownRendererProps) {
   if (!content || !content.trim()) {
     return <p className="text-muted-foreground italic text-xs">No description provided yet.</p>;
   } // Handle task checkbox click by replacing the exact checkbox state at lineIndex
@@ -55,9 +62,8 @@ export function MarkdownRenderer({ content, className = '', onToggleTask }: Mark
     const elements: ReactNode[] = [];
     let key = 0;
 
-    // Pattern for inline code, mentions, images, links, bold, italic, strikethrough
-    const inlineRegex =
-      /(`[^`]+`)|(@\[([^\]]+)\]\(([^)]+)\))|(@[A-Za-z0-9_.-]+(?:\s+[A-Za-z0-9_.-]+)?(?=\s|[.,!?]|$))|(!\[([^\]]*)\]\(([^)]+)\))|(\[([^\]]+)\]\(([^)]+)\))|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(~~([^~]+)~~)/g;
+    const inlineRegex = INLINE_PATTERN;
+    inlineRegex.lastIndex = 0;
 
     let lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -393,6 +399,15 @@ export function MarkdownRenderer({ content, className = '', onToggleTask }: Mark
 
   return <div className={`space-y-0.5 ${className}`}>{nodes}</div>;
 }
+
+/**
+ * Memoized: this is a pure function of `content`, but the chat feed renders it
+ * once per message per feed render. Without memo, a single composer keystroke
+ * re-parsed every message body in the channel. Callers that pass an inline
+ * `onToggleTask` or `className` will still defeat the memo — pass stable values.
+ */
+export const MarkdownRenderer = memo(MarkdownRendererImpl);
+MarkdownRenderer.displayName = 'MarkdownRenderer';
 
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);

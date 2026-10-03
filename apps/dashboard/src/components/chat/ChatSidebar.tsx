@@ -30,7 +30,10 @@ interface ChatSidebarProps {
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({ onSelectChannel }) => {
   const navigate = useNavigate();
-  const { activeChannelId, setActiveChannelId, presenceMap, setBatchPresence } = useChatStore();
+  const activeChannelId = useChatStore((s) => s.activeChannelId);
+  const setActiveChannelId = useChatStore((s) => s.setActiveChannelId);
+  const presenceMap = useChatStore((s) => s.presenceMap);
+  const setBatchPresence = useChatStore((s) => s.setBatchPresence);
 
   const [search, setSearch] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'unread' | 'dms' | 'groups' | 'tasks'>('all');

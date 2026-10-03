@@ -21,13 +21,11 @@ export function useChatRealtime(passedChannelId?: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
   const prevChannelIdRef = useRef<string | null>(null);
 
-  const {
-    setTyping,
-    clearExpiredTyping,
-    setUserPresence,
-    setWsConnected,
-    activeChannelId: storeChannelId,
-  } = useChatStore();
+  const setTyping = useChatStore((s) => s.setTyping);
+  const clearExpiredTyping = useChatStore((s) => s.clearExpiredTyping);
+  const setUserPresence = useChatStore((s) => s.setUserPresence);
+  const setWsConnected = useChatStore((s) => s.setWsConnected);
+  const storeChannelId = useChatStore((s) => s.activeChannelId);
 
   const activeChannelId = passedChannelId !== undefined ? passedChannelId : storeChannelId;
   // Latest channel for the connect-once effect below: channel switches are

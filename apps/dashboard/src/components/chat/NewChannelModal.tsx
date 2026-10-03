@@ -25,7 +25,8 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
-  const { setActiveChannelId, openGlobalDock } = useChatStore();
+  const setActiveChannelId = useChatStore((s) => s.setActiveChannelId);
+  const openGlobalDock = useChatStore((s) => s.openGlobalDock);
   const queryClient = useQueryClient();
 
   const [name, setName] = useState('');

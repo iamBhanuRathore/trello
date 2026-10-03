@@ -22,15 +22,13 @@ export const ChatPage: React.FC = () => {
   // Mount real-time gateway listeners (socket, typing, presence, messages)
   useChatRealtime();
 
-  const {
-    activeChannelId,
-    setActiveChannelId,
-    activeThreadMessage,
-    setActiveThreadMessage,
-    isDetailsPaneOpen,
-    setDetailsPaneOpen,
-    wsConnected,
-  } = useChatStore();
+  const activeChannelId = useChatStore((s) => s.activeChannelId);
+  const setActiveChannelId = useChatStore((s) => s.setActiveChannelId);
+  const activeThreadMessage = useChatStore((s) => s.activeThreadMessage);
+  const setActiveThreadMessage = useChatStore((s) => s.setActiveThreadMessage);
+  const isDetailsPaneOpen = useChatStore((s) => s.isDetailsPaneOpen);
+  const setDetailsPaneOpen = useChatStore((s) => s.setDetailsPaneOpen);
+  const wsConnected = useChatStore((s) => s.wsConnected);
 
   const [isNewDmOpen, setIsNewDmOpen] = useState(false);
   const [isNewChannelOpen, setIsNewChannelOpen] = useState(false);
