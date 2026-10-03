@@ -6,6 +6,14 @@ import {
   boards,
   cards,
   lists,
+  // Tables with a card_id whose FK is NO ACTION, so the database refuses the card
+  // delete unless these rows go first (Postgres 23503 -> a 500 mid-cascade).
+  // Tables whose FK is CASCADE or SET NULL are handled by the database.
+  documentCards,
+  formSubmissions,
+  cardEvents,
+  calendarEventLinks,
+  gitLinks,
   cardAssignees,
   cardParticipants,
   cardWatchers,
@@ -88,7 +96,9 @@ export async function listTrash(db: Database, organizationId: string): Promise<T
       workspaceName: workspaces.name,
     })
     .from(projects)
-    .innerJoin(workspaces, eq(workspaces.id, projects.workspaceId))
+    // leftJoin, not innerJoin: a trashed project must stay listed (and purgeable)
+    // even if its workspace was hard-deleted. innerJoin silently hid it.
+    .leftJoin(workspaces, eq(workspaces.id, projects.workspaceId))
     .where(and(eq(projects.organizationId, organizationId), isNotNull(projects.deletedAt)));
 
   trashedProjects.forEach((p) => {
@@ -113,7 +123,8 @@ export async function listTrash(db: Database, organizationId: string): Promise<T
       projectName: projects.name,
     })
     .from(boards)
-    .innerJoin(projects, eq(projects.id, boards.projectId))
+    // Same reasoning as projects: keep orphaned trashed boards visible.
+    .leftJoin(projects, eq(projects.id, boards.projectId))
     .where(and(eq(boards.organizationId, organizationId), isNotNull(boards.deletedAt)));
 
   trashedBoards.forEach((b) => {
@@ -124,7 +135,7 @@ export async function listTrash(db: Database, organizationId: string): Promise<T
         itemType: 'board',
         deletedAt: b.deletedAt.toISOString(),
         daysRemaining: calculateDaysRemaining(b.deletedAt),
-        locationInfo: `Project: ${pProjectName(b.projectName)}`,
+        locationInfo: `Project: ${pProjectName(b.projectName ?? undefined)}`,
       });
     }
   });
@@ -265,6 +276,21 @@ export async function hardDeleteItem(
   itemType: 'workspace' | 'project' | 'board' | 'card',
   itemId: string
 ) {
+  const purged = await hardDeleteItemCascade(db, organizationId, itemType, itemId);
+  await bumpOrgCache(organizationId);
+  return purged;
+}
+
+/**
+ * Destructive part only — no cache invalidation — so `emptyTrash` can run it
+ * inside a transaction and bump caches once, after commit.
+ */
+async function hardDeleteItemCascade(
+  db: Database,
+  organizationId: string,
+  itemType: 'workspace' | 'project' | 'board' | 'card',
+  itemId: string
+) {
   if (itemType === 'card') {
     // P0: verify card belongs to this org (via list->board) before any destructive write.
     // Without this, a guessed UUID from another org would cascade-delete foreign rows.
@@ -278,28 +304,24 @@ export async function hardDeleteItem(
     if (!owned) throw httpError(404, 'Card not found in trash');
     await deleteCardCascade(db, [itemId], organizationId);
     await bumpCardCache(itemId);
-    await bumpOrgCache(organizationId);
     return { success: true, id: itemId };
   }
 
   if (itemType === 'board') {
     await deleteBoardCascade(db, itemId, organizationId);
     await bumpBoardCache(itemId);
-    await bumpOrgCache(organizationId);
     return { success: true, id: itemId };
   }
 
   if (itemType === 'project') {
     await deleteProjectCascade(db, itemId, organizationId);
     await bumpProjectCache(itemId);
-    await bumpOrgCache(organizationId);
     return { success: true, id: itemId };
   }
 
   if (itemType === 'workspace') {
     await deleteWorkspaceCascade(db, itemId, organizationId);
     await bumpWorkspaceCache(itemId);
-    await bumpOrgCache(organizationId);
     return { success: true, id: itemId };
   }
 
@@ -307,12 +329,60 @@ export async function hardDeleteItem(
 }
 
 // ─── Empty Entire Organization Trash ──────────────────────────────────────────
+
+/**
+ * How many items one `emptyTrash` transaction purges before committing.
+ *
+ * A single transaction over the whole trash would hold locks for the length of
+ * the purge; chunking keeps each transaction short. The tradeoff is that a
+ * failure part-way leaves earlier chunks purged, so `purgedCount` reports what
+ * was actually removed and a partial failure surfaces as an error rather than a
+ * silent success.
+ */
+const EMPTY_TRASH_BATCH_SIZE = 50;
+
 export async function emptyTrash(db: Database, organizationId: string) {
   const trashed = await listTrash(db, organizationId);
-  for (const item of trashed) {
-    await hardDeleteItem(db, organizationId, item.itemType, item.id);
+  let purgedCount = 0;
+
+  // Deepest-first: purging a workspace/project/board also purges its children,
+  // so walking the list in reverse means the child entries are already gone by
+  // the time their parent is processed and we never 404 on an item we just
+  // deleted as part of a parent's cascade.
+  const ordered = [...trashed].sort((a, b) => depth(b.itemType) - depth(a.itemType));
+
+  for (let i = 0; i < ordered.length; i += EMPTY_TRASH_BATCH_SIZE) {
+    const batch = ordered.slice(i, i + EMPTY_TRASH_BATCH_SIZE);
+    await db.transaction(async (tx) => {
+      for (const item of batch) {
+        await hardDeleteItemCascade(
+          tx as unknown as Database,
+          organizationId,
+          item.itemType,
+          item.id
+        );
+        purgedCount++;
+      }
+    });
   }
-  return { success: true, purgedCount: trashed.length };
+
+  // Caches are bumped once, after every chunk has committed.
+  await bumpOrgCache(organizationId);
+  return { success: true, purgedCount };
+}
+
+/** workspace > project > board > card, so a parent's cascade clears its children. */
+function depth(itemType: TrashedItem['itemType']): number {
+  switch (itemType) {
+    case 'workspace':
+      return 0;
+    case 'project':
+      return 1;
+    case 'board':
+      return 2;
+    default:
+      return 3;
+  }
 }
 
 // ─── Cascade Helpers ──────────────────────────────────────────────────────────
@@ -331,6 +401,14 @@ async function deleteCardCascade(db: Database, cardIds: string[], organizationId
     .where(and(inArray(cards.id, cardIds), eq(boards.organizationId, organizationId)));
   const ownedCardIds = ownedCardRows.map((c) => c.id);
   if (ownedCardIds.length === 0) return;
+
+  // card_id tables with NO ACTION referential action — these MUST be removed
+  // explicitly or the final `delete(cards)` fails with a foreign-key violation.
+  await db.delete(documentCards).where(inArray(documentCards.cardId, ownedCardIds));
+  await db.delete(formSubmissions).where(inArray(formSubmissions.cardId, ownedCardIds));
+  await db.delete(cardEvents).where(inArray(cardEvents.cardId, ownedCardIds));
+  await db.delete(calendarEventLinks).where(inArray(calendarEventLinks.cardId, ownedCardIds));
+  await db.delete(gitLinks).where(inArray(gitLinks.cardId, ownedCardIds));
 
   await db.delete(cardAssignees).where(inArray(cardAssignees.cardId, ownedCardIds));
   await db.delete(cardParticipants).where(inArray(cardParticipants.cardId, ownedCardIds));

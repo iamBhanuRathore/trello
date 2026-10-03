@@ -80,18 +80,24 @@ describe('card body schemas reject malformed values at the edge', () => {
 describe('billing seat counts are constrained before reaching Stripe', () => {
   it('every seat field is a bounded integer', async () => {
     const src = await Bun.file(new URL('../billing/routes.ts', import.meta.url)).text();
-    const seatFields = ['seatCount', 'additionalSeats', 'targetSeatCount'];
-    const flat = src.replace(/\s+/g, ' ');
-    for (const field of seatFields) {
-      const bounded = `${field}: t.Number({ minimum: 1, maximum: 10_000, multipleOf: 1 })`;
-      const optional = `${field}: t.Optional( t.Number({ minimum: 1, maximum: 10_000, multipleOf: 1 }) )`;
-      expect(flat.includes(bounded) || flat.includes(optional)).toBe(true);
+    // Strip ALL whitespace: prettier freely rewraps these calls, so matching the
+    // source text with any dependence on line breaks is brittle.
+    const flat = src.replace(/\s+/g, '');
+    const bounded = 't.Number({minimum:1,maximum:10_000,multipleOf:1})';
+    for (const field of ['seatCount', 'additionalSeats', 'targetSeatCount']) {
+      // `bounded` already begins with `t.Number(`, so the plain form must not
+      // prefix it a second time.
+      const found =
+        flat.includes(`${field}:t.Optional(${bounded})`) || flat.includes(`${field}:${bounded}`);
+      expect(found).toBe(true);
     }
   });
 
   it('the idempotency key is length-bounded', async () => {
     const src = await Bun.file(new URL('../billing/routes.ts', import.meta.url)).text();
-    expect(src.includes('idempotencyKey: t.Optional(t.String({ maxLength: 255 }))')).toBe(true);
+    expect(
+      src.replace(/\s+/g, '').includes('idempotencyKey:t.Optional(t.String({maxLength:255}))')
+    ).toBe(true);
   });
 });
 
