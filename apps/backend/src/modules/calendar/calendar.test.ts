@@ -283,6 +283,89 @@ describe('Google event writes (fake client)', () => {
     );
   });
 
+  it('reports an actionable reason when Google refuses to create the event', async () => {
+    // A dead OAuth refresh token (Google deactivates them for apps left in
+    // "Testing" publishing status after 7 days) used to surface as the same
+    // opaque "Google Calendar event creation failed" as a timeout or a 404. These
+    // are not equally recoverable, so each must say what the user should do.
+    const { user } = await setupConnected();
+
+    // Validation runs before Google is touched, so a valid range is required to
+    // reach the call we are actually asserting on.
+    const WHEN = { start: '2026-09-25T10:00:00Z', end: '2026-09-25T10:30:00Z' };
+
+    /** A client whose insert throws the given Google-shaped error. */
+    const failing = (err: unknown): any => ({
+      events: {
+        insert: async () => {
+          throw err;
+        },
+        patch: async () => ({ data: {} }),
+        delete: async () => ({ data: {} }),
+        list: async () => ({ data: { items: [] } }),
+      },
+    });
+
+    // 1. invalid_grant — the refresh token is dead; only a reconnect helps.
+    const grant = createExternalEvent(
+      db,
+      user.id,
+      { title: 'M', ...WHEN },
+      failing({ response: { status: 400, data: { error: 'invalid_grant' } } })
+    );
+    expect(grant).rejects.toThrow(/connection has expired/i);
+    await expect(grant).rejects.toMatchObject({
+      status: 502,
+      details: { code: 'GOOGLE_REAUTH_REQUIRED' },
+    });
+
+    // 2. 403 insufficient scope — only a fresh consent screen fixes it.
+    const forbidden = createExternalEvent(
+      db,
+      user.id,
+      { title: 'M', ...WHEN },
+      failing({
+        response: {
+          status: 403,
+          data: { error: { errors: [{ reason: 'insufficientPermissions' }] } },
+        },
+      })
+    );
+    expect(forbidden).rejects.toThrow(/permissions are no longer sufficient/i);
+    await expect(forbidden).rejects.toMatchObject({
+      details: { code: 'GOOGLE_REAUTH_REQUIRED' },
+    });
+
+    // 3. 404 — the connected calendarId is gone.
+    const gone = createExternalEvent(
+      db,
+      user.id,
+      { title: 'M', ...WHEN },
+      failing({ response: { status: 404, data: {} } })
+    );
+    expect(gone).rejects.toThrow(/no longer exists/i);
+    await expect(gone).rejects.toMatchObject({
+      details: { code: 'GOOGLE_CALENDAR_NOT_FOUND' },
+    });
+
+    // 4. Our own 15s guard — transient, so retry is genuinely reasonable.
+    const slow = createExternalEvent(
+      db,
+      user.id,
+      { title: 'M', ...WHEN },
+      failing(new Error('Google API timeout after 15000ms (events.insert)'))
+    );
+    expect(slow).rejects.toThrow(/did not respond in time/i);
+    await expect(slow).rejects.toMatchObject({ details: { code: 'GOOGLE_TIMEOUT' } });
+
+    // Status must stay 502 for ALL of them: lib/api.ts turns any 401 into a
+    // Boardly session refresh and any 403 into a permission re-fetch, so echoing
+    // Google's status would log the user out over a dead Google token.
+    for (const p of [grant, forbidden, gone, slow]) {
+      await expect(p).rejects.toMatchObject({ status: 502 });
+    }
+  });
+
   it('creates, reschedules, and deletes through the fake client', async () => {
     const { user } = await setupConnected();
     const created = await createExternalEvent(

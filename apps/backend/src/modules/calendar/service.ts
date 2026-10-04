@@ -25,9 +25,19 @@ import {
   type CalendarApi,
 } from './google';
 
-export function httpError(status: number, message: string): Error & { status: number } {
-  const err = new Error(message) as Error & { status: number };
+export function httpError(
+  status: number,
+  message: string,
+  details?: Record<string, unknown>
+): Error & { status: number; details?: Record<string, unknown> } {
+  const err = new Error(message) as Error & {
+    status: number;
+    details?: Record<string, unknown>;
+  };
   err.status = status;
+  // Carried through formatErrorResponse into the response body, so the client
+  // gets a machine-readable discriminator alongside the human message.
+  if (details !== undefined) err.details = details;
   return err;
 }
 
@@ -509,6 +519,94 @@ export async function scheduleCard(
 
 // ─── Google event writes (quick-create / reschedule / cancel) ───────────────
 
+/**
+ * Turn a Google API failure into something the user can act on.
+ *
+ * Every one of these used to surface as the same opaque "Google Calendar event
+ * creation failed", which told the user nothing. They are not equally
+ * recoverable, and the distinction matters:
+ *
+ *  - `invalid_grant` / 401 — the refresh token is dead. Google deactivates
+ *    refresh tokens for OAuth apps left in "Testing" publishing status after 7
+ *    days of inactivity, and revokes them when access is removed from the
+ *    account. No retry helps; the user must reconnect. This is by far the most
+ *    common cause in a long-lived dev database.
+ *  - 403 / `insufficientPermissions` — the granted scopes no longer cover
+ *    `calendar.events`, which only a fresh consent screen can fix.
+ *  - 404 — the connected calendarId no longer exists (deleted or shared away).
+ *  - our own 15s guard — transient, retry is reasonable.
+ *
+ * Status stays 502 on purpose. `lib/api.ts` turns any 401 into a session token
+ * refresh and any 403 into a permission re-fetch, so returning the upstream
+ * status would make a dead *Google* token look like a dead *Boardly* session and
+ * log the user out. The machine-readable discriminator rides in `details.code`.
+ */
+function classifyGoogleFailure(err: unknown): {
+  code: string;
+  userMessage: string;
+  diagnostic: string;
+} {
+  const status = errorResponseStatus(err);
+  const upstream = (err as { response?: { data?: unknown } })?.response?.data;
+  const oauthCode =
+    typeof upstream === 'object' && upstream !== null && 'error' in upstream
+      ? String((upstream as { error: unknown }).error)
+      : '';
+  // `errorMessage` yields "Unknown error" for any non-Error throw, which loses
+  // the upstream OAuth code in the log for exactly the failures worth chasing.
+  // Fall back to the response body before giving up.
+  const diagnostic =
+    oauthCode || errorMessage(err, '') || safeStringify(upstream) || 'no upstream detail';
+  const reason = oauthCode || diagnostic;
+
+  if (oauthCode === 'invalid_grant' || status === 401) {
+    return {
+      code: 'GOOGLE_REAUTH_REQUIRED',
+      userMessage:
+        'Your Google Calendar connection has expired. Reconnect Google Calendar (the icon next to your email) and try again.',
+      diagnostic,
+    };
+  }
+  if (status === 403 || /insufficientPermission|insufficientPermissions|forbidden/i.test(reason)) {
+    return {
+      code: 'GOOGLE_REAUTH_REQUIRED',
+      userMessage:
+        'Google Calendar denied this request — the granted permissions are no longer sufficient. Reconnect Google Calendar to grant access again.',
+      diagnostic,
+    };
+  }
+  if (status === 404) {
+    return {
+      code: 'GOOGLE_CALENDAR_NOT_FOUND',
+      userMessage:
+        'The Google Calendar connected to this account no longer exists. Reconnect Google Calendar and pick it again.',
+      diagnostic,
+    };
+  }
+  if (/timeout after/i.test(reason)) {
+    return {
+      code: 'GOOGLE_TIMEOUT',
+      userMessage: 'Google Calendar did not respond in time. Wait a moment and try again.',
+      diagnostic,
+    };
+  }
+  return {
+    code: 'GOOGLE_EVENT_CREATE_FAILED',
+    userMessage: 'Google Calendar event creation failed. Try again, or reconnect Google Calendar.',
+    diagnostic,
+  };
+}
+
+/** Best-effort body dump for logs. Never throws, never reaches the client. */
+function safeStringify(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  try {
+    return JSON.stringify(value).slice(0, 300);
+  } catch {
+    return '';
+  }
+}
+
 function parseRange(start?: string | null, end?: string | null): { start: string; end: string } {
   if (!start) throw httpError(400, 'Event start is required');
   const s = new Date(start);
@@ -549,9 +647,16 @@ export async function createExternalEvent(
     // the same opaque message with the real cause discarded. Mirror the
     // pullExternalEvents path — log it and persist it on the connection, which
     // is also what drives the reconnect affordance in the calendar header.
-    const reason = errorMessage(err).slice(0, 500);
+    const classified = classifyGoogleFailure(err);
+    const reason = classified.diagnostic.slice(0, 500);
     logger.warn(
-      { err: reason, user_id: userId, calendar_id: conn.calendarId },
+      {
+        err: reason,
+        code: classified.code,
+        upstream_status: errorResponseStatus(err),
+        user_id: userId,
+        calendar_id: conn.calendarId,
+      },
       'Google Calendar event creation failed'
     );
     await db
@@ -561,7 +666,7 @@ export async function createExternalEvent(
       .catch((dbErr: unknown) => {
         logger.error({ err: errorMessage(dbErr) }, 'Failed to persist calendar lastError');
       });
-    throw httpError(502, 'Google Calendar event creation failed');
+    throw httpError(502, classified.userMessage, { code: classified.code });
   }
 
   await db

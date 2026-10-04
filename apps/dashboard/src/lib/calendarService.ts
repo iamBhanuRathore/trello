@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, getApiErrorMessage } from './api';
 
 // Google writes go to Google's servers and back — bound them client-side too
 // so a stall fails loudly instead of hanging the mutation forever.
@@ -8,7 +8,12 @@ export function describeCalendarError(err: any, fallback: string): string {
   if (!err?.response) {
     return 'Server unreachable — change NOT saved. The meeting on Google is untouched; please retry.';
   }
-  return err.response?.data?.message || err.message || fallback;
+  // Delegate to the shared parser instead of reading `data.message` directly.
+  // Backend error bodies are `{ error, details? }` (see lib/errors.ts
+  // formatErrorResponse) and only validation failures carry `message`, so
+  // reading `.message` alone silently discarded the real text and every failure
+  // rendered as "Request failed with status code 502".
+  return getApiErrorMessage(err, fallback);
 }
 
 export interface CalendarBlock {

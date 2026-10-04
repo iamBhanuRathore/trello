@@ -2945,3 +2945,18 @@ Two guards added to `dead-ui.contract.test.ts` (Workspaces must open via `useOpe
 Scope: `CreateWorkspaceDialog` is the only component combining a `DialogTrigger`, a controlled `open` prop and `useDialogClose`, so this was isolated — unlike the hooks-order defect, which was systemic across 7 components.
 
 Validation: dashboard 63 pass / 0 fail (7 files), typecheck 5/5, lint clean.
+
+### 2026-10-04 — Google Calendar write failures now name their cause and reach the user
+
+"Create meeting" returned `{"error":"Google Calendar event creation failed"}` with nothing actionable, and the toast showed axios's `Request failed with status code 502` regardless. Two defects in one path:
+
+1. **One message for four different recoveries.** `createExternalEvent` now classifies the Google failure: `invalid_grant`/401 → reconnect (Google deactivates refresh tokens for OAuth apps in "Testing" status after 7 days, so this is the likely cause here); 403/`insufficientPermissions` → re-consent; 404 → calendar gone; the 15s guard → retry. Each carries a machine-readable `details.code` (`GOOGLE_REAUTH_REQUIRED`, `GOOGLE_CALENDAR_NOT_FOUND`, `GOOGLE_TIMEOUT`, `GOOGLE_EVENT_CREATE_FAILED`).
+2. **The client threw the server's message away.** `describeCalendarError` read `data.message`, but `formatErrorResponse` emits `{ error, details? }` and only sets `message` for validation failures — so the field was always undefined and the user got axios's status line. It now delegates to the existing `getApiErrorMessage`, which already handled both shapes.
+
+Status deliberately stays 502 for all four: `lib/api.ts:701` turns any 401 into a Boardly session refresh and `api.ts:733` any 403 into a permission re-fetch, so echoing Google's status would log the user out over a dead _Google_ token. Asserted for all four branches.
+
+Also: `errorMessage()` returns `"Unknown error"` for non-`Error` throws, so the log lost the upstream OAuth code. Now falls back to the response body — the test log reads `err:"invalid_grant"`.
+
+Tests: 4 classification branches + the 502 invariant in `calendar.test.ts`; 5 cases in `calendarService.error.test.ts`, three of which fail if the `getApiErrorMessage` delegation is reverted.
+
+Validation: backend 465 pass / 1 skip / 0 fail, dashboard 68 pass / 0 fail, mobile 3 pass / 0 fail, typecheck 5/5, lint clean.
