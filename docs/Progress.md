@@ -2912,3 +2912,22 @@ Fixed at the store with a single-flight in-flight promise rather than by removin
 `ProfileSettings.tsx:86` still issues its own `/auth/me` on that route — a separate query on a separate concern, left alone deliberately and noted rather than silently coupled.
 
 Validation: dashboard 58 pass / 0 fail, backend 464 pass / 1 skip / 0 fail, mobile 3 pass / 0 fail, typecheck 5/5, lint clean.
+
+### 2026-10-04 — Hooks-after-early-return fixed in 7 components, guarded repo-wide
+
+Opening a card from My Tasks crashed the page ("Rendered more hooks than during the previous render", caught by `RootErrorBoundary`). Root cause: `TaskDetailView.tsx` had four `useDialogClose()` calls _after_ `if (isCardLoading) return …` and `if (!card) return …`, so React skipped them on the loading render and ran them once the card arrived.
+
+Checking the rest of the dashboard found **six more components with the identical defect**, all latent — waiting for the first query to resolve:
+
+- `Billing.tsx` — 5 hooks after `isLoading` / `error || !billing`
+- `DeveloperSettings.tsx` — 2 after `isLoading` / `isError && keys.length === 0`
+- `CustomRoles.tsx` — 1 after `isRolesLoading`
+- `ProfileSettings.tsx` — 1 after `isProfileError && !profile`
+- `ProjectsList.tsx` — 1 after `!projects || projects.length === 0`
+- `GlobalCreateWorkspaceDialog.tsx` — 1 after `!open`, which the `?create-workspace` URL param flips to true
+
+All eleven hooks now sit above their guards (they read only `useState` values, so the move is behaviour-preserving). Every one of these components _was_ using `useDialogClose` per AGENTS.md §11 — the contract was satisfied at the call site and broken by the hook's position, which is why the §11 audit missed it.
+
+New `hooks/hookOrder.contract.test.ts` walks the TypeScript AST and fails on any `useX()` sibling statement following a guard-returning `if`. Grep cannot make that distinction. It includes a self-check on a synthetic fixture so a broken walk fails loudly rather than passing for the wrong reason, and it was verified to name all four pre-fix `TaskDetailView` violations when the old file was dropped back in. Scoped to this one hazard on purpose — `react-hooks/rules-of-hooks` already covers the general case.
+
+Validation: dashboard 61 pass / 0 fail (7 files), typecheck 5/5, lint clean.

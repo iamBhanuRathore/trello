@@ -89,6 +89,18 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
       onClose: () => setDeletingProj(null),
     });
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  //
+  // MUST stay above the empty-projects guard: `projects` arrives async, so the
+  // guard is true on the loading render and false once data lands. A hook below
+  // it is skipped then run, and React throws "Rendered more hooks than during
+  // the previous render".
+  const { handleOpenChange } = useDialogClose({
+    isOpen: !!importProjectId,
+    onClose: () => setImportProjectId(null),
+  });
+
   if (!projects || projects.length === 0) {
     return (
       <div className="text-muted-foreground text-xs italic py-4 px-2">
@@ -96,13 +108,6 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
       </div>
     );
   }
-
-  // Single close path (AGENTS.md §11) — requestClose is idempotent per
-  // open session, so X / backdrop / Esc cannot double-close.
-  const { handleOpenChange } = useDialogClose({
-    isOpen: !!importProjectId,
-    onClose: () => setImportProjectId(null),
-  });
 
   return (
     <div className="grid gap-6 pt-1">

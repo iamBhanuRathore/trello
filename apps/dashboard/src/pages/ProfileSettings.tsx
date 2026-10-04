@@ -228,6 +228,17 @@ export function ProfileSettings() {
 
   // Never render the form on a failed profile fetch — saving would push blank
   // values over the real profile.
+
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  // MUST stay above the loading/error guards: the query resolves async, so a
+  // hook below them is skipped on the loading render and run on the loaded one,
+  // and React throws "Rendered more hooks than during the previous render".
+  const { handleOpenChange } = useDialogClose({
+    isOpen: isPermissionsModalOpen,
+    onClose: () => setIsPermissionsModalOpen(false),
+  });
+
   if (isProfileError && !profile) {
     return (
       <div className="max-w-4xl mx-auto py-4">
@@ -249,10 +260,6 @@ export function ProfileSettings() {
 
   // Single close path (AGENTS.md §11) — requestClose is idempotent per
   // open session, so X / backdrop / Esc cannot double-close.
-  const { handleOpenChange } = useDialogClose({
-    isOpen: isPermissionsModalOpen,
-    onClose: () => setIsPermissionsModalOpen(false),
-  });
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-4 pb-16" aria-busy={showLoading}>

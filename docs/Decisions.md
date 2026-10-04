@@ -1697,3 +1697,27 @@ and the store had **no in-flight guard**, so every concurrent trigger opened its
 4. **Deliberately not deduplicating `ProfileSettings`.** It is a separate `useQuery` on a different concern and only mounts on that route; collapsing it would couple two unrelated screens. Flagged rather than changed.
 
 **Consequences:** concurrent triggers collapse to one request, verified against the real store with `api.get` mocked and a call counter (`authStore.dupe.test.ts`): 2 and 4 concurrent triggers each produce exactly one `/auth/me`, every caller receives the same resolved state, a new token is _not_ served by an old in-flight promise, a settled call does not permanently pin the store, and an absent token short-circuits without a request. The two dedup assertions were confirmed to **fail** when the guard is removed, so they are not vacuous.
+
+### 2026-10-04 — "Rendered more hooks than during the previous render" Was Systemic, Not One Component
+
+**Context:** opening a card from My Tasks replaced the whole page with "This page crashed". The console named `TaskDetailView.tsx:954` and `useDialogClose.ts:38`. That line was one of four `useDialogClose()` calls sitting **after** two early returns. Fixed by hoisting them. Then checked whether the rest of the codebase shared the defect — it did, in six more components.
+
+**The bug shape.** React requires an identical hook order on every render. A component that returns early — loading spinner, empty state, error panel — _before_ reaching a `useDialogClose()` call skips that hook on the first render and runs it on the next. React throws and the nearest error boundary replaces the page. Every instance is driven by async data flipping between renders:
+
+| Component                         | Guard                                                  |
+| --------------------------------- | ------------------------------------------------------ |
+| `TaskDetailView.tsx`              | `isCardLoading`, `!card`                               |
+| `Billing.tsx` (5 hooks)           | `isLoading`, `error \|\| !billing`                     |
+| `DeveloperSettings.tsx` (2)       | `isLoading`, `isError && keys.length === 0`            |
+| `CustomRoles.tsx`                 | `isRolesLoading`, `isRolesError`                       |
+| `ProfileSettings.tsx`             | `isProfileError && !profile`                           |
+| `ProjectsList.tsx`                | `!projects \|\| projects.length === 0`                 |
+| `GlobalCreateWorkspaceDialog.tsx` | `!open` — flipped by the `?create-workspace` URL param |
+
+All six remaining instances were **latent**: they would have crashed the same way the first time the relevant query resolved. This is also why the defect survived the AGENTS.md §11 dialog work — §11 requires `useDialogClose`, and every one of these components _does_ use it, correctly. The contract was satisfied at the call site and broken by the hook's _position_.
+
+**Decisions.**
+
+1. **Hoist, do not restructure.** All eleven hooks depend only on `useState` values, so moving them above the guards is behaviour-preserving. Extracting a wrapper component per guard would have been a far larger diff across seven files for no behavioural gain.
+2. **Guard the whole class with an AST check, not a grep.** `hooks/hookOrder.contract.test.ts` walks the TypeScript AST and fails on any `useX()` call that is a _sibling statement after_ a guard-returning `if`. A textual scan cannot distinguish that from a hook legitimately nested inside a conditional, so grep would have been both noisy and unreliable. Two details were load-bearing: `forwardRef`/`memo` components are `FunctionExpression`s, not declarations (an earlier scanner that only matched declarations reported the pre-fix file as clean — it was checked against the known-bad file and found wanting before being trusted); and the suite carries a **self-check on a synthetic fixture** so a silently broken walk fails loudly instead of passing for the wrong reason. Dropping the pre-fix `TaskDetailView` back in made it report all four violations by name.
+3. **Deliberately scoped to this one hazard.** This is not a general Rules-of-Hooks linter; `react-hooks/rules-of-hooks` already is. Duplicating it would add a second, weaker source of truth.

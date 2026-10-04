@@ -149,6 +149,32 @@ export const Billing: React.FC = () => {
     },
   });
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per
+  // open session, so X / backdrop / Esc cannot double-close.
+  // MUST stay above the loading/error guards: the query resolves async, so a
+  // hook below them is skipped on the loading render and run on the loaded one,
+  // and React throws "Rendered more hooks than during the previous render".
+  const { handleOpenChange: isAddSeatsOpenOpenChange } = useDialogClose({
+    isOpen: isAddSeatsOpen,
+    onClose: () => setIsAddSeatsOpen(false),
+  });
+  const { handleOpenChange: isDownsizeOpenOpenChange } = useDialogClose({
+    isOpen: isDownsizeOpen,
+    onClose: () => setIsDownsizeOpen(false),
+  });
+  const { handleOpenChange: isUpgradeOpenOpenChange } = useDialogClose({
+    isOpen: isUpgradeOpen,
+    onClose: () => setIsUpgradeOpen(false),
+  });
+  const { handleOpenChange: isCancelOpenOpenChange } = useDialogClose({
+    isOpen: isCancelOpen,
+    onClose: () => setIsCancelOpen(false),
+  });
+  const { handleOpenChange: isEnterpriseModalOpenOpenChange } = useDialogClose({
+    isOpen: isEnterpriseModalOpen,
+    onClose: () => setIsEnterpriseModalOpen(false),
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-8 max-w-6xl" aria-label="Loading billing">
@@ -250,38 +276,18 @@ export const Billing: React.FC = () => {
 
   // Single close path (AGENTS.md §11) — requestClose is idempotent per
   // open session, so X / backdrop / Esc cannot double-close.
-  const { handleOpenChange: isAddSeatsOpenOpenChange } = useDialogClose({
-    isOpen: isAddSeatsOpen,
-    onClose: () => setIsAddSeatsOpen(false),
-  });
 
   // Single close path (AGENTS.md §11) — requestClose is idempotent per
   // open session, so X / backdrop / Esc cannot double-close.
-  const { handleOpenChange: isDownsizeOpenOpenChange } = useDialogClose({
-    isOpen: isDownsizeOpen,
-    onClose: () => setIsDownsizeOpen(false),
-  });
 
   // Single close path (AGENTS.md §11) — requestClose is idempotent per
   // open session, so X / backdrop / Esc cannot double-close.
-  const { handleOpenChange: isUpgradeOpenOpenChange } = useDialogClose({
-    isOpen: isUpgradeOpen,
-    onClose: () => setIsUpgradeOpen(false),
-  });
 
   // Single close path (AGENTS.md §11) — requestClose is idempotent per
   // open session, so X / backdrop / Esc cannot double-close.
-  const { handleOpenChange: isCancelOpenOpenChange } = useDialogClose({
-    isOpen: isCancelOpen,
-    onClose: () => setIsCancelOpen(false),
-  });
 
   // Single close path (AGENTS.md §11) — requestClose is idempotent per
   // open session, so X / backdrop / Esc cannot double-close.
-  const { handleOpenChange: isEnterpriseModalOpenOpenChange } = useDialogClose({
-    isOpen: isEnterpriseModalOpen,
-    onClose: () => setIsEnterpriseModalOpen(false),
-  });
 
   return (
     <div className="space-y-8 max-w-6xl">

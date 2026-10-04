@@ -108,6 +108,25 @@ export function DeveloperSettings() {
     setTimeout(() => setCopiedKey(false), 2000);
   };
 
+  // Single close path (AGENTS.md §11) — requestClose is idempotent per open
+  // session, so X / backdrop / Esc cannot double-close. Two dialogs share this
+  // scope, so each gets a renamed handler.
+  //
+  // MUST stay above the isLoading / isError guards: `keys` arrives async, so
+  // React would otherwise see more hooks on the loaded render than the loading
+  // one and throw "Rendered more hooks than during the previous render".
+  const { handleOpenChange: createKeyClose } = useDialogClose({
+    isOpen: isCreating,
+    onClose: () => setIsCreating(false),
+    handleEscape: isCreating && !generatedKey,
+  });
+
+  const { handleOpenChange: revealKeyClose } = useDialogClose({
+    isOpen: !!generatedKey,
+    onClose: () => setGeneratedKey(null),
+    handleEscape: !isCreating && !!generatedKey,
+  });
+
   if (isLoading) {
     return (
       <div className="max-w-5xl mx-auto space-y-8 pb-16" aria-label="Loading developer keys">
@@ -162,21 +181,6 @@ export function DeveloperSettings() {
       </div>
     );
   }
-
-  // Single close path (AGENTS.md §11) — requestClose is idempotent per open
-  // session, so X / backdrop / Esc cannot double-close. Two dialogs share this
-  // scope, so each gets a renamed handler.
-  const { handleOpenChange: createKeyClose } = useDialogClose({
-    isOpen: isCreating,
-    onClose: () => setIsCreating(false),
-    handleEscape: isCreating && !generatedKey,
-  });
-
-  const { handleOpenChange: revealKeyClose } = useDialogClose({
-    isOpen: !!generatedKey,
-    onClose: () => setGeneratedKey(null),
-    handleEscape: !isCreating && !!generatedKey,
-  });
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-16">

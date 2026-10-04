@@ -26,15 +26,22 @@ export function GlobalCreateWorkspaceDialog() {
     }
   }, [searchParams, setSearchParams]);
 
-  if (!open) return null;
-  // Hidden wrapper: CreateWorkspaceDialog always renders its DialogTrigger
-  // button (used by the Workspaces page); the shell only wants the portal.
   // Single close path (AGENTS.md §11) — requestClose is idempotent per
   // open session, so X / backdrop / Esc cannot double-close.
+  //
+  // MUST stay above `if (!open) return null`: React requires an identical hook
+  // order every render, and `open` flips true from the ?create-workspace URL
+  // param, so a hook below the guard is skipped on the closed render and then
+  // runs on the open one -> "Rendered more hooks than during the previous
+  // render". Only `isOpen`/`onClose` are read, so hoisting is behaviour-free.
   const { handleOpenChange } = useDialogClose({
     isOpen: open,
     onClose: () => setOpen(false),
   });
+
+  if (!open) return null;
+  // Hidden wrapper: CreateWorkspaceDialog always renders its DialogTrigger
+  // button (used by the Workspaces page); the shell only wants the portal.
 
   return (
     <div className="hidden" aria-hidden="true">
