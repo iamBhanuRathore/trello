@@ -448,8 +448,14 @@ export function BoardView() {
 
   // Single close path (AGENTS.md §11) — requestClose is idempotent per
   // open session, so X / backdrop / Esc cannot double-close.
+  //
+  // `isOpen` MUST track selectedCardId (the ?card= param that IS the dialog
+  // state), never `activeCard` — that one is the drag-overlay card, set at
+  // handleDragStart and cleared at drag end, so it is null while the dialog is
+  // open. Wiring it here made requestClose's `!openRef.current` guard reject
+  // every close gesture, leaving the dialog undismissable.
   const { handleOpenChange } = useDialogClose({
-    isOpen: activeCard !== null,
+    isOpen: !!selectedCardId,
     onClose: () => {
       handleCloseModal();
     },

@@ -2974,3 +2974,15 @@ Correction to note: the first draft of the comment claimed the cache "could neve
 `boardListStale.contract.test.ts` drives real `QueryObserver`s to pin this down: a prop change alone leaves the entry on its seed array, `isStale` is false so nothing rescues it, and an explicit refetch does pick it up (which is why the failure looked contradictory against a correct network response).
 
 Validation: dashboard 72 pass / 0 fail (9 files), typecheck 5/5, lint clean.
+
+### 2026-10-04 — Task detail dialog could not be closed on a board
+
+X, backdrop and Esc were all dead. The dialog opened normally and simply never went away.
+
+Regression from `134b35d` ("route every dialog close through useDialogClose"). That commit was correct in intent and correct in the hook: `requestClose` opens with `if (!openRef.current || closedRef.current) return`, which is what makes one close path idempotent. The new call site passed `isOpen: activeCard !== null` — but `activeCard` is the **drag-overlay card**, set in `handleDragStart` and cleared on drag end, never set when the dialog opens. The dialog's real state is the `?card=` URL param (`selectedCardId`), as the comment twelve lines above the call site already stated. So `openRef.current` was permanently `false` while the dialog was open, `requestClose` bailed before reaching `onClose`, and the Escape listener in the same hook never attached either. `Calendar.tsx` and `MyTasks.tsx` wire `isOpen: activeCardId !== null` correctly; `BoardView` was the only site with the `activeCard` (drag) vs `selectedCardId` (dialog) split, and the refactor grabbed the wrong one.
+
+Fixed to `isOpen: !!selectedCardId`. Two side effects of the same bug go with it: `useRestoreFocusOnClose` was never seeing the dialog open, so focus was not being returned to the invoker on close, and Esc was never being handled at all.
+
+The existing `useDialogClose.contract.test.ts` could not catch this — every assertion in it is about _shape_ (no bare setter, no inline arrow, one hook instance per dialog, nested dialogs stand down), and the shape here was perfect. Added a check on the _wiring_: every identifier feeding an `isOpen:` must also feed some `open={…}` prop in the same file. It holds across all 43 current call sites and pinpoints the offender by file and identifier; verified it fails on the injected regression (`pages/BoardView.tsx: isOpen uses \`activeCard\`, which never drives an open prop`).
+
+Validation: dashboard 73 pass / 0 fail (9 files), typecheck 5/5, lint clean.

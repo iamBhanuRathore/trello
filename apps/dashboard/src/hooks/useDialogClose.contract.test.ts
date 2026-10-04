@@ -257,5 +257,46 @@ describe('dialog close contract', () => {
     expect(between).not.toMatch(/if \([^)]*\) \{\s*return/);
   });
 
+  it("every useDialogClose isOpen tracks state that actually drives a dialog's open prop", async () => {
+    // Regression: BoardView passed `isOpen: activeCard !== null`, but
+    // `activeCard` is the drag-overlay card (set at handleDragStart, cleared at
+    // drag end) while the dialog's real state is the `?card=` URL param. Because
+    // requestClose guards on `if (!openRef.current) return`, every close gesture
+    // — X, backdrop, Esc — bailed before reaching onClose and the task dialog
+    // became undismissable. The hook was correct; the call site named the wrong
+    // state. A shape check cannot see that, so assert the wiring instead: each
+    // identifier feeding `isOpen` must also feed some `open={...}` prop.
+    const KEYWORDS = new Set(['null', 'true', 'false', 'undefined', 'boolean']);
+    const identifiers = (expr: string) =>
+      new Set((expr.match(/[A-Za-z_$][A-Za-z0-9_$]*/g) ?? []).filter((id) => !KEYWORDS.has(id)));
+
+    const offenders: string[] = [];
+
+    for await (const file of walk(SRC)) {
+      const src = code(await readFile(file, 'utf-8'));
+
+      // `open={...}` is the dialog's real open state. No `open` prop means the
+      // file controls its portal some other way — nothing to cross-check.
+      const openExprs = [...src.matchAll(/open=\{([^}]*)\}/g)].map((m) => m[1]!);
+      if (openExprs.length === 0) continue;
+
+      const openIds = new Set<string>();
+      for (const expr of openExprs) for (const id of identifiers(expr)) openIds.add(id);
+
+      // Skip prop type declarations (`isOpen: boolean;`), which are pass-throughs.
+      for (const m of src.matchAll(/isOpen:\s*([^,}\n]+)/g)) {
+        for (const id of identifiers(m[1]!)) {
+          if (!openIds.has(id)) {
+            offenders.push(
+              `${file.slice(SRC.length + 1)}: isOpen uses \`${id}\`, which never drives an open prop`
+            );
+          }
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
   void SELF_MANAGED;
 });
