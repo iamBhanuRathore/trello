@@ -7,7 +7,27 @@ const UI_PKG = path.resolve(import.meta.dirname, '../../packages/ui/src');
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    // Preload the latin Geist subset: it is the only font file requested on
+    // first paint (other subsets stay dormant behind unicode-range). The
+    // hashed filename is resolved from the bundle at build time.
+    // latin-ext and broader scripts intentionally fall back to system fonts
+    // (single render-blocking font request; non-Latin content keeps rendering).
+    {
+      name: 'preload-geist-latin',
+      apply: 'build',
+      transformIndexHtml(html, ctx) {
+        const bundle = (ctx as unknown as { bundle?: Record<string, object> }).bundle;
+        if (!bundle) return html;
+        const asset = Object.keys(bundle).find((f) => /geist-latin-wght-normal-.*\.woff2$/.test(f));
+        if (!asset) return html;
+        const tag = `<link rel="preload" href="/${asset}" as="font" type="font/woff2" crossorigin>`;
+        return html.replace('</head>', `    ${tag}\n  </head>`);
+      },
+    },
+  ],
   build: {
     chunkSizeWarningLimit: 600,
     rollupOptions: {

@@ -2,12 +2,21 @@ import { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { Toaster } from 'sonner';
-import { TooltipProvider } from '@boardly/ui';
+import { TooltipProvider } from '@boardly/ui/tooltip';
 import { GlobalTooltip } from './components/GlobalTooltip';
-import { DashboardLayout } from './layouts/DashboardLayout';
-import { AdminLayout } from './layouts/AdminLayout';
 import { RouteFallback } from './components/common/RouteFallback';
 import { RootErrorBoundary } from './components/common/RootErrorBoundary';
+
+// Layouts stay out of the entry chunk: they pull the full authenticated
+// shell (sidebar, data grid, menus) and are never rendered on public routes
+// (login/signup/pricing). Lazy-loading them removes ~30 modulepreload
+// entries from the login critical path.
+const DashboardLayout = lazy(() =>
+  import('./layouts/DashboardLayout').then((m) => ({ default: m.DashboardLayout }))
+);
+const AdminLayout = lazy(() =>
+  import('./layouts/AdminLayout').then((m) => ({ default: m.AdminLayout }))
+);
 
 // ─── Code-split routes ─────────────────────────────────────────────
 // Convention: EVERY page is React.lazy-loaded so each route ships as its
