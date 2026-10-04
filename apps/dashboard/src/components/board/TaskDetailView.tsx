@@ -905,6 +905,40 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       toast.success('Task marked as Complete!');
     };
 
+    // Single close path (AGENTS.md §11). Four dialogs share this scope, so each
+    // gets a renamed handler. useDialogClose only registers its Escape listener
+    // while `isOpen`, and these dialogs are mutually exclusive, so a single Esc
+    // can never reach two of them.
+    //
+    // These MUST stay above the isCardLoading / !card early returns below.
+    // React requires an identical hook order on every render; behind those
+    // guards they were skipped while loading, so the first render that had a
+    // card ran four extra hooks and React threw "Rendered more hooks than
+    // during the previous render", taking down the whole page via the error
+    // boundary. They depend only on useState values, so hoisting is safe.
+    const { handleOpenChange: checklistDeleteClose } = useDialogClose({
+      isOpen: confirmDeleteChecklist !== null,
+      onClose: () => setConfirmDeleteChecklist(null),
+    });
+
+    const { handleOpenChange: archiveConfirmClose } = useDialogClose({
+      isOpen: showArchiveConfirm,
+      onClose: () => setShowArchiveConfirm(false),
+    });
+
+    const { handleOpenChange: deleteConfirmClose } = useDialogClose({
+      isOpen: showDeleteConfirm,
+      onClose: () => setShowDeleteConfirm(false),
+    });
+
+    // The unsaved-changes prompt belongs to the dirty flow: closing it returns
+    // to the editor instead of discarding, so onClose clears the pending action
+    // and leaves the card dialog as it was.
+    const { handleOpenChange: unsavedPromptClose } = useDialogClose({
+      isOpen: showUnsavedPrompt,
+      onClose: () => setPendingAction(null),
+    });
+
     if (isCardLoading) {
       return (
         <div className="flex flex-1 w-full h-full min-h-[60vh] items-center justify-center p-20">
@@ -946,33 +980,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         </div>
       );
     }
-
-    // Single close path (AGENTS.md §11). Four dialogs share this scope, so each
-    // gets a renamed handler. useDialogClose only registers its Escape listener
-    // while `isOpen`, and these dialogs are mutually exclusive, so a single Esc
-    // can never reach two of them.
-    const { handleOpenChange: checklistDeleteClose } = useDialogClose({
-      isOpen: confirmDeleteChecklist !== null,
-      onClose: () => setConfirmDeleteChecklist(null),
-    });
-
-    const { handleOpenChange: archiveConfirmClose } = useDialogClose({
-      isOpen: showArchiveConfirm,
-      onClose: () => setShowArchiveConfirm(false),
-    });
-
-    const { handleOpenChange: deleteConfirmClose } = useDialogClose({
-      isOpen: showDeleteConfirm,
-      onClose: () => setShowDeleteConfirm(false),
-    });
-
-    // The unsaved-changes prompt belongs to the dirty flow: closing it returns
-    // to the editor instead of discarding, so onClose clears the pending action
-    // and leaves the card dialog as it was.
-    const { handleOpenChange: unsavedPromptClose } = useDialogClose({
-      isOpen: showUnsavedPrompt,
-      onClose: () => setPendingAction(null),
-    });
 
     return (
       <div className="relative flex flex-col w-full h-full bg-background text-foreground overflow-hidden">

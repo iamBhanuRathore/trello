@@ -19,6 +19,7 @@ import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { api } from '../lib/api';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useMyTasksSummary } from '../hooks/useMyTasksSummary';
 import { QueryError } from '../components/common/QueryError';
 import { CardModal } from '../components/board/CardModal';
 import { PriorityBadge } from '../components/board/PriorityBadge';
@@ -99,16 +100,12 @@ export function MyTasks() {
   // (fresh key, no cache) flashed zeros until its fetch landed. This query is
   // covered by the same ['my-tasks'] invalidations, so counts stay fresh —
   // and TanStack retains the previous value during background refetch, so
-  // they never flash. limit=1: we only need the summary envelope.
-  const { data: liveCounts } = useQuery({
-    queryKey: ['my-tasks', 'summary'],
-    queryFn: async () => {
-      const res = await api.get('/cards/my-tasks?limit=1');
-      return { summary: res.data?.summary, total: res.data?.total ?? 0 };
-    },
-    staleTime: 60_000,
-    placeholderData: (prev) => prev,
-  });
+  // they never flash.
+  //
+  // The hook owns the cache entry: the sidebar badge reads the SAME key, and
+  // when both declared their own queryFn with different shapes the loser read
+  // undefined and every counter here fell back to 0 (see useMyTasksSummary).
+  const { data: liveCounts } = useMyTasksSummary();
   const summary = liveCounts?.summary || {
     totalAssigned: 0,
     totalObserving: 0,

@@ -160,9 +160,29 @@ describe('My Tasks counters match their lists', () => {
     // permanently over-reported against the list it labels.
     expect(src).not.toMatch(/totalAssigned\s*\+\s*\n?\s*summary\.totalObserving/);
     expect(src).toContain('const allTasksCount = liveCounts?.total ?? 0;');
-    expect(src).toContain(
-      "queryFn: async () => {\n      const res = await api.get('/cards/my-tasks?limit=1');\n      return { summary: res.data?.summary, total: res.data?.total ?? 0 };"
-    );
+  });
+
+  it('the summary envelope has exactly one queryFn across the app', async () => {
+    // Regression: the page and the sidebar both used ['my-tasks','summary'] with
+    // DIFFERENT shapes ({summary,total} vs a bare summary). TanStack keeps one
+    // cache entry per key, so whichever observer mounted last decided the shape
+    // for both — the loser read undefined and all counters fell back to 0 while
+    // the API correctly returned 32 assigned tasks.
+    const page = await read('pages/MyTasks.tsx');
+    const sidebar = await read('components/AppSidebar.tsx');
+    const hook = await read('hooks/useMyTasksSummary.ts');
+
+    expect(page).toContain('useMyTasksSummary()');
+    expect(sidebar).toContain('useMyTasksSummary()');
+    // The key must be declared in exactly one place.
+    expect(hook).toContain("queryKey: ['my-tasks', 'summary']");
+    expect(page).not.toContain("queryKey: ['my-tasks', 'summary']");
+    expect(sidebar).not.toContain("queryKey: ['my-tasks', 'summary']");
+    // Neither consumer may re-declare the query locally any more.
+    expect(page).not.toContain("api.get('/cards/my-tasks?limit=1')");
+    expect(sidebar).not.toContain("api.get('/cards/my-tasks?limit=1')");
+    // The sidebar must read through the envelope, not off a bare summary.
+    expect(sidebar).toContain('myTasksSummary?.summary?.openAssignedCount ?? 0');
   });
 });
 

@@ -51,6 +51,7 @@ import {
 import { chatService } from '../lib/chatService';
 import { useOpenCreateWorkspace } from './workspaces/GlobalCreateWorkspaceDialog';
 import { usePermissions } from '../hooks/usePermissions';
+import { useMyTasksSummary } from '../hooks/useMyTasksSummary';
 import { UserProfileDropdown } from './UserProfileDropdown';
 import { getInitials } from '../utils/avatar';
 
@@ -132,21 +133,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     [chatChannels]
   );
 
-  // Open assigned-task count for the My Tasks badge. Same query key as the
-  // My Tasks page summary (limit=1 envelope) — shared cache, no extra fetch
-  // once the page has loaded; covered by the same ['my-tasks'] invalidations.
-  const { data: tasksSummary } = useQuery({
-    queryKey: ['my-tasks', 'summary'],
-    queryFn: async () => {
-      const res = await api.get('/cards/my-tasks?limit=1');
-      return res.data?.summary;
-    },
-    staleTime: 60_000,
-    placeholderData: (prev) => prev,
-  });
+  // Open assigned-task count for the My Tasks badge. Shares the page's
+  // ['my-tasks','summary'] cache entry via useMyTasksSummary, so there is no
+  // extra fetch once the page has loaded and the same ['my-tasks'] invalidations
+  // cover it. It must stay on that shared hook: a local queryFn returning a bare
+  // `summary` overwrote the entry's shape and zeroed the page's counters.
+  const { data: myTasksSummary } = useMyTasksSummary();
 
-  const openTasksCount = tasksSummary?.openAssignedCount ?? 0;
-  const overdueTasksCount = tasksSummary?.overdueCount ?? 0;
+  const openTasksCount = myTasksSummary?.summary?.openAssignedCount ?? 0;
+  const overdueTasksCount = myTasksSummary?.summary?.overdueCount ?? 0;
 
   // Notification Center badge — same key as the inbox hook, shared cache.
   // This duplicate query owned a SECOND 30s interval on the same key (on top of

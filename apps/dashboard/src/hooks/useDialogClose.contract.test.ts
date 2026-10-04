@@ -232,5 +232,30 @@ describe('dialog close contract', () => {
     expect(src.includes("addEventListener('keydown', onKey, true)")).toBe(true);
   });
 
+  it('TaskDetailView registers its close handlers BEFORE any early return', async () => {
+    // Regression: the four useDialogClose() calls sat AFTER the
+    // `if (isCardLoading)` / `if (!card)` guards. They were skipped on the
+    // loading render and ran on the next one, so React threw "Rendered more
+    // hooks than during the previous render" and the error boundary took down
+    // the whole page. Hook order must be unconditional.
+    const src = await readFile(join(SRC, 'components/board/TaskDetailView.tsx'), 'utf-8');
+    const firstHook = src.indexOf('useDialogClose({');
+    const loadingGuard = src.indexOf('if (isCardLoading)');
+    const missingCardGuard = src.indexOf('if (!card)');
+
+    expect(firstHook).toBeGreaterThan(-1);
+    expect(loadingGuard).toBeGreaterThan(-1);
+    expect(missingCardGuard).toBeGreaterThan(-1);
+
+    // Every guard that returns early must come after the last close hook.
+    const lastHook = src.lastIndexOf('useDialogClose({');
+    expect(loadingGuard).toBeGreaterThan(lastHook);
+    expect(missingCardGuard).toBeGreaterThan(lastHook);
+
+    // And no early return may sit between the hooks and the main render.
+    const between = src.slice(lastHook, src.indexOf('return (', lastHook));
+    expect(between).not.toMatch(/if \([^)]*\) \{\s*return/);
+  });
+
   void SELF_MANAGED;
 });

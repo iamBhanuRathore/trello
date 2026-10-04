@@ -10,6 +10,7 @@ import {
   projects,
 } from '../../db/schema/index';
 import { eventBus } from '../../lib/event-bus';
+import { logger } from '../../lib/logger';
 import { errorMessage, errorCode, errorResponseStatus, errorStatus } from '../../lib/errors';
 import { updateCard } from '../cards/service';
 import {
@@ -345,7 +346,14 @@ export async function pushCardToGoogle(
           calendarId: conn.calendarId,
           eventId: existing.providerEventId,
         })
-      ).catch(() => {});
+      ).catch((err: unknown) => {
+        // Stale provider id (event deleted in Google) — drop the link and let
+        // the next push re-create it. Logged so a chronic 404/410 shows up.
+        logger.warn(
+          { err: errorMessage(err), event_id: existing.providerEventId },
+          'Google Calendar event delete failed; unlinking'
+        );
+      });
       await db.delete(calendarEventLinks).where(eq(calendarEventLinks.id, existing.id));
     }
     return { pushed: false };
@@ -480,11 +488,19 @@ export async function scheduleCard(
     .limit(1)
     .catch(() => [null] as any);
   if (conn) {
+    // Best-effort push: the card is already scheduled locally, so a Google
+    // failure must not fail the request. Swallowed silently, though, it left no
+    // trace at all when the OAuth token had gone stale.
     await pushCardToGoogle(db, conn.id, organizationId, {
       ...updated,
       scheduledStart: start,
       scheduledEnd: end,
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      logger.warn(
+        { err: errorMessage(err), card_id: cardId, calendar_connection_id: conn.id },
+        'Best-effort Google Calendar push failed'
+      );
+    });
   }
 
   await eventBus.broadcast(`board:${(updated as any).listId || ''}`, 'card.scheduled', updated);
@@ -527,7 +543,24 @@ export async function createExternalEvent(
         },
       })
     ));
-  } catch {
+  } catch (err: unknown) {
+    // A bare `catch {}` here returned an undiagnosable 502: an expired refresh
+    // token, a missing scope, a bad calendarId and the 15s timeout all produced
+    // the same opaque message with the real cause discarded. Mirror the
+    // pullExternalEvents path — log it and persist it on the connection, which
+    // is also what drives the reconnect affordance in the calendar header.
+    const reason = errorMessage(err).slice(0, 500);
+    logger.warn(
+      { err: reason, user_id: userId, calendar_id: conn.calendarId },
+      'Google Calendar event creation failed'
+    );
+    await db
+      .update(calendarConnections)
+      .set({ lastError: reason, updatedAt: new Date() })
+      .where(eq(calendarConnections.id, conn.id))
+      .catch((dbErr: unknown) => {
+        logger.error({ err: errorMessage(dbErr) }, 'Failed to persist calendar lastError');
+      });
     throw httpError(502, 'Google Calendar event creation failed');
   }
 
