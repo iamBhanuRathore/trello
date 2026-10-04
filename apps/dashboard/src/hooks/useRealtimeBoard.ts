@@ -6,7 +6,7 @@ import type { PresenceUser } from '../components/board/PresenceAvatars';
 
 const WS_URL = import.meta.env.VITE_API_URL
   ? String(import.meta.env.VITE_API_URL).replace(/^http/, 'ws')
-  : 'ws://localhost:3001';
+  : 'ws://localhost:3001/v1';
 
 const HEARTBEAT_MS = 25_000;
 const RECONNECT_BASE_MS = 1_000;

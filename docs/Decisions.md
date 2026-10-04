@@ -1841,3 +1841,17 @@ So the tree was authoritative and correct, and the second copy was permanently a
 **Alternatives considered:** (a) per-instance `aria-label`/color overrides at each flagged node (rejected — the same pairs recur on every page; whack-a-mole); (b) `sideEffects`-style global suppressions or `disableRules` for portal `region` noise (rejected — the dropdown test instead scans the converted trigger closed and asserts keyboard-open functionally, which covers the conversion without blessing library portal architecture).
 
 **Decision:** fix the layer. One `<main>` per authed page (layout div, library main keeps the landmark); token values moved to indigo-600/slate-600/red-600/emerald-700/amber-700 after computing every affected pair ≥4.5 (white-on-primary 6.29, muted-on-muted 6.92, destructive-on-white 4.83). Benchmark: Linear and GitHub both hold body/secondary text at ≥4.5 in light mode and keep status badges at 700-weight hues on tinted backgrounds — the new values match that shape. The `dialog-close` dirty-Escape failure was verified pre-existing via `git stash` on the clean tree and left alone.
+
+## 2026-10-05 — Elysia Plugins Don't Propagate mapResponse (and Loose Generics Poison Eden)
+
+**Context:** the API `nosniff` header needed to ride the existing `mapResponse` hook in `index.ts`. First attempt — a `new Elysia().mapResponse(...)` instance via `.use()` — silently did nothing (verified empirically: header absent). Second attempt — a function-form plugin with an `Elysia<any, …>` parameter — propagated the header but widened the App type, breaking the dashboard's Eden Treaty inference (`api.ts` `edenV1.import…` and `ImportModal` `res.board` errors on files nobody touched).
+
+**Alternatives considered:** (a) keep the function plugin and cast at the call site (rejected — the poisoning happens through the generic chain, casts at use-site don't contain it); (b) assert headers via live-server tests (rejected — couples unit tests to a running backend).
+
+**Decision:** a plain exported function (`applySecurityHeaders(set)`) called inside the existing `mapResponse` — zero type-surface change, unit-tested directly including the header-preserving case. Lesson worth keeping: in Elysia, hook-sharing must go through plain functions called from host-scope hooks, never through plugin instances or loosely-typed plugin functions, when the App type feeds Eden. Any future `.use()` addition to `index.ts` must re-run the dashboard `tsc -b --force` (incremental cache hides exactly this failure class).
+
+## 2026-10-05 — CSP Report-Only With the Console as Sink, No report-uri Endpoint
+
+**Context:** Report-Only without an observable sink teaches nothing. Options were a backend `/csp-reports` mailbox (new writes surface, retention, tests) or the browser console (report-only violations already log there) asserted by a Playwright flow spec.
+
+**Decision:** console + `csp-flow.spec.ts` (login → calendar → chat → billing, zero CSP errors). No new backend surface for a mailbox. The spec is meaningful now (validates the harness against the real authed routes, fails loudly on any CSP console text) and becomes the enforcement flip gate on the deployed URL. Benchmark: Solito/Expo-web and Cal.com both run report-only-to-console during rollout before promoting; a dedicated collector only pays off with multi-origin production traffic, which this SPA doesn't have yet.

@@ -6,7 +6,7 @@ import { chatService, type ChatChannel, type ChatMessageItem } from '../lib/chat
 
 const WS_URL = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws')
-  : 'ws://localhost:3001';
+  : 'ws://localhost:3001/v1';
 
 /** Minimum gap between full ['chat','channels'] refetches. Bursts coalesce. */
 const CHANNELS_REFRESH_MIN_GAP_MS = 8000;

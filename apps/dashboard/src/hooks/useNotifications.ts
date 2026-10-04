@@ -76,7 +76,7 @@ export function useNotifCrossTabSync(): void {
 
 const WS_URL = import.meta.env.VITE_API_URL
   ? (import.meta.env.VITE_API_URL as string).replace(/^http/, 'ws')
-  : 'ws://localhost:3001';
+  : 'ws://localhost:3001/v1';
 
 /** Invalidate inbox caches on `notifications:new` push, with reconnect backoff. */
 export function useNotificationRealtime(enabled = true): void {

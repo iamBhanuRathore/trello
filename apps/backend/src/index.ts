@@ -8,6 +8,7 @@ import { ensurePermissionsSeeded } from './modules/roles/service';
 import { redisService, disconnectRedis } from './redis';
 import { workerService } from './lib/workers';
 import { healthRoutes } from './modules/health/routes';
+import { applySecurityHeaders } from './lib/security-headers';
 import { setupRealtimeEventBus } from './modules/realtime/routes';
 import { v1Routes } from './routes/v1';
 import { applyCorsHeaders, isAllowedOrigin, resolveOrigin } from './middleware/cors';
@@ -71,6 +72,7 @@ export const app = new Elysia()
   .mapResponse(({ request, set }) => {
     if (!set.headers) set.headers = {};
     applyCorsHeaders(set.headers as Record<string, any>, request);
+    applySecurityHeaders(set);
   })
   .use(
     swagger({
