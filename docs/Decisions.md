@@ -1721,3 +1721,26 @@ All six remaining instances were **latent**: they would have crashed the same wa
 1. **Hoist, do not restructure.** All eleven hooks depend only on `useState` values, so moving them above the guards is behaviour-preserving. Extracting a wrapper component per guard would have been a far larger diff across seven files for no behavioural gain.
 2. **Guard the whole class with an AST check, not a grep.** `hooks/hookOrder.contract.test.ts` walks the TypeScript AST and fails on any `useX()` call that is a _sibling statement after_ a guard-returning `if`. A textual scan cannot distinguish that from a hook legitimately nested inside a conditional, so grep would have been both noisy and unreliable. Two details were load-bearing: `forwardRef`/`memo` components are `FunctionExpression`s, not declarations (an earlier scanner that only matched declarations reported the pre-fix file as clean — it was checked against the known-bad file and found wanting before being trusted); and the suite carries a **self-check on a synthetic fixture** so a silently broken walk fails loudly instead of passing for the wrong reason. Dropping the pre-fix `TaskDetailView` back in made it report all four violations by name.
 3. **Deliberately scoped to this one hazard.** This is not a general Rules-of-Hooks linter; `react-hooks/rules-of-hooks` already is. Duplicating it would add a second, weaker source of truth.
+
+### 2026-10-04 — "Create Workspace" Was a Dead Button: A Close-Only Sink Wired To An Open Request
+
+**Context:** the "+ Create Workspace" button on `/workspaces` did nothing. The Network panel stayed empty after clicking — no request, no error, no console output. AGENTS.md §7: "every visible button must either act or be disabled… A control that silently does nothing is a defect, not a limitation."
+
+**Mechanism.** `pages/Workspaces.tsx` rendered a _controlled_ creator:
+
+```
+const [createOpen, setCreateOpen] = useState(false);
+const { handleOpenChange } = useDialogClose({ isOpen: createOpen, onClose: () => setCreateOpen(false) });
+…
+<CreateWorkspaceDialog open={createOpen} onOpenChange={handleOpenChange} />
+```
+
+`createOpen` was **never set to `true`** — there is no `setCreateOpen(true)` in the file. And it could not have worked anyway, because `useDialogClose`'s `handleOpenChange` is close-only by contract; its entire body is `if (!nextOpen) requestClose()`. The visible button was `CreateWorkspaceDialog`'s internal Radix `DialogTrigger`, so a click produced `onOpenChange(true)`, which the hook deliberately ignored.
+
+`CreateWorkspaceDialog` had already tried to defend itself and its own comment records the confusion — `handleDialogOpenChange` calls `setDialogOpen(true)` on open, because "handleOpenChange alone swallows opens, which left this button dead". That defence works in _uncontrolled_ mode. In _controlled_ mode `setDialogOpen` only forwards to `onOpenChange` (`if (!isControlled) setInternalOpen(v)`), so the fix routes straight back into the no-op. The page was the only controlled consumer.
+
+**Fix.** The page now opens the shell-level `GlobalCreateWorkspaceDialog` through `useOpenCreateWorkspace()` — the same `?createWorkspace=1` path the sidebar "+" already used, and the path the page's own comment at `Workspaces.tsx:31` described as intended. The dead controlled instance, its `createOpen` state and its close-only handler are gone. The button keeps the `workspace.create` permission gate, so a control the user cannot act on still does not render. The shell's `onSuccess` already invalidated `['workspaces']` **and** `['workspaces','tree']`, so the page's tree query still refreshes.
+
+**A general rule was written, measured, and deliberately not shipped.** The tempting invariant is "a controlled dialog handed a close-only `onOpenChange` must be gated on the state that opens it". It is not statically decidable per file. Matching handler names by regex first produced **33 offenders, all false positives**, because `handleDialogOpenChange` — a legitimate open+close wrapper several dialogs build on — matches the same shape. Resolving the close-only names properly from the `useDialogClose` destructuring cut it to a set that is entirely correct code: `AppearanceModal`, `CreateTaskModal`, `TaskDetailView`'s `ConfirmDialog`s and the rest are controlled by their **parent**, so their `open` state is not in the same file and no in-file gate can be required. Shipping a rule that flags working code trains people to ignore the test, so the two assertions that pin the real regression are kept instead — both verified to fail when the dead code is reinstated.
+
+**Scope check.** `CreateWorkspaceDialog` is the only component combining a `DialogTrigger`, a controlled `open` prop and `useDialogClose`, so unlike the hooks-order defect this was an isolated bug, not a systemic one.

@@ -2931,3 +2931,17 @@ All eleven hooks now sit above their guards (they read only `useState` values, s
 New `hooks/hookOrder.contract.test.ts` walks the TypeScript AST and fails on any `useX()` sibling statement following a guard-returning `if`. Grep cannot make that distinction. It includes a self-check on a synthetic fixture so a broken walk fails loudly rather than passing for the wrong reason, and it was verified to name all four pre-fix `TaskDetailView` violations when the old file was dropped back in. Scoped to this one hazard on purpose — `react-hooks/rules-of-hooks` already covers the general case.
 
 Validation: dashboard 61 pass / 0 fail (7 files), typecheck 5/5, lint clean.
+
+### 2026-10-04 — "+ Create Workspace" was a dead button
+
+The button on `/workspaces` did nothing, with an empty Network panel on click (no request was ever made). `Workspaces.tsx` rendered a _controlled_ `<CreateWorkspaceDialog open={createOpen} onOpenChange={handleOpenChange} />` where `createOpen` was initialised to `false` and **never set to true anywhere in the file** — and could not have worked regardless, because `useDialogClose`'s `handleOpenChange` is close-only (`if (!nextOpen) requestClose()`), so the Radix `DialogTrigger`'s open request was swallowed.
+
+`CreateWorkspaceDialog` had already tried to patch this from its side (its comment notes handleOpenChange "swallows opens, which left this button dead"), but that defence only applies in uncontrolled mode; in controlled mode it just forwards to the same no-op.
+
+The page now calls `useOpenCreateWorkspace()` and opens the shell-level `GlobalCreateWorkspaceDialog` via `?createWorkspace=1` — the same path the sidebar "+" uses, and what the page's own comment always described. The dead controlled instance, its state and its close-only handler are removed; the button keeps the `workspace.create` permission gate; the shell's `onSuccess` already invalidates both `['workspaces']` and `['workspaces','tree']`, so the page still refreshes.
+
+Two guards added to `dead-ui.contract.test.ts` (Workspaces must open via `useOpenCreateWorkspace` and stay permission-gated; the creator must be mounted exactly once, by the shell) — both confirmed to fail when the dead code is reinstated. A general "close-only handler must be gated on its open state" rule was written, measured at **33 false positives**, and deliberately not shipped: matching by name misreads the legitimate `handleDialogOpenChange` wrapper, and resolving the names properly still flags only correct code, because those dialogs are controlled by their parent and the state is not in the same file. The reasoning is recorded in the test so nobody re-adds it.
+
+Scope: `CreateWorkspaceDialog` is the only component combining a `DialogTrigger`, a controlled `open` prop and `useDialogClose`, so this was isolated — unlike the hooks-order defect, which was systemic across 7 components.
+
+Validation: dashboard 63 pass / 0 fail (7 files), typecheck 5/5, lint clean.

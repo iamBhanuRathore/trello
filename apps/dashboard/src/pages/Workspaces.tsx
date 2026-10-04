@@ -6,7 +6,7 @@ import { Button } from '@boardly/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@boardly/ui/dialog';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
-import { Briefcase, MoreHorizontal, Trash2, Edit2, AlertTriangle } from 'lucide-react';
+import { Briefcase, MoreHorizontal, Trash2, Edit2, AlertTriangle, Plus } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -19,21 +19,31 @@ import { useDialogClose } from '../hooks/useDialogClose';
 import { usePermissions } from '../hooks/usePermissions';
 import {
   WorkspacesOverview,
-  CreateWorkspaceDialog,
   CreateProjectDialog,
   ProjectsList,
+  useOpenCreateWorkspace,
 } from '../components/workspaces';
 
 export function Workspaces() {
   const queryClient = useQueryClient();
   const [editingWs, setEditingWs] = useState<{ id: string; name: string } | null>(null);
   const [deletingWs, setDeletingWs] = useState<{ id: string; name: string } | null>(null);
-  // Sidebar "+" / header Create menu open the shell-level GlobalCreateWorkspaceDialog
-  // (DashboardLayout) via ?createWorkspace=1 — no page-local param handling here.
-  const [createOpen, setCreateOpen] = useState(false);
+  // The visible "+ Create Workspace" button opens the shell-level
+  // GlobalCreateWorkspaceDialog (DashboardLayout) via ?createWorkspace=1, the same
+  // single creator the sidebar "+" uses.
+  //
+  // It used to render its OWN <CreateWorkspaceDialog open={createOpen}> instead,
+  // and that button was dead: `createOpen` was never set to true, and
+  // `useDialogClose().handleOpenChange` only acts on close (`if (!nextOpen)
+  // requestClose()`), so the trigger's open request was swallowed. Controlled
+  // mode forwarded to that no-op and there is no fallback — AGENTS.md §7, a
+  // visible control that silently does nothing.
+  const openCreateWorkspace = useOpenCreateWorkspace();
   const { can, isLoading: permsLoading } = usePermissions();
   const canUpdateWs = permsLoading ? false : can('workspace.update');
   const canDeleteWs = permsLoading ? false : can('workspace.delete');
+  // A create button the user cannot act on must not render at all.
+  const canCreateWs = permsLoading ? false : can('workspace.create');
 
   const {
     data: workspaces,
@@ -92,13 +102,6 @@ export function Workspaces() {
       0
     ) || 0;
 
-  // Single close path (AGENTS.md §11) — requestClose is idempotent per
-  // open session, so X / backdrop / Esc cannot double-close.
-  const { handleOpenChange } = useDialogClose({
-    isOpen: createOpen,
-    onClose: () => setCreateOpen(false),
-  });
-
   return (
     <div className="w-full mx-auto flex flex-col gap-6">
       {/* Header */}
@@ -109,11 +112,15 @@ export function Workspaces() {
             Organize teams, projects, and Kanban boards across your organization.
           </p>
         </div>
-        <CreateWorkspaceDialog
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['workspaces'] })}
-          open={createOpen}
-          onOpenChange={handleOpenChange}
-        />
+        {canCreateWs && (
+          <Button
+            size="sm"
+            className="h-9 text-xs font-semibold gap-1.5 shadow-xs"
+            onClick={openCreateWorkspace}
+          >
+            <Plus className="h-4 w-4" /> Create Workspace
+          </Button>
+        )}
       </div>
 
       {/* Quick KPI Overview Bar */}

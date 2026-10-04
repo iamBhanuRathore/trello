@@ -22,7 +22,8 @@ async function tsxFiles(dir: string): Promise<string[]> {
   for (const entry of await readdir(join(APP, dir), { withFileTypes: true })) {
     const rel = `${dir}/${entry.name}`;
     if (entry.isDirectory()) out.push(...(await tsxFiles(rel)));
-    else if (entry.name.endsWith('.tsx')) out.push(rel);
+    // Normalise: the walk starts at '.', so paths would otherwise be './foo'.
+    else if (entry.name.endsWith('.tsx')) out.push(rel.replace(/^\.\//, ''));
   }
   return out;
 }
@@ -250,5 +251,72 @@ describe('saved-search rows are fully clickable and touch-deletable', () => {
     // (AGENTS.md §9: hover-only actions need a touch equivalent).
     expect(row).not.toMatch(/opacity-0\s+group-hover:opacity-100/);
     expect(row).toContain('sm:opacity-0 sm:group-hover:opacity-100');
+  });
+});
+
+/**
+ * A CONTROLLED dialog whose only opener is a Radix `DialogTrigger` is dead if its
+ * `onOpenChange` is `useDialogClose().handleOpenChange`.
+ *
+ * `handleOpenChange` is the close path by contract — its whole body is
+ * `if (!nextOpen) requestClose()`. It deliberately ignores open requests. So
+ * when a parent passes it to a controlled `<Dialog open={x}>` whose trigger is
+ * the thing that has to set `x`, Radix calls `onOpenChange(true)`, the hook
+ * swallows it, `x` never changes, and the dialog cannot be opened at all.
+ *
+ * This shipped: `pages/Workspaces.tsx` rendered
+ * `<CreateWorkspaceDialog open={createOpen} onOpenChange={handleOpenChange} />`
+ * with `createOpen` initialised to `false` and **no `setCreateOpen(true)` anywhere
+ * in the file**. The visible "+ Create Workspace" button did nothing, and the
+ * Network panel stayed empty on click because no request was ever made.
+ * `CreateWorkspaceDialog` had already tried to defend itself —
+ * `handleDialogOpenChange` calls `setDialogOpen(true)` on open, with a comment
+ * saying handleOpenChange "swallows opens, which left this button dead" — but in
+ * controlled mode `setDialogOpen` only forwards to `onOpenChange`, so the
+ * defence routes straight back into the no-op.
+ *
+ * Two ways to be right: open it programmatically (which the fix does), or make
+ * `onOpenChange` handle opens too. Never rely on a close-only sink to open.
+ */
+describe('controlled dialogs are not wired to a close-only onOpenChange', () => {
+  /** Strip comments so prose quoting dead JSX is not scanned as code. */
+  const code = (src: string): string =>
+    src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+  // A repo-wide "close-only handler must be gated on its open state" rule was
+  // written and measured, then deliberately NOT shipped. Resolving the close-only
+  // names from the `useDialogClose` destructuring (rather than by regex, which
+  // misreads the legitimate open+close wrapper `handleDialogOpenChange`) cut the
+  // false positives from 33 to a set that is entirely correct code: dialogs like
+  // `AppearanceModal` and `CreateTaskModal` are controlled by their PARENT, so
+  // the `open` state is not in the same file and no in-file gate can be required.
+  // The property is not statically decidable per file, so the assertions below
+  // pin the actual regression instead of a rule that cannot hold.
+
+  it('the Workspaces create button opens the shell creator instead of a dead controlled dialog', async () => {
+    const src = code(await read('pages/Workspaces.tsx'));
+    // It must not own a controlled creator...
+    expect(src).not.toContain('open={createOpen}');
+    expect(src).not.toMatch(/setCreateOpen\(true\)/);
+    expect(src).not.toMatch(/useState\(false\)[^\n]*createOpen/);
+    // ...and must open the one shell-level creator, the same path the sidebar uses.
+    expect(src).toContain('useOpenCreateWorkspace()');
+    expect(src).toContain('onClick={openCreateWorkspace}');
+    // The button stays permission-gated: a create control the user cannot act
+    // on must not render (AGENTS.md §7).
+    expect(src).toContain("can('workspace.create')");
+  });
+
+  it('the creator is mounted exactly once, by the shell', async () => {
+    const mounters: string[] = [];
+    for (const rel of await tsxFiles('.')) {
+      const src = code(await read(rel));
+      // The definition itself is not a mount.
+      if (/export function CreateWorkspaceDialog/.test(src)) continue;
+      if (/<CreateWorkspaceDialog[\s>]/.test(src)) mounters.push(rel);
+    }
+    // A second mount is how the dead controlled instance came to exist in the
+    // first place; two instances also mean two competing URL-param readers.
+    expect(mounters).toEqual(['components/workspaces/GlobalCreateWorkspaceDialog.tsx']);
   });
 });
