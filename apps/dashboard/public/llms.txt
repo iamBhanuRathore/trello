@@ -1,0 +1,9 @@
+# Boardly
+
+Boardly is an enterprise project and sprint management app: team boards,
+sprints, chat, calendars, and billing.
+
+- Product: https://trello-dashboard-sepia.vercel.app/
+- Public pages: /login, /signup, /pricing
+- The app itself requires sign-in; boards, chat, and admin routes are
+  authenticated and intentionally not crawlable (see robots.txt).

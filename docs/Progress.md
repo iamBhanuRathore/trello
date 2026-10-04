@@ -4,6 +4,7 @@
 
 - Focus on Phase 2 polish items (Admin Panels).
 
+**Current state — 2026-10-05:** Lighthouse remediation complete (A perf, B a11y, C headers, D static). Final local prod mobile: 92 / 100 / 100 / 91. Deployed re-measurement + CSP enforcement flip are user-side deploys. 4 commits local, no push.
 **Current state — 2026-10-05:** Workstream C done: vercel.json Report-Only CSP + framing/sniffing/HSTS/COOP headers, csp-flow gate spec, WS /v1 fallback fix, API nosniff + tests. LH mobile 92 / 100 / 100 / 91, typecheck 5/5. Next: D (robots/llms).
 **Current state — 2026-10-05:** Workstream B done: 6 button conversions, light/midnight contrast tokens ≥4.5, single-`<main>` layouts, new axe suite 6/6 green, LH mobile 92 / 100 / 100 / 91. `dialog-close` dirty-Escape failure verified pre-existing (clean tree). Next: C (headers), D (robots/llms).
 **Current state — 2026-10-05:** Lighthouse remediation Step 1 + Workstream A done: prod numbers replace the dev baseline (local mobile 82→92 / 98 / 100 / 91, deployed 86), via latin-only font preload, lazy auth layouts, and a tooltip subpath import (entry 188→92 KiB). Authenticated waterfall deferred (no seeded stack). Next: B (a11y + axe), C (headers), D (robots/llms).
@@ -3044,3 +3045,7 @@ C0: Vercel serves index.html (`apps/dashboard/vercel.json` SPA rewrite; backend 
 Real bug found by the console probe: all three realtime hooks fell back to `ws://localhost:3001/realtime/ws` (missing `/v1`) when `VITE_API_URL` is unset — the running dev server has no such var (REST fallback has `/v1`, WS didn't), so realtime was dead in exactly that setup. One-line fix ×3, probe re-run silent. Backend: `applySecurityHeaders` (nosniff) in the `mapResponse` hook + unit tests.
 
 Validation: backend header tests 3 pass, dashboard 87 pass (incl. 7 vercel-policy pins), csp-flow + axe 6/6 pass, typecheck 5/5 (real exit codes — earlier `| tail` checks masked a failure class, now using redirections), lint clean, LH mobile 92 / 100 / 100 / 91.
+
+### 2026-10-05 — Workstream D (static files): robots.txt + llms.txt
+
+`apps/dashboard/public/robots.txt` (`Disallow: /` — auth-gated SPA, no sitemap per plan) and minimal `llms.txt` (product blurb + public pages only, no routes/API internals). Verified served from the prod preview build. No code changes; no test surface (static files).
