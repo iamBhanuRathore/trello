@@ -4,6 +4,7 @@
 
 - Focus on Phase 2 polish items (Admin Panels).
 
+**Current state — 2026-10-04:** review-before-clone shipped: "Clone Task" / "Clone & Create Subtask" open a prefilled editable draft (`CloneCardDialog`) and submit overrides to `POST /cards/:id/clone`, with the private-task actor gate wired through. Validation: backend 473 pass / 1 skip / 0 fail, dashboard 80 pass / 0 fail, typecheck 5/5, lint clean. See the Log entry at the end of this file.
 **Current state — 2026-10-04:** the P0–P4 fix-only security/integrity/stability/UX pass is **complete** (P0 and P1 previously documented below; P2, P3 and P4 in the three entries at the end of this file). 20 local commits on `main`, all unpushed at the time of writing. The headline results: cross-tenant trash/subtask/presence reads closed; Stripe webhooks made idempotent with a claimed `processing` state; degraded modes enforce locally instead of failing open; `subtasksTotal` and cross-board cache invalidation fixed; silent 200s replaced with real errors; every dialog on one close path with correct Escape precedence; board drag-and-drop placement, rollback and touch drag corrected; query failures no longer render as legitimate empty states; dead controls removed; and the dashboard suite is now actually executed by CI.
 
 **Known remaining work is listed in `docs/Roadmap.md` under "Open items from the 2026-10-04 fix-only pass"** — automation rule editing, the deferred empty-org 400, the Member sprint/phase product decision, the log-correlation blocker on the historical exploitation audit, and the remainder of the backend test-isolation cleanup. Nothing in that list is a regression; all of it predates the pass.
@@ -3000,3 +3001,15 @@ Fixed in that order: `listCardLinks` now takes an actor and calls `requireCardAc
 Tests: two new cases in `git.test.ts` (private card refused to a member who cannot see it, creator still allowed; public card still readable) and the three existing call sites updated to pass an actor. Verified the private-card test fails when the `requireCardAccess` call is removed.
 
 Validation: backend 467 pass / 1 skip / 0 fail, dashboard 73 pass / 0 fail, typecheck 5/5, lint clean.
+
+### 2026-10-04 — Review-before-create for Clone Task / Clone & Create Subtask
+
+"Clone Task" and "Clone & Create Subtask" used to call the clone endpoint straight from the overflow menu — the title was templated in the handler and persisted on click, so there was no moment to correct anything. Both now open `CloneCardDialog` (`apps/dashboard/src/components/board/clone/`), a prefilled draft (title, description, list, assignee, due date, priority, stage, story points, labels; read-only checklist summary) that only persists on submit.
+
+Backend: `CloneCardInput` extended with optional overrides falling back to the original per field (`undefined` = keep, `null` = clear); `labelIds` replaces the copied set, a single `assigneeId` replaces the copied assignees; the `/cards/:id/clone` route schema extended and `actor` wired so `getCard` runs `requireCardAccess` (omitting it silently drops the private-task gate — the same trap as the git helpers). Frontend: `TaskDetailView` keeps a `cloneMode: 'clone' | 'subtask' | null` state instead of the immediate `cloneCardMutation`; subtask mode parents the clone, plain clone sends no parent.
+
+Found while finishing: the dialog's labels query used a bare `/labels?boardId=` path that 404s — every other surface uses `/boards/:id/labels`. Fixed, and pinned by the new prefill contract test so it cannot regress silently into an empty Labels section.
+
+Tests: 6 backend cases in `card-clone.test.ts` (overrides, fallback, null-clear, labels, assignees, private-card gate); `cloneReview.contract.test.ts` (no clone-on-click path remains, dialog submits to `/clone` with every editable field, re-seeds on every open, confirm button states nothing-is-saved-until-then); `cloneDialog.prefill.contract.test.ts` (seed/submit parity per field, checklists read-only, board labels endpoint).
+
+Validation: backend 473 pass / 1 skip / 0 fail, dashboard 80 pass / 0 fail, typecheck 5/5, lint clean (1 pre-existing `lastReadAt` unused-param warning in untouched `chat-messages.ts`).

@@ -21,16 +21,44 @@ export interface CloneCardInput {
   cloneChecklists?: boolean;
   cloneLabels?: boolean;
   cloneAssignees?: boolean;
+  /**
+   * Field overrides from the review-before-clone dialog. Every one is optional
+   * and falls back to the original's value, so a caller that sends none behaves
+   * exactly as before. `labelIds` replaces the copied set rather than adding to
+   * it — an empty array means "no labels", which is why it cannot be expressed
+   * by `cloneLabels` alone.
+   */
+  description?: string | null;
+  dueDate?: string | null;
+  stageId?: string | null;
+  priorityId?: string | null;
+  storyPoints?: number | null;
+  estimateMinutes?: number | null;
+  assigneeId?: string | null;
+  labelIds?: string[];
+}
+
+/**
+ * Resolve an override against the original, treating `undefined` as "not
+ * supplied" and `null` as a deliberate clear. Needed because JSON round-trips
+ * both: omitting a key gives `undefined`, sending `null` gives `null`.
+ */
+function override<T>(supplied: T | null | undefined, fallback: T): T | null {
+  if (supplied === undefined) return fallback;
+  return supplied;
 }
 
 export async function cloneCard(
   db: Database,
   cardId: string,
   organizationId: string,
-  input: CloneCardInput = {}
+  input: CloneCardInput = {},
+  actor?: { userId: string; isPlatformAdmin?: boolean }
 ) {
-  // 1. Fetch original card
-  const original = await getCard(db, cardId, organizationId);
+  // 1. Fetch original card. `actor` is what makes getCard run requireCardAccess —
+  // without it the private-task gate is skipped and a private card can be
+  // cloned by anyone in the org who knows its id.
+  const original = await getCard(db, cardId, organizationId, actor);
   if (!original) throw httpError(404, 'Card not found');
 
   const targetListId = input.listId || original.listId;
@@ -70,12 +98,20 @@ export async function cloneCard(
       listId: targetListId,
       parentCardId: input.parentCardId || null,
       title: clonedTitle,
-      description: original.description,
+      description: override(input.description, original.description),
       position: newPosition,
-      dueDate: original.dueDate ? new Date(original.dueDate) : null,
-      stageId: original.stageId || null,
-      storyPoints: original.storyPoints || null,
-      estimateMinutes: original.estimateMinutes || null,
+      dueDate:
+        input.dueDate === undefined
+          ? original.dueDate
+            ? new Date(original.dueDate)
+            : null
+          : input.dueDate
+            ? new Date(input.dueDate)
+            : null,
+      stageId: override(input.stageId, original.stageId ?? null),
+      priorityId: override(input.priorityId, original.priorityId ?? null),
+      storyPoints: override(input.storyPoints, original.storyPoints ?? null),
+      estimateMinutes: override(input.estimateMinutes, original.estimateMinutes ?? null),
       coverImage: original.coverImage || null,
     })
     .returning();
@@ -147,8 +183,15 @@ export async function cloneCard(
     }
   }
 
-  // 4. Clone Labels
-  if (input.cloneLabels !== false) {
+  // 4. Labels — an explicit labelIds set from the review dialog wins over the
+  // copied set (including an empty array, which means "no labels").
+  if (input.labelIds !== undefined) {
+    if (input.labelIds.length > 0) {
+      await db
+        .insert(cardLabels)
+        .values(input.labelIds.map((labelId) => ({ cardId: cloned.id, labelId })));
+    }
+  } else if (input.cloneLabels !== false) {
     const originalLabels = await db
       .select({ labelId: cardLabels.labelId })
       .from(cardLabels)
@@ -164,8 +207,17 @@ export async function cloneCard(
     }
   }
 
-  // 5. Clone Assignees
-  if (input.cloneAssignees !== false) {
+  // 5. Assignees — a single explicit assignee from the review dialog wins over the
+  // copied set; null clears them.
+  if (input.assigneeId !== undefined) {
+    if (input.assigneeId) {
+      await db.insert(cardAssignees).values({
+        cardId: cloned.id,
+        userId: input.assigneeId,
+        assignedBy: actor?.userId ?? input.assigneeId,
+      });
+    }
+  } else if (input.cloneAssignees !== false) {
     const originalAssignees = await db
       .select({ userId: cardAssignees.userId, assignedBy: cardAssignees.assignedBy })
       .from(cardAssignees)

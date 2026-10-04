@@ -297,7 +297,10 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
     '/:id/clone',
     async ({ params, body, user, set }) => {
       try {
-        return await cloneCard(db, params.id, user.organizationId, body || {});
+        return await cloneCard(db, params.id, user.organizationId, body || {}, {
+          userId: user.userId,
+          isPlatformAdmin: user.isPlatformAdmin,
+        });
       } catch (err: unknown) {
         return handleRouteError(err, set);
       }
@@ -312,6 +315,16 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           cloneChecklists: t.Optional(t.Boolean()),
           cloneLabels: t.Optional(t.Boolean()),
           cloneAssignees: t.Optional(t.Boolean()),
+          // Review-dialog overrides. Each is optional and falls back to the
+          // original's value; null clears the field.
+          description: t.Optional(t.Nullable(t.String())),
+          dueDate: t.Optional(t.Nullable(t.String({ format: 'date-time' }))),
+          stageId: t.Optional(t.Nullable(t.String({ format: 'uuid' }))),
+          priorityId: t.Optional(t.Nullable(t.String({ format: 'uuid' }))),
+          storyPoints: t.Optional(t.Nullable(t.Number())),
+          estimateMinutes: t.Optional(t.Nullable(t.Number())),
+          assigneeId: t.Optional(t.Nullable(t.String({ format: 'uuid' }))),
+          labelIds: t.Optional(t.Array(t.String({ format: 'uuid' }))),
         })
       ),
     }

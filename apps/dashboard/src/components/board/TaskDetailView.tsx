@@ -44,6 +44,7 @@ import { GitDevSection } from './GitDevSection';
 import { TaskChatPane } from './TaskChatPane';
 import { TaskActionRibbon } from './TaskActionRibbon';
 import { ShareTaskModal } from './ShareTaskModal';
+import { CloneCardDialog } from './clone/CloneCardDialog';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { RouteFallback } from '../common/RouteFallback';
 import { Layers } from 'lucide-react';
@@ -106,6 +107,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const [showArchiveConfirm, setShowArchiveConfirm] = useState<boolean>(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
     const [showSubtaskComposer, setShowSubtaskComposer] = useState<boolean>(false);
+    // 'clone' | 'subtask' | null — Clone Task and Clone & Create Subtask both
+    // open the same review dialog instead of cloning on click.
+    const [cloneMode, setCloneMode] = useState<'clone' | 'subtask' | null>(null);
     const [showRateModal, setShowRateModal] = useState<boolean>(false);
     const [userRating, setUserRating] = useState<number>(() => {
       try {
@@ -623,34 +627,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       },
     });
 
-    const cloneCardMutation = useMutation({
-      mutationFn: async (vars: { parentCardId?: string; title?: string }) => {
-        const res = await api.post(`/cards/${cardId}/clone`, {
-          listId: card?.listId,
-          parentCardId: vars.parentCardId,
-          title: vars.title,
-        });
-        return res.data;
-      },
-      onSuccess: (clonedCard, vars) => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId] });
-        if (card?.boardId) {
-          queryClient.invalidateQueries({ queryKey: ['lists', card.boardId] });
-        }
-        if (!vars.parentCardId && clonedCard?.id) {
-          if (onSelectCard) {
-            onSelectCard(clonedCard.id);
-          } else if (mode === 'page') {
-            navigate(`/cards/${clonedCard.id}`);
-          }
-        }
-        toast.success('Task cloned successfully');
-      },
-      onError: (err: unknown) => {
-        toast.error(getApiErrorMessage(err, 'Unable to create the subtask.'));
-      },
-    });
-
     const quickSubtaskMutation = useMutation({
       mutationFn: async (input: { title: string; assigneeId?: string }) => {
         const res = await api.post('/cards', {
@@ -837,9 +813,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
 
     const handleCloneTask = () => {
       if (!need('card.create')) return;
-      cloneCardMutation.mutate({
-        title: `${card?.title || 'Task'} (Copy)`,
-      });
+      setCloneMode('clone');
     };
 
     const handleCreateSubtask = () => {
@@ -994,7 +968,7 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           copiedLink={copiedLink}
           copiedBranch={copiedBranch}
           taskIdentifier={taskIdentifier}
-          isCloning={cloneCardMutation.isPending}
+          isCloning={false}
           onSetMobileActiveTab={setMobileActiveTab}
           onCopyId={async () => {
             const ok = await copyTextToClipboard(taskIdentifier);
@@ -1013,18 +987,13 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           }}
           onOpenShareModal={() => setShowShareModal(true)}
           onCloneTask={() => {
-            if (need('card.create'))
-              cloneCardMutation.mutate({ title: `${card.title || 'Task'} (Copy)` });
+            if (need('card.create')) setCloneMode('clone');
           }}
           onCreateSubtask={() => {
             if (need('card.create')) setShowSubtaskComposer(true);
           }}
           onCloneAsSubtask={() => {
-            if (need('card.create'))
-              cloneCardMutation.mutate({
-                parentCardId: cardId,
-                title: `Subtask: ${card.title || 'Task'}`,
-              });
+            if (need('card.create')) setCloneMode('subtask');
           }}
           onOpenArchiveConfirm={() => {
             if (need('card.delete')) setShowArchiveConfirm(true);
@@ -1331,6 +1300,35 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               }}
             />
           </Suspense>
+        )}
+
+        {/* Review-before-clone: Clone Task / Clone & Create Subtask */}
+        {cloneMode && card && (
+          <CloneCardDialog
+            open={!!cloneMode}
+            mode={cloneMode}
+            card={card}
+            lists={lists}
+            priorities={priorities}
+            stages={(stageTemplates || []).flatMap((t: any) => t.stages || [])}
+            members={[]}
+            currentUser={user}
+            orgId={orgId}
+            parentCardId={cloneMode === 'subtask' ? cardId : undefined}
+            parentCardTitle={card.title}
+            onClose={() => setCloneMode(null)}
+            onCloned={(cloned) => {
+              queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+              if (card.boardId) {
+                queryClient.invalidateQueries({ queryKey: ['lists', card.boardId] });
+              }
+              setCloneMode(null);
+              if (cloned?.id) {
+                if (cloneMode === 'subtask' && onSelectCard) onSelectCard(cloned.id);
+                else if (!onSelectCard && mode === 'page') navigate(`/cards/${cloned.id}`);
+              }
+            }}
+          />
         )}
 
         {/* Share Task Modal */}

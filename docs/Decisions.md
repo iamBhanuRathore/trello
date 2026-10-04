@@ -24,6 +24,16 @@ Short log of significant technical decisions: what was decided, why, and what al
 
 ## Entries
 
+### 2026-10-04 — Review-before-clone submits to POST /cards/:id/clone with per-field overrides
+
+**Context:** "Clone Task" and "Clone & Create Subtask" cloned on click from the overflow menu — the title was templated in the handler and persisted immediately, so the caller never got a moment to correct a title, list, assignee or due date. The fix opens a prefilled draft dialog and only persists on submit. The question is which endpoint the dialog submits to, and how unspecified fields behave.
+
+**Decision:** the dialog submits to `POST /cards/:id/clone` (not `POST /cards`), so checklists, cover image and list-position handling keep their clone semantics — the review step must not quietly downgrade a clone into a fresh card. `CloneCardInput` gains optional overrides (description, dueDate, stageId, priorityId, storyPoints, estimateMinutes, assigneeId, labelIds) resolved by an `override(supplied, fallback)` helper: `undefined` falls back to the original, `null` deliberately clears. `labelIds` replaces the copied set (empty array means "no labels"); a single `assigneeId` replaces the copied assignees (`null` clears). Checklists stay read-only by design — a summary line ("N lists, M items, reset to not done"), never an editable payload. The `actor` that `getCard` needs for its private-task gate is now wired through the clone route; omitting it silently drops the gate, which is how the same trap leaked in the git helpers.
+
+**Alternatives considered:** submitting a fresh `POST /cards` with copied fields (rejected — loses checklists/cover/position, a silent downgrade of what "Clone" means); revert-to-original diffing where only touched fields are sent (rejected — the per-field `undefined`/`null` fallback already gives that, with no dirty-tracking to maintain); making checklists editable in the dialog (rejected — checklist editing belongs to the task view, and partial checklist copies invite data loss).
+
+**Consequences:** any new cloneable card field needs three coordinated touches — `CloneCardInput` + route schema, the dialog's seed state, and the submit payload — pinned by `cloneReview.contract.test.ts` (endpoint + wiring) and `cloneDialog.prefill.contract.test.ts` (seed/submit parity). Benchmark: Jira's "Clone issue" opens a prefilled create screen with the same nothing-saved-until-confirm contract, stated explicitly in the dialog subtitle.
+
 ### 2026-10-03 — File Size Discipline: small modules by default
 
 **Context:** Feature work repeatedly landed in the largest existing component instead of a new sibling module — `TaskDetailView.tsx` (1324), `ChatMessageCard.tsx` (1119), `Billing.tsx` (1040) keep growing. Symptom is visible in the knowledge graph: those files form thin, weakly-connected communities, so the graph stops being a useful navigation index exactly where the code is most complex. Large files also inflate diff/review cost and make regressions hard to isolate.
