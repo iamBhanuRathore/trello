@@ -18,6 +18,7 @@ import {
 import { eventBus } from '../../lib/event-bus';
 import { env } from '../../lib/env';
 import { encryptToken } from '../calendar/google';
+import { loadCardRow, requireCardAccess } from '../cards/access';
 import { GitLinkKind, GitLinkState } from '@boardly/shared-types';
 
 export function httpError(status: number, message: string): Error & { status: number } {
@@ -202,7 +203,22 @@ export async function disconnectRepository(db: Database, organizationId: string,
   return { success: true };
 }
 
-export async function listCardLinks(db: Database, organizationId: string, cardId: string) {
+export async function listCardLinks(
+  db: Database,
+  organizationId: string,
+  cardId: string,
+  actor: { userId: string; isPlatformAdmin?: boolean }
+) {
+  // Private-task gate. This route used to sit behind integration.manage, which
+  // was the only thing stopping a caller reading links on a private card; with
+  // it moved to plain card access the check has to live here or not at all.
+  await requireCardAccess(
+    db,
+    await loadCardRow(db, cardId, organizationId),
+    actor.userId,
+    actor.isPlatformAdmin
+  );
+
   const rows = await db
     .select({
       id: gitLinks.id,

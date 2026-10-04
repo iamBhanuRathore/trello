@@ -94,7 +94,8 @@ export async function requireCardAccess(
   if (!(await canAccessCard(db, card, userId, isPlatformAdmin))) throw privateTaskError();
 }
 
-async function loadCardRow(db: Database, cardId: string, organizationId: string) {
+/** Minimal org-scoped card row for an access decision. Throws 404 if absent. */
+export async function loadCardRow(db: Database, cardId: string, organizationId: string) {
   const [card] = await db
     .select({
       id: cards.id,

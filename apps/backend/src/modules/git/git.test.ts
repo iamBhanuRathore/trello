@@ -3,6 +3,7 @@ import { createHmac } from 'node:crypto';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
+import { eq } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
 import { createWorkspace } from '../workspaces/service';
@@ -160,7 +161,7 @@ describe('Repository management & webhook automation', () => {
   });
 
   it('links commits to cards and posts bot comments on push', async () => {
-    const { organization, card } = await setup();
+    const { organization, card, user } = await setup();
     const owner = `acme${Date.now() % 100000}`;
     await connectRepository(db, organization.id, { owner, repo: 'webapp' });
 
@@ -168,7 +169,7 @@ describe('Repository management & webhook automation', () => {
     expect(res.matchedCards).toBe(1);
     expect(res.linksCreated).toBe(1);
 
-    const links = await listCardLinks(db, organization.id, card.id);
+    const links = await listCardLinks(db, organization.id, card.id, { userId: user.id });
     expect(links.some((l) => l.kind === 'commit' && l.state === 'pushed')).toBe(true);
 
     const commentsList = await listComments(db, card.id, organization.id);
@@ -176,7 +177,7 @@ describe('Repository management & webhook automation', () => {
   });
 
   it('links PRs, comments, and moves stage on open/merge', async () => {
-    const { organization, card } = await setup();
+    const { organization, card, user } = await setup();
     const owner = `acme${(Date.now() + 7) % 100000}`;
     await connectRepository(db, organization.id, { owner, repo: 'webapp' });
 
@@ -188,7 +189,7 @@ describe('Repository management & webhook automation', () => {
     );
     expect(opened.matchedCards).toBe(1);
 
-    let links = await listCardLinks(db, organization.id, card.id);
+    let links = await listCardLinks(db, organization.id, card.id, { userId: user.id });
     expect(links.some((l) => l.kind === 'pr' && l.state === 'open')).toBe(true);
 
     const merged = await handleGitHubWebhook(
@@ -199,7 +200,7 @@ describe('Repository management & webhook automation', () => {
     );
     expect(merged.matchedCards).toBe(1);
 
-    links = await listCardLinks(db, organization.id, card.id);
+    links = await listCardLinks(db, organization.id, card.id, { userId: user.id });
     expect(links.some((l) => l.kind === 'pr' && l.state === 'merged')).toBe(true);
 
     const commentsList = await listComments(db, card.id, organization.id);
@@ -223,5 +224,44 @@ describe('Repository management & webhook automation', () => {
       })
     ).rejects.toThrow('No linked repository');
     expect(card.id).toBeDefined();
+  });
+
+  it('refuses git links on a private card to a member who cannot see the card', async () => {
+    // Regression: /git/cards/:id/links and /git/cards/:id/branch sat behind
+    // integration.manage, which was the only access check either route had.
+    // listCardLinks did org scoping alone — no private-task gate — and the branch
+    // route called getCard without `actor`, so requireCardAccess never ran.
+    // Moving both routes to plain card access without adding the gate here would
+    // have leaked the key/title of private cards to every org member.
+    const { organization, card, user } = await setup();
+
+    await db.update(schema.cards).set({ isPrivate: true }).where(eq(schema.cards.id, card.id));
+
+    const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const { user: outsider } = await signUp(db, {
+      name: 'Git Outsider',
+      email: `outsider_${id}@git.com`,
+      password: 'pass',
+      orgName: `Outsider Org ${id}`,
+      orgSlug: `outsider-org-${id}`,
+    });
+    await db.insert(schema.organizationMembers).values({
+      organizationId: organization.id,
+      userId: outsider.id,
+      role: 'member',
+      status: 'active',
+    });
+
+    // A member who cannot see the private card must not read its links…
+    expect(listCardLinks(db, organization.id, card.id, { userId: outsider.id })).rejects.toThrow();
+    // …while the creator still can, so the gate is not simply closed.
+    const asCreator = await listCardLinks(db, organization.id, card.id, { userId: user.id });
+    expect(Array.isArray(asCreator)).toBe(true);
+  });
+
+  it('still allows reads on a public card', async () => {
+    const { organization, card, user } = await setup();
+    const links = await listCardLinks(db, organization.id, card.id, { userId: user.id });
+    expect(links).toEqual([]);
   });
 });

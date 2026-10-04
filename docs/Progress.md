@@ -2986,3 +2986,17 @@ Fixed to `isOpen: !!selectedCardId`. Two side effects of the same bug go with it
 The existing `useDialogClose.contract.test.ts` could not catch this — every assertion in it is about _shape_ (no bare setter, no inline arrow, one hook instance per dialog, nested dialogs stand down), and the shape here was perfect. Added a check on the _wiring_: every identifier feeding an `isOpen:` must also feed some `open={…}` prop in the same file. It holds across all 43 current call sites and pinpoints the offender by file and identifier; verified it fails on the injected regression (`pages/BoardView.tsx: isOpen uses \`activeCard\`, which never drives an open prop`).
 
 Validation: dashboard 73 pass / 0 fail (9 files), typecheck 5/5, lint clean.
+
+### 2026-10-04 — Git card-link reads were admin-only, and the 403s were hiding a private-card leak
+
+The task detail page fired four 403s on open (`links` and `branch`, twice each) for any user without `integration.manage`, breaking "Copy Git Branch" / "Clone Task" in the overflow menu.
+
+The whole `/git` router sat behind `requirePermission('integration.manage')` (`git/routes.ts:27`) — including two read-only per-card helpers that have nothing to do with managing integrations: `GET /git/cards/:id/links` and `GET /git/cards/:id/branch`. `GitDevSection` fires both unconditionally on every task page with no permission gate, so every non-admin got 403s on every card. The doubling is the `queryClient` default `retry: 1` retrying a 4xx.
+
+The 403s were the only thing standing between a caller and another member's private card. `listCardLinks` did org scoping alone, with no private-task gate at all, and the branch route called `getCard(db, id, orgId)` with **no `actor`** — and `getCard` runs `requireCardAccess` only `if (actor)` (`card-crud.ts:582`). So loosening the guard on its own would have leaked the key and title of private cards to any org member.
+
+Fixed in that order: `listCardLinks` now takes an actor and calls `requireCardAccess` via the newly exported `loadCardRow`; the branch route passes `actor` through; only then do both routes move out of the `integration.manage` guard, leaving it on `/repos` connect/disconnect. Client side, `GitDevSection` retries only 5xx. `actor` being optional-but-load-bearing is the trap worth remembering — a route that forgets it silently loses the private-task gate.
+
+Tests: two new cases in `git.test.ts` (private card refused to a member who cannot see it, creator still allowed; public card still readable) and the three existing call sites updated to pass an actor. Verified the private-card test fails when the `requireCardAccess` call is removed.
+
+Validation: backend 467 pass / 1 skip / 0 fail, dashboard 73 pass / 0 fail, typecheck 5/5, lint clean.

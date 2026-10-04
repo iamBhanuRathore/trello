@@ -67,33 +67,40 @@ export const gitRoutes = new Elysia({ prefix: '/git', tags: ['Git'] })
         },
         { params: t.Object({ id: t.String() }) }
       )
-
-      // GET /v1/git/cards/:id/links - PRs/branches/commits for a card
-      .get(
-        '/cards/:id/links',
-        async ({ params: { id }, user, set }) => {
-          try {
-            return await listCardLinks(db, user.organizationId, id);
-          } catch (err: unknown) {
-            return handleRouteError(err, set);
-          }
-        },
-        { params: t.Object({ id: t.String() }) }
-      )
-
-      // GET /v1/git/cards/:id/branch - Suggested branch name (copy helper)
-      .get(
-        '/cards/:id/branch',
-        async ({ params: { id }, user, set }) => {
-          try {
-            const card = await getCard(db, id, user.organizationId);
-            return { branch: branchNameFor(card.key || `task-${id.slice(0, 8)}`, card.title) };
-          } catch (err: unknown) {
-            return handleRouteError(err, set);
-          }
-        },
-        { params: t.Object({ id: t.String() }) }
-      )
+  )
+  // Read-only per-card development helpers. Deliberately OUTSIDE the
+  // integration.manage guard: seeing a card's linked PRs or its suggested branch
+  // name is part of seeing the card (Jira/Linear parity), not an integration
+  // admin capability. Both enforce the private-task gate themselves —
+  // `actor` is what makes getCard run requireCardAccess.
+  .get(
+    '/cards/:id/links',
+    async ({ params: { id }, user, set }) => {
+      try {
+        return await listCardLinks(db, user.organizationId, id, {
+          userId: user.userId,
+          isPlatformAdmin: user.isPlatformAdmin,
+        });
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { params: t.Object({ id: t.String() }) }
+  )
+  .get(
+    '/cards/:id/branch',
+    async ({ params: { id }, user, set }) => {
+      try {
+        const card = await getCard(db, id, user.organizationId, {
+          userId: user.userId,
+          isPlatformAdmin: user.isPlatformAdmin,
+        });
+        return { branch: branchNameFor(card.key || `task-${id.slice(0, 8)}`, card.title) };
+      } catch (err: unknown) {
+        return handleRouteError(err, set);
+      }
+    },
+    { params: t.Object({ id: t.String() }) }
   );
 
 /**

@@ -22,6 +22,15 @@ const STATE_STYLES: Record<string, string> = {
   commented: 'bg-muted text-muted-foreground border-border',
 };
 
+/**
+ * A 4xx is a verdict, not a glitch. The queryClient default is `retry: 1`, so a
+ * 403 was requested twice on every task page — the duplicate `links`/`branch`
+ * rows in the Network tab. Only a server fault earns another attempt.
+ */
+const retryServerFaults = (failureCount: number, error: unknown) =>
+  failureCount < 1 &&
+  ((error as { response?: { status?: number } })?.response?.status ?? 500) >= 500;
+
 export const GitDevSection: React.FC<{ cardId: string }> = ({ cardId }) => {
   const [copied, setCopied] = useState(false);
 
@@ -29,12 +38,14 @@ export const GitDevSection: React.FC<{ cardId: string }> = ({ cardId }) => {
     queryKey: ['git', 'card-links', cardId],
     queryFn: () => gitService.cardLinks(cardId),
     staleTime: 30000,
+    retry: retryServerFaults,
   });
 
   const { data: branchData } = useQuery({
     queryKey: ['git', 'branch-name', cardId],
     queryFn: () => gitService.branchName(cardId),
     staleTime: 300000,
+    retry: retryServerFaults,
   });
 
   const copyBranch = async () => {
