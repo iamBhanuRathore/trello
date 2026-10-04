@@ -228,6 +228,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   return (
     <Sidebar
       collapsible="icon"
+      aria-label="Primary navigation"
       className="border-r border-sidebar-border bg-sidebar select-none transition-all duration-200"
     >
       {/* ─── Header: Brand & Search Action ─── */}
@@ -539,7 +540,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           <SidebarGroupContent className={isCollapsed ? 'w-auto' : 'w-full'}>
             {isWsLoading ? (
               !isCollapsed && (
-                <div className="px-2 py-1 space-y-2" aria-label="Loading workspaces">
+                <div className="px-2 py-1 space-y-2" role="status" aria-label="Loading workspaces">
                   {[0, 1, 2].map((i) => (
                     <div key={i} className="space-y-1.5">
                       <div className="h-7 rounded-md bg-muted/60 animate-pulse" />

@@ -94,6 +94,7 @@ export function DashboardLayout() {
             <nav className="flex items-center gap-1.5 text-xs text-muted-foreground truncate">
               <Link
                 to="/"
+                aria-label="Boardly home"
                 className="hover:text-foreground flex items-center gap-1 transition-colors shrink-0"
               >
                 <Home className="w-3.5 h-3.5" />
@@ -140,8 +141,10 @@ export function DashboardLayout() {
           </div>
         </header>
 
-        {/* Main Viewport Content */}
-        <main
+        {/* Main Viewport Content (SidebarInset above already renders the
+            single <main> landmark — this must stay a plain div or every
+            authenticated page gets duplicate mains). */}
+        <div
           className={
             isChat
               ? 'flex flex-1 flex-col overflow-hidden min-h-0 p-0'
@@ -149,7 +152,7 @@ export function DashboardLayout() {
           }
         >
           <Outlet />
-        </main>
+        </div>
       </SidebarInset>
 
       {/* Persistent Global Chat Dock */}

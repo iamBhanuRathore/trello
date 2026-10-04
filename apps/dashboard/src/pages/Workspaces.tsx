@@ -132,7 +132,7 @@ export function Workspaces() {
       />
 
       {isTreeLoading && !workspaces ? (
-        <div className="flex flex-col gap-6" aria-label="Loading workspaces">
+        <div className="flex flex-col gap-6" role="status" aria-label="Loading workspaces">
           {[0, 1].map((i) => (
             <div
               key={i}

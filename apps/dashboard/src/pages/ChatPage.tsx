@@ -99,6 +99,7 @@ export const ChatPage: React.FC = () => {
 
   return (
     <div className="flex-1 flex h-full overflow-hidden bg-background">
+      <h1 className="sr-only">Chat</h1>
       {/* Conversation list — full-width takeover below lg: when a channel is open (Slack pattern) */}
       <div
         className={`h-full shrink-0 sm:shrink-0 ${

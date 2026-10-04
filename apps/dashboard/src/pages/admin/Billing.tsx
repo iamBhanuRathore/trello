@@ -177,7 +177,7 @@ export const Billing: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="space-y-8 max-w-6xl" aria-label="Loading billing">
+      <div className="space-y-8 max-w-6xl" role="status" aria-label="Loading billing">
         {/* Header mirror */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="space-y-2">
@@ -223,9 +223,9 @@ export const Billing: React.FC = () => {
         </div>
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-8 text-center">
           <AlertCircle className="mx-auto h-10 w-10 text-destructive mb-3" />
-          <h3 className="text-lg font-semibold text-destructive">
+          <h2 className="text-lg font-semibold text-destructive">
             Failed to Load Billing Information
-          </h3>
+          </h2>
           <p className="text-sm text-muted-foreground mt-1 mb-4">
             There was an error communicating with the billing service.
           </p>
@@ -301,9 +301,9 @@ export const Billing: React.FC = () => {
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider ${
                 subscription.status === 'active'
-                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
                   : subscription.status === 'past_due' || isPastDueDowngradePending
-                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20'
                     : 'bg-muted text-muted-foreground'
               }`}
             >
@@ -435,7 +435,7 @@ export const Billing: React.FC = () => {
                 Seat Utilization
               </span>
               {seats.vacant > 0 ? (
-                <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
                   {seats.vacant} Vacant {seats.vacant === 1 ? 'Seat' : 'Seats'}
                 </span>
               ) : (
@@ -546,7 +546,7 @@ export const Billing: React.FC = () => {
           <Sparkles className="h-6 w-6" />
         </div>
         <div className="space-y-1">
-          <h4 className="font-semibold text-sm text-foreground">Slack-Style Fair Billing Policy</h4>
+          <h2 className="font-semibold text-sm text-foreground">Slack-Style Fair Billing Policy</h2>
           <p className="text-xs text-muted-foreground leading-relaxed">
             When team members leave or are deactivated, your paid seat remains in your organization
             as a <strong>Vacant Seat</strong>. You can invite replacement colleagues at any time for{' '}
@@ -561,7 +561,7 @@ export const Billing: React.FC = () => {
         <div className="p-6 border-b border-border/60 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Receipt className="h-5 w-5 text-muted-foreground" />
-            <h3 className="font-semibold text-base">Billing History & Invoices</h3>
+            <h2 className="font-semibold text-base">Billing History & Invoices</h2>
           </div>
           <span className="text-xs text-muted-foreground">Invoices generated via Stripe</span>
         </div>
@@ -591,7 +591,7 @@ export const Billing: React.FC = () => {
                       ${(inv.amountPaid / 100).toFixed(2)} {inv.currency.toUpperCase()}
                     </td>
                     <td className="py-3.5 px-6">
-                      <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400">
+                      <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
                         {inv.status}
                       </span>
                     </td>
@@ -805,7 +805,7 @@ export const Billing: React.FC = () => {
               Cancel
             </Button>
             <Button
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              className="bg-amber-700 hover:bg-amber-800 text-white"
               disabled={
                 downsizeSeatsMutation.isPending || downsizeSeatsCount >= subscription.seatCount
               }

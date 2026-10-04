@@ -40,16 +40,16 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
       <DropdownMenuTrigger
         render={
           variant === 'navbar' ? (
-            <div
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
+              aria-label={user?.name ? `${user.name} — profile menu` : 'Profile menu'}
               className={`flex items-center gap-2 py-1 px-1.5 rounded-xl hover:bg-muted/70 transition-all cursor-pointer text-left focus-visible:ring-2 focus-visible:ring-primary/30 select-none ${className || ''}`}
               title={user?.name || 'User Profile'}
             >
               {user?.avatarUrl ? (
                 <img
                   src={user.avatarUrl}
-                  alt={user.name || 'User'}
+                  alt=""
                   className="w-7 h-7 rounded-full object-cover ring-1 ring-border shadow-xs shrink-0"
                 />
               ) : (
@@ -61,11 +61,11 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
                 {user?.name}
               </span>
               <ChevronDown className="w-3.5 h-3.5 text-muted-foreground hidden lg:inline-block shrink-0 opacity-60" />
-            </div>
+            </button>
           ) : (
-            <div
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
+              aria-label={user?.name ? `${user.name} — profile menu` : 'Profile menu'}
               className={`flex items-center rounded-xl hover:bg-sidebar-accent transition-colors cursor-pointer select-none ${
                 isCollapsed ? 'w-8 h-8 justify-center p-0' : 'gap-2.5 p-1.5 w-full text-left'
               } ${className || ''}`}
@@ -74,7 +74,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
               {user?.avatarUrl ? (
                 <img
                   src={user.avatarUrl}
-                  alt={user.name || 'User'}
+                  alt=""
                   className="w-7 h-7 rounded-full object-cover ring-1 ring-border shadow-2xs shrink-0"
                 />
               ) : (
@@ -92,7 +92,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
                   </p>
                 </div>
               )}
-            </div>
+            </button>
           )
         }
       />
@@ -107,7 +107,7 @@ export const UserProfileDropdown: React.FC<UserProfileDropdownProps> = ({
           {user?.avatarUrl ? (
             <img
               src={user.avatarUrl}
-              alt={user.name || 'User'}
+              alt=""
               className="w-9 h-9 rounded-full object-cover ring-1 ring-border shadow-xs shrink-0"
             />
           ) : (

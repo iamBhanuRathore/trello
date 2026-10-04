@@ -22,7 +22,11 @@ export function WorkspacesOverview({
         </div>
         <div>
           {isLoading ? (
-            <div className="h-7 w-8 rounded bg-muted animate-pulse" aria-label="Loading count" />
+            <div
+              className="h-7 w-8 rounded bg-muted animate-pulse"
+              role="status"
+              aria-label="Loading count"
+            />
           ) : (
             <div className="text-xl font-bold text-foreground">{workspacesCount}</div>
           )}
@@ -36,7 +40,11 @@ export function WorkspacesOverview({
         </div>
         <div>
           {isLoading ? (
-            <div className="h-7 w-8 rounded bg-muted animate-pulse" aria-label="Loading count" />
+            <div
+              className="h-7 w-8 rounded bg-muted animate-pulse"
+              role="status"
+              aria-label="Loading count"
+            />
           ) : (
             <div className="text-xl font-bold text-foreground">{totalProjects}</div>
           )}
@@ -50,7 +58,11 @@ export function WorkspacesOverview({
         </div>
         <div>
           {isLoading ? (
-            <div className="h-7 w-8 rounded bg-muted animate-pulse" aria-label="Loading count" />
+            <div
+              className="h-7 w-8 rounded bg-muted animate-pulse"
+              role="status"
+              aria-label="Loading count"
+            />
           ) : (
             <div className="text-xl font-bold text-foreground">{totalBoards}</div>
           )}

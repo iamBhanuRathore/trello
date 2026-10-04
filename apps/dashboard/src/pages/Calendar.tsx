@@ -341,6 +341,7 @@ export function Calendar() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      <h1 className="sr-only">Calendar</h1>
       <CalendarHeader
         cursor={cursor}
         view={view}
@@ -363,7 +364,12 @@ export function Calendar() {
 
       <div className="flex flex-1 min-h-0">
         {/* Main grid */}
-        <div className="flex-1 min-w-0 overflow-auto">
+        <div
+          className="flex-1 min-w-0 overflow-auto"
+          tabIndex={0}
+          role="region"
+          aria-label="Calendar grid"
+        >
           {view === 'month' ? (
             <MonthGrid
               days={days}

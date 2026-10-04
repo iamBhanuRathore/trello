@@ -28,7 +28,6 @@ export function MonthGrid({
   days,
   cursor,
   feed,
-  onOpenTask,
   onSelectDay,
   onSelectTask,
   onSelectExternal,
@@ -53,47 +52,53 @@ export function MonthGrid({
         const blocks = buckets.blocksByDay.get(key) || [];
         const dues = buckets.dueByDay.get(key) || [];
         const externals = buckets.externalByDay.get(key) || [];
+        // NOTE (a11y): the cell is a plain div, not a button, because the
+        // task chips inside are themselves real <button>s and interactive
+        // content must not nest. Mouse users get click-anywhere via the div;
+        // keyboard users get the day button + one tab stop per chip.
         return (
-          <button
+          <div
             key={key + day.getMonth()}
-            type="button"
             onClick={() => onSelectDay(day)}
             className={`min-h-[96px] p-1.5 border-b border-r border-border/40 text-left align-top transition-colors hover:bg-muted/30 cursor-pointer ${
               inMonth(day) ? '' : 'bg-muted/20 opacity-60'
             } ${isToday(day) ? 'bg-primary/5' : ''}`}
           >
-            <span
-              className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-semibold ${
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectDay(day);
+              }}
+              aria-label={format(day, 'EEEE, MMMM d')}
+              className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-semibold cursor-pointer ${
                 isToday(day) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
               }`}
             >
               {format(day, 'd')}
-            </span>
+            </button>
             <span className="mt-1 space-y-0.5 block">
               {blocks.slice(0, 2).map((b) => (
-                <span
+                <button
                   key={b.id}
-                  role="button"
-                  tabIndex={0}
+                  type="button"
+                  aria-label={`${b.key ? `${b.key} ` : ''}${b.title} at ${format(new Date(b.start), 'HH:mm')}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     onSelectTask(b, { x: r.left, y: r.bottom + 6 });
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onOpenTask(b.id);
-                  }}
-                  className="block truncate px-1.5 py-0.5 rounded-md bg-primary/15 text-primary text-[10px] font-semibold hover:bg-primary/25 cursor-pointer"
+                  className="block w-full text-left truncate px-1.5 py-0.5 rounded-md bg-primary/15 text-primary text-[10px] font-semibold hover:bg-primary/25 cursor-pointer"
                 >
                   {format(new Date(b.start), 'HH:mm')} {b.key ? `${b.key} ` : ''}
                   {b.title}
-                </span>
+                </button>
               ))}
               {dues.slice(0, 2).map((d) => (
-                <span
+                <button
                   key={d.id}
-                  role="button"
-                  tabIndex={0}
+                  type="button"
+                  aria-label={`Due: ${d.title}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -102,35 +107,26 @@ export function MonthGrid({
                       { x: r.left, y: r.bottom + 6 }
                     );
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onOpenTask(d.id);
-                  }}
-                  className="flex items-center gap-1 truncate px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-semibold hover:bg-amber-500/20 cursor-pointer"
+                  className="flex items-center gap-1 w-full text-left truncate px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] font-semibold hover:bg-amber-500/20 cursor-pointer"
                 >
                   <Flag className="w-2.5 h-2.5 shrink-0" />
                   <span className="truncate">{d.title}</span>
-                </span>
+                </button>
               ))}
               {externals.slice(0, 1).map((e) => (
-                <span
+                <button
                   key={e.id}
-                  role="button"
-                  tabIndex={0}
+                  type="button"
+                  aria-label={e.summary}
                   onClick={(ev) => {
                     ev.stopPropagation();
                     const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
                     onSelectExternal(e, { x: r.left, y: r.bottom + 6 });
                   }}
-                  onKeyDown={(ev) => {
-                    if (ev.key === 'Enter') {
-                      const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-                      onSelectExternal(e, { x: r.left, y: r.bottom + 6 });
-                    }
-                  }}
-                  className="block truncate px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground text-[10px] hover:text-foreground cursor-pointer"
+                  className="block w-full text-left truncate px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground text-[10px] hover:text-foreground cursor-pointer"
                 >
                   {e.start ? format(new Date(e.start), 'HH:mm') : ''} {e.summary}
-                </span>
+                </button>
               ))}
               {blocks.length + dues.length + externals.length > 5 && (
                 <span className="block text-[10px] text-muted-foreground px-1.5">
@@ -138,7 +134,7 @@ export function MonthGrid({
                 </span>
               )}
             </span>
-          </button>
+          </div>
         );
       })}
     </div>

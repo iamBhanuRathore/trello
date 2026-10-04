@@ -145,7 +145,10 @@ export function Login() {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background">
       {/* Left Panel */}
-      <div className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative overflow-hidden bg-gradient-to-br from-primary/90 via-primary to-primary/70 items-center justify-center p-12">
+      <aside
+        aria-label="About Boardly"
+        className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative overflow-hidden bg-gradient-to-br from-primary/90 via-primary to-primary/70 items-center justify-center p-12"
+      >
         <div className="absolute -top-32 -left-32 w-80 h-80 rounded-full bg-white/10 blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-0 w-96 h-96 rounded-full bg-black/20 blur-3xl pointer-events-none" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-white/5 blur-3xl pointer-events-none" />
@@ -171,10 +174,10 @@ export function Login() {
             ))}
           </ul>
         </div>
-      </div>
+      </aside>
 
       {/* Right Panel */}
-      <div className="flex flex-1 items-center justify-center p-6 sm:p-12 bg-background overflow-y-auto">
+      <main className="flex flex-1 items-center justify-center p-6 sm:p-12 bg-background overflow-y-auto">
         <div className="w-full max-w-[420px] my-auto">
           <div className="flex items-center gap-2.5 mb-6 lg:hidden">
             <div className="p-2 rounded-xl bg-primary/10 text-primary">
@@ -426,7 +429,7 @@ export function Login() {
             </Link>
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
