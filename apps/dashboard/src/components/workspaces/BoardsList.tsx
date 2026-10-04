@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Card } from '@boardly/ui/card';
 import { Button } from '@boardly/ui/button';
@@ -21,6 +21,9 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { BOARD_GRADIENTS, resolveBoardGradient } from './types';
 import { CreateBoardDialog } from './CreateBoardDialog';
 
+/** Stable empty fallback — deriving must not allocate a new array each render. */
+const EMPTY_BOARDS: any[] = [];
+
 interface BoardsListProps {
   projectId: string;
   initialBoards?: any[];
@@ -38,17 +41,28 @@ export function BoardsList({ projectId, initialBoards }: BoardsListProps) {
   const canUpdateBoard = permsLoading ? false : can('board.update');
   const canDeleteBoard = permsLoading ? false : can('board.delete');
 
-  const { data: boards } = useQuery({
-    queryKey: ['boards', projectId],
-    queryFn: async () => {
-      if (initialBoards !== undefined) return initialBoards;
-      const res = await api.get(`/boards?projectId=${projectId}`);
-      return res.data;
-    },
-    initialData: initialBoards,
-    staleTime: 30_000,
-    gcTime: 5 * 60_000,
-  });
+  // Boards arrive embedded in the workspace tree and ProjectsList passes them
+  // down, so they are used directly instead of being mirrored into a
+  // `['boards', projectId]` query.
+  //
+  // That mirror was the bug. It declared `initialData: initialBoards` — read
+  // only when the entry is created — next to a `queryFn` returning the same
+  // prop. React Query does not observe props, so a re-render never re-read it.
+  //
+  // Creating a board invalidated both this key and `['workspaces', 'tree']`,
+  // which is why it looked like it should have worked. It didn't, because of a
+  // race: the `['boards', ...]` refetch ran immediately against the OLD prop (the
+  // tree had not returned yet), and `staleTime: 30_000` then marked the entry
+  // fresh so nothing fetched again. The tree refetched and `/workspaces/tree`
+  // returned BOTH boards; this entry never re-read them, so the new board stayed
+  // invisible for as long as the entry looked fresh. The value was never wrong,
+  // only unread — which is why a populated cache and a correct network response
+  // looked contradictory. See boardListStale.contract.test.ts.
+  //
+  // `/workspaces/tree` is already invalidated by every mutation here (and by
+  // CreateBoardDialog), so deriving from the prop keeps one source of truth for a
+  // project's boards instead of a second, never-refreshed copy.
+  const boards = initialBoards ?? EMPTY_BOARDS;
 
   const deleteBoardMutation = useMutation({
     mutationFn: async (id: string) => await api.delete(`/boards/${id}`),

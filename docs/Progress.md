@@ -2960,3 +2960,17 @@ Also: `errorMessage()` returns `"Unknown error"` for non-`Error` throws, so the 
 Tests: 4 classification branches + the 502 invariant in `calendar.test.ts`; 5 cases in `calendarService.error.test.ts`, three of which fail if the `getApiErrorMessage` delegation is reverted.
 
 Validation: backend 465 pass / 1 skip / 0 fail, dashboard 68 pass / 0 fail, mobile 3 pass / 0 fail, typecheck 5/5, lint clean.
+
+### 2026-10-04 — New boards (and projects) now appear immediately after creation
+
+Creating a board returned a correct `POST /boards` response and a `GET /workspaces/tree` listing **both** boards, while the grid showed one. The value was never wrong — it was never read again.
+
+`BoardsList` mirrored its `initialBoards` prop into a `['boards', projectId]` query whose `queryFn` returned that same prop and whose `initialData` is consulted only at entry creation. React Query does not observe props, so a re-render never re-read it. The invalidation _did_ fire (CreateBoardDialog invalidates both this key and `['workspaces','tree']`), but it is a race: the `['boards', …]` refetch returns the OLD prop before the tree has answered, and `staleTime: 30_000` then marks the entry fresh so nothing fetches it again. The tree delivered both boards; nothing re-read them. `/boards?projectId=` was never even requested, because the queryFn short-circuits whenever `initialBoards` is defined — which `ProjectsList` guarantees via `proj.boards ?? []`.
+
+Both components now derive from the prop. `ProjectsList` had the identical mirror for `['projects', workspaceId]`, so a newly created project would have vanished the same way; both are fixed and `/workspaces/tree` is the single source of truth (every mutation already invalidates it). The orphaned `['boards', …]` / `['projects', …]` invalidations are harmless no-ops and were left alone rather than churn three files.
+
+Correction to note: the first draft of the comment claimed the cache "could never observe a prop change". The test disproved that — an explicit refetch _does_ pick up a new prop. The real mechanism is that no refetch is triggered and the one that is races ahead of the tree. Both the comment and the test now state it accurately.
+
+`boardListStale.contract.test.ts` drives real `QueryObserver`s to pin this down: a prop change alone leaves the entry on its seed array, `isStale` is false so nothing rescues it, and an explicit refetch does pick it up (which is why the failure looked contradictory against a correct network response).
+
+Validation: dashboard 72 pass / 0 fail (9 files), typecheck 5/5, lint clean.

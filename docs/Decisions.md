@@ -1765,3 +1765,37 @@ const { handleOpenChange } = useDialogClose({ isOpen: createOpen, onClose: () =>
 **Status stays 502 deliberately, for all four cases.** `lib/api.ts:701` converts _any_ 401 into a Boardly session token refresh and `api.ts:733` turns _any_ 403 into a permission re-fetch. Echoing Google's status would therefore make a dead **Google** token look like a dead **Boardly** session and log the user out of the app. The discriminator rides in the body instead. This is asserted in the test for all four branches — it is the subtlest part of the change and the easiest to "simplify" back into a bug.
 
 **Also fixed while in there:** `errorMessage(err)` returns `"Unknown error"` for any non-`Error` throw, so the log line lost the upstream OAuth code for exactly the failures worth chasing — it now falls back to the response body via `safeStringify`. Verified in the test output: the log now reads `err:"invalid_grant"` instead of `err:"Unknown error"`.
+
+### 2026-10-04 — A Created Board Was Returned By The API And Never Re-Read By The UI
+
+**Context:** creating a board on `/workspaces` produced a correct `POST /boards` response and a correct `GET /workspaces/tree` that listed **both** boards, while the grid kept showing one. The value was never wrong — it was never read again.
+
+**Mechanism.** `BoardsList` mirrored its `initialBoards` prop into a cache entry of its own:
+
+```tsx
+useQuery({
+  queryKey: ['boards', projectId],
+  queryFn: async () => { if (initialBoards !== undefined) return initialBoards; … },
+  initialData: initialBoards,
+  staleTime: 30_000,
+});
+```
+
+Two React Query facts combine badly here. `initialData` is consulted **only when the entry is created**, and React Query **does not observe props** — nothing about a re-render triggers a refetch. So the entry kept serving its seed array.
+
+What made it look like it should have worked is the interesting part. `CreateBoardDialog` invalidated **both** `['boards', projectId]` and `['workspaces', 'tree']`, so a refetch _was_ scheduled. But it is a **race**:
+
+1. `['boards', …]` refetch fires immediately and returns the **old** prop — the tree has not returned yet.
+2. That marks the entry fresh for `staleTime: 30_000`, so nothing fetches it again.
+3. `['workspaces', 'tree']` refetch completes and delivers both boards as a new prop.
+4. Nothing re-reads it. The entry stays at one board until 30s lapses _and_ a focus/remount happens to trigger a fetch.
+
+So the tree was authoritative and correct, and the second copy was permanently a guess. `/boards?projectId=` was never even requested — the `queryFn` short-circuits whenever `initialBoards` is defined, which `ProjectsList` guarantees (`proj.boards ?? []`).
+
+**Decisions.**
+
+1. **Derive from the prop; delete the mirror.** Boards and projects are already embedded in `/workspaces/tree`, and every mutation in these components (create, rename, delete, import) already invalidates that key. One source of truth beats a second copy that cannot refresh itself. The now-unreferenced `['boards', …]` / `['projects', …]` invalidations were left in place — they are harmless no-ops, and removing them across three files would be churn for no behaviour change.
+2. **`ProjectsList` had the identical mirror** for `['projects', workspaceId]` and is fixed the same way, so a newly created project would have vanished exactly as the board did. Found by grepping `initialData` rather than by waiting for a second report.
+3. **No `keepPreviousData` / `placeholderData` band-aid.** The tempting fix is to force a refetch when the prop length changes. That treats the symptom, keeps two sources of truth, and still leaves the entry unable to observe any other change (a rename, a background edit). Removing the duplicate is smaller and actually correct.
+
+**Correcting an earlier claim:** my first draft of the code comment said the entry "could never observe a prop change". The test disproved that — an explicit `refetch` _does_ pick up a new prop. The accurate statement, now in the comment and the test, is that no refetch is triggered and the one that is, races ahead of the tree. Worth recording because the stronger claim was the intuitive one and it was wrong.

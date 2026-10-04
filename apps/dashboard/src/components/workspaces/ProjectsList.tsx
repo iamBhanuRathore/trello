@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Button } from '@boardly/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@boardly/ui/dialog';
@@ -28,6 +28,9 @@ import { usePermissions, permissionReason } from '../../hooks/usePermissions';
 import { api } from '../../lib/api';
 import { BoardsList } from './BoardsList';
 
+/** Stable empty fallback — deriving must not allocate a new array each render. */
+const EMPTY_PROJECTS: any[] = [];
+
 interface ProjectsListProps {
   workspaceId: string;
   initialProjects?: any[];
@@ -45,17 +48,14 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
   const canImport = permsLoading ? false : can('board.create');
   const canAutomate = permsLoading ? false : can('automation.manage');
 
-  const { data: projects } = useQuery({
-    queryKey: ['projects', workspaceId],
-    queryFn: async () => {
-      if (initialProjects !== undefined) return initialProjects;
-      const res = await api.get(`/projects?workspaceId=${workspaceId}`);
-      return res.data;
-    },
-    initialData: initialProjects,
-    staleTime: 30_000,
-    gcTime: 5 * 60_000,
-  });
+  // Used directly rather than mirrored into a ['projects', workspaceId] query.
+  // That mirror declared `initialData: initialProjects` — consulted only when the
+  // entry is first created — next to a `queryFn` returning the same prop, so it
+  // could never observe a prop change and replayed its seed array forever. A new
+  // project was therefore created, returned by /workspaces/tree, and still did
+  // not appear. Same defect as BoardsList; see the note there for the full
+  // mechanism. Every mutation here already invalidates ['workspaces', 'tree'].
+  const projects = initialProjects ?? EMPTY_PROJECTS;
 
   const deleteProjMutation = useMutation({
     mutationFn: async (id: string) => await api.delete(`/projects/${id}`),
