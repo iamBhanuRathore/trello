@@ -45,6 +45,79 @@ interface AuthState {
   checkAuth: () => Promise<void>;
 }
 
+/**
+ * In-flight `/auth/me` request, keyed by the access token it was issued for.
+ *
+ * `checkAuth` has four independent triggers — the App mount effect, the window
+ * `focus` safety net, the 403 interceptor in lib/api.ts, and ProfileSettings —
+ * and none of them knew about the others, so concurrent triggers each opened
+ * their own request. React 18 StrictMode double-invokes effects in development,
+ * which made the mount effect fire twice and put two `/auth/me` calls in the
+ * network log on every load. Deduplicating here (rather than removing
+ * StrictMode, or removing one trigger) keeps all four callers and makes the
+ * duplicate structurally impossible.
+ *
+ * Keyed by token so a login mid-flight cannot be satisfied by a request that
+ * was issued for the previous identity.
+ */
+let inFlightMe: { token: string; promise: Promise<void> } | null = null;
+
+/** Cleared on every identity transition so no stale promise is ever reused. */
+function resetInFlight(): void {
+  inFlightMe = null;
+}
+
+async function runCheckAuth(): Promise<void> {
+  const token = localStorage.getItem('boardly_access_token');
+  if (!token) {
+    setAuthState({ user: null, isAuthenticated: false, isLoading: false, authResolved: true });
+    resetSessionCaches();
+    return;
+  }
+
+  try {
+    const res = await api.get('/auth/me');
+    const previousId = useAuthStore.getState().user?.id;
+    setAuthState({
+      user: res.data,
+      isAuthenticated: true,
+      isLoading: false,
+      authResolved: true,
+    });
+    // Token swap without a login call (DevTools paste, restored session):
+    // a different identity must never inherit the cached identity's data.
+    if (previousId && previousId !== res.data?.id) resetSessionCaches();
+  } catch (error: any) {
+    const status = error?.response?.status;
+    // Reboot/network blip (or 5xx): the stored session may still be valid.
+    // Keep tokens and stay authenticated — queries retry on their own.
+    // Only a definitive rejection clears the session below.
+    if (status === undefined || status >= 500) {
+      // Stay UNRESOLVED. Tokens are kept, but nothing downstream should treat
+      // this as a verified identity — that produced isAuthenticated:true with
+      // user:null, which emptied the permission set and disabled every query.
+      setAuthState({ isLoading: false, authResolved: false });
+      return;
+    }
+    // If a login just occurred with a new token, do not wipe the new session
+    const currentToken = localStorage.getItem('boardly_access_token');
+    if (!currentToken || currentToken === token) {
+      localStorage.removeItem('boardly_access_token');
+      localStorage.removeItem('boardly_refresh_token');
+      setAuthState({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        authResolved: true,
+      });
+      resetSessionCaches();
+    }
+  }
+}
+
+/** `set` is not in scope for the hoisted runCheckAuth, so route through the store. */
+const setAuthState = (partial: Partial<AuthState>): void => useAuthStore.setState(partial);
+
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   // A stored token is a HINT, not a verified session. Boot as unresolved so the
@@ -56,6 +129,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (data.accessToken) localStorage.setItem('boardly_access_token', data.accessToken);
     if (data.refreshToken) localStorage.setItem('boardly_refresh_token', data.refreshToken);
     set({ user: data.user, isAuthenticated: true, isLoading: false, authResolved: true });
+    resetInFlight();
     resetSessionCaches();
   },
   logout: async () => {
@@ -68,44 +142,19 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem('boardly_access_token');
     localStorage.removeItem('boardly_refresh_token');
     set({ user: null, isAuthenticated: false, isLoading: false, authResolved: true });
+    resetInFlight();
     resetSessionCaches();
   },
-  checkAuth: async () => {
+  checkAuth: () => {
     const token = localStorage.getItem('boardly_access_token');
-    if (!token) {
-      set({ user: null, isAuthenticated: false, isLoading: false, authResolved: true });
-      resetSessionCaches();
-      return;
-    }
-
-    try {
-      const res = await api.get('/auth/me');
-      const previousId = useAuthStore.getState().user?.id;
-      set({ user: res.data, isAuthenticated: true, isLoading: false, authResolved: true });
-      // Token swap without a login call (DevTools paste, restored session):
-      // a different identity must never inherit the cached identity's data.
-      if (previousId && previousId !== res.data?.id) resetSessionCaches();
-    } catch (error: any) {
-      const status = error?.response?.status;
-      // Reboot/network blip (or 5xx): the stored session may still be valid.
-      // Keep tokens and stay authenticated — queries retry on their own.
-      // Only a definitive rejection clears the session below.
-      if (status === undefined || status >= 500) {
-        // Stay UNRESOLVED. Tokens are kept, but nothing downstream should treat
-        // this as a verified identity — that produced isAuthenticated:true with
-        // user:null, which emptied the permission set and disabled every query.
-        set({ isLoading: false, authResolved: false });
-        return;
-      }
-      // If a login just occurred with a new token, do not wipe the new session
-      const currentToken = localStorage.getItem('boardly_access_token');
-      if (!currentToken || currentToken === token) {
-        localStorage.removeItem('boardly_access_token');
-        localStorage.removeItem('boardly_refresh_token');
-        set({ user: null, isAuthenticated: false, isLoading: false, authResolved: true });
-        resetSessionCaches();
-      }
-    }
+    // Single-flight: concurrent triggers share one request. Re-keyed on the
+    // token so a request issued for a previous identity is never reused.
+    if (token && inFlightMe && inFlightMe.token === token) return inFlightMe.promise;
+    const promise = runCheckAuth().finally(() => {
+      if (inFlightMe?.promise === promise) inFlightMe = null;
+    });
+    inFlightMe = token ? { token, promise } : null;
+    return promise;
   },
 }));
 

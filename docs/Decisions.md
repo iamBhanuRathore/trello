@@ -1670,3 +1670,30 @@ The fix is not a second `select`. Both call sites now go through a single `hooks
 **3. "Google Calendar event creation failed" was undiagnosable by construction.** `createExternalEvent` wrapped the Google call in a bare `catch {}`, so an expired refresh token, a missing scope, an invalid `calendarId` and the 15s timeout all collapsed into one opaque 502 with the cause discarded. `pullExternalEvents` in the same file already did the right thing (persisting `lastError` on the connection). The bare catch now logs and persists `lastError` the same way, and the two deliberate best-effort swallows (`pushCardToGoogle` on schedule, `events.delete` on unlink) now log instead of vanishing. The value was proven immediately: the pre-existing calendar test, which had been silently passing, now prints `Best-effort Google Calendar push failed — Malformed encrypted token`. Nothing about the failure changed; it is simply visible now.
 
 **Consequence:** the shared lesson is that `?? 0`, `catch {}`, and a hand-written `catch` around a hook call are all _discard_ operations wearing the costume of robustness. Each of these three defects was a discard that looked defensive. The guards added are deliberately behavioural where behaviour is testable (real `QueryObserver`s) and static only where the property is syntactic (hook position, key uniqueness).
+
+### 2026-10-04 — `/auth/me` Fired Twice Per Load: Four Triggers, No Single-Flight
+
+**Context:** the Network panel showed two `me` requests on every dashboard load. Not a correctness bug — both succeeded and returned identical data — but it is the same class of defect as the three above (a redundant duplicate hiding a structural problem), and it was masking a real race.
+
+**Why it happened.** `checkAuth` has **four independent triggers** that knew nothing about each other:
+
+| Trigger                           | Location                       |
+| --------------------------------- | ------------------------------ |
+| App mount effect                  | `App.tsx:143-145`              |
+| Window `focus` staleness net      | `App.tsx:150-160`              |
+| 403 permission-denied interceptor | `lib/api.ts:736-748`           |
+| Profile settings `useQuery`       | `pages/ProfileSettings.tsx:86` |
+
+and the store had **no in-flight guard**, so every concurrent trigger opened its own request. Two things made it fire reliably rather than occasionally:
+
+1. **StrictMode double-invokes effects in development.** `main.tsx:14` wraps the tree in `<StrictMode>`, so the mount effect ran twice on every load. This is why the duplicate looked deterministic — it is a dev-mode artifact of a real production race, not a dev-only curiosity.
+2. **The focus throttle was seeded with `last = 0`.** Its intent is "revalidate at most once per 60s", but `now - 0` is always far larger than 60 000, so the _first_ focus event of a session always passed the gate. A window that gains focus right after load (tab switch, DevTools opening, dialog focus restore) therefore revalidated `/me` immediately after the mount effect had just done so.
+
+**Decisions.**
+
+1. **Deduplicate in the store, not by deleting a trigger or removing StrictMode.** `checkAuth` is now single-flight via a module-level in-flight promise. StrictMode stays — removing it to hide a double-effect would have discarded a useful safety net while leaving the production race intact. Deduplicating makes the duplicate structurally impossible for _all four_ callers rather than papering over the one StrictMode provokes.
+2. **Key the in-flight promise by access token.** A bare promise would let a `login()` that lands mid-flight be satisfied by a request issued for the _previous_ identity — reintroducing exactly the cross-identity cache leak the store already guards against for query caches. `login`/`logout` also clear it.
+3. **Seed the focus throttle with the mount time.** Corrects the intent rather than the symptom: a revalidation that the mount effect just performed should not be repeated.
+4. **Deliberately not deduplicating `ProfileSettings`.** It is a separate `useQuery` on a different concern and only mounts on that route; collapsing it would couple two unrelated screens. Flagged rather than changed.
+
+**Consequences:** concurrent triggers collapse to one request, verified against the real store with `api.get` mocked and a call counter (`authStore.dupe.test.ts`): 2 and 4 concurrent triggers each produce exactly one `/auth/me`, every caller receives the same resolved state, a new token is _not_ served by an old in-flight promise, a settled call does not permanently pin the store, and an absent token short-circuits without a request. The two dedup assertions were confirmed to **fail** when the guard is removed, so they are not vacuous.

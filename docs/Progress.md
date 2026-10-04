@@ -2900,3 +2900,15 @@ Three reports where the backend was right and the screen was wrong — all one r
 3. **"Google Calendar event creation failed" was undiagnosable**: `createExternalEvent` had a bare `catch {}` discarding Google's error, so an expired token, missing scope, bad calendarId and timeout all produced the same opaque 502. It now logs and persists `lastError` like `pullExternalEvents` already did, and the two intentional best-effort swallows now log instead of vanishing. The pre-existing calendar test, which had been passing silently, immediately printed `Best-effort Google Calendar push failed — Malformed encrypted token`.
 
 Validation: backend 464 pass / 1 skip / 0 fail, dashboard 52 pass / 0 fail, mobile 3 pass / 0 fail, typecheck 5/5, lint clean, check-permissions ok.
+
+### 2026-10-04 — `/auth/me` no longer fires twice per load
+
+`checkAuth` had four independent triggers (App mount effect, window `focus` staleness net, the 403 interceptor in `lib/api.ts`, and `ProfileSettings`) and no in-flight guard, so concurrent triggers each opened their own request. Two things made the duplicate deterministic rather than occasional: `main.tsx:14` wraps the tree in `<StrictMode>`, which double-invokes the mount effect in development; and the focus throttle was seeded `let last = 0`, so its "60s" gate passed on the very first focus event (`now - 0` is always > 60s), revalidating immediately after the mount effect had just done so.
+
+Fixed at the store with a single-flight in-flight promise rather than by removing a trigger or dropping StrictMode — StrictMode is a useful net and the duplicate was a real production race underneath it. The promise is keyed by access token so a `login()` landing mid-flight cannot be satisfied by a request issued for the previous identity, and `login`/`logout` clear it. Separately, the focus throttle now seeds with the mount time.
+
+`authStore.dupe.test.ts` verifies against the real store with `api.get` mocked and a call counter: 2 and 4 concurrent triggers each yield exactly one `/auth/me`; all callers get the same resolved state; a new token is not served by a stale in-flight promise; a settled call does not permanently pin the store; an absent token short-circuits. The two dedup assertions were confirmed to fail when the guard is removed.
+
+`ProfileSettings.tsx:86` still issues its own `/auth/me` on that route — a separate query on a separate concern, left alone deliberately and noted rather than silently coupled.
+
+Validation: dashboard 58 pass / 0 fail, backend 464 pass / 1 skip / 0 fail, mobile 3 pass / 0 fail, typecheck 5/5, lint clean.

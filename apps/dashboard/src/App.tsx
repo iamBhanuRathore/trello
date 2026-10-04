@@ -148,7 +148,11 @@ export function App() {
   // 60s server TTL lapses. Revalidate /me on window focus (throttled — /me is
   // server-cached, but focus can fire in bursts across iframe/dialog moves).
   useEffect(() => {
-    let last = 0;
+    // Seeded with the mount time, NOT 0. A window that gains focus right after
+    // load (tab switch, DevTools opening, dialog focus restore) used to pass the
+    // throttle on its very first event because `now - 0` is always >= 60s, so
+    // boot reliably produced a second /me alongside the mount effect's.
+    let last = Date.now();
     const onFocus = () => {
       const now = Date.now();
       if (now - last < 60_000) return;
