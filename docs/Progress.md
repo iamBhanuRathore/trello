@@ -3057,3 +3057,9 @@ Validation: backend header tests 3 pass, dashboard 87 pass (incl. 7 vercel-polic
 New `tsconfig.e2e.json` (covers `e2e/` + `playwright.config.ts`, `types: ["node"]`, `strict`, `moduleResolution: bundler`) referenced from the root tsconfig so `tsc -b` follows it. It surfaced the `TestDetails` error immediately; fixed with `test.setTimeout(180_000)`, matching `board-virtualization.spec.ts`. Guard: `src/e2e-typecheck.contract.test.ts` (4 tests) asserts the reference exists, node types + e2e/playwright.config are in scope, the project compiles clean via a real `tsc` subprocess, and an AST walk finds no `test(title, { timeout })` anywhere in e2e/. Verified the guard fails on the reverted tree (both the `TestDetails` error and the missing reference).
 
 Validation: dashboard 91 pass / 0 fail, typecheck clean, oxlint clean, prettier clean. No runtime/UI change — Playwright runner behaviour is unchanged (`details.timeout` was already a no-op).
+
+### 2026-10-06 — PROJECT_OVERVIEW.md readable guide (docs-only)
+
+- What was done: new `docs/PROJECT_OVERVIEW.md` (82 lines, prettier-clean) — mixed-audience entry point covering user features (boards/cards/people/views), planning (stages/sprints/phases/calendar+Google sync), collaboration (chat/inbox/inbound/docs/presence/realtime), power features (FTS search, event-sourced reports, time, forms+SLA, both automation engines, webhooks/GitHub, importers, marketplace+API keys), governance (RBAC/SSO/audit/billing/isolation), ops (super-admin :5174, mobile, theming), stack/repo map + `bun dev/setup/db:*` runs + demo seed, and deferred/backlog status with Roadmap pointers. Detail sources remain `project.md`, `project-tech-stack.md`, `DATABASE_SCHEMA.md`, `PERMISSIONS_MATRIX.md`, `Glossary.md`, `Roadmap.md`, `Decisions.md`.
+- Tests: none (docs-only); `wc -l` + prettier verified.
+- What's next: link from README/docs index if wanted; keep updated per push-gate rule.
