@@ -3049,3 +3049,11 @@ Validation: backend header tests 3 pass, dashboard 87 pass (incl. 7 vercel-polic
 ### 2026-10-05 — Workstream D (static files): robots.txt + llms.txt
 
 `apps/dashboard/public/robots.txt` (`Disallow: /` — auth-gated SPA, no sitemap per plan) and minimal `llms.txt` (product blurb + public pages only, no routes/API internals). Verified served from the prod preview build. No code changes; no test surface (static files).
+
+### 2026-10-07 — e2e specs are now type-checked (was: green typecheck, broken specs)
+
+`apps/dashboard/e2e/` matched no tsconfig, so `bun run typecheck` reported a clean dashboard while the specs were unchecked. Two defects were living there: `helpers.ts:3` failed with `Cannot find name 'process'` (no `@types/node` ambient types in scope), and `smoke/automation.spec.ts` passed `{ timeout: 180000 }` as `test()`'s second argument — Playwright 1.63's `TestDetails` is `{ tag?, annotation?, lock? }`, so the timeout would have been **silently dropped at runtime**, leaving a 3-minute rule-building test on the 30s default.
+
+New `tsconfig.e2e.json` (covers `e2e/` + `playwright.config.ts`, `types: ["node"]`, `strict`, `moduleResolution: bundler`) referenced from the root tsconfig so `tsc -b` follows it. It surfaced the `TestDetails` error immediately; fixed with `test.setTimeout(180_000)`, matching `board-virtualization.spec.ts`. Guard: `src/e2e-typecheck.contract.test.ts` (4 tests) asserts the reference exists, node types + e2e/playwright.config are in scope, the project compiles clean via a real `tsc` subprocess, and an AST walk finds no `test(title, { timeout })` anywhere in e2e/. Verified the guard fails on the reverted tree (both the `TestDetails` error and the missing reference).
+
+Validation: dashboard 91 pass / 0 fail, typecheck clean, oxlint clean, prettier clean. No runtime/UI change — Playwright runner behaviour is unchanged (`details.timeout` was already a no-op).
