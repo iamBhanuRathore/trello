@@ -1863,3 +1863,11 @@ So the tree was authoritative and correct, and the second copy was permanently a
 **Alternatives considered:** (a) fold `e2e/` into `tsconfig.app.json` (rejected — pulls `types: ["node"]` into the browser bundle's type surface, so a Node-only global could slip into `src/` without any error; the plugin config and app config have genuinely different type environments); (b) drop `process.env` from the specs (rejected — the env indirection is what lets CI point the suite at a deployed stack).
 
 **Decision:** separate `tsconfig.e2e.json` project, referenced from the root tsconfig so `tsc -b` (and therefore `bun run typecheck` and turbo's `typecheck` task) covers it, with `types: ["node"]` scoped to that project only. Per-test timeouts use `test.setTimeout()`. A contract test asserts the reference, the `types`/`include` scope, a clean `tsc -p tsconfig.e2e.json` subprocess, and an AST-level ban on `test(title, { timeout })` — the last because TypeScript catches it only while the e2e project stays wired in, and the failure mode when it doesn't is a green typecheck.
+
+## 2026-10-07 — Marketing Site: Next.js Static Export in apps/website
+
+**Context:** `project-tech-stack.md` §3 prescribes a Next.js marketing site, but no `apps/website` existed and the dashboard is an auth-gated Vite SPA (`robots.txt` disallows indexing). Options were a Vite SPA matching dashboard tooling (weaker SEO, no SSR/SSG/ISR metadata control) or a standalone repo (splits design-token sharing and turbo caching).
+
+**Alternatives considered:** (a) Vite SPA in-monorepo (rejected — no sitemap/robots/OG pipeline parity with Next, and marketing bundle would share auth-app deploy cadence); (b) separate repo (rejected — loses `@boardly/config` token sharing and single-push docs gate).
+
+**Decision:** `apps/website` Next.js 15 App Router with `output: export` (static, Docker-friendly), Tailwind v4 tokens via CSS vars, content split into typed `lib/*.ts` modules so no file exceeds ~150 lines. Metadata routes (`sitemap.ts`, `robots.ts`, `manifest.ts`) carry `export const dynamic = 'force-static'` — required under `output: export`. Benchmark: Cal.com and Linear both ship marketing as static-first Next.js separate from the authenticated app.

@@ -1,0 +1,85 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+}
+
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --muted: #f1f5f9;
+  --muted-fg: #475569;
+  --border: #e2e8f0;
+  --brand-50: #eef2ff;
+  --brand-100: #e0e7ff;
+  --brand-500: #6366f1;
+  --brand-600: #4f46e5;
+  --brand-700: #4338ca;
+  --radius: 0.625rem;
+  scroll-behavior: smooth;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --card: #1e293b;
+  --muted: #1e293b;
+  --muted-fg: #94a3b8;
+  --border: #334155;
+}
+
+@layer base {
+  html {
+    scroll-padding-top: 88px;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer utilities {
+  .container-site {
+    width: 100%;
+    margin-inline: auto;
+    max-width: 72rem;
+    padding-inline: 1rem;
+  }
+  @media (min-width: 640px) {
+    .container-site {
+      padding-inline: 1.5rem;
+    }
+  }
+  .reveal {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity 0.5s ease-out,
+      transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+}

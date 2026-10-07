@@ -113,6 +113,8 @@ Checkable version of the Build Order from `docs/project-tech-stack.md` §5 + `do
 
 ## Backlog (not yet phased — park ideas here instead of losing them)
 
+- [x] Marketing website v1 (`apps/website`, Next.js static export, arch-doc §1–12 coverage)
+
 ## Phase 5 — Hardening & Scale (security-first, in progress)
 
 - [x] 5.0 Tenant isolation: org predicates on all card/chat sub-resources, `card.assign` enforcement, org-member invite invariant, 404 fail-closed, org-namespaced cache keys, upload caps, IDOR regression tests
