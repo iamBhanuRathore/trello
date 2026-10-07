@@ -115,8 +115,22 @@ export class RedisService {
         logger.warn({ err: err.message }, 'Redis Data Client error');
       });
 
-      this.pubClient.on('connect', () => {
+      // Availability tracks the DATA client lifecycle — it is the client
+      // isAvailable() actually gates on. `ready` (not `connect`: TCP up is not
+      // authenticated + selected + READY) marks usable; `close`/`end` clear it.
+      // `ready` also covers late recovery: if Redis is down at boot, connect()
+      // rejects but these clients keep retrying in the background, and the flag
+      // flips true when the server actually comes back — no manual reconnect.
+      // Clearing on `close` fails over fast: every consumer is fail-open or has
+      // an in-memory fallback, so a half-open socket must not read available.
+      this.dataClient.on('ready', () => {
         this._isAvailable = true;
+      });
+      this.dataClient.on('close', () => {
+        this._isAvailable = false;
+      });
+      this.dataClient.on('end', () => {
+        this._isAvailable = false;
       });
 
       // Connect all three clients
