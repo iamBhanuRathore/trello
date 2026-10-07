@@ -267,6 +267,17 @@ describe('palette trigger opens programmatically', () => {
     const openers = src.match(/onClick=\{\(\) => setOpen\(true\)\}/g) ?? [];
     expect(openers.length).toBeGreaterThanOrEqual(2);
   });
+
+  it('selection reset keys on stable results, not a fresh default array', async () => {
+    const src = await read('components/SearchPalette.tsx');
+    // Regression: `data: serverResults = []` minted a new array every render
+    // while the search query was disabled, so the `setSelectedIndex(0)` effect
+    // keyed on it re-fired on every render and arrow/hover selection snapped
+    // back to row 0 forever. Results must come through one stable reference.
+    expect(src).not.toMatch(/data:\s*serverResults\s*=\s*\[\]/);
+    expect(src).toContain('EMPTY_RESULTS');
+    expect(src).toMatch(/\[\s*query\s*,\s*stableServerResults\s*\]/);
+  });
 });
 
 /**

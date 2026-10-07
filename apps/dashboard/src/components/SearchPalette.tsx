@@ -41,6 +41,13 @@ interface SearchItem {
   onSelect: () => void;
 }
 
+// Stable empty results: the search query below is disabled until 2+ chars,
+// so `data` is undefined and a `= []` default would mint a FRESH array every
+// render — and the reset effect keyed on `serverResults` would snap
+// selectedIndex back to 0 on every render, making arrow/hover selection
+// permanently stuck on the first row. One shared frozen reference instead.
+const EMPTY_RESULTS: never[] = [];
+
 export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -64,7 +71,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
 
   // 1. Fetch remote search results for cards/boards/projects
   const {
-    data: serverResults = [],
+    data: serverResults,
     isLoading,
     isError: isSearchError,
     refetch: refetchSearch,
@@ -73,6 +80,10 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
     queryFn: () => searchService.search(debouncedQuery),
     enabled: debouncedQuery.trim().length > 1,
   });
+
+  // See EMPTY_RESULTS: must be reference-stable so the selection reset below
+  // only fires when results actually change, not on every render.
+  const stableServerResults = serverResults ?? EMPTY_RESULTS;
 
   // 2. Fetch saved searches
   //
@@ -124,7 +135,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
   // Reset selected index when query or results change
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query, serverResults]);
+  }, [query, stableServerResults]);
 
   // Focus input on open
   useEffect(() => {
@@ -253,7 +264,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
 
   // Format remote search results into SearchItems
   const formattedServerResults: SearchItem[] = useMemo(() => {
-    return serverResults.map((r: any) => {
+    return stableServerResults.map((r: any) => {
       if (r.type === 'card') {
         const ticketKey = r.key || (r.taskNumber ? `#${r.taskNumber}` : 'Task');
         return {
@@ -287,7 +298,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
         onSelect: () => navigate('/'),
       };
     });
-  }, [serverResults, navigate]);
+  }, [stableServerResults, navigate]);
 
   // All active items to display
   const activeItems: SearchItem[] = useMemo(() => {
@@ -516,7 +527,7 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
           ) : (
             !isLoading &&
             query.length > 0 &&
-            (isSearchError && serverResults.length === 0 ? (
+            (isSearchError && stableServerResults.length === 0 ? (
               <QueryError
                 compact
                 message="Search failed."
