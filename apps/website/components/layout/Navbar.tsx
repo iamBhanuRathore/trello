@@ -56,7 +56,7 @@ export default function Navbar() {
             Open app
           </a>
           <a
-            href="#pricing"
+            href="#signup"
             className="rounded-md bg-[#6366f1] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f46e5]"
           >
             Start free

@@ -1,65 +1,56 @@
-import { APP_LINKS } from '@/lib/site';
+import { KanbanSquare } from 'lucide-react';
+import { APP_LINKS, FOOTER_COLS } from '@/lib/site';
 
 export default function Footer() {
   return (
     <footer className="border-t border-[var(--border)] py-10">
-      <div className="container-site grid gap-8 md:grid-cols-3">
-        <div className="min-w-0">
-          <p className="text-base font-bold">Boardly</p>
-          <p className="mt-2 max-w-sm text-sm text-[var(--muted-fg)]">
-            Enterprise multi-tenant Kanban &amp; project management. Organizations, workspaces,
-            projects, boards, sprints, phases, stages, docs and chat in one platform.
+      <div className="container-site grid gap-8 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="min-w-0 lg:col-span-2">
+          <p className="flex items-center gap-2 text-base font-bold">
+            <span className="grid size-8 place-items-center rounded-lg bg-[#6366f1] text-white">
+              <KanbanSquare size={17} aria-hidden />
+            </span>
+            Boardly
           </p>
+          <p className="mt-2 max-w-sm text-sm text-[var(--muted-fg)]">
+            Enterprise multi-tenant Kanban &amp; project management. Boards, sprints, docs,
+            automations and reports — with the governance procurement actually asks for.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <a
+              href="#signup"
+              className="rounded-lg bg-[#6366f1] px-4 py-2 text-sm font-semibold text-white hover:bg-[#4f46e5]"
+            >
+              Start free
+            </a>
+            <a
+              href={APP_LINKS.dashboard}
+              className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold hover:bg-[var(--muted)]"
+            >
+              Open app
+            </a>
+          </div>
         </div>
-        <nav aria-label="Product">
-          <p className="text-sm font-semibold">Product</p>
-          <ul className="mt-2 space-y-1.5 text-sm text-[var(--muted-fg)]">
-            <li>
-              <a className="hover:underline" href="#panels">
-                Panels
-              </a>
-            </li>
-            <li>
-              <a className="hover:underline" href="#model">
-                Domain model
-              </a>
-            </li>
-            <li>
-              <a className="hover:underline" href="#power">
-                Automations &amp; reports
-              </a>
-            </li>
-            <li>
-              <a className="hover:underline" href="#pricing">
-                Pricing
-              </a>
-            </li>
-          </ul>
-        </nav>
-        <nav aria-label="Live surfaces">
-          <p className="text-sm font-semibold">Live surfaces</p>
-          <ul className="mt-2 space-y-1.5 text-sm text-[var(--muted-fg)]">
-            <li>
-              <a className="hover:underline" href={APP_LINKS.dashboard}>
-                Dashboard · :5173
-              </a>
-            </li>
-            <li>
-              <a className="hover:underline" href={APP_LINKS.superAdmin}>
-                Super Admin · :5174
-              </a>
-            </li>
-            <li>
-              <a className="hover:underline" href={APP_LINKS.apiDocs}>
-                API docs · :3001/docs
-              </a>
-            </li>
-          </ul>
-        </nav>
+        {FOOTER_COLS.map((col) => (
+          <nav key={col.title} aria-label={col.title}>
+            <p className="text-sm font-semibold">{col.title}</p>
+            <ul className="mt-2 space-y-1.5 text-sm text-[var(--muted-fg)]">
+              {col.links.map((l) => (
+                <li key={l.label}>
+                  <a className="hover:underline" href={l.href}>
+                    {l.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        ))}
       </div>
-      <div className="container-site mt-8 border-t border-[var(--border)] pt-6 text-xs text-[var(--muted-fg)]">
-        Design-era architecture snapshot is partially superseded — the tree +
-        docs/project-tech-stack.md + docs/Decisions.md win on conflicts.
+      <div className="container-site mt-8 flex flex-col gap-2 border-t border-[var(--border)] pt-6 text-xs text-[var(--muted-fg)] sm:flex-row sm:justify-between">
+        <span>
+          © 2026 Boardly. Design-era snapshot partially superseded — tree + docs win on conflicts.
+        </span>
+        <span>Free up to 10 seats · SSO on Business+ · SLA on Enterprise</span>
       </div>
     </footer>
   );
