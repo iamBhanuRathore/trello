@@ -17,8 +17,8 @@ NC='\033[0m'
 
 echo -e "${YELLOW}🛑 Stopping Boardly development environment...${NC}\n"
 
-# 1. Kill any stray processes listening on 3001 or 5173
-for PORT in 3001 5173; do
+# 1. Kill any stray processes listening on app ports
+for PORT in 3001 5173 5174 5175; do
   PID=$(lsof -ti :$PORT 2>/dev/null || true)
   if [ -n "$PID" ]; then
     echo -e "Stopping process on port $PORT (PID: $PID)..."

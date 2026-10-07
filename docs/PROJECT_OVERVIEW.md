@@ -68,7 +68,7 @@ Three panels: **User panel** (the product), **Company Admin panel** (`/admin/*` 
 | Monorepo                | Turborepo; `packages/shared-types                                                                                                                                                                                                                                                                         | ui  | config | test-fixtures`; path aliases `@boardly/*` |
 
 ```
-apps/backend (:3001)  apps/dashboard (:5173)  apps/super-admin (:5174)  apps/mobile (Expo)
+apps/backend (:3001)  apps/dashboard (:5173)  apps/super-admin (:5174)  apps/website (:5175)  apps/mobile (Expo)
 packages/shared-types  packages/ui  packages/config  packages/test-fixtures
 docs/  scripts/  infra/helm/boardly-backend/  docker-compose.yml (PG dev :5432 / test :5433, Redis :6379)
 ```
