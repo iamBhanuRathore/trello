@@ -376,6 +376,9 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
             <button
               type="button"
               aria-label="Search boards, cards and commands"
+              // Explicit opener: handleOpenChange is the close path by contract
+              // (it swallows open requests), so the trigger cannot rely on it.
+              onClick={() => setOpen(true)}
               className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-border/80 bg-background/60 hover:bg-muted text-muted-foreground hover:text-foreground shadow-2xs h-8 w-8 justify-center px-0 sm:w-[220px] sm:justify-between sm:px-3 lg:w-[280px] text-xs font-medium transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2 truncate">
@@ -394,6 +397,9 @@ export function SearchPalette({ triggerContext }: { triggerContext?: 'navbar' })
           render={
             <button
               type="button"
+              aria-label="Open command palette"
+              // Explicit opener: see the navbar trigger above.
+              onClick={() => setOpen(true)}
               className="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors hover:bg-muted text-muted-foreground hover:text-foreground h-8 w-8 cursor-pointer"
             >
               <SearchIcon className="h-4 w-4" />

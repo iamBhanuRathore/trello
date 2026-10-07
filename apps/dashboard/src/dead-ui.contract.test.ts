@@ -254,6 +254,21 @@ describe('saved-search rows are fully clickable and touch-deletable', () => {
   });
 });
 
+describe('palette trigger opens programmatically', () => {
+  it('both DialogTrigger buttons carry an explicit setOpen(true)', async () => {
+    const src = await read('components/SearchPalette.tsx');
+    // Regression: the dialog-close migration wired onOpenChange to the
+    // close-only handleOpenChange, which swallows open requests — the navbar
+    // pill silently stopped opening the palette and no suite covered it
+    // (specs opened via the sidebar synthetic event). The sanctioned fix is an
+    // explicit opener on the trigger itself; pin both variants.
+    expect(src).toContain('aria-label="Search boards, cards and commands"');
+    expect(src).toContain('aria-label="Open command palette"');
+    const openers = src.match(/onClick=\{\(\) => setOpen\(true\)\}/g) ?? [];
+    expect(openers.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 /**
  * A CONTROLLED dialog whose only opener is a Radix `DialogTrigger` is dead if its
  * `onOpenChange` is `useDialogClose().handleOpenChange`.
