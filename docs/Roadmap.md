@@ -144,3 +144,8 @@ Tracked here so they are not rediscovered. None are regressions; all predate the
 ### Open item from the 2026-10-04 performance pass
 
 - [ ] **Virtualize the chat message list — deferred deliberately, not forgotten.** The feed is hard-capped at `limit=50` with no pagination, so windowing it would trade a scroll-anchoring bug class for no measurable gain and would be unreachable code behind any sane threshold. Do it when the message page size is raised or infinite scroll lands. See Decisions.md 2026-10-04.
+
+### Open item from the 2026-10-09 Sentry phase-1 pass
+
+- [ ] **Sentry phase 2 — sourcemap upload.** Phase 1 ships the SDKs with `build.sourcemap: false` deliberately (hidden maps still get served by static hosts). Flip it on by setting `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` + `SENTRY_PROJECT` in the build environment; both vite configs already have the guarded `sentryVitePlugin` that uploads and then deletes the maps. Blocked on real Sentry project credentials, and on `GIT_SHA == VITE_GIT_SHA` holding byte-identically in CI (already wired — Helm takes the release from the image tag, CI sets `VITE_GIT_SHA` from `${{ github.sha }}` — but unverified against a live project). Until then the release field groups events by commit but stack traces stay minified. See Decisions.md 2026-10-09.
+- [ ] **Verify one envelope per fault.** No SDK-level assertion exists that a single 5xx produces exactly one Sentry request, by design — the SDK marks already-captured objects and a Network-tab check is the confirmation. Needs a real DSN: force a 500, confirm one envelope carrying `org_id` + `api_endpoint`; trigger a worker rejection, confirm one event; confirm an empty DSN sends nothing.

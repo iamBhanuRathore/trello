@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@boardly/ui/button';
 import { AlertTriangle, RotateCcw, RefreshCw } from 'lucide-react';
+import { captureRenderError } from '../../lib/sentry';
 
 interface RootErrorBoundaryProps {
   children: React.ReactNode;
@@ -40,8 +41,9 @@ export class RootErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: unknown, info: React.ErrorInfo): void {
-    // Intentional: a crash boundary's job is to surface the error. This is
-    // the seam where an error-tracking SDK plugs in.
+    // A boundary swallows the throw, so it never reaches Sentry's global
+    // handlers — this is the only place a render crash can be captured.
+    captureRenderError(error, info.componentStack);
     // eslint-disable-next-line no-console
     console.error('[RootErrorBoundary] route render crashed:', error, info.componentStack);
   }

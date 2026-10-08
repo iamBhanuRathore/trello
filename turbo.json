@@ -5,6 +5,15 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "env": [
+        "GIT_SHA",
+        "VITE_GIT_SHA",
+        "SENTRY_DSN",
+        "SENTRY_ENABLED",
+        "SENTRY_AUTH_TOKEN",
+        "VITE_SENTRY_DSN",
+        "VITE_SENTRY_ENABLED"
+      ],
       "outputs": [".next/**", "!.next/cache/**", "dist/**", ".vinxi/**"]
     },
     "dev": {

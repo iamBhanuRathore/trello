@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { refreshTokens } from '../../db/schema/index';
 import { logger } from '../../lib/logger';
+import { captureServerError } from '../../lib/sentry';
 
 /**
  * Refresh-token cleanup.
@@ -48,7 +49,10 @@ export function startRefreshTokenCleanup(db: Database, intervalMs = PRUNE_INTERV
   const run = () => {
     pruneRefreshTokens(db)
       .then((count) => logger.info({ count }, 'Refresh-token cleanup sweep complete'))
-      .catch((err: unknown) => logger.error({ err: String(err) }, 'Refresh-token cleanup failed'));
+      .catch((err: unknown) => {
+        captureServerError(err, { route: 'worker:refresh-token-cleanup' });
+        logger.error({ err: String(err) }, 'Refresh-token cleanup failed');
+      });
   };
   run();
   const timer = setInterval(run, intervalMs);

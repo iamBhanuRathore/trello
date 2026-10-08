@@ -110,6 +110,28 @@ const envSchema = z.object({
   SMTP_SECURE: z.coerce.boolean().optional().default(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+
+  // Error monitoring (Sentry). Optional at every stage: an empty DSN makes
+  // initSentry() a no-op, so local dev and CI never open a client.
+  SENTRY_DSN: z
+    .string()
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .pipe(z.string().url().optional()),
+  // Forces the client on outside production (staging smoke tests). Explicit
+  // parse: z.coerce.boolean() reads the string "false" as true.
+  SENTRY_ENABLED: z.preprocess(
+    (v) => v === true || v === 'true' || v === '1',
+    z.boolean().default(false)
+  ),
+  // Release identifier injected by CI at deploy time. Must be byte-identical
+  // to the VITE_GIT_SHA the frontends were built with or sourcemaps uploaded
+  // in phase 2 will not match the events they are meant to deobfuscate.
+  GIT_SHA: z
+    .string()
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .pipe(z.string().optional()),
 });
 
 const parsed = envSchema

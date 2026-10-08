@@ -1,13 +1,45 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import path from 'path';
 
 const UI_PKG = path.resolve(import.meta.dirname, '../../packages/ui/src');
 
+// Phase 2 sourcemap upload — see apps/dashboard/vite.config.ts for the full
+// rationale. Same guard, same release-identity requirement.
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+const sentryOrg = process.env.SENTRY_ORG;
+const sentryProject = process.env.SENTRY_PROJECT;
+const sentryUploadEnabled =
+  !!sentryAuthToken && !!sentryOrg && !!sentryProject && !!process.env.VITE_GIT_SHA;
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    ...(sentryUploadEnabled
+      ? [
+          sentryVitePlugin({
+            authToken: sentryAuthToken,
+            org: sentryOrg,
+            project: sentryProject,
+            release: { name: process.env.VITE_GIT_SHA! },
+            sourcemaps: {
+              assets: './dist/**',
+              filesToDeleteAfterUpload: ['./dist/**/*.map'],
+            },
+            telemetry: false,
+          }),
+        ]
+      : []),
+  ],
+  build: {
+    // See apps/dashboard/vite.config.ts. Never ship dist/*.map from a host
+    // that serves static files.
+    sourcemap: !!sentryAuthToken ? 'hidden' : false,
+  },
   server: {
     port: 5174,
     proxy: {

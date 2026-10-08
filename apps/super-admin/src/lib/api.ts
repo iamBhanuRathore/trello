@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { captureApiError } from './sentry';
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/v1',
@@ -91,6 +92,13 @@ api.interceptors.response.use(
       originalRequest?.url?.includes('/auth/sign-up') ||
       originalRequest?.url?.includes('/auth/refresh') ||
       originalRequest?.url?.includes('/auth/sign-out');
+
+    // Explicit capture: these rejections are consumed by the query layer and
+    // toasted, so the global unhandledrejection handler never sees them.
+    // 5xx and unreachable-API are defects; 401/403/404/422 are not.
+    if (!isAuthRoute && (!error.response || (error.response?.status ?? 0) >= 500)) {
+      captureApiError(error, originalRequest?.url ?? 'unknown');
+    }
 
     if (error.response?.status === 401 && !originalRequest?._retry && !isAuthRoute) {
       originalRequest._retry = true;

@@ -14,6 +14,7 @@ import {
 } from '../../lib/storage';
 import { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
 import { logger } from '../../lib/logger';
+import { captureServerError } from '../../lib/sentry';
 
 // ─── ClamAV sidecar scanner (fail-closed) ─────────────────────────────────────
 // Streams object bytes to `clamd` INSTREAM in chunks with backpressure and a
@@ -613,6 +614,9 @@ export function startScanWorker(db: Database, opts: { pollMs?: number } = {}): (
 
       await drain(db);
     } catch (err) {
+      // Ticks every 5s, so a persistent failure is throttled inside
+      // captureServerError rather than flooding the quota.
+      captureServerError(err, { route: 'worker:media-scan' });
       logger.warn(
         { err: err instanceof Error ? err.message : String(err) },
         'Media scan tick failed'

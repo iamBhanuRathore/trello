@@ -14,3 +14,13 @@ data:
   APP_URL: {{ .Values.config.APP_URL | quote }}
   REDIS_CHANNEL: {{ .Values.config.REDIS_CHANNEL | quote }}
   PRESENCE_TTL_SECONDS: {{ .Values.config.PRESENCE_TTL_SECONDS | quote }}
+# Error-monitoring release id. The image tag IS the commit sha (set by
+  # .github/workflows/docker-build.yml), so events are tagged with the exact
+  # commit that produced them without a second value to keep in sync. Emitted
+  # only for a real sha: a 'latest'-tagged deploy would report the release as
+  # "latest", which groups every commit's events under one bucket. Must match
+  # the VITE_GIT_SHA the frontends were built with, or a phase-2 sourcemap
+  # upload will not deobfuscate the events it was uploaded for.
+  {{- if regexMatch "^[0-9a-f]{40}$" .Values.image.tag }}
+  GIT_SHA: {{ .Values.image.tag | quote }}
+  {{- end }}

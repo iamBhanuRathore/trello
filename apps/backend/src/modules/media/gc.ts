@@ -4,6 +4,7 @@ import { attachments, chatAttachments } from '../../db/schema/index';
 import { deleteObject } from '../../lib/storage';
 import { MediaStatus } from '@boardly/shared-types';
 import { logger } from '../../lib/logger';
+import { captureServerError } from '../../lib/sentry';
 
 // ─── Media GC: staged >24h → delete object (404 ok) then row, idempotent ─────
 // S3 lifecycle on the upload prefix is the backstop (see infra notes in
@@ -116,6 +117,7 @@ export function startMediaGC(db: Database, intervalMs = 3_600_000): () => void {
     try {
       await runMediaGC(db);
     } catch (err) {
+      captureServerError(err, { route: 'worker:media-gc' });
       logger.warn(
         { err: err instanceof Error ? err.message : String(err) },
         'Media GC tick failed'

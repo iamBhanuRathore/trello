@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { Login } from './pages/Login';
 import { SuperAdminLayout } from './layouts/SuperAdminLayout';
+import { RootErrorBoundary } from './components/RootErrorBoundary';
 import { Toaster } from 'sonner';
 
 // Convention: every OPS section is React.lazy-loaded so each route ships as
@@ -58,62 +59,64 @@ export function App() {
   }, [checkAuth]);
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
+    <RootErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
 
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <SuperAdminLayout />
-            </ProtectedRoute>
-          }
-        >
           <Route
-            index
+            path="/"
             element={
-              <Suspense fallback={<RouteFallback />}>
-                <Overview />
-              </Suspense>
+              <ProtectedRoute>
+                <SuperAdminLayout />
+              </ProtectedRoute>
             }
-          />
-          <Route
-            path="tenants"
-            element={
-              <Suspense fallback={<RouteFallback />}>
-                <Tenants />
-              </Suspense>
-            }
-          />
-          <Route
-            path="users"
-            element={
-              <Suspense fallback={<RouteFallback />}>
-                <PlatformUsers />
-              </Suspense>
-            }
-          />
-          <Route
-            path="plans"
-            element={
-              <Suspense fallback={<RouteFallback />}>
-                <Plans />
-              </Suspense>
-            }
-          />
-        </Route>
+          >
+            <Route
+              index
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <Overview />
+                </Suspense>
+              }
+            />
+            <Route
+              path="tenants"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <Tenants />
+                </Suspense>
+              }
+            />
+            <Route
+              path="users"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <PlatformUsers />
+                </Suspense>
+              }
+            />
+            <Route
+              path="plans"
+              element={
+                <Suspense fallback={<RouteFallback />}>
+                  <Plans />
+                </Suspense>
+              }
+            />
+          </Route>
 
-        <Route
-          path="*"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <NotFound />
-            </Suspense>
-          }
-        />
-      </Routes>
-      <Toaster richColors position="bottom-right" closeButton theme="dark" />
-    </BrowserRouter>
+          <Route
+            path="*"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <NotFound />
+              </Suspense>
+            }
+          />
+        </Routes>
+        <Toaster richColors position="bottom-right" closeButton theme="dark" />
+      </BrowserRouter>
+    </RootErrorBoundary>
   );
 }

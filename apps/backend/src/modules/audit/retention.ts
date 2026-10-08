@@ -3,6 +3,7 @@ import type { SQL } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { auditLog, activityLog, notifications } from '../../db/schema';
 import { logger } from '../../lib/logger';
+import { captureServerError } from '../../lib/sentry';
 
 /**
  * Log retention (5.3).
@@ -132,7 +133,10 @@ export function startRetentionJob(db: Database, intervalMs = PRUNE_INTERVAL_MS):
   const run = () => {
     pruneLogs(db)
       .then((counts) => logger.info(counts, 'Retention sweep complete'))
-      .catch((err: unknown) => logger.error({ err: String(err) }, 'Retention sweep failed'));
+      .catch((err: unknown) => {
+        captureServerError(err, { route: 'worker:retention' });
+        logger.error({ err: String(err) }, 'Retention sweep failed');
+      });
   };
   run();
   const timer = setInterval(run, intervalMs);

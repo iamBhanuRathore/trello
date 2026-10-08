@@ -1,5 +1,10 @@
+// Imported for its side effect: must initialize before any other module so
+// the SDK's global handlers are installed before user code can throw.
+import './lib/sentry';
 import { Elysia } from 'elysia';
 import { swagger } from '@elysiajs/swagger';
+import type { AuthContext } from './middleware/auth';
+import { captureServerError, flushSentry } from './lib/sentry';
 import { env } from './lib/env';
 import { logger } from './lib/logger';
 import { db, disconnectDb } from './db/index';
@@ -22,12 +27,18 @@ let inFlight = 0;
 let shuttingDown = false;
 
 // 1. Ensure enum values and schema columns are up to date on boot
-await runBootMigrations(db);
+await runBootMigrations(db).catch((err: unknown) => {
+  captureServerError(err, { route: 'boot' });
+  throw err;
+});
 
 // 1b. Seed the permission registry once per process. The auth middleware resolves
 // permissions on every authenticated request and must never write to the DB
 // on that path.
-await ensurePermissionsSeeded(db).catch((err) => {
+await ensurePermissionsSeeded(db).catch((err: unknown) => {
+  // Non-fatal: the resolver falls back to its DB path. Capture it anyway —
+  // a permissions registry that silently fails to seed is a real defect.
+  captureServerError(err, { route: 'boot' });
   logger.error({ err }, 'Permission registry seed failed at boot');
 });
 
@@ -99,13 +110,18 @@ export const app = new Elysia()
   )
 
   // ── Global Error Handler ───────────────────────────────────────────────────
-  .onError(({ error, code, set, request }) => {
+  .onError((ctx) => {
+    const { error, code, set, request } = ctx;
     // No inFlight decrement here on purpose: onAfterResponse always follows an
     // error response, so decrementing in both places double-counted every error.
 
     if (!set.headers) set.headers = {};
     applyCorsHeaders(set.headers as Record<string, any>, request);
 
+    // Elysia's VALIDATION/NOT_FOUND codes return clean shapes below. They are
+    // handled first, and on purpose: formatErrorResponse() logs anything that
+    // isn't a recognized shape at error level, so calling it before these
+    // branches would double-log every rejected request.
     if (code === 'VALIDATION') {
       set.status = 422;
       return formatValidationError(error);
@@ -116,7 +132,22 @@ export const app = new Elysia()
       return { error: 'Resource not found' };
     }
 
+    // 4xx are the client's problem and are already returned as clean API
+    // shapes — only 5xx is a server defect worth an event. The status is the
+    // one this same response returns, so the two can never disagree.
     const { status, body } = formatErrorResponse(error);
+    if (status >= 500) {
+      // `user` is set by the auth middleware's global derive and is absent on
+      // public routes. Typed partial access — Elysia widens derive values on
+      // an un-annotated onError hook, so it is asserted explicitly here.
+      const auth = (ctx as Partial<{ user: AuthContext }>).user;
+      captureServerError(error, {
+        userId: auth?.userId,
+        orgId: auth?.organizationId,
+        route: request.url,
+      });
+    }
+
     set.status = status;
     return body;
   })
@@ -169,7 +200,12 @@ async function shutdown(signal: string) {
     logger.info({}, 'All in-flight requests drained successfully');
   }
 
-  // 3. Stop background workers, then close Redis + Database client pools
+  // 3. Flush buffered error events BEFORE tearing down the process, otherwise
+  // the crash-time event — the one that motivated the deploy — is the one that
+  // never ships.
+  await flushSentry();
+
+  // 4. Stop background workers, then close Redis + Database client pools
   workerService.stop();
   await Promise.allSettled([disconnectRedis(), disconnectDb()]);
 

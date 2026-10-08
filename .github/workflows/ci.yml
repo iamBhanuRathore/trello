@@ -43,6 +43,12 @@ jobs:
       NODE_ENV: test
       API_URL: http://localhost:3001
       DASHBOARD_URL: http://localhost:5173,http://localhost:5174
+      # Release identity for error monitoring. Vite embeds only VITE_* vars
+      # present in the build environment (the .env* files turbo hashes do not
+      # cover CI-injected values), so both names are set from the same sha.
+      # These also belong in turbo's build.env so the cache key reflects them.
+      GIT_SHA: ${{ github.sha }}
+      VITE_GIT_SHA: ${{ github.sha }}
 
     steps:
       - name: Checkout repository

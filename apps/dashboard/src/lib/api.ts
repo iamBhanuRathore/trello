@@ -2,6 +2,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { edenV1 } from './eden';
 import { queryClient } from './queryClient';
+import { captureApiError } from './sentry';
 import type { ImportTasksBody, ImportTrelloBody } from '@boardly/backend/modules/importers/schema';
 import type { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
 
@@ -683,6 +684,14 @@ api.interceptors.response.use(
     // offline, or browser-blocked — DevTools mislabels these "CORS errors").
     // Surface it once so failures are never silent, then let the caller's
     // onError (via getApiErrorMessage) show the same cause.
+    // Explicit capture, not left to the global unhandledrejection handler:
+    // these rejections are consumed by the query layer and toasted, so they
+    // never surface as unhandled. The endpoint tag is scoped to this event so
+    // it does not mislabel later, unrelated errors.
+    if (!error.response && !isAuthRoute) {
+      captureApiError(error, error.config?.url ?? 'unknown');
+    }
+
     if (
       !error.response &&
       !isAuthRoute &&
@@ -725,6 +734,14 @@ api.interceptors.response.use(
         }
         return Promise.reject(error);
       }
+    }
+
+    // 5xx is a server defect and must be reported even though the caller will
+    // toast it — the toast informs one user, the event tells us the endpoint
+    // is broken for everyone.
+    const status5xx = (error.response?.status ?? 0) >= 500;
+    if (status5xx && !isAuthRoute) {
+      captureApiError(error, error.config?.url ?? 'unknown');
     }
 
     // Permission-denial safety net: a role change can leave the UI stale until

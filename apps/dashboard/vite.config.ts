@@ -1,15 +1,41 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import path from 'path';
 
 const UI_PKG = path.resolve(import.meta.dirname, '../../packages/ui/src');
+
+// Phase 2 sourcemap upload. Guarded on SENTRY_AUTH_TOKEN: without a token the
+// plugin would fail the build, and a public DSN cannot upload. Release must be
+// byte-identical to the backend's GIT_SHA at deploy time or the uploaded maps
+// are indexed under a release no event references.
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+const sentryOrg = process.env.SENTRY_ORG;
+const sentryProject = process.env.SENTRY_PROJECT;
+const sentryUploadEnabled =
+  !!sentryAuthToken && !!sentryOrg && !!sentryProject && !!process.env.VITE_GIT_SHA;
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    ...(sentryUploadEnabled
+      ? [
+          sentryVitePlugin({
+            authToken: sentryAuthToken,
+            org: sentryOrg,
+            project: sentryProject,
+            release: { name: process.env.VITE_GIT_SHA! },
+            sourcemaps: {
+              assets: './dist/**',
+              filesToDeleteAfterUpload: ['./dist/**/*.map'],
+            },
+            telemetry: false,
+          }),
+        ]
+      : []),
     // Preload the latin Geist subset: it is the only font file requested on
     // first paint (other subsets stay dormant behind unicode-range). The
     // hashed filename is resolved from the bundle at build time.
@@ -30,6 +56,12 @@ export default defineConfig({
   ],
   build: {
     chunkSizeWarningLimit: 600,
+    // Phase 1 (today): no sourcemaps at all. `hidden` would still write
+    // dist/*.map, which any static host serves at a guessable URL — source
+    // disclosure with zero Sentry benefit, since nothing is uploaded yet.
+    // Phase 2: with SENTRY_AUTH_TOKEN present, switch to 'hidden' and let
+    // sentryVitePlugin upload + delete the maps after the bundle is written.
+    sourcemap: !!process.env.SENTRY_AUTH_TOKEN ? 'hidden' : false,
     rollupOptions: {
       output: {
         // Stable vendor chunks: third-party code stays cached across deploys
