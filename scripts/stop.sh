@@ -27,7 +27,20 @@ for PORT in 3001 5173 5174 5175; do
 done
 
 # 2. Stop Docker containers
-echo -e "\n${BLUE}Stopping Docker services...${NC}"
-docker compose stop postgres postgres_test redis
+#
+# INFRA_MODE=remote runs no containers, so there is nothing to stop and `docker
+# compose stop` would fail with a daemon error the user cannot act on — a stop
+# script that reports failure on a clean shutdown is worse than one that says
+# nothing was running. See scripts/infra-mode.sh.
+APP_ENV="${APP_ENV:-development}"
+# shellcheck source=scripts/infra-mode.sh
+. "$SCRIPT_DIR/infra-mode.sh"
+resolve_infra_mode
 
-echo -e "\n${GREEN}✅ All Boardly services and containers stopped cleanly.${NC}"
+if [ "$INFRA_MODE" = "local" ]; then
+  echo -e "\n${BLUE}Stopping Docker services...${NC}"
+  docker compose stop postgres postgres_test redis
+  echo -e "\n${GREEN}✅ All Boardly services and containers stopped cleanly.${NC}"
+else
+  echo -e "\n${GREEN}✅ Dev servers stopped cleanly (INFRA_MODE=remote — no local containers to stop).${NC}"
+fi

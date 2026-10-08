@@ -4,6 +4,7 @@
 
 - Focus on Phase 2 polish items (Admin Panels).
 
+**Current state — 2026-10-09:** `bun run dev` no longer requires Docker. `INFRA_MODE=local|remote` in `.env.development` selects whether Postgres/Redis come from `docker-compose.yml` or from the configured `DATABASE_URL`/`REDIS_URL` (Neon + Upstash). Default `local`, so no existing workflow changed. Also fixed in the same path: `dev.sh` was running `db:migrate`/`db:seed` against `DATABASE_URL` on every boot while bypassing `db.sh`'s `ALLOW_REMOTE_DB` guard, and swallowed failures with `|| true`. Remote mode now requires `ALLOW_REMOTE_DB=1` to migrate, and a failed `db:migrate` exits 1. Tests remain on local Docker (`:5433`). 72 new assertions in `scripts/dev.sh.test.sh`, in CI. See Decisions.md 2026-10-09.
 **Current state — 2026-10-05:** Lighthouse remediation complete (A perf, B a11y, C headers, D static). Final local prod mobile: 92 / 100 / 100 / 91. Deployed re-measurement + CSP enforcement flip are user-side deploys. 4 commits local, no push.
 **Current state — 2026-10-05:** Workstream C done: vercel.json Report-Only CSP + framing/sniffing/HSTS/COOP headers, csp-flow gate spec, WS /v1 fallback fix, API nosniff + tests. LH mobile 92 / 100 / 100 / 91, typecheck 5/5. Next: D (robots/llms).
 **Current state — 2026-10-05:** Workstream B done: 6 button conversions, light/midnight contrast tokens ≥4.5, single-`<main>` layouts, new axe suite 6/6 green, LH mobile 92 / 100 / 100 / 91. `dialog-close` dirty-Escape failure verified pre-existing (clean tree). Next: C (headers), D (robots/llms).
@@ -101,11 +102,14 @@
 
 ### Environment / access notes
 
-- Postgres dev: `postgresql://boardly:boardly_dev@localhost:5432/boardly_dev`
-- Postgres test: `postgresql://boardly:boardly_test@localhost:5433/boardly_test`
-- Redis: `redis://localhost:6379`
+- `INFRA_MODE=local|remote` in `.env.development` — `local` (default) runs Postgres/Redis
+  from `docker-compose.yml`; `remote` skips every Docker step and uses the configured
+  cloud `DATABASE_URL`/`REDIS_URL`. `bun run test` stays on local Docker either way.
+- Postgres dev: `postgresql://boardly:boardly_dev@localhost:5432/boardly_dev` (local mode)
+- Postgres test: `postgresql://boardly:boardly_test@localhost:5433/boardly_test` (both modes)
+- Redis: `redis://localhost:6379` (local mode)
 - JWT secrets: in `.env` (gitignored) — regenerate with `openssl rand -base64 48`
-- Docker: `docker compose up -d` to start all services
+- Docker: `docker compose up -d` to start all services (local mode only)
 
 ---
 
@@ -3109,3 +3113,15 @@ Validation: dashboard 91 pass / 0 fail, typecheck clean, oxlint clean, prettier 
 - Trap found and fixed: `import './lib/sentry'` for its side effect is tree-shaken away when no export is referenced — the first dashboard build produced a bundle containing no SDK and reported no error. The entrypoints now make a real `initSentry()` call; verified the DSN/release actually land in `dist/assets`.
 - Tests: monorepo `typecheck` 6/6, `lint` clean (1 pre-existing backend warning), `build` green, `dist/*.map` count 0 for both frontends, backend `errors`+`security-headers` 17 pass / 0 fail, dashboard 93 pass / 0 fail. Both dev servers boot and serve 200. Backend enable-matrix probed directly (`empty DSN → false`, `ENABLED=true without DSN → false`, throttling logs after 5 background captures, `flushSentry` clean). Playwright smoke could not run — no Docker daemon, so no Postgres/Redis stack.
 - What's next: phase 2 — set `SENTRY_AUTH_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` to flip sourcemap upload on. Verify one envelope per fault in the Network tab (a manual check, not an assertion) once a DSN exists.
+
+### 2026-10-09 — The Dev Stack Runs Without Docker (`INFRA_MODE`)
+
+- **Why:** `DATABASE_URL`/`REDIS_URL` pointed at Neon and Upstash and the backend worked fine against them, but `bun run dev` could not start at all. `scripts/dev.sh` hard-required a Docker daemon, ran `docker compose up`, and polled readiness with `docker exec` — all container operations regardless of where the data lives. The app never depended on Docker; only the launcher did, so a stack on managed services was unusable. (`Progress.md` 2026-09-27 had already recorded the mirror-image cost of the _other_ half of this: Neon pooler `CONNECTION_CLOSED` wedges blamed on not having a local container.)
+- **Flag:** `INFRA_MODE=local|remote` in `.env.development`, default `local` — no existing workflow changed. An unknown value **exits 1** rather than defaulting, so `INFRA_MODE=remtoe` cannot silently become `local` and fail as "Docker is not running". Auto-detecting from the URL host was rejected: `db.sh` already has `db_is_local` answering a different question (does a _write_ need consent), and a host that looks local can be a tunnel, or a local port forwarded to a cloud database — the failure mode is a stack that starts and talks to the wrong database.
+- **Two more defects in the same path, both fixed:** `dev.sh` called `db:migrate`/`db:seed` directly, bypassing `db.sh`'s `ALLOW_REMOTE_DB` guard, on **every boot** — so with a cloud URL in `.env` it wrote schema to the shared database unattended. And both calls ended in `|| true`, which is how the 2026-09-28 broken Neon journal (journal claimed 42 migrations, schema had zero tables) stayed hidden. Remote mode now migrates only with `ALLOW_REMOTE_DB=1`; a failed `db:migrate` exits 1 and `db:seed` does not run on a schema of unknown state.
+- **Readiness & banner:** `local` unchanged (`pg_isready` / `redis-cli ping`). `remote` TCP-probes the hosts parsed from the URLs, and the banner prints the resolved `host:port` instead of a hardcoded `localhost:5432`/`6379` that named endpoints nothing was listening on. Credentials are never echoed (AGENTS §6) — same redaction as `db.sh`. `service_endpoint` applies scheme default ports because Neon's pooled strings omit the port; treating that as malformed rejected a valid URL on the first real run.
+- **`stop.sh` / `doctor.sh`:** `stop.sh` no longer runs `docker compose stop` in remote mode (a stop script that reports failure on a clean shutdown is worse than one that says nothing was running). `doctor.sh` reports Docker `NOT REQUIRED`, skips the container checks, prints the resolved endpoints, and keeps checking `:5433`. The TCP probe is reachability only, and `doctor.sh` says so rather than letting `REACHABLE` read as "working".
+- **Tests stay on local Docker, deliberately.** ~59 suites share one `boardly_test` database with scoped teardown and delete rows by design; CI provisions `:5433`. Both scripts now say this where the user will see it, rather than letting `bun run test` fail later with a connection error that does not name the cause.
+- **Shared helpers** in `scripts/infra-mode.sh`, sourced by all three scripts rather than duplicated: `read_env_key` reads one key and exports nothing else (sourcing the dotenv wholesale would put every secret into the environment of four dev servers, AGENTS §6), plus `resolve_infra_mode` and `service_endpoint`.
+- **Validation:** new `scripts/dev.sh.test.sh`, **72 assertions**, wired into CI. It puts a `docker` stub first on `PATH`, so "remote mode never touches Docker" is measured rather than inferred from reading the script, and runs everything against a **throwaway `ROOT_DIR`** — `dev.sh` copies `.env.$APP_ENV` over `apps/backend/.env` and `stop.sh` kills ports 3001/5173-5175, so testing against the real tree would overwrite the developer's backend env and kill their running stack. Reverting each of the four fixes individually fails 2-4 assertions. `db.sh.test.sh` 25/25 still green. `bash -n` clean on all five scripts; CI YAML parses.
+- **Not done:** `setup.sh` still hard-requires Docker (`bun run setup` is the first-run path and creates `.env.development` from the example, so it has no mode to read yet); `db.sh up|down|status|logs` are explicitly local-container commands and say so in their help. Both are follow-ups, not oversights.

@@ -29,6 +29,42 @@ Once started, the following services are available:
 | **💾 PostgreSQL**        | `localhost:5432`                                             | Dev DB: `boardly_dev` (user: `boardly`) |
 | **⚡ Redis**             | `localhost:6379`                                             | Cache, Realtime Pub/Sub & Rates         |
 
+_Postgres and Redis are shown at their `INFRA_MODE=local` addresses. Under `remote` the
+launcher prints the resolved cloud endpoints instead — see
+[Infrastructure mode](#%EF%B8%8F-infrastructure-mode)._
+
+---
+
+## 🏗️ Infrastructure mode
+
+`bun dev` runs against Docker containers by default. If your `DATABASE_URL` and `REDIS_URL`
+point at managed services (Neon, Upstash, RDS), set one flag and Docker is not needed:
+
+```bash
+# .env.development
+INFRA_MODE=remote   # default is "local"
+```
+
+|                              | `local` (default)                                         | `remote`                          |
+| ---------------------------- | --------------------------------------------------------- | --------------------------------- |
+| Docker                       | **required** — `docker-compose.yml` runs Postgres + Redis | not used                          |
+| `DATABASE_URL` / `REDIS_URL` | `localhost:5432` / `localhost:6379`                       | your cloud endpoints              |
+| Startup readiness            | `pg_isready` + `redis-cli ping`                           | TCP probe of the configured hosts |
+| Migrations & seeds           | automatic                                                 | **only** with `ALLOW_REMOTE_DB=1` |
+| `bun run stop`               | stops containers too                                      | kills app processes only          |
+| `bun run test`               | uses `DATABASE_TEST_URL` on `:5433`                       | **still the same**                |
+
+Migrations are opt-in in `remote` mode so a local `bun dev` cannot write schema to a shared
+database other developers and CI are pointed at. When you do mean to:
+
+```bash
+ALLOW_REMOTE_DB=1 bun run db:migrate
+ALLOW_REMOTE_DB=1 bun run db:seed
+```
+
+The readiness probe in `remote` mode is TCP reachability only — a wrong password or a TLS
+mismatch surfaces as the backend's own connect error at boot.
+
 ---
 
 ## 🛠️ Developer Scripts
@@ -37,10 +73,10 @@ All necessary scripts are pre-configured in `package.json` and in `./scripts/`:
 
 ### 🚀 Application Lifecyle
 
-- **`bun dev`** (or **`./scripts/dev.sh`**): Start the full stack development environment with auto-provisioned databases, migrations, and seeds.
-- **`bun run setup`** (or **`./scripts/setup.sh`**): First-time project setup (generates `.env` with strong JWT keys, installs dependencies, initializes DB).
-- **`bun run stop`** (or **`./scripts/stop.sh`**): Gracefully stop all development processes and database containers.
-- **`bun run doctor`** (or **`./scripts/doctor.sh`**): Run environment diagnostics (checks Bun, Docker, ports, `.env`, and DB connectivity).
+- **`bun dev`** (or **`./scripts/dev.sh`**): Start the full stack development environment with auto-provisioned databases, migrations, and seeds. Honours `INFRA_MODE` — see [Infrastructure mode](#%EF%B8%8F-infrastructure-mode).
+- **`bun run setup`** (or **`./scripts/setup.sh`**): First-time project setup (generates `.env` with strong JWT keys, installs dependencies, initializes DB). Requires Docker.
+- **`bun run stop`** (or **`./scripts/stop.sh`**): Gracefully stop all development processes, and the database containers in `INFRA_MODE=local`.
+- **`bun run doctor`** (or **`./scripts/doctor.sh`**): Run environment diagnostics (checks Bun, Docker when required, ports, `.env`, and DB reachability).
 
 ### 🗄️ Database Management
 
@@ -80,7 +116,7 @@ All necessary scripts are pre-configured in `package.json` and in `./scripts/`:
 ├── docs/               # System architecture, schemas, and specifications
 ├── scripts/            # Development, setup, and database CLI scripts
 ├── graphify-out/       # Knowledge graph index and interactive visualizer
-├── docker-compose.yml  # PostgreSQL (dev: 5432, test: 5433) & Redis (6379)
+├── docker-compose.yml  # PostgreSQL (dev: 5432, test: 5433) & Redis (6379), INFRA_MODE=local
 └── turbo.json          # Monorepo build pipeline configuration
 ```
 
@@ -91,6 +127,7 @@ All necessary scripts are pre-configured in `package.json` and in `./scripts/`:
 A `.env` file is generated automatically when running `bun run setup` (or `./scripts/setup.sh`). Key variables:
 
 ```ini
+INFRA_MODE=local                # or "remote" to run without Docker
 PORT=3001
 NODE_ENV=development
 DATABASE_URL=postgresql://boardly:boardly_dev@localhost:5432/boardly_dev

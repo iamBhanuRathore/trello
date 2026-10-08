@@ -74,6 +74,13 @@ jobs:
         # shared remote database.
         run: ./scripts/db.sh.test.sh
 
+      - name: Dev launcher infra-mode tests
+        # dev.sh used to require a Docker daemon unconditionally, so a stack
+        # pointed at managed Postgres/Redis could not be launched at all. This
+        # asserts INFRA_MODE=remote never invokes docker and never migrates
+        # without ALLOW_REMOTE_DB=1.
+        run: ./scripts/dev.sh.test.sh
+
       - name: Documentation-gate tests
         # check-docs.sh is itself a gate, so it needs the same treatment: it had
         # an ordering bug that made it unsatisfiable by a `docs:` commit.
