@@ -36,9 +36,10 @@ export default defineConfig({
       : []),
   ],
   build: {
-    // See apps/dashboard/vite.config.ts. Never ship dist/*.map from a host
-    // that serves static files.
-    sourcemap: !!sentryAuthToken ? 'hidden' : false,
+    // See apps/dashboard/vite.config.ts. Never ship dist/*.map from a host that
+    // serves static files, and gate on the upload actually being wired rather
+    // than on the token alone — an inactive plugin never deletes the maps.
+    sourcemap: sentryUploadEnabled ? 'hidden' : false,
   },
   server: {
     port: 5174,

@@ -43,6 +43,9 @@ export function initSentry(): void {
       Sentry.replayIntegration({
         maskAllText: true,
         blockAllMedia: true,
+        // Explicit rather than defaulted — the SDK default is true. See
+        // apps/dashboard/src/lib/sentry.ts for the full rationale.
+        networkCaptureBodies: false,
         networkDetailAllowUrls: [],
       }),
     ],

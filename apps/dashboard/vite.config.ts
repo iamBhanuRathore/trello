@@ -59,9 +59,12 @@ export default defineConfig({
     // Phase 1 (today): no sourcemaps at all. `hidden` would still write
     // dist/*.map, which any static host serves at a guessable URL — source
     // disclosure with zero Sentry benefit, since nothing is uploaded yet.
-    // Phase 2: with SENTRY_AUTH_TOKEN present, switch to 'hidden' and let
-    // sentryVitePlugin upload + delete the maps after the bundle is written.
-    sourcemap: !!process.env.SENTRY_AUTH_TOKEN ? 'hidden' : false,
+    // Phase 2: 'hidden' only when the upload is actually wired, and gated on
+    // the SAME sentryUploadEnabled predicate as the plugin. Gating on the auth
+    // token alone was a real leak: a token without org/project/sha leaves the
+    // plugin inactive, so nothing uploads and nothing runs
+    // filesToDeleteAfterUpload — 101 .map files shipped to the static host.
+    sourcemap: sentryUploadEnabled ? 'hidden' : false,
     rollupOptions: {
       output: {
         // Stable vendor chunks: third-party code stays cached across deploys

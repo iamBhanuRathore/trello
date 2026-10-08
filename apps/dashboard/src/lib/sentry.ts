@@ -60,6 +60,12 @@ export function initSentry(): void {
         // third-party server. Request bodies are not captured either.
         maskAllText: true,
         blockAllMedia: true,
+        // Set explicitly rather than relying on the default (true). Bodies are
+        // only captured for URLs in networkDetailAllowUrls, which is empty, so
+        // this is belt-and-braces — but the SDK default is the unsafe side of
+        // the line, and a future allowlist entry must not silently start
+        // shipping request bodies full of customer data.
+        networkCaptureBodies: false,
         networkDetailAllowUrls: [],
       }),
     ],
