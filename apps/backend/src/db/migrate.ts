@@ -4,6 +4,7 @@ import postgres from 'postgres';
 import * as path from 'path';
 
 import { env } from '../lib/env';
+import { handlePgNotice } from './notice-handler';
 
 /**
  * One-shot migration runner.
@@ -11,7 +12,7 @@ import { env } from '../lib/env';
  */
 const connectionString = process.env.DATABASE_URL || env.DATABASE_URL;
 
-const sql = postgres(connectionString, { max: 1 });
+const sql = postgres(connectionString, { max: 1, onnotice: handlePgNotice });
 const db = drizzle(sql);
 
 const migrationsFolder = path.join(import.meta.dir, 'migrations');

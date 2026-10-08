@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { env } from '../lib/env';
 import * as schema from './schema/index';
+import { handlePgNotice } from './notice-handler';
 
 /**
  * Database connection setup with RDS Proxy and read/write splitting support.
@@ -24,6 +25,7 @@ export const writeClient = postgres(connectionString, {
   connect_timeout: 10,
   prepare: false, // Required for RDS Proxy transaction pooling
   connection: { application_name: 'boardly-backend-write' },
+  onnotice: handlePgNotice,
 });
 
 export const readClient = postgres(replicaConnectionString, {
@@ -32,6 +34,7 @@ export const readClient = postgres(replicaConnectionString, {
   connect_timeout: 10,
   prepare: false, // Required for RDS Proxy transaction pooling
   connection: { application_name: 'boardly-backend-read' },
+  onnotice: handlePgNotice,
 });
 
 export const rawWriteDb = drizzle(writeClient, { schema });

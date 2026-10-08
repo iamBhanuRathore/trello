@@ -22,6 +22,13 @@ const envSchema = z.object({
   // after confirming the RDS Proxy / PgBouncer backend can absorb the extra
   // connections; it is per-instance, so `max × replicas` is the real total.
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(5),
+  // Replays every boot-time schema backstop in `db/bootstrap-steps.ts` even when
+  // the `boot_migrations` ledger already recorded it. Escape hatch for
+  // hand-repaired databases; normal boots skip applied steps entirely.
+  BOOT_MIGRATIONS_FORCE: z.preprocess(
+    (v) => v === true || v === 'true' || v === '1',
+    z.boolean().default(false)
+  ),
 
   // Redis
   REDIS_URL: z.string().default('redis://localhost:6379'),

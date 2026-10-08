@@ -125,6 +125,13 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - What's next:
 ```
 
+### 2026-10-09 — Boot-migration ledger + Postgres notice suppression
+
+- What was done: `runBootMigrations` no longer replays its DDL on every process start. Statements moved to a keyed list (`db/bootstrap-steps.ts`) and each applied key is recorded in a `boot_migrations` table created by the runner itself (the backstop exists precisely for databases that have not run migrations, so it cannot depend on one). A failed step is logged and left unrecorded so the next boot retries it. Separately, all postgres clients now pass `onnotice: handlePgNotice` (`db/notice-handler.ts`), which drops the `ADD COLUMN IF NOT EXISTS ... already exists, skipping` notices postgres.js was `console.log`-ing raw driver objects for; any other notice still surfaces as a warning.
+- Decisions: `BOOT_MIGRATIONS_FORCE=true` replays every backstop for hand-repaired databases. `db:reset` drops the whole `public` schema, so the ledger clears with it.
+- Tests: none — infra change; verified by typecheck + lint. Runtime verification pending a running Postgres (Docker daemon was down).
+- What's next: nothing; this removes boot noise and per-restart DDL.
+
 ### 2026-10-03 — File Size Discipline rule (AGENTS.md §10)
 
 - What was done: codified a hard size budget as a project rule — new files over 400 lines need a stated reason, over 600 must be split; split by concern (hooks, sub-components, columns/config tables, service helpers) not by line count. Backend pattern already exists (`organizations/service.ts` facade) and is now the stated precedent. Recorded the reasoning in Decisions.md.
