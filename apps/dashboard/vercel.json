@@ -1,10 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  // Release identity for error monitoring. Vercel does not export GITHUB_SHA
-  // under a VITE_ name, and turbo strips any var absent from build.env, so the
-  // sha is mapped explicitly here. Must be byte-identical to the backend's
-  // GIT_SHA at deploy time, or a phase-2 sourcemap upload will not deobfuscate
-  // the events it was uploaded for. Keep it in sync with turbo.json build.env.
   "build": {
     "env": {
       "VITE_GIT_SHA": "@github.sha"
