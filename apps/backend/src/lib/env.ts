@@ -127,6 +127,12 @@ export const baseEnvSchema = z.object({
     (v) => v === true || v === 'true' || v === '1',
     z.boolean().default(false)
   ),
+  // CORS wildcard. The allowlist (DASHBOARD_URL) already covers local dev ports;
+  // set this only for exotic origins (device testing, custom ports).
+  ALLOW_ANY_ORIGIN: z.preprocess(
+    (v) => v === true || v === 'true' || v === '1',
+    z.boolean().default(false)
+  ),
 
   // Email / Notifications (Resend -> SES -> SMTP -> Console fallback)
   APP_URL: z.string().default('http://localhost:5173'),
