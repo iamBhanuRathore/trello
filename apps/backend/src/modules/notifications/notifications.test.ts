@@ -8,7 +8,7 @@ import { signUp } from '../auth/service';
 import { updatePreferences, setupNotificationListeners } from './service';
 import { processNotificationDigests } from './digest.cron';
 import { eventBus } from '../../lib/event-bus';
-import { deleteTestUser } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 
 const TEST_DB_URL =
   process.env['DATABASE_TEST_URL'] ??
@@ -62,41 +62,7 @@ describe('Notifications Engine', () => {
   });
 
   afterAll(async () => {
-    if (orgId) {
-      await db.delete(schema.notifications).where(eq(schema.notifications.organizationId, orgId));
-      await db
-        .delete(schema.notificationPreferences)
-        .where(eq(schema.notificationPreferences.organizationId, orgId));
-      await db
-        .delete(schema.organizationMembers)
-        .where(eq(schema.organizationMembers.organizationId, orgId));
-      // signUp seeds a subscription row per org — must go before the org delete.
-      await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, orgId));
-      // Seeded team roles + audit rows reference the org without cascade.
-      const orgRoles = await db
-        .select({ id: schema.roles.id })
-        .from(schema.roles)
-        .where(eq(schema.roles.organizationId, orgId));
-      for (const r of orgRoles) {
-        await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-        await db.delete(schema.roles).where(eq(schema.roles.id, r.id));
-      }
-      await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, orgId));
-      // Chat rows (mention e2e test) reference the org — same ordering rule.
-      const chans = await db
-        .select({ id: schema.chatChannels.id })
-        .from(schema.chatChannels)
-        .where(eq(schema.chatChannels.organizationId, orgId));
-      const chanIds = chans.map((c) => c.id);
-      if (chanIds.length > 0) {
-        await db.delete(schema.chatMessages).where(inArray(schema.chatMessages.channelId, chanIds));
-        await db
-          .delete(schema.chatChannelMembers)
-          .where(inArray(schema.chatChannelMembers.channelId, chanIds));
-        await db.delete(schema.chatChannels).where(inArray(schema.chatChannels.id, chanIds));
-      }
-      await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
-    }
+    if (orgId) await deleteTestOrg(db, orgId);
 
     // Org4
     const org2 = await db
@@ -104,32 +70,8 @@ describe('Notifications Engine', () => {
       .from(schema.organizations)
       .where(eq(schema.organizations.slug, 'notif-org-4'))
       .then((r) => r[0]);
-    if (org2) {
-      await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, org2.id));
-      await db.delete(schema.notifications).where(eq(schema.notifications.organizationId, org2.id));
-      await db
-        .delete(schema.notificationPreferences)
-        .where(eq(schema.notificationPreferences.organizationId, org2.id));
-      await db
-        .delete(schema.organizationMembers)
-        .where(eq(schema.organizationMembers.organizationId, org2.id));
-      // Second org also gets seeded roles + audit rows — same FK ordering.
-      const org2Roles = await db
-        .select({ id: schema.roles.id })
-        .from(schema.roles)
-        .where(eq(schema.roles.organizationId, org2.id));
-      for (const r of org2Roles) {
-        await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-        await db.delete(schema.roles).where(eq(schema.roles.id, r.id));
-      }
-      await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, org2.id));
-      await db.delete(schema.organizations).where(eq(schema.organizations.id, org2.id));
-    }
+    if (org2) await deleteTestOrg(db, org2.id);
 
-    // deleteTestUser removes the user's refresh tokens first; the previous
-    // `db.delete(schema.refreshTokens)` had no WHERE and wiped every live token
-    // in the shared boardly_test DB, and the bare users delete would then have
-    // tripped the refresh_tokens.user_id restrict FK.
     await deleteTestUser(db, 'notif3@example.com');
     await deleteTestUser(db, 'notif4@example.com');
     await client.end();
@@ -410,36 +352,9 @@ describe('Notification Center (list, search, triage)', () => {
   });
 
   afterAll(async () => {
-    for (const oid of [orgId, otherOrgId].filter(Boolean)) {
-      await db.delete(schema.notifications).where(eq(schema.notifications.organizationId, oid));
-      await db
-        .delete(schema.notificationPreferences)
-        .where(eq(schema.notificationPreferences.organizationId, oid));
-      await db
-        .delete(schema.organizationMembers)
-        .where(eq(schema.organizationMembers.organizationId, oid));
-      await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, oid));
-      const rs = await db
-        .select({ id: schema.roles.id })
-        .from(schema.roles)
-        .where(eq(schema.roles.organizationId, oid));
-      for (const r of rs) {
-        await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-        await db.delete(schema.roles).where(eq(schema.roles.id, r.id));
-      }
-      await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, oid));
-      await db.delete(schema.organizations).where(eq(schema.organizations.id, oid));
-    }
-    const ncUsers = await db
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(inArray(schema.users.email, ['nc-center@example.com', 'nc-other@example.com']));
-    const ncIds = ncUsers.map((u) => u.id);
-    if (ncIds.length > 0) {
-      await db.delete(schema.refreshTokens).where(inArray(schema.refreshTokens.userId, ncIds));
-    }
-    await db.delete(schema.users).where(eq(schema.users.email, 'nc-center@example.com'));
-    await db.delete(schema.users).where(eq(schema.users.email, 'nc-other@example.com'));
+    for (const oid of [orgId, otherOrgId].filter(Boolean)) await deleteTestOrg(db, oid);
+    await deleteTestUser(db, 'nc-center@example.com');
+    await deleteTestUser(db, 'nc-other@example.com');
     await client.end();
   });
 

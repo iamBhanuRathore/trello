@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { eq, and, isNull, inArray } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '../../db/index';
 import {
   organizations,
@@ -34,6 +34,7 @@ import {
 } from './project-engine';
 import { createProjectRule } from './project-service';
 import { formatErrorResponse } from '../../lib/errors';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 
 let n = 0;
 const uniq = (p: string) => `${p}-${Date.now()}-${n++}`;
@@ -46,6 +47,7 @@ interface Fixture {
   backlogId: string;
   cardId: string;
   qa: string[];
+  qaEmails: string[];
   roleId: string;
   labelId: string;
 }
@@ -56,12 +58,15 @@ async function setupFixture(): Promise<Fixture> {
     .values({ name: 'PA Org', slug: uniq('pa-org') })
     .returning();
   const qa: string[] = [];
+  const qaEmails: string[] = [];
   for (let i = 0; i < 3; i++) {
+    const email = uniq(`qa${i}`) + '@x.test';
     const [u] = await db
       .insert(users)
-      .values({ email: uniq(`qa${i}`) + '@x.test', name: `QA ${i}` })
+      .values({ email, name: `QA ${i}` })
       .returning();
     qa.push(u!.id);
+    qaEmails.push(email);
     await db.insert(organizationMembers).values({
       organizationId: org!.id,
       userId: u!.id,
@@ -116,133 +121,15 @@ async function setupFixture(): Promise<Fixture> {
     backlogId: backlog!.id,
     cardId: card!.id,
     qa,
+    qaEmails,
     roleId: role!.id,
     labelId: label!.id,
   };
 }
 
 async function teardownFixture(f: Fixture) {
-  const { orgId } = f;
-  // Scope sub-resource deletes to this fixture's cards — never wipe shared tables.
-  const ownCards = await db
-    .select({ id: cards.id })
-    .from(cards)
-    .where(eq(cards.organizationId, orgId))
-    .catch(() => []);
-  const ownCardIds = ownCards.map((c) => c.id);
-  if (ownCardIds.length > 0) {
-    await db
-      .delete(comments)
-      .where(inArray(comments.cardId, ownCardIds))
-      .catch(() => {});
-    await db
-      .delete(cardAssignees)
-      .where(inArray(cardAssignees.cardId, ownCardIds))
-      .catch(() => {});
-    await db
-      .delete(cardLabels)
-      .where(inArray(cardLabels.cardId, ownCardIds))
-      .catch(() => {});
-  }
-  await db
-    .delete(automationRuleRuns)
-    .where(eq(automationRuleRuns.organizationId, orgId))
-    .catch(() => {});
-  const ruleRows = await db
-    .select({ id: projectAutomationRules.id })
-    .from(projectAutomationRules)
-    .where(eq(projectAutomationRules.organizationId, orgId));
-  for (const r of ruleRows) {
-    await db
-      .delete(automationRuleCursors)
-      .where(eq(automationRuleCursors.ruleId, r.id))
-      .catch(() => {});
-  }
-  await db
-    .delete(comments)
-    .where(inArray(comments.cardId, ownCardIds))
-    .catch(() => {});
-  await db
-    .delete(cardAssignees)
-    .where(inArray(cardAssignees.cardId, ownCardIds))
-    .catch(() => {});
-  await db
-    .delete(cardLabels)
-    .where(inArray(cardLabels.cardId, ownCardIds))
-    .catch(() => {});
-  await db
-    .delete(cardParticipants)
-    .where(inArray(cardParticipants.cardId, ownCardIds))
-    .catch(() => {});
-  await db
-    .delete(cards)
-    .where(eq(cards.organizationId, orgId))
-    .catch(() => {});
-  await db
-    .delete(organizationRoleMembers)
-    .where(eq(organizationRoleMembers.organizationId, orgId))
-    .catch(() => {});
-  await db
-    .delete(roles)
-    .where(eq(roles.organizationId, orgId))
-    .catch(() => {});
-  await db
-    .delete(projectAutomationRules)
-    .where(eq(projectAutomationRules.organizationId, orgId))
-    .catch(() => {});
-  const projRows = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.organizationId, orgId));
-  for (const p of projRows) {
-    const bRows = await db.select({ id: boards.id }).from(boards).where(eq(boards.projectId, p.id));
-    for (const b of bRows) {
-      await db
-        .delete(labels)
-        .where(eq(labels.boardId, b.id))
-        .catch(() => {});
-      await db
-        .delete(lists)
-        .where(eq(lists.boardId, b.id))
-        .catch(() => {});
-      await db
-        .delete(boards)
-        .where(eq(boards.id, b.id))
-        .catch(() => {});
-    }
-    await db
-      .delete(projects)
-      .where(eq(projects.id, p.id))
-      .catch(() => {});
-  }
-  await db
-    .delete(organizationMembers)
-    .where(eq(organizationMembers.organizationId, orgId))
-    .catch(() => {});
-  const wsRows = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(eq(workspaces.organizationId, orgId));
-  for (const w of wsRows)
-    await db
-      .delete(workspaces)
-      .where(eq(workspaces.id, w.id))
-      .catch(() => {});
-  const memEmails = await db
-    .select({ id: users.id })
-    .from(users)
-    .limit(0)
-    .catch(() => []);
-  void memEmails;
-  for (const userId of f.qa)
-    await db
-      .delete(users)
-      .where(eq(users.id, userId))
-      .catch(() => {});
-  await db
-    .delete(organizations)
-    .where(eq(organizations.id, orgId))
-    .catch(() => {});
+  await deleteTestOrg(db, f.orgId);
+  for (const email of f.qaEmails) await deleteTestUser(db, email);
 }
 
 async function makeRule(

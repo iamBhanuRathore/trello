@@ -18,6 +18,7 @@ import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { orgRoutes } from './routes';
 import { signAccessToken } from '../../middleware/auth';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import {
   ALL_PERMISSION_KEYS,
   ORG_PERMISSIONS,
@@ -28,7 +29,8 @@ import {
 } from '@boardly/shared-types';
 
 const TEST_DB_URL =
-  process.env['DATABASE_TEST_URL'] ?? 'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
+  process.env['DATABASE_TEST_URL'] ??
+  'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
 
 let client: ReturnType<typeof postgres>;
 let db: Database;
@@ -117,8 +119,16 @@ beforeAll(async () => {
     { organizationId: org!.id, userId: memberId, role: 'member', status: 'active' },
   ]);
 
-  ownerToken = await signAccessToken({ userId: ownerId, organizationId: org!.id, isPlatformAdmin: false });
-  memberToken = await signAccessToken({ userId: memberId, organizationId: org!.id, isPlatformAdmin: false });
+  ownerToken = await signAccessToken({
+    userId: ownerId,
+    organizationId: org!.id,
+    isPlatformAdmin: false,
+  });
+  memberToken = await signAccessToken({
+    userId: memberId,
+    organizationId: org!.id,
+    isPlatformAdmin: false,
+  });
 
   const app = new Elysia().group('/v1', (g) => g.use(orgRoutes)).listen(0);
   serverPort = app.server?.port ?? 0;
@@ -127,14 +137,13 @@ beforeAll(async () => {
 
 afterAll(async () => {
   stopServer();
-  const [org] = await db.select().from(schema.organizations).where(eq(schema.organizations.slug, orgId));
-  if (org) {
-    await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, org.id));
-    await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.organizationId, org.id));
-    await db.delete(schema.users).where(eq(schema.users.email, ownerEmail));
-    await db.delete(schema.users).where(eq(schema.users.email, memberEmail));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, org.id));
-  }
+  const [org] = await db
+    .select()
+    .from(schema.organizations)
+    .where(eq(schema.organizations.slug, orgId));
+  if (org) await deleteTestOrg(db, org.id);
+  await deleteTestUser(db, ownerEmail);
+  await deleteTestUser(db, memberEmail);
   await client.end();
 });
 
@@ -169,7 +178,11 @@ describe('Organization routes — RBAC enforcement over HTTP', () => {
     // create a disposable third member for the owner to remove
     const [tmpUser] = await db
       .insert(schema.users)
-      .values({ name: 'Disposable', email: `rbac_tmp_${Date.now()}@test.example`, passwordHash: 'x' })
+      .values({
+        name: 'Disposable',
+        email: `rbac_tmp_${Date.now()}@test.example`,
+        passwordHash: 'x',
+      })
       .returning();
     await db.insert(schema.organizationMembers).values({
       organizationId: orgUuid,
@@ -181,7 +194,9 @@ describe('Organization routes — RBAC enforcement over HTTP', () => {
       const res = await call('DELETE', `/v1/orgs/${orgUuid}/members/${tmpUser!.id}`, ownerToken);
       expect(res.status).toBe(200);
     } finally {
-      await db.delete(schema.organizationMembers).where(eq(schema.organizationMembers.userId, tmpUser!.id));
+      await db
+        .delete(schema.organizationMembers)
+        .where(eq(schema.organizationMembers.userId, tmpUser!.id));
       await db.delete(schema.users).where(eq(schema.users.id, tmpUser!.id));
     }
   });
@@ -192,11 +207,7 @@ describe('Organization routes — RBAC enforcement over HTTP', () => {
   });
 
   it('a plain member CANNOT update another member role (member.role.update required)', async () => {
-    const res = await call(
-      'PATCH',
-      `/v1/orgs/${orgUuid}/members/${ownerId}`,
-      memberToken
-    );
+    const res = await call('PATCH', `/v1/orgs/${orgUuid}/members/${ownerId}`, memberToken);
     // route body validation may 422 first, but must never be 2xx
     expect(res.status).not.toBe(200);
     expect([403, 422]).toContain(res.status);

@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import {
@@ -34,66 +35,23 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  const existingOrg = await db
-    .select()
+  const [existingOrg] = await db
+    .select({ id: schema.organizations.id })
     .from(schema.organizations)
     .where(eq(schema.organizations.slug, 'board-org'))
-    .then((r) => r[0]);
-  if (existingOrg) {
-    const orgBoards = await db
-      .select()
-      .from(schema.boards)
-      .where(eq(schema.boards.organizationId, existingOrg.id));
-    for (const b of orgBoards) {
-      // Scoped to this board's labels. The bare `db.delete(schema.cardLabels)`
-      // had no WHERE, so it deleted every label link in boardly_test on every
-      // board iteration — including links owned by other suites.
-      await db
-        .delete(schema.cardLabels)
-        .where(
-          inArray(
-            schema.cardLabels.labelId,
-            db
-              .select({ id: schema.labels.id })
-              .from(schema.labels)
-              .where(eq(schema.labels.boardId, b.id))
-          )
-        );
-      await db.delete(schema.labels).where(eq(schema.labels.boardId, b.id));
-      await db.delete(schema.automations).where(eq(schema.automations.boardId, b.id));
-      await db.delete(schema.intakeForms).where(eq(schema.intakeForms.boardId, b.id));
-    }
-    await db
-      .delete(schema.subscriptions)
-      .where(eq(schema.subscriptions.organizationId, existingOrg.id));
-    const orgRoles = await db
-      .select({ id: schema.roles.id })
-      .from(schema.roles)
-      .where(eq(schema.roles.organizationId, existingOrg.id));
-    for (const r of orgRoles) {
-      await db
-        .delete(schema.organizationRoleMembers)
-        .where(eq(schema.organizationRoleMembers.roleId, r.id));
-      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-    }
-    await db.delete(schema.roles).where(eq(schema.roles.organizationId, existingOrg.id));
-    await db.delete(schema.boards).where(eq(schema.boards.organizationId, existingOrg.id));
-    await db.delete(schema.projects).where(eq(schema.projects.organizationId, existingOrg.id));
-    await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, existingOrg.id));
-    await db
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, existingOrg.id));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, existingOrg.id));
-  }
-  const user = await db
-    .select()
-    .from(schema.users)
-    .where(eq(schema.users.email, 'owner@board.com'))
-    .then((r) => r[0]);
-  if (user) {
-    await db.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, user.id));
-    await db.delete(schema.users).where(eq(schema.users.id, user.id));
-  }
+    .limit(1);
+  if (existingOrg) await deleteTestOrg(db, existingOrg.id);
+  await deleteTestUser(db, 'owner@board.com');
+});
+
+afterEach(async () => {
+  const [leftover] = await db
+    .select({ id: schema.organizations.id })
+    .from(schema.organizations)
+    .where(eq(schema.organizations.slug, 'board-org'))
+    .limit(1);
+  if (leftover) await deleteTestOrg(db, leftover.id);
+  await deleteTestUser(db, 'owner@board.com');
 });
 
 describe('Boards Service', () => {

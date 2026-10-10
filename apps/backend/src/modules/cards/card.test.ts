@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq } from 'drizzle-orm';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
@@ -47,10 +48,25 @@ beforeEach(async () => {
   // isolated per-test tenant creation
 });
 
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
+async function trackedSignUp(args: Parameters<typeof signUp>[1]) {
+  const result = await signUp(db, args);
+  createdOrgIds.push(result.organization.id);
+  createdEmails.push(result.user.email);
+  return result;
+}
+
+afterEach(async () => {
+  while (createdOrgIds.length) await deleteTestOrg(db, createdOrgIds.pop()!);
+  while (createdEmails.length) await deleteTestUser(db, createdEmails.pop()!);
+});
+
 describe('Cards Service', () => {
   it('should create and get a card with board and list details', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@card.com`,
       password: 'pass',
@@ -82,7 +98,7 @@ describe('Cards Service', () => {
 
   it('should move a card between lists and update position', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@card.com`,
       password: 'pass',
@@ -116,7 +132,7 @@ describe('Cards Service', () => {
   // version bump and the archived/deleted exclusion all still hold.
   it('should renumber a list in one statement, preserving order and skipping archived cards', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Rebalance Owner',
       email: `rebal_${id}@card.com`,
       password: 'pass',
@@ -198,7 +214,7 @@ describe('Cards Service', () => {
 
   it('should log a move-history entry on list change, but not on reorder', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { user, organization } = await signUp(db, {
+    const { user, organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@card.com`,
       password: 'pass',
@@ -239,7 +255,7 @@ describe('Cards Service', () => {
 
   it('should reject stale moves with 409 instead of overwriting order', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@card.com`,
       password: 'pass',
@@ -280,7 +296,7 @@ describe('Cards Service', () => {
 
   it('should rebalance crowded fractional positions', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@card.com`,
       password: 'pass',
@@ -321,7 +337,7 @@ describe('Cards Service', () => {
 
   it('should prevent 3-level nesting of subtasks', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@card.com`,
       password: 'pass',
@@ -360,7 +376,7 @@ describe('Cards Service', () => {
 
   it('should archive a card', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@card.com`,
       password: 'pass',
@@ -389,7 +405,7 @@ describe('Cards Service', () => {
 
   it('should allow users to watch, list watchers, and unwatch a card', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { user, organization } = await signUp(db, {
+    const { user, organization } = await trackedSignUp({
       name: 'Watcher User',
       email: `watcher_${id}@card.com`,
       password: 'pass',
@@ -452,7 +468,7 @@ describe('Cards Service', () => {
   it('should isolate card sub-resources by organization (IDOR guard)', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
     const mkOrg = (tag: string) =>
-      signUp(db, {
+      trackedSignUp({
         name: `${tag} Owner`,
         email: `${tag}_${id}@card.com`,
         password: 'pass',
@@ -503,14 +519,14 @@ describe('Cards Service', () => {
   // per-card flags, which are now computed only for the returned page.
   it('scopes each getMyTasks filter to its relationship and flags rows correctly', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: me } = await signUp(db, {
+    const { organization, user: me } = await trackedSignUp({
       name: 'Me',
       email: `mt_me_${id}@card.com`,
       password: 'pass',
       orgName: `MT Org ${id}`,
       orgSlug: `mt-org-${id}`,
     });
-    const other = await signUp(db, {
+    const other = await trackedSignUp({
       name: 'Other',
       email: `mt_other_${id}@card.com`,
       password: 'pass',
@@ -594,7 +610,7 @@ describe('Cards Service', () => {
     expect(onlyCreated.tasks[0]!.isCreator).toBe(true);
 
     // A user with no relationship at all gets the empty fast path.
-    const stranger = await signUp(db, {
+    const stranger = await trackedSignUp({
       name: 'Stranger',
       email: `mt_stranger_${id}@card.com`,
       password: 'pass',
@@ -609,7 +625,7 @@ describe('Cards Service', () => {
 
   it('reports openAssignedCount excluding done-stage cards (sidebar badge slice)', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user } = await signUp(db, {
+    const { organization, user } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@card.com`,
       password: 'pass',
