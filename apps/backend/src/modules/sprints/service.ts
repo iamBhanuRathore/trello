@@ -172,6 +172,6 @@ export async function listSprintCards(
     .select()
     .from(cardSprints)
     .where(and(eq(cardSprints.sprintId, sprintId), eq(cardSprints.isActive, true)))
-    .limit(clampLimit(options.limit, { def: 500, max: 500 }));
+    .limit(clampLimit(options.limit, { def: 200, max: 200 }));
   return items;
 }

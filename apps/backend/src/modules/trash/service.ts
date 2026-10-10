@@ -75,7 +75,7 @@ export async function listTrash(
   // the org and were merged with a JS sort. Because each branch is already
   // ordered, taking the top N per branch is sufficient to compute the correct
   // global top N — so this bounds the work without changing the result.
-  const limit = clampLimit(options?.limit, { def: 200, max: 500 });
+  const limit = clampLimit(options?.limit, { def: 200, max: 200 });
 
   // 1. Trashed Workspaces
   const [trashedWorkspaces, trashedProjects, trashedBoards, trashedCards] = await Promise.all([

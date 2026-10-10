@@ -13,7 +13,7 @@ import {
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
 import { env } from '../../lib/env';
-import { clampLimit } from '../../lib/pagination';
+import { clampLimit, clampOffset } from '../../lib/pagination';
 import { logger } from '../../lib/logger';
 import { cachedTTL, bumpUserCache, bumpOrgPermVersion } from '../../lib/cache';
 import {
@@ -107,12 +107,12 @@ async function loadMembers(db: Database, orgId: string, options: ListMembersOpti
 
   // Bound the page. This endpoint previously applied `.limit()` only when the
   // caller passed one, so a large org streamed every member row into a single
-  // response. The default is deliberately higher than the shared DEFAULT_LIMIT
-  // (50): several callers use this endpoint as a member picker scoped by
-  // `userIds` with no limit at all, and truncating a picker is worse than
-  // returning a larger page. 500 still removes the unbounded case.
+  // response. The default/ceiling stay above the shared 50/200 (EXEMPT picker
+  // endpoint): several callers use this as a member picker scoped by `userIds`
+  // with no limit at all, and truncating a picker is worse than returning a
+  // larger page. 500 still removes the unbounded case. Offset is hard-capped.
   const limit = clampLimit(options.limit, { def: 500, max: 1000 });
-  const offset = Math.max(options.offset ?? 0, 0);
+  const offset = clampOffset(options.offset);
   query = query.limit(limit).offset(offset) as any;
 
   return await query;

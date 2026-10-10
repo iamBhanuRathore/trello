@@ -13,6 +13,13 @@ export const DEFAULT_LIMIT = 50;
 /** Hard ceiling — no endpoint may return more than this in one response. */
 export const MAX_LIMIT = 200;
 
+/**
+ * Deep-pagination guard — OFFSET scans + discards, so an unbounded offset is a
+ * cheap DoS (OFFSET 10M reads 10M rows). Keyset pagination has no such cliff;
+ * prefer cursors for new endpoints.
+ */
+export const MAX_OFFSET = 10_000;
+
 export function clampLimit(
   raw: number | string | undefined,
   { def = DEFAULT_LIMIT, max = MAX_LIMIT }: { def?: number; max?: number } = {}
@@ -22,4 +29,10 @@ export function clampLimit(
   const floored = Math.floor(n);
   if (floored < 1) return def;
   return Math.min(floored, max);
+}
+
+export function clampOffset(raw: number | string | undefined, max = MAX_OFFSET): number {
+  const n = typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : NaN;
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(Math.max(Math.floor(n), 0), max);
 }

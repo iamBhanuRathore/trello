@@ -2,6 +2,7 @@ import Elysia, { t } from 'elysia';
 import { authPlugin, requirePermission } from '../../middleware/auth';
 import { db } from '../../db/index';
 import { handleRouteError } from '../../lib/errors';
+import { clampLimit, clampOffset } from '../../lib/pagination';
 import { httpError } from '../organizations/service';
 import {
   createCard,
@@ -75,8 +76,8 @@ export const cardRoutes = new Elysia({ prefix: '/cards', tags: ['Cards'] })
           projectId: query?.projectId,
           status: query?.status,
           priority: query?.priority,
-          limit: query?.limit ? Math.min(Math.max(parseInt(query.limit, 10) || 50, 1), 100) : 50,
-          offset: query?.offset ? Math.max(parseInt(query.offset, 10) || 0, 0) : 0,
+          limit: clampLimit(query?.limit),
+          offset: clampOffset(query?.offset),
         });
       } catch (err: unknown) {
         return handleRouteError(err, set);

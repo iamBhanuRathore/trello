@@ -297,7 +297,9 @@ export async function listCards(
 ) {
   const { boardId } = await verifyListAccess(db, listId, organizationId);
   // Safety valve (5.3): a single list can never stream an unbounded row set.
-  const rowLimit = clampLimit(options.limit, { def: 500, max: 500 });
+  // Capped at the shared MAX_LIMIT (200): pickers (e.g. automation rule card
+  // select) page or search instead of pulling whole lists.
+  const rowLimit = clampLimit(options.limit, { def: 200, max: 200 });
   // Hot board-loop read: 1 Redis RTT on hit, zero Neon queries.
   const { data } = await cachedBoardRead(
     boardId,

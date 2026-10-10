@@ -1,6 +1,7 @@
 import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { auditLog, users } from '../../db/schema/index';
+import { clampLimit, clampOffset } from '../../lib/pagination';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -72,8 +73,8 @@ export async function getAuditLogs(
   }
 
   const whereClause = and(...conditions);
-  const limit = Math.min(filters?.limit || 50, 200);
-  const offset = filters?.offset || 0;
+  const limit = clampLimit(filters?.limit, { def: 50, max: 200 });
+  const offset = clampOffset(filters?.offset);
 
   // Independent queries — run them together rather than paying the count round
   // trip before the page even starts.
