@@ -45,14 +45,19 @@ export function getApiErrorMessage(
     return data.details[0].message;
   }
 
-  // 2. Unified envelope summary.
-  if (data.error && typeof data.error === 'string') {
+  // 2. Unified envelope summary — unless it is the generic legacy summary with
+  // a specific message beside it (pre-unification validation shape).
+  if (data.error && typeof data.error === 'string' && data.error !== 'Validation failed') {
     return data.error;
   }
 
   // 3. Legacy pre-unification shape (`{ error: 'Validation failed', message }`).
   if (data.message && typeof data.message === 'string' && data.message !== 'Validation failed') {
     return data.message;
+  }
+
+  if (data.error && typeof data.error === 'string') {
+    return data.error;
   }
 
   return fallbackMessage;

@@ -40,10 +40,13 @@ export function getApiErrorMessage(err: any, fallback = 'Sync failed'): string {
     ) {
       return data.details[0].message;
     }
-    if (typeof data.error === 'string' && data.error) return data.error;
+    if (typeof data.error === 'string' && data.error && data.error !== 'Validation failed') {
+      return data.error;
+    }
     if (typeof data.message === 'string' && data.message && data.message !== 'Validation failed') {
       return data.message;
     }
+    if (typeof data.error === 'string' && data.error) return data.error;
   }
   return err?.message || fallback;
 }
