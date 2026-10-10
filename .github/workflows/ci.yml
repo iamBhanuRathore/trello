@@ -95,8 +95,14 @@ jobs:
       - name: Seed default roles and plans
         run: bun run --cwd apps/backend db:seed
 
+      - name: Snapshot test-DB row counts (leaks baseline)
+        run: bun scripts/db-leak-report.ts --json > /tmp/leaks-before.json
+
       - name: Run unit & integration test suites
         run: bun run test
+
+      - name: Assert zero test-data leaks
+        run: bun scripts/db-leak-report.ts --assert-unchanged /tmp/leaks-before.json
 
   e2e-smoke:
     name: E2E smoke (Playwright)

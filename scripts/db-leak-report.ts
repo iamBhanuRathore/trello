@@ -43,7 +43,24 @@ function slugGroup(slug: string): string {
 
 const sql = postgres(DATABASE_URL, { max: 1 });
 try {
-  if (process.argv.includes('--slugs')) {
+  const assertIdx = process.argv.indexOf('--assert-unchanged');
+  if (assertIdx !== -1) {
+    // CI leaks-gate: fails when the suite leaves rows behind. Usage:
+    //   bun scripts/db-leak-report.ts --json > /tmp/leaks-before.json
+    //   bun run test
+    //   bun scripts/db-leak-report.ts --assert-unchanged /tmp/leaks-before.json
+    const { readFile } = await import('node:fs/promises');
+    const before = JSON.parse(await readFile(process.argv[assertIdx + 1]!, 'utf-8'));
+    const after = await totals(sql);
+    const leaked = (Object.keys(after) as Array<keyof typeof after>).filter(
+      (k) => after[k] !== before[k]
+    );
+    if (leaked.length > 0) {
+      console.error(`❌ test-data leak: ${JSON.stringify({ before, after })}`);
+      process.exit(1);
+    }
+    console.log(`✅ no test-data leaks ${JSON.stringify(after)}`);
+  } else if (process.argv.includes('--slugs')) {
     const rows = await sql`
       SELECT slug, count(*)::int AS n FROM organizations GROUP BY slug ORDER BY n DESC`;
     const groups = new Map<string, number>();
@@ -56,7 +73,7 @@ try {
     console.log(`\n${sorted.length} distinct org slug groups`);
   } else {
     const t = await totals(sql);
-    console.log(JSON.stringify(t, null, 2));
+    console.log(JSON.stringify(t, process.argv.includes('--json') ? undefined : 2));
     if (process.argv.includes('--delta')) {
       console.log('\nRun `bun test` in apps/backend, then re-run with --delta to compare.');
       console.log('Anything that increases is a suite that leaked.');
