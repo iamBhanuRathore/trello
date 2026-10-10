@@ -58,6 +58,32 @@ export function isS3Enabled(): boolean {
   return Boolean(s3Client && env.STORAGE_BUCKET);
 }
 
+/**
+ * Local-disk upload gate (fail-closed). Pure predicate of its inputs so the
+ * matrix is unit-testable without storage: S3 path is unaffected (returns
+ * true = "not a local upload"); local disk needs dev/test env or the explicit
+ * production opt-in ALLOW_LOCAL_UPLOADS=1.
+ */
+export function isLocalUploadsAllowed(opts?: {
+  s3?: boolean;
+  nodeEnv?: string;
+  allowFlag?: boolean;
+}): boolean {
+  if (opts?.s3 ?? isS3Enabled()) return true;
+  return (
+    (opts?.nodeEnv ?? env.NODE_ENV) !== 'production' || (opts?.allowFlag ?? env.ALLOW_LOCAL_UPLOADS)
+  );
+}
+
+export function assertLocalUploadsAllowed(): void {
+  if (!isS3Enabled() && !isLocalUploadsAllowed()) {
+    throw httpError(
+      503,
+      'Local uploads are disabled in production. Set ALLOW_LOCAL_UPLOADS=1 or configure S3 storage.'
+    );
+  }
+}
+
 export function scanMode(): 'enabled' | 'disabled' {
   const raw = (process.env['SCAN_MODE'] || '').toLowerCase();
   if (raw === 'enabled') return 'enabled';
@@ -384,6 +410,7 @@ export async function requestUpload(
   // Local-dev buffer serves bytes back: fail fast before the DB record exists.
   if (!isS3Enabled() && !isLocalUploadKeyAllowed(fileName))
     throw httpError(400, 'File type not allowed');
+  assertLocalUploadsAllowed();
 
   const scope = input.kind === 'card' ? `cards/${input.refId}` : `chat/${input.refId}`;
   const storageKey = isS3Enabled()
@@ -583,6 +610,7 @@ export async function ingestBytes(
   const fileName = input.fileName.trim();
   if (!isS3Enabled() && !isLocalUploadKeyAllowed(fileName))
     throw httpError(400, 'File type not allowed');
+  assertLocalUploadsAllowed();
   const scope = input.kind === 'card' ? `cards/${input.refId}` : `chat/${input.refId}`;
   const storageKey = isS3Enabled()
     ? s3KeyFor(organizationId, scope, fileName)

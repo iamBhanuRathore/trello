@@ -99,6 +99,13 @@ export const baseEnvSchema = z.object({
     .optional()
     .transform((v) => (v === '' ? undefined : v))
     .pipe(z.string().url().optional()),
+  // Local-disk upload buffer. Dev/test default open (S3 usually unset there);
+  // production requires ALLOW_LOCAL_UPLOADS=1 explicitly — otherwise uploads
+  // fail closed instead of landing on ephemeral disk.
+  ALLOW_LOCAL_UPLOADS: z.preprocess(
+    (v) => v === true || v === 'true' || v === '1',
+    z.boolean().default(false)
+  ),
 
   // Inbound email (4.6b) — optional. Empty string coerces to undefined so
   // `|| ''` fallbacks in callers are unnecessary; consumers read `env.*`.
