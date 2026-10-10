@@ -76,18 +76,21 @@ export function encodeInboxCursor(c: InboxCursor): string {
 
 export function decodeInboxCursor(raw?: string | null): InboxCursor {
   if (!raw) return {};
+  let parsed: InboxCursor;
   try {
-    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as InboxCursor;
-    if (parsed && typeof parsed === 'object') {
-      return {
-        n: typeof parsed.n === 'string' ? parsed.n : null,
-        d: typeof parsed.d === 'string' ? parsed.d : null,
-        t: typeof parsed.t === 'string' ? parsed.t : null,
-        g: typeof parsed.g === 'string' ? parsed.g : null,
-      };
-    }
-  } catch {}
-  return {};
+    parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as InboxCursor;
+  } catch {
+    // Fail closed: a garbage cursor restarts pagination silently, which can
+    // surface duplicate items as new — reject it instead.
+    throw httpError(400, 'Invalid inbox cursor');
+  }
+  if (!parsed || typeof parsed !== 'object') throw httpError(400, 'Invalid inbox cursor');
+  return {
+    n: typeof parsed.n === 'string' ? parsed.n : null,
+    d: typeof parsed.d === 'string' ? parsed.d : null,
+    t: typeof parsed.t === 'string' ? parsed.t : null,
+    g: typeof parsed.g === 'string' ? parsed.g : null,
+  };
 }
 
 type StateMap = Map<string, { snoozedUntil: Date | null; dismissedAt: Date | null }>;

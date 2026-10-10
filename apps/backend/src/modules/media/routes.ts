@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { db } from '../../db/index';
 import { authPlugin, requirePermission } from '../../middleware/auth';
-import { handleRouteError } from '../../lib/errors';
+import { handleRouteError, httpError } from '../../lib/errors';
 import { requestUpload, confirmUpload, presignedGet, findMedia } from '../../lib/storage';
 import { assertMediaReadable } from './service';
 import { scanMetricsSnapshot, sidecarHealth } from './scan';
@@ -25,6 +25,9 @@ async function cardOrChatPerm({ user, set, body, params }: any) {
     const gate = requirePermission('card.update');
     return gate({ user, set });
   }
+  // Fail closed: only the two known kinds pass. An unknown id (kind unset)
+  // falls through to the handler's 404; a known-but-unexpected value is a 400.
+  if (kind !== undefined && kind !== 'chat') throw httpError(400, 'Unknown media kind');
   return undefined;
 }
 
@@ -34,6 +37,7 @@ async function readPerm({ user, set, params }: any) {
     const gate = requirePermission('card.read');
     return gate({ user, set });
   }
+  if (media && media.kind !== 'chat') throw httpError(400, 'Unknown media kind');
   return undefined;
 }
 

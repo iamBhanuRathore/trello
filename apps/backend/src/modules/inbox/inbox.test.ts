@@ -278,6 +278,12 @@ describe('Federated inbox (4.6a)', () => {
       for (const item of again.items) expect(keys.has(item.key)).toBe(false);
     }
   });
+  it('rejects malformed cursors with 400 instead of restarting pagination', async () => {
+    await expect(
+      getInbox(db, userId, orgId, { limit: 2, cursor: '!!!not-a-cursor!!!' })
+    ).rejects.toMatchObject({ status: 400 });
+    expect(() => decodeInboxCursor('!!!not-a-cursor!!!')).toThrow();
+  });
   it('scopes git review items to the reader and DMs to direct channels', async () => {
     // A PR on a card owned by someone else is not in the reader's triage queue.
     const strangerCard = await createCard(db, orgId, {
