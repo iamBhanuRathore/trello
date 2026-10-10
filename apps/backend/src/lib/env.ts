@@ -121,6 +121,13 @@ export const baseEnvSchema = z.object({
     .pipe(z.string().min(16).optional()),
   INBOUND_DOMAIN: z.string().default('reply.boardly.app'),
 
+  // Outbound webhooks (SSRF guard in webhooks/service.ts). Plain-http delivery
+  // is refused unless this is explicitly "1" — and even then only to loopback.
+  ALLOW_HTTP_WEBHOOKS: z.preprocess(
+    (v) => v === true || v === 'true' || v === '1',
+    z.boolean().default(false)
+  ),
+
   // Email / Notifications (Resend -> SES -> SMTP -> Console fallback)
   APP_URL: z.string().default('http://localhost:5173'),
   EMAIL_FROM: z.string().default('Boardly <noreply@boardly.app>'),

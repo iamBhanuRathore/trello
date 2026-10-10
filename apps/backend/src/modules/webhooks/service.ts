@@ -11,11 +11,15 @@ import crypto from 'crypto';
 
 /**
  * SSRF guard for outbound webhook delivery.
- * - https only (http loopback allowed in non-production for local dev)
+ * - https only; plain-http loopback requires explicit ALLOW_HTTP_WEBHOOKS=1
+ *   (never https-downgraded, never non-loopback http)
  * - no embedded credentials, no Unix sockets
  * - every resolved A/AAAA must be public unicast (blocks 10/8, 172.16/12,
  *   192.168/16, 127/8, 169.254/16 metadata, ::1, fe80::/10, fc00::/7, …)
  * Enforced at create/update (fast feedback) AND at dispatch (DNS may change).
+ * Dispatch resolves once, validates, then fetches; redirects are re-validated
+ * per hop (max 3) so a 302 can't bounce to an internal host. Residual TOCTOU
+ * (rebind between check and connect) is bounded by the per-hop re-checks.
  */
 function isBlockedIPv4(octets: number[]): boolean {
   const [a = 0, b = 0] = octets;
@@ -73,10 +77,10 @@ export async function assertSafeWebhookUrl(rawUrl: string): Promise<URL> {
     parsed.hostname === '127.0.0.1' ||
     parsed.hostname === '[::1]' ||
     parsed.hostname === '::1';
-  // Local-dev escape hatch: plain-http loopback only (never in production).
-  const allowLoopback = env.NODE_ENV !== 'production' && parsed.protocol === 'http:';
+  // Explicit opt-in: plain-http loopback only (never in production without the flag).
+  const allowLoopback = env.ALLOW_HTTP_WEBHOOKS && parsed.protocol === 'http:';
   if (parsed.protocol === 'http:') {
-    if (env.NODE_ENV === 'production' || !isLoopbackHost) {
+    if (!isLoopbackHost || !env.ALLOW_HTTP_WEBHOOKS) {
       throw httpError(400, 'Webhook URL must use https');
     }
   } else if (parsed.protocol !== 'https:') {
@@ -156,6 +160,9 @@ export async function deleteWebhook(db: Database, organizationId: string, id: st
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
+/** Max concurrent outbound deliveries per event (unbounded fan-out wedges the loop). */
+const DISPATCH_CONCURRENCY = 5;
+
 export function setupWebhookDispatcher(db: Database) {
   eventBus.on(
     'internal',
@@ -168,17 +175,34 @@ export function setupWebhookDispatcher(db: Database) {
           .from(webhooks)
           .where(and(eq(webhooks.organizationId, organizationId), eq(webhooks.isEnabled, true)));
 
-        for (const hook of orgWebhooks) {
+        const matched = orgWebhooks.filter((hook) => {
           const subscribedEvents = hook.events as string[];
-          if (subscribedEvents.includes('*') || subscribedEvents.includes(event)) {
-            // Dispatch
-            dispatchWebhook(hook.url, hook.secret, {
-              event,
-              payload,
-              actorId,
-              timestamp: new Date().toISOString(),
-            });
+          return subscribedEvents.includes('*') || subscribedEvents.includes(event);
+        });
+        let delivered = 0;
+        let failed = 0;
+        for (let i = 0; i < matched.length; i += DISPATCH_CONCURRENCY) {
+          const batch = matched.slice(i, i + DISPATCH_CONCURRENCY);
+          const results = await Promise.allSettled(
+            batch.map((hook) =>
+              dispatchWebhook(hook.url, hook.secret, {
+                event,
+                payload,
+                actorId,
+                timestamp: new Date().toISOString(),
+              })
+            )
+          );
+          for (const r of results) {
+            if (r.status === 'fulfilled' && r.value) delivered++;
+            else failed++;
           }
+        }
+        if (matched.length > 0) {
+          logger.info(
+            { event, organizationId, matched: matched.length, delivered, failed },
+            'Webhook fan-out complete'
+          );
         }
       } catch (err) {
         logger.error({ err }, 'Error in webhook dispatcher');
@@ -191,10 +215,10 @@ async function dispatchWebhook(
   url: string,
   secret: string,
   data: { event: string } & Record<string, unknown>
-) {
+): Promise<boolean> {
   try {
-    // Re-validate at send time (DNS can change after registration) and walk
-    // redirects manually (max 3) so a 302 can't bounce us to an internal host.
+    // Resolve once up front (DNS can change after registration), then fetch;
+    // redirects are re-validated per hop below.
     await assertSafeWebhookUrl(url);
     const payloadString = JSON.stringify(data);
     const signature = crypto.createHmac('sha256', secret).update(payloadString).digest('hex');
@@ -214,7 +238,7 @@ async function dispatchWebhook(
         logger.error({ err, url }, 'Webhook dispatch failed');
         return null;
       });
-      if (!res) return;
+      if (!res) return false;
       const location = res.headers.get('location');
       if (res.status >= 300 && res.status < 400 && location) {
         const next = new URL(location, target).toString();
@@ -222,16 +246,18 @@ async function dispatchWebhook(
           await assertSafeWebhookUrl(next);
         } catch {
           logger.warn({ url: next }, 'Blocked webhook redirect to internal address');
-          return;
+          return false;
         }
         target = next;
         continue;
       }
       logger.info({ url: target, event: data.event }, 'Webhook dispatched');
-      return;
+      return true;
     }
     logger.warn({ url }, 'Webhook dispatch aborted: too many redirects');
+    return false;
   } catch (err: unknown) {
     logger.error({ err, url }, 'Webhook dispatch preparation failed');
+    return false;
   }
 }
