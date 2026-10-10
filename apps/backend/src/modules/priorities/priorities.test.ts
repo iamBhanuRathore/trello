@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
@@ -41,9 +42,24 @@ afterAll(async () => {
   await client.end();
 });
 
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
+async function trackedSignUp(args: Parameters<typeof signUp>[1]) {
+  const result = await signUp(db, args);
+  createdOrgIds.push(result.organization.id);
+  createdEmails.push(result.user.email);
+  return result;
+}
+
+afterEach(async () => {
+  while (createdOrgIds.length) await deleteTestOrg(db, createdOrgIds.pop()!);
+  while (createdEmails.length) await deleteTestUser(db, createdEmails.pop()!);
+});
+
 async function setupOrg() {
   const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-  const { organization, user } = await signUp(db, {
+  const { organization, user } = await trackedSignUp({
     name: 'Owner',
     email: `owner_${id}@prio.com`,
     password: 'pass',

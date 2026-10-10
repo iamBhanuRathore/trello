@@ -19,6 +19,7 @@ import {
   deriveCardToken,
 } from './tokens';
 import { env } from '../../lib/env';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { processInboundEmail, extractThreadCardId, cardMessageId } from './service';
 import { parseRawEmail, stripQuotedReply, isAutoMail } from './parse';
 import { verifyGenericHmac } from './routes';
@@ -33,10 +34,13 @@ let client: ReturnType<typeof postgres>;
 let db: Database;
 let orgId: string;
 let ownerId: string;
+let ownerEmail: string;
 let memberId: string;
 let memberEmail: string;
+let memberOrgId: string;
 let outsiderId: string;
 let outsiderEmail: string;
+let outsiderOrgId: string;
 let boardId: string;
 let listA: string;
 let listB: string;
@@ -52,9 +56,10 @@ beforeAll(async () => {
   client = postgres(TEST_DB_URL, { max: 1 });
   db = drizzle(client, { schema });
   const suffix = `${Date.now()}_inb`;
+  ownerEmail = `inbowner_${suffix}@example.com`;
   const owner = await signUp(db, {
     name: 'Inbound Owner',
-    email: `inbowner_${suffix}@example.com`,
+    email: ownerEmail,
     password: 'pass',
     orgName: `Inb Org ${suffix}`,
     orgSlug: `inb-org-${suffix}`,
@@ -68,6 +73,7 @@ beforeAll(async () => {
     orgName: `Inb Member Org ${suffix}`,
     orgSlug: `inb-member-org-${suffix}`,
   });
+  memberOrgId = member.organization.id;
   memberId = member.user.id;
   memberEmail = `inbmember_${suffix}@example.com`;
   await db
@@ -80,6 +86,7 @@ beforeAll(async () => {
     orgName: `Out Org ${suffix}`,
     orgSlug: `out-org-${suffix}`,
   });
+  outsiderOrgId = outsider.organization.id;
   outsiderId = outsider.user.id;
   outsiderEmail = `outsider_${suffix}@example.com`;
 
@@ -105,6 +112,9 @@ afterAll(async () => {
   process.env['SCAN_MODE'] = prevScanMode;
   (env as { INBOUND_TOKEN_SECRET?: string }).INBOUND_TOKEN_SECRET = prevTokenSecret;
   __setSnsVerify(null);
+  for (const oid of [orgId, memberOrgId, outsiderOrgId]) if (oid) await deleteTestOrg(db, oid);
+  for (const email of [ownerEmail, memberEmail, outsiderEmail])
+    if (email) await deleteTestUser(db, email);
   await client.end();
 });
 

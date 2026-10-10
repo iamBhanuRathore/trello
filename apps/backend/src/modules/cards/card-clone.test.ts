@@ -5,6 +5,7 @@ import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
@@ -21,12 +22,22 @@ const TEST_DB_URL =
 let client: ReturnType<typeof postgres>;
 let db: Database;
 
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
+function track(orgId: string, email: string) {
+  createdOrgIds.push(orgId);
+  createdEmails.push(email);
+}
+
 beforeAll(() => {
   client = postgres(TEST_DB_URL, { max: 1 });
   db = drizzle(client, { schema });
 });
 
 afterAll(async () => {
+  for (const orgId of createdOrgIds) await deleteTestOrg(db, orgId);
+  for (const email of createdEmails) await deleteTestUser(db, email);
   await client.end();
 });
 
@@ -39,6 +50,7 @@ async function setup() {
     orgName: `Clone Org ${id}`,
     orgSlug: `clone-org-${id}`,
   });
+  track(organization.id, user.email);
   const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS' });
   const proj = await createProject(db, {
     organizationId: organization.id,
@@ -192,13 +204,14 @@ describe('cloneCard field overrides (review-before-clone dialog)', () => {
     await db.update(schema.cards).set({ isPrivate: true }).where(eq(schema.cards.id, card.id));
 
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { user: outsider } = await signUp(db, {
+    const { user: outsider, organization: outsiderOrg } = await signUp(db, {
       name: 'Clone Outsider',
       email: `clone_out_${id}@clone.com`,
       password: 'pass',
       orgName: `Clone Out Org ${id}`,
       orgSlug: `clone-out-org-${id}`,
     });
+    track(outsiderOrg.id, outsider.email);
     await db.insert(schema.organizationMembers).values({
       organizationId: organization.id,
       userId: outsider.id,

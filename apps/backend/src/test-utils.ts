@@ -282,6 +282,14 @@ export async function deleteTestUser(db: Database, email: string): Promise<void>
     .limit(1);
   if (!user) return;
   await db.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, user.id));
+  // User-scoped rows without an organization_id: `inbox_item_state` and
+  // `notification_preferences` both restrict on user_id, so the user delete
+  // below trips on them (inbox suite hit this). Scoped by user id — same rule
+  // as the token delete above.
+  await db.delete(schema.inboxItemState).where(eq(schema.inboxItemState.userId, user.id));
+  await db
+    .delete(schema.notificationPreferences)
+    .where(eq(schema.notificationPreferences.userId, user.id));
   await db.delete(schema.users).where(eq(schema.users.id, user.id));
 }
 

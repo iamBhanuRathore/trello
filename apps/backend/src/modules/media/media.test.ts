@@ -8,6 +8,7 @@ import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
@@ -50,6 +51,9 @@ let otherUserId: string;
 const prevScanMode = process.env['SCAN_MODE'];
 const prevMaxAttempts = process.env['SCAN_MAX_ATTEMPTS'];
 
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
 async function setupTenant(suffix: string) {
   const { user, organization } = await signUp(db, {
     name: `Media Owner ${suffix}`,
@@ -58,6 +62,8 @@ async function setupTenant(suffix: string) {
     orgName: `Media Org ${suffix}`,
     orgSlug: `media-org-${suffix}`,
   });
+  createdOrgIds.push(organization.id);
+  createdEmails.push(user.email);
   const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS' });
   const proj = await createProject(db, {
     organizationId: organization.id,
@@ -148,6 +154,8 @@ afterAll(async () => {
   if (prevMaxAttempts === undefined) delete process.env['SCAN_MAX_ATTEMPTS'];
   else process.env['SCAN_MAX_ATTEMPTS'] = prevMaxAttempts;
   __setScanTransport(null);
+  for (const orgId of createdOrgIds) await deleteTestOrg(db, orgId);
+  for (const email of createdEmails) await deleteTestUser(db, email);
   await client.end();
 });
 

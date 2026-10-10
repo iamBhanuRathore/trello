@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import {
   getOrg,
   updateOrg,
@@ -32,10 +33,29 @@ afterAll(async () => {
   await client.end();
 });
 
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
+async function trackedSignUp(args: Parameters<typeof signUp>[1]) {
+  const result = await signUp(db, args);
+  createdOrgIds.push(result.organization.id);
+  createdEmails.push(result.user.email);
+  return result;
+}
+
+function trackEmail(email: string) {
+  createdEmails.push(email);
+}
+
+afterEach(async () => {
+  while (createdOrgIds.length) await deleteTestOrg(db, createdOrgIds.pop()!);
+  while (createdEmails.length) await deleteTestUser(db, createdEmails.pop()!);
+});
+
 describe('Organizations Service', () => {
   it('should get an organization by id', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@test.com`,
       password: 'pass',
@@ -50,7 +70,7 @@ describe('Organizations Service', () => {
 
   it('should update organization name', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@test.com`,
       password: 'pass',
@@ -64,7 +84,7 @@ describe('Organizations Service', () => {
 
   it('should invite and list members', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@test.com`,
       password: 'pass',
@@ -73,6 +93,7 @@ describe('Organizations Service', () => {
     });
 
     const bobEmail = `bob_${id}@test.com`;
+    trackEmail(bobEmail);
     // Create a secondary user to invite
     const [invitedUser] = await db
       .insert(schema.users)
@@ -89,7 +110,7 @@ describe('Organizations Service', () => {
 
   it('should isolate per-userId member lookups in cache (no cross-talk)', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@test.com`,
       password: 'pass',
@@ -98,6 +119,7 @@ describe('Organizations Service', () => {
     });
 
     const bobEmail = `bob_${id}@test.com`;
+    trackEmail(bobEmail);
     const [bob] = await db
       .insert(schema.users)
       .values({ name: 'Bob', email: bobEmail, passwordHash: 'hash' })
@@ -126,7 +148,7 @@ describe('Organizations Service', () => {
 
   it('should update a member role', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@test.com`,
       password: 'pass',
@@ -135,6 +157,7 @@ describe('Organizations Service', () => {
     });
 
     const bobEmail = `bob_${id}@test.com`;
+    trackEmail(bobEmail);
     await db
       .insert(schema.users)
       .values({ name: 'Bob', email: bobEmail, passwordHash: 'hash' })
@@ -148,7 +171,7 @@ describe('Organizations Service', () => {
 
   it('should deactivate and reactivate a member with email notifications', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@test.com`,
       password: 'pass',
@@ -157,6 +180,7 @@ describe('Organizations Service', () => {
     });
 
     const bobEmail = `bob_${id}@test.com`;
+    trackEmail(bobEmail);
     await db
       .insert(schema.users)
       .values({ name: 'Bob Smith', email: bobEmail, passwordHash: 'hash' })
@@ -187,7 +211,7 @@ describe('Organizations Service', () => {
 
   it('should soft-remove a member', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@test.com`,
       password: 'pass',
@@ -196,6 +220,7 @@ describe('Organizations Service', () => {
     });
 
     const bobEmail = `bob_${id}@test.com`;
+    trackEmail(bobEmail);
     await db
       .insert(schema.users)
       .values({ name: 'Bob', email: bobEmail, passwordHash: 'hash' })

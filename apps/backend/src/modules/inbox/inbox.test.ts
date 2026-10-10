@@ -10,6 +10,7 @@ import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
 import { createList } from '../lists/service';
 import { createCard, assignUserToCard } from '../cards/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { createDirectMessage, sendMessage } from '../chat/service';
 import { connectRepository } from '../git/service';
 import {
@@ -27,6 +28,9 @@ const TEST_DB_URL =
 let client: ReturnType<typeof postgres>;
 let db: Database;
 let orgId: string;
+let peerOrgId: string;
+let ownerEmail: string;
+let peerEmail: string;
 let userId: string;
 let otherId: string;
 let cardId: string;
@@ -60,9 +64,11 @@ beforeAll(async () => {
   client = postgres(TEST_DB_URL, { max: 1 });
   db = drizzle(client, { schema });
   const suffix = `${Date.now()}_inbox`;
+  ownerEmail = `inbox_${suffix}@example.com`;
+  peerEmail = `inboxpeer_${suffix}@example.com`;
   const { user, organization } = await signUp(db, {
     name: 'Inbox Owner',
-    email: `inbox_${suffix}@example.com`,
+    email: ownerEmail,
     password: 'pass',
     orgName: `Inbox Org ${suffix}`,
     orgSlug: `inbox-org-${suffix}`,
@@ -71,11 +77,12 @@ beforeAll(async () => {
   userId = user.id;
   const peer = await signUp(db, {
     name: 'Inbox Peer',
-    email: `inboxpeer_${suffix}@example.com`,
+    email: peerEmail,
     password: 'pass',
     orgName: `Inbox Peer Org ${suffix}`,
     orgSlug: `inbox-peer-org-${suffix}`,
   });
+  peerOrgId = peer.organization.id;
   otherId = peer.user.id;
   await db
     .insert(schema.organizationMembers)
@@ -113,6 +120,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (orgId) await deleteTestOrg(db, orgId);
+  if (peerOrgId) await deleteTestOrg(db, peerOrgId);
+  if (ownerEmail) await deleteTestUser(db, ownerEmail);
+  if (peerEmail) await deleteTestUser(db, peerEmail);
   await client.end();
 });
 

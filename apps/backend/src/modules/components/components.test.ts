@@ -4,6 +4,7 @@ import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { inviteMember } from '../organizations/service';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
@@ -26,12 +27,17 @@ const TEST_DB_URL =
 let client: ReturnType<typeof postgres>;
 let db: Database;
 
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
 beforeAll(() => {
   client = postgres(TEST_DB_URL, { max: 1 });
   db = drizzle(client, { schema }) as unknown as Database;
 });
 
 afterAll(async () => {
+  for (const orgId of createdOrgIds) await deleteTestOrg(db, orgId);
+  for (const email of createdEmails) await deleteTestUser(db, email);
   await client.end();
 });
 
@@ -44,6 +50,8 @@ async function setup(tag: string) {
     orgName: `Comp Org ${id}`,
     orgSlug: `comp-org-${id}`,
   });
+  createdOrgIds.push(organization.id);
+  createdEmails.push(user.email);
   const ws = await createWorkspace(db, { organizationId: organization.id, name: 'WS' });
   const proj = await createProject(db, {
     organizationId: organization.id,
@@ -66,6 +74,7 @@ async function addMember(orgId: string, ownerId: string, tag: string) {
     .values({ name: tag, email, passwordHash: 'hash' })
     .returning();
   await inviteMember(db, orgId, email, 'member', ownerId);
+  createdEmails.push(email);
   await db
     .update(schema.organizationMembers)
     .set({ status: 'active' })

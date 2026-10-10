@@ -1,13 +1,21 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
-import { createWorkspace, listWorkspaces, getWorkspace, updateWorkspace, deleteWorkspace } from './service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
+import {
+  createWorkspace,
+  listWorkspaces,
+  getWorkspace,
+  updateWorkspace,
+  deleteWorkspace,
+} from './service';
 
 const TEST_DB_URL =
-  process.env['DATABASE_TEST_URL'] ?? 'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
+  process.env['DATABASE_TEST_URL'] ??
+  'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
 
 let client: ReturnType<typeof postgres>;
 let db: Database;
@@ -21,10 +29,25 @@ afterAll(async () => {
   await client.end();
 });
 
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
+async function trackedSignUp(args: Parameters<typeof signUp>[1]) {
+  const result = await signUp(db, args);
+  createdOrgIds.push(result.organization.id);
+  createdEmails.push(result.user.email);
+  return result;
+}
+
+afterEach(async () => {
+  while (createdOrgIds.length) await deleteTestOrg(db, createdOrgIds.pop()!);
+  while (createdEmails.length) await deleteTestUser(db, createdEmails.pop()!);
+});
+
 describe('Workspaces Service', () => {
   it('should create and list workspaces', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@ws.com`,
       password: 'pass',
@@ -45,7 +68,7 @@ describe('Workspaces Service', () => {
 
   it('should get a workspace', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@ws.com`,
       password: 'pass',
@@ -55,14 +78,14 @@ describe('Workspaces Service', () => {
 
     const created = await createWorkspace(db, { organizationId: organization.id, name: 'Design' });
     const fetched = await getWorkspace(db, created!.id, organization.id);
-    
+
     expect(fetched.id).toBe(created!.id);
     expect(fetched.name).toBe('Design');
   });
 
   it('should update and soft-delete a workspace', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@ws.com`,
       password: 'pass',
@@ -71,12 +94,14 @@ describe('Workspaces Service', () => {
     });
 
     const created = await createWorkspace(db, { organizationId: organization.id, name: 'Design' });
-    
+
     const updated = await updateWorkspace(db, created!.id, organization.id, { name: 'UX' });
     expect(updated.name).toBe('UX');
 
     await deleteWorkspace(db, created!.id, organization.id);
 
-    await expect(getWorkspace(db, created!.id, organization.id)).rejects.toMatchObject({ status: 404 });
+    await expect(getWorkspace(db, created!.id, organization.id)).rejects.toMatchObject({
+      status: 404,
+    });
   });
 });

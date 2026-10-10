@@ -1,16 +1,18 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
 import { createList, listLists, updateList, deleteList } from './service';
 
 const TEST_DB_URL =
-  process.env['DATABASE_TEST_URL'] ?? 'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
+  process.env['DATABASE_TEST_URL'] ??
+  'postgresql://boardly:boardly_test@localhost:5433/boardly_test';
 
 let client: ReturnType<typeof postgres>;
 let db: Database;
@@ -24,10 +26,25 @@ afterAll(async () => {
   await client.end();
 });
 
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
+async function trackedSignUp(args: Parameters<typeof signUp>[1]) {
+  const result = await signUp(db, args);
+  createdOrgIds.push(result.organization.id);
+  createdEmails.push(result.user.email);
+  return result;
+}
+
+afterEach(async () => {
+  while (createdOrgIds.length) await deleteTestOrg(db, createdOrgIds.pop()!);
+  while (createdEmails.length) await deleteTestUser(db, createdEmails.pop()!);
+});
+
 describe('Lists Service', () => {
   it('should create and get lists, auto-calculating position', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@list.com`,
       password: 'pass',
@@ -36,8 +53,16 @@ describe('Lists Service', () => {
     });
 
     const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
-    const proj = await createProject(db, { organizationId: organization.id, workspaceId: ws!.id, name: 'App' });
-    const board = await createBoard(db, { organizationId: organization.id, projectId: proj!.id, name: 'Board 1' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board 1',
+    });
 
     const list1 = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
     const list2 = await createList(db, organization.id, { boardId: board!.id, name: 'Doing' });
@@ -53,7 +78,7 @@ describe('Lists Service', () => {
 
   it('should update and delete a list', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `owner_${id}@list.com`,
       password: 'pass',
@@ -62,12 +87,23 @@ describe('Lists Service', () => {
     });
 
     const ws = await createWorkspace(db, { organizationId: organization.id, name: 'Eng WS' });
-    const proj = await createProject(db, { organizationId: organization.id, workspaceId: ws!.id, name: 'App' });
-    const board = await createBoard(db, { organizationId: organization.id, projectId: proj!.id, name: 'Board 1' });
+    const proj = await createProject(db, {
+      organizationId: organization.id,
+      workspaceId: ws!.id,
+      name: 'App',
+    });
+    const board = await createBoard(db, {
+      organizationId: organization.id,
+      projectId: proj!.id,
+      name: 'Board 1',
+    });
 
     const list1 = await createList(db, organization.id, { boardId: board!.id, name: 'To Do' });
-    
-    const updated = await updateList(db, list1!.id, organization.id, { name: 'Backlog', position: 100 });
+
+    const updated = await updateList(db, list1!.id, organization.id, {
+      name: 'Backlog',
+      position: 100,
+    });
     expect(updated!.name).toBe('Backlog');
     expect(updated!.position).toBe(100);
 

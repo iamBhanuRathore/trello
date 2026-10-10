@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { createWorkspace } from '../workspaces/service';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
@@ -36,6 +37,21 @@ beforeAll(() => {
 
 afterAll(async () => {
   await client.end();
+});
+
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
+async function trackedSignUp(args: Parameters<typeof signUp>[1]) {
+  const result = await signUp(db, args);
+  createdOrgIds.push(result.organization.id);
+  createdEmails.push(result.user.email);
+  return result;
+}
+
+afterEach(async () => {
+  while (createdOrgIds.length) await deleteTestOrg(db, createdOrgIds.pop()!);
+  while (createdEmails.length) await deleteTestUser(db, createdEmails.pop()!);
 });
 
 describe('Calendar OAuth state & token crypto', () => {
@@ -116,7 +132,7 @@ describe('Google event body builder', () => {
 describe('scheduleCard validation', () => {
   async function setupCard() {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { user, organization } = await signUp(db, {
+    const { user, organization } = await trackedSignUp({
       name: 'Cal Owner',
       email: `cal_${id}@cal.com`,
       password: 'pass',
@@ -253,7 +269,7 @@ describe('Google event writes (fake client)', () => {
 
   async function setupConnected() {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { user, organization } = await signUp(db, {
+    const { user, organization } = await trackedSignUp({
       name: 'GCal Writer',
       email: `gcalw_${id}@cal.com`,
       password: 'pass',
@@ -392,7 +408,7 @@ describe('Google event writes (fake client)', () => {
 
   it('requires a connection for writes', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { user } = await signUp(db, {
+    const { user } = await trackedSignUp({
       name: 'No GCal',
       email: `nogcal_${id}@cal.com`,
       password: 'pass',

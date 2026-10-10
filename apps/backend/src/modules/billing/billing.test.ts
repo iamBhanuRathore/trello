@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import {
   isBillableRole,
   getGuestCap,
@@ -34,6 +35,27 @@ afterAll(async () => {
   await client.end();
 });
 
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
+async function trackedSignUp(args: Parameters<typeof signUp>[1]) {
+  const result = await signUp(db, args);
+  createdOrgIds.push(result.organization.id);
+  createdEmails.push(result.user.email);
+  return result;
+}
+
+async function trackedInviteMember(...args: Parameters<typeof inviteMember>) {
+  const result = await inviteMember(...args);
+  createdEmails.push(args[2]);
+  return result;
+}
+
+afterEach(async () => {
+  while (createdOrgIds.length) await deleteTestOrg(db, createdOrgIds.pop()!);
+  while (createdEmails.length) await deleteTestUser(db, createdEmails.pop()!);
+});
+
 describe('Billing & Per-Head Seat Engine', () => {
   it('should correctly classify billable vs unbilled viewer roles', () => {
     expect(isBillableRole('org_owner')).toBe(true);
@@ -54,7 +76,7 @@ describe('Billing & Per-Head Seat Engine', () => {
 
   it('should allow billable invites within seat capacity and block when full', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Billing Owner',
       email: `owner_${id}@test.com`,
       password: 'password123',
@@ -69,7 +91,7 @@ describe('Billing & Per-Head Seat Engine', () => {
 
     // Invite 4 more members (total 5)
     for (let i = 1; i <= 4; i++) {
-      await inviteMember(
+      await trackedInviteMember(
         db,
         organization.id,
         `member_${i}_${id}@test.com`,
@@ -87,7 +109,7 @@ describe('Billing & Per-Head Seat Engine', () => {
 
   it('should allow unbilled viewer invites within guest cap and enforce guest limit', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Guest Test Owner',
       email: `guest_owner_${id}@test.com`,
       password: 'password123',
@@ -102,7 +124,7 @@ describe('Billing & Per-Head Seat Engine', () => {
 
     // Invite 3 guests
     for (let i = 1; i <= 3; i++) {
-      await inviteMember(
+      await trackedInviteMember(
         db,
         organization.id,
         `guest_${i}_${id}@test.com`,
@@ -121,7 +143,7 @@ describe('Billing & Per-Head Seat Engine', () => {
 
   it('should retain vacant seats when a member is deactivated (Slack fair billing)', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Vacant Test Owner',
       email: `vacant_owner_${id}@test.com`,
       password: 'password123',
@@ -130,7 +152,7 @@ describe('Billing & Per-Head Seat Engine', () => {
     });
 
     // Invite a member and accept the invite
-    const invited = await inviteMember(
+    const invited = await trackedInviteMember(
       db,
       organization.id,
       `target_${id}@test.com`,
@@ -152,7 +174,7 @@ describe('Billing & Per-Head Seat Engine', () => {
 
   it('should gate plan cancellation if active billable members exceed Free limit (>5)', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Gate Owner',
       email: `gate_owner_${id}@test.com`,
       password: 'password123',
@@ -183,7 +205,7 @@ describe('Billing & Per-Head Seat Engine', () => {
   // subscription pending, and refuse to overwrite a concurrent change.
   it('should record a seat increase intent and flag the subscription pending', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Seat Increase Owner',
       email: `seat_inc_${id}@test.com`,
       password: 'password123',
@@ -226,7 +248,7 @@ describe('Billing & Per-Head Seat Engine', () => {
 
   it('should schedule a seat decrease and reject one below the active billable count', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Seat Decrease Owner',
       email: `seat_dec_${id}@test.com`,
       password: 'password123',
@@ -286,7 +308,7 @@ describe('Billing & Per-Head Seat Engine', () => {
 
   it('should enforce requirePlan middleware guards', async () => {
     const id = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization, user: owner } = await signUp(db, {
+    const { organization, user: owner } = await trackedSignUp({
       name: 'Guard Owner',
       email: `guard_owner_${id}@test.com`,
       password: 'password123',
