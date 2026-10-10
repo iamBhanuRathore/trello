@@ -21,6 +21,10 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
   let db: Database;
   let orgId: string;
   let userEmail: string;
+  let soloOrgId: string;
+  let soloEmail: string;
+  let repeatOrgId: string;
+  let repeatEmail: string;
   let testDomain: string;
 
   beforeAll(async () => {
@@ -51,8 +55,11 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
   });
 
   afterAll(async () => {
-    await deleteTestOrg(db, orgId);
-    await deleteTestUser(db, userEmail);
+    if (orgId) await deleteTestOrg(db, orgId);
+    if (userEmail) await deleteTestUser(db, userEmail);
+    // WorkOS auto-provisions an org+user on first login for unknown domains.
+    for (const oid of [soloOrgId, repeatOrgId]) if (oid) await deleteTestOrg(db, oid);
+    for (const email of [soloEmail, repeatEmail]) if (email) await deleteTestUser(db, email);
     await client.end();
   });
 
@@ -102,6 +109,8 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
     const code = `mock_test_${randomUser}_independent.com`;
 
     const res = await authenticateWithWorkOSCode(db, code);
+    soloOrgId = res.user.organizationId;
+    soloEmail = res.user.email;
 
     expect(res.user).toBeDefined();
     expect(res.user.email).toBe(`${randomUser}@independent.com`);
@@ -116,6 +125,8 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
     const code = `mock_test_${randomUser}_test`;
 
     const first = await authenticateWithWorkOSCode(db, code);
+    repeatOrgId = first.user.organizationId;
+    repeatEmail = first.user.email;
     const second = await authenticateWithWorkOSCode(db, code);
 
     expect(second.user.id).toBe(first.user.id);

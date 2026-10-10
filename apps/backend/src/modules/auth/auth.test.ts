@@ -24,12 +24,13 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
+  await cleanAuthOrgs();
   await client.end();
 });
 
 // Clean test users between tests via the sanctioned helpers (scoped by this
 // suite's slugs/emails — never a bare table-wide delete).
-beforeEach(async () => {
+async function cleanAuthOrgs() {
   await deleteTestUserTokens(db, ['alice@test.example', 'alice2@test.example', 'bob@test.example']);
   for (const slug of ['alice-corp', 'alice-corp-2']) {
     const [org] = await db
@@ -41,7 +42,9 @@ beforeEach(async () => {
   }
   await deleteTestUser(db, 'alice@test.example');
   await deleteTestUser(db, 'alice2@test.example');
-});
+}
+
+beforeEach(cleanAuthOrgs);
 
 const validSignUp = {
   name: 'Alice Test',

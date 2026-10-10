@@ -52,7 +52,19 @@ afterEach(async () => {
     .limit(1);
   if (leftover) await deleteTestOrg(db, leftover.id);
   await deleteTestUser(db, 'owner@board.com');
+  while (createdOrgIds.length) await deleteTestOrg(db, createdOrgIds.pop()!);
+  while (createdEmails.length) await deleteTestUser(db, createdEmails.pop()!);
 });
+
+const createdOrgIds: string[] = [];
+const createdEmails: string[] = [];
+
+async function trackedSignUp(args: Parameters<typeof signUp>[1]) {
+  const result = await signUp(db, args);
+  createdOrgIds.push(result.organization.id);
+  createdEmails.push(result.user.email);
+  return result;
+}
 
 describe('Boards Service', () => {
   it('should create and list boards', async () => {
@@ -121,7 +133,7 @@ describe('Boards Service', () => {
     const { createList } = await import('../lists/service');
     const { createCard, moveCard } = await import('../cards/service');
     const uid = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `changes_${uid}@board.com`,
       password: 'pass',
@@ -170,7 +182,7 @@ describe('Boards Service', () => {
     const { createList } = await import('../lists/service');
     const { createCard, rebalanceListPositions } = await import('../cards/service');
     const uid = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const { organization } = await signUp(db, {
+    const { organization } = await trackedSignUp({
       name: 'Owner',
       email: `batch_${uid}@board.com`,
       password: 'pass',

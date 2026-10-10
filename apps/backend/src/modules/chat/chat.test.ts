@@ -141,6 +141,8 @@ describe('Channel ↔ Project Linking & Activity Feed', () => {
       orgName: `Perf Org ${Date.now()}`,
       orgSlug: `perf-org-${Date.now()}-${Math.random().toString(36).substring(7)}`,
     });
+    createdOrgIds.push(organization.id);
+    createdEmails.push(user.email);
     const channel = await createGroupChannel(countingDb, organization.id, user.id, {
       name: 'perf',
     });

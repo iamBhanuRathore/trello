@@ -37,10 +37,11 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
+  await cleanRefreshOrg();
   await client.end();
 });
 
-beforeEach(async () => {
+async function cleanRefreshOrg() {
   await deleteTestUserTokens(db, ['refresh@test.example']);
   const [org] = await db
     .select({ id: schema.organizations.id })
@@ -49,7 +50,9 @@ beforeEach(async () => {
     .limit(1);
   if (org) await deleteTestOrg(db, org.id);
   await deleteTestUser(db, 'refresh@test.example');
-});
+}
+
+beforeEach(cleanRefreshOrg);
 
 const validSignUp = {
   name: 'Refresh Test',
