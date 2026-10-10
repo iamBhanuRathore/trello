@@ -11,7 +11,14 @@ import {
 } from '../../db/schema/index';
 import { eventBus } from '../../lib/event-bus';
 import { logger } from '../../lib/logger';
-import { errorMessage, errorCode, errorResponseStatus, errorStatus } from '../../lib/errors';
+import {
+  errorMessage,
+  errorCode,
+  errorResponseStatus,
+  errorStatus,
+  httpError,
+} from '../../lib/errors';
+export { httpError };
 import { updateCard } from '../cards/service';
 import {
   isGoogleConfigured,
@@ -24,22 +31,6 @@ import {
   fetchGoogleEmail,
   type CalendarApi,
 } from './google';
-
-export function httpError(
-  status: number,
-  message: string,
-  details?: Record<string, unknown>
-): Error & { status: number; details?: Record<string, unknown> } {
-  const err = new Error(message) as Error & {
-    status: number;
-    details?: Record<string, unknown>;
-  };
-  err.status = status;
-  // Carried through formatErrorResponse into the response body, so the client
-  // gets a machine-readable discriminator alongside the human message.
-  if (details !== undefined) err.details = details;
-  return err;
-}
 
 // Google has no client-side default timeout — one stalled call used to hang
 // the request (and pile up on every client refetch) until it wedged the

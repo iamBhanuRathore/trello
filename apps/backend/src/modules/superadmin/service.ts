@@ -10,11 +10,8 @@ import {
 } from '../../db/schema/index';
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
-export function httpError(status: number, message: string): Error & { status: number } {
-  const err = new Error(message) as Error & { status: number };
-  err.status = status;
-  return err;
-}
+import { httpError } from '../../lib/errors';
+export { httpError };
 
 // ─── listTenants ──────────────────────────────────────────────────────────────
 export async function listTenants(db: Database) {

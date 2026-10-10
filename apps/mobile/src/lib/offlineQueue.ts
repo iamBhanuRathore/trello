@@ -1,9 +1,7 @@
+import { getApiErrorMessage } from './api';
+
 export type OfflineActionType =
-  | 'CREATE_CARD'
-  | 'MOVE_CARD'
-  | 'ADD_COMMENT'
-  | 'TOGGLE_CHECKLIST'
-  | 'UPDATE_CARD';
+  'CREATE_CARD' | 'MOVE_CARD' | 'ADD_COMMENT' | 'TOGGLE_CHECKLIST' | 'UPDATE_CARD';
 
 export interface OfflineAction {
   id: string;
@@ -90,7 +88,7 @@ class OfflineQueueManager {
         failed++;
         action.status = 'failed';
         action.retryCount += 1;
-        action.errorMessage = err?.message || 'Sync failed';
+        action.errorMessage = getApiErrorMessage(err);
         remainingQueue.push(action);
       }
     }

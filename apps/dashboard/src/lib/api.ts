@@ -20,7 +20,7 @@ export const api = axios.create({
 
 /**
  * Standard utility to parse error responses from the backend API.
- * Handles validation error arrays, message summaries, and standard error fields.
+ * Unified envelope: every backend error body is `{ error, details? }`.
  */
 export function getApiErrorMessage(
   err: any,
@@ -40,19 +40,19 @@ export function getApiErrorMessage(
   const data = err?.response?.data;
   if (!data) return err?.message || fallbackMessage;
 
-  // 1. If detailed validation error array exists, return the first field message
+  // 1. Per-field breakdown (validation errors): most precise message wins.
   if (Array.isArray(data.details) && data.details.length > 0 && data.details[0]?.message) {
     return data.details[0].message;
   }
 
-  // 2. If a specific message string exists
-  if (data.message && typeof data.message === 'string' && data.message !== 'Validation failed') {
-    return data.message;
-  }
-
-  // 3. If standard error string exists
+  // 2. Unified envelope summary.
   if (data.error && typeof data.error === 'string') {
     return data.error;
+  }
+
+  // 3. Legacy pre-unification shape (`{ error: 'Validation failed', message }`).
+  if (data.message && typeof data.message === 'string' && data.message !== 'Validation failed') {
+    return data.message;
   }
 
   return fallbackMessage;

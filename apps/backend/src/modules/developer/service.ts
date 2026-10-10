@@ -3,11 +3,8 @@ import { createHash, randomBytes } from 'crypto';
 import type { Database } from '../../db/index';
 import { apiKeys, marketplaceApps, installedApps } from '../../db/schema/index';
 
-export function httpError(status: number, message: string): Error & { status: number } {
-  const err = new Error(message) as Error & { status: number };
-  err.status = status;
-  return err;
-}
+import { httpError } from '../../lib/errors';
+export { httpError };
 
 function hashKey(rawKey: string): string {
   return createHash('sha256').update(rawKey).digest('hex');

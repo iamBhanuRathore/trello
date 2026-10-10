@@ -136,10 +136,7 @@ describe('Error Sanitization and Handling Utility', () => {
       };
 
       const res = formatValidationError(typeBoxError);
-      expect(res.error).toBe('Validation failed');
-      expect(res.message).toBe(
-        "Field 'email' must be a valid email address (e.g. user@example.com)"
-      );
+      expect(res.error).toBe("Field 'email' must be a valid email address (e.g. user@example.com)");
       expect(res.details?.[0]?.field).toBe('email');
     });
 
@@ -156,8 +153,29 @@ describe('Error Sanitization and Handling Utility', () => {
       };
 
       const res = formatValidationError(typeBoxError);
-      expect(res.error).toBe('Validation failed');
-      expect(res.message).toBe("Field 'password' is required");
+      expect(res.error).toBe("Field 'password' is required");
+    });
+  });
+
+  describe('unified error envelope', () => {
+    it('every error shape is { error, details? } with no message key', () => {
+      const fromService = formatErrorResponse(httpError(400, 'Bad input'));
+      expect(Object.keys(fromService.body).sort()).toEqual(['error']);
+      expect(fromService.body.error).toBe('Bad input');
+
+      const withDetails = formatErrorResponse(httpError(400, 'Bad input', { field: 'x' }));
+      expect(Object.keys(withDetails.body).sort()).toEqual(['details', 'error']);
+
+      const validation = formatValidationError({
+        message: JSON.stringify({ errors: [{ path: '/email', message: 'Expected string' }] }),
+      });
+      expect(typeof validation.error).toBe('string');
+      expect('message' in validation).toBe(false);
+
+      const set: { status?: number } = {};
+      const viaRoute = handleRouteError(httpError(404, 'Gone'), set);
+      expect(set.status).toBe(404);
+      expect(Object.keys(viaRoute)).toEqual(['error']);
     });
   });
 

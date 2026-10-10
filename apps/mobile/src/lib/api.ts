@@ -25,6 +25,29 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * Parse a backend error into a display string. Unified envelope is
+ * `{ error, details? }`; the legacy `message` branch covers mixed-version
+ * responses during rollout.
+ */
+export function getApiErrorMessage(err: any, fallback = 'Sync failed'): string {
+  const data = err?.response?.data;
+  if (data) {
+    if (
+      Array.isArray(data.details) &&
+      data.details.length > 0 &&
+      typeof data.details[0]?.message === 'string'
+    ) {
+      return data.details[0].message;
+    }
+    if (typeof data.error === 'string' && data.error) return data.error;
+    if (typeof data.message === 'string' && data.message && data.message !== 'Validation failed') {
+      return data.message;
+    }
+  }
+  return err?.message || fallback;
+}
+
 // ── Auth APIs ──
 export const login = async (email: string, password: string) => {
   const { data } = await api.post('/auth/login', { email, password });
@@ -69,7 +92,11 @@ export const getCardDetail = async (cardId: string) => {
   return data;
 };
 
-export const createCard = async (payload: { listId: string; title: string; description?: string }) => {
+export const createCard = async (payload: {
+  listId: string;
+  title: string;
+  description?: string;
+}) => {
   const { data } = await api.post('/cards', payload);
   return data;
 };
@@ -100,7 +127,11 @@ export const toggleChecklistItem = async (cardId: string, itemId: string, isComp
 };
 
 // ── Push Notifications ──
-export const registerPushToken = async (payload: { platform: string; token: string; deviceName?: string }) => {
+export const registerPushToken = async (payload: {
+  platform: string;
+  token: string;
+  deviceName?: string;
+}) => {
   const { data } = await api.post('/notifications/push-devices', payload);
   return data;
 };

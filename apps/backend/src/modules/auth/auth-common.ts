@@ -2,11 +2,8 @@ import { createHash } from 'crypto';
 import { env } from '../../lib/env';
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
-export function httpError(status: number, message: string): Error & { status: number } {
-  const err = new Error(message) as Error & { status: number };
-  err.status = status;
-  return err;
-}
+import { httpError } from '../../lib/errors';
+export { httpError };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 export function hashToken(token: string): string {

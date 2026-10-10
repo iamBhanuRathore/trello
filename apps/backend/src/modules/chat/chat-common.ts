@@ -2,11 +2,8 @@ import { eq, and } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { chatChannels, chatChannelMembers } from '../../db/schema/index';
 
-export function httpError(status: number, message: string): Error & { status: number } {
-  const err = new Error(message) as Error & { status: number };
-  err.status = status;
-  return err;
-}
+import { httpError } from '../../lib/errors';
+export { httpError };
 
 export async function requireChannelMembership(
   db: Database,

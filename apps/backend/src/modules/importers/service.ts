@@ -12,11 +12,8 @@ import {
   checklistItems,
 } from '../../db/schema/index';
 
-export function httpError(status: number, message: string): Error & { status: number } {
-  const err = new Error(message) as Error & { status: number };
-  err.status = status;
-  return err;
-}
+import { httpError } from '../../lib/errors';
+export { httpError };
 
 const TRELLO_COLOR_MAP: Record<string, string> = {
   green: '#22c55e',

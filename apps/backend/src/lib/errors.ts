@@ -210,11 +210,13 @@ export function formatErrorResponse(err: unknown): {
 }
 
 /**
- * Formats Elysia/TypeBox validation errors into a clean, human-readable JSON response.
+ * Formats Elysia/TypeBox validation errors into the unified error envelope
+ * `{ error, details? }` — same shape as every other backend error body, so
+ * clients parse one shape. The human-readable summary goes in `error`;
+ * per-field breakdowns (when available) go in `details`.
  */
 export function formatValidationError(error: any): {
   error: string;
-  message: string;
   details?: Array<{ field: string; message: string }>;
 } {
   try {
@@ -270,16 +272,14 @@ export function formatValidationError(error: any): {
 
       if (issues.length > 0 && issues[0]) {
         return {
-          error: 'Validation failed',
-          message: issues[0].message,
+          error: issues[0].message,
           details: issues,
         };
       }
 
       if (parsed.summary && typeof parsed.summary === 'string') {
         return {
-          error: 'Validation failed',
-          message: parsed.summary,
+          error: parsed.summary,
         };
       }
     }
@@ -293,8 +293,7 @@ export function formatValidationError(error: any): {
       : 'Invalid request payload';
 
   return {
-    error: 'Validation failed',
-    message: fallbackMsg,
+    error: fallbackMsg,
   };
 }
 
