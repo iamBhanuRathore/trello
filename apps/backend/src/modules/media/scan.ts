@@ -30,6 +30,7 @@ export const scanMetrics = {
   infected: 0,
   errors: 0,
   failed: 0,
+  skipped: 0,
   lastScanAt: null as Date | null,
   sidecarHealthy: null as boolean | null,
   queueDepth: 0,
@@ -64,6 +65,7 @@ export function scanMetricsSnapshot(): Record<string, unknown> {
       infected: scanMetrics.infected,
       errors: scanMetrics.errors,
       failed: scanMetrics.failed,
+      skipped: scanMetrics.skipped,
       lastScanAt: scanMetrics.lastScanAt,
     },
     window5m: {

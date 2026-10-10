@@ -22,6 +22,8 @@ import {
 import { s3Client, LOCAL_UPLOADS_DIR, isLocalUploadKeyAllowed } from './s3';
 import { env } from './env';
 import { warnSwallowed } from './errors';
+import { logger } from './logger';
+import { scanMetrics } from '../modules/media/scan';
 import { httpError } from '../modules/organizations/service';
 import { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
 export type ScanStatus = MediaScanStatus;
@@ -530,8 +532,12 @@ export async function confirmUpload(
 
   // Dev/test without a sidecar: mark skipped so the flow stays usable.
   // Production refuses (assertScanModeValid) — fail-closed, never silent.
+  // Either way this is warning + metric only: no request-time throw beyond the
+  // production refusal above.
   if (scanMode() === 'disabled') {
     assertScanModeValid();
+    scanMetrics.skipped++;
+    logger.warn({ mediaId }, 'Confirming unscanned upload (SCAN_MODE=disabled)');
     if (media.kind === 'card') {
       await db
         .update(attachments)
@@ -620,6 +626,10 @@ export async function ingestBytes(
 
   const skipped = scanMode() === 'disabled';
   if (skipped) assertScanModeValid();
+  if (skipped) {
+    scanMetrics.skipped++;
+    logger.warn({ fileName }, 'Minting unscanned upload (SCAN_MODE=disabled)');
+  }
   const status: MediaStatus = skipped ? MediaStatus.Ready : MediaStatus.Scanning;
   const scanStatus: MediaScanStatus = skipped ? MediaScanStatus.Skipped : MediaScanStatus.Pending;
 

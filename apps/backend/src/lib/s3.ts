@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { env } from './env';
 import { warnSwallowed } from './errors';
+import { logger } from './logger';
 
 export const LOCAL_UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 if (!fs.existsSync(LOCAL_UPLOADS_DIR)) {
@@ -30,6 +31,18 @@ if (env.STORAGE_ACCESS_KEY && env.STORAGE_SECRET_KEY && env.STORAGE_BUCKET) {
 }
 
 export { s3Client };
+
+if (
+  !s3Client &&
+  (env.STORAGE_ACCESS_KEY || env.STORAGE_SECRET_KEY || env.STORAGE_BUCKET || env.STORAGE_ENDPOINT)
+) {
+  // Half-configured bucket is a misconfiguration, not a dev default: warn at
+  // boot (metric surfaces are request-scoped) instead of silently local.
+  logger.warn(
+    { bucket: env.STORAGE_BUCKET ?? null, endpoint: env.STORAGE_ENDPOINT ?? null },
+    'Incomplete S3 configuration; uploads use the local buffer'
+  );
+}
 
 /** Uploadable extensions for the local-dev buffer (blocks .html/.svg stored-XSS). */
 export const LOCAL_UPLOAD_EXTENSIONS = new Set([
