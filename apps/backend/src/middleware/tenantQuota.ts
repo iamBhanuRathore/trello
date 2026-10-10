@@ -64,7 +64,61 @@ let releaseSha: string | null = null;
 
 export const quotaMetrics = {
   quotaRejectedTotal: 0,
+  quotaInMemoryFallbackTotal: 0,
 };
+
+/**
+ * In-process semaphore (rateLimiter.ts `enforceInMemory` pattern). Used when
+ * Redis is down or errors: we still enforce the cap locally instead of failing
+ * open (unbounded) or hard-failing (full outage for heavy endpoints).
+ *
+ * Deliberately N×-looser, where N = process/replica count, because holds are
+ * not shared across processes. The warn below is the alert: any occurrence in
+ * production means Redis is unhealthy AND quota is running degraded.
+ */
+const localHolds = new Map<string, Array<{ token: string; expires: number }>>();
+
+export function acquireLocalSlot(
+  endpointClass: string,
+  orgId: string,
+  cap: number,
+  token: string
+): boolean {
+  const key = `${endpointClass}:${orgId}`;
+  const now = Date.now() / 1000;
+  const live = (localHolds.get(key) ?? []).filter((h) => h.expires > now);
+  if (live.length >= cap) {
+    localHolds.set(key, live);
+    return false;
+  }
+  live.push({ token, expires: now + HOLD_TTL_SECONDS });
+  localHolds.set(key, live);
+  return true;
+}
+
+export function releaseLocalSlot(endpointClass: string, orgId: string, token: string): void {
+  const key = `${endpointClass}:${orgId}`;
+  const holds = localHolds.get(key);
+  if (!holds) return;
+  const rest = holds.filter((h) => h.token !== token);
+  if (rest.length > 0) localHolds.set(key, rest);
+  else localHolds.delete(key);
+}
+
+function fallbackAcquire(
+  endpointClass: string,
+  orgId: string,
+  tier: PlanTier,
+  token: string
+): boolean {
+  const limit = PLAN_CONCURRENCY_CAPS[tier] || PLAN_CONCURRENCY_CAPS.free;
+  quotaMetrics.quotaInMemoryFallbackTotal++;
+  logger.warn(
+    { endpointClass, org_id: orgId, limit },
+    'Quota degraded to in-memory semaphore (Redis unavailable) — cap is per-process'
+  );
+  return acquireLocalSlot(endpointClass, orgId, limit, token);
+}
 
 export async function acquireQuotaSlot(
   endpointClass: string,
@@ -74,8 +128,7 @@ export async function acquireQuotaSlot(
 ): Promise<boolean> {
   const redis = getDataClient();
   if (!redis || !isRedisAvailable()) {
-    // Fail-open if Redis is down
-    return true;
+    return fallbackAcquire(endpointClass, orgId, tier, token);
   }
 
   const limit = PLAN_CONCURRENCY_CAPS[tier] || PLAN_CONCURRENCY_CAPS.free;
@@ -91,7 +144,7 @@ export async function acquireQuotaSlot(
 
     const sha = acquireSha;
     if (!sha) {
-      return true; // fail-open
+      return fallbackAcquire(endpointClass, orgId, tier, token);
     }
 
     let res: number;
@@ -127,8 +180,8 @@ export async function acquireQuotaSlot(
     return res === 1;
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    logger.error({ err: errMsg, org_id: orgId }, 'Tenant quota evaluation failed — failing open');
-    return true;
+    logger.error({ err: errMsg, org_id: orgId }, 'Tenant quota Redis error — in-memory fallback');
+    return fallbackAcquire(endpointClass, orgId, tier, token);
   }
 }
 
@@ -138,7 +191,10 @@ export async function releaseQuotaSlot(
   token: string
 ): Promise<void> {
   const redis = getDataClient();
-  if (!redis || !isRedisAvailable()) return;
+  if (!redis || !isRedisAvailable()) {
+    releaseLocalSlot(endpointClass, orgId, token);
+    return;
+  }
 
   const key = `quota:concurrency:${endpointClass}:org:${orgId}`;
 
