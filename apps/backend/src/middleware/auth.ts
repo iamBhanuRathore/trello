@@ -14,6 +14,7 @@ import {
 import { eq, and, or, isNull, sql, type SQL } from 'drizzle-orm';
 import { type PermissionKey, PlanTier } from '@boardly/shared-types';
 import { getDataClient, isRedisAvailable } from '../redis/client';
+import { httpError } from '../lib/errors';
 import { getCachedAllow, setCachedAllow, isFamilyBurned } from '../lib/cache';
 import { logger } from '../lib/logger';
 import { PERMISSION_ALIASES, permissionDenied } from '../lib/permissions-resolver';
@@ -34,7 +35,22 @@ export interface AuthContext {
  * Resolves the plan tier for an organization.
  * Uses Redis cache (`org:meta:{orgId}`) with a 300s TTL,
  * falling back to a database lookup on cache miss.
+ *
+ * Fail-closed on database error: serve the last-known tier from the
+ * process-local stale cache when available; throw 503 only when there is
+ * nothing to serve. Silently downgrading to Free turned a DB blip into
+ * lost paid features for every tenant.
  */
+const staleTier = new Map<string, PlanTier>();
+
+/** Test hook: seed/clear the stale-tier cache without a database round-trip. */
+export function __setStaleTierForTest(orgId: string, tier: PlanTier): void {
+  staleTier.set(orgId, tier);
+}
+export function __clearStaleTierCache(): void {
+  staleTier.clear();
+}
+
 export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
   const redis = getDataClient();
   const cacheKey = `org:meta:${orgId}`;
@@ -43,6 +59,7 @@ export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
     try {
       const cached = await redis.get(cacheKey);
       if (cached) {
+        staleTier.set(orgId, cached as PlanTier);
         return cached as PlanTier;
       }
     } catch (err: unknown) {
@@ -60,6 +77,7 @@ export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
       .limit(1);
 
     const tier: PlanTier = (org[0]?.tier as PlanTier) || PlanTier.Free;
+    staleTier.set(orgId, tier);
 
     if (isRedisAvailable() && redis) {
       try {
@@ -73,8 +91,16 @@ export async function resolveOrgPlanTier(orgId: string): Promise<PlanTier> {
     return tier;
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    logger.error({ err: errMsg, org_id: orgId }, 'Failed to resolve org plan tier from database');
-    return PlanTier.Free;
+    const stale = staleTier.get(orgId);
+    if (stale !== undefined) {
+      logger.warn(
+        { err: errMsg, org_id: orgId, tier: stale },
+        'Serving stale plan tier (DB error)'
+      );
+      return stale;
+    }
+    logger.error({ err: errMsg, org_id: orgId }, 'Plan tier unavailable (DB error, no cache)');
+    throw httpError(503, 'Plan tier temporarily unavailable');
   }
 }
 
