@@ -11,6 +11,7 @@ import {
 import { eventBus } from '../../lib/event-bus';
 import { clampLimit } from '../../lib/pagination';
 import { httpError, requireChannelMembership } from './chat-common';
+import { warnSwallowed } from '../../lib/errors';
 
 export async function sendMessage(
   db: Database,
@@ -179,7 +180,9 @@ export async function sendMessage(
         organizationId: channel.organizationId as string,
       });
     }
-  } catch {}
+  } catch (err) {
+    warnSwallowed(err, 'chat.mentionNotify', { channelId });
+  }
 
   return fullMessage;
 }
@@ -567,10 +570,13 @@ export async function notifyProjectChannels(
         )
       );
     for (const ch of linked) {
-      await postSystemMessage(db, ch.id, actorId, text).catch(() => {});
+      await postSystemMessage(db, ch.id, actorId, text).catch((err: unknown) =>
+        warnSwallowed(err, 'chat.projectNotify', { channelId: ch.id })
+      );
     }
-  } catch {
-    // Activity feed is best-effort by design.
+  } catch (err) {
+    // Activity feed is best-effort by design — still observed.
+    warnSwallowed(err, 'chat.notifyProjectChannels', { projectId });
   }
 }
 

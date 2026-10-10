@@ -3,6 +3,7 @@ import type { Database } from '../../db/index';
 import { cards, comments, checklists, checklistItems } from '../../db/schema/index';
 import { httpError } from '../organizations/service';
 import { verifyCardAccess, bumpForCard, bumpForChecklist } from './card-helpers';
+import { warnSwallowed } from '../../lib/errors';
 
 /** Tenant gate for checklist-keyed routes: resolves the owning card + verifies org. */
 export async function verifyChecklistAccess(
@@ -115,7 +116,7 @@ export async function createChecklist(
         userId: actorUserId,
         body: bodyText,
       })
-      .catch(() => {});
+      .catch((err: unknown) => warnSwallowed(err, 'card-checklists.ts:119'));
   }
   await bumpForChecklist(db, checklist.id, cardId);
   return { ...checklist, items: insertedItems };
@@ -172,7 +173,7 @@ export async function createBulkChecklistItems(
         userId: actorUserId,
         body: bodyText,
       })
-      .catch(() => {});
+      .catch((err: unknown) => warnSwallowed(err, 'card-checklists.ts:176'));
   }
 
   await bumpForChecklist(db, checklistId, cl.cardId);
@@ -226,7 +227,7 @@ export async function createChecklistItem(
           userId: actorUserId,
           body: `➕ Added checklist item: **${text}**`,
         })
-        .catch(() => {});
+        .catch((err: unknown) => warnSwallowed(err, 'card-checklists.ts:230'));
     }
   }
 
@@ -283,7 +284,7 @@ export async function updateChecklistItem(
         userId: actorUserId,
         body: actionText,
       })
-      .catch(() => {});
+      .catch((err: unknown) => warnSwallowed(err, 'card-checklists.ts:287'));
   }
 
   if (existing?.cardId) {
@@ -322,7 +323,7 @@ export async function deleteChecklistItem(
         userId: actorUserId,
         body: `🗑️ Removed checklist item: **${existing.text}**`,
       })
-      .catch(() => {});
+      .catch((err: unknown) => warnSwallowed(err, 'card-checklists.ts:326'));
   }
 
   if (existing?.cardId) {
@@ -359,7 +360,7 @@ export async function updateChecklist(
         userId: actorUserId,
         body: `📋 Renamed checklist to: **${title}**`,
       })
-      .catch(() => {});
+      .catch((err: unknown) => warnSwallowed(err, 'card-checklists.ts:363'));
   }
 
   await bumpForChecklist(db, checklistId, existing?.cardId ?? null);
@@ -390,7 +391,7 @@ export async function deleteChecklist(
         userId: actorUserId,
         body: `🗑️ Removed checklist: **${existing.title}**`,
       })
-      .catch(() => {});
+      .catch((err: unknown) => warnSwallowed(err, 'card-checklists.ts:394'));
   }
 
   await bumpForChecklist(db, checklistId, existing?.cardId ?? null);

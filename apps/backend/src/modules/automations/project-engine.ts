@@ -31,6 +31,7 @@ import {
 } from '../cards/service';
 import type { AutomationTrigger, AutomationAction } from '@boardly/shared-types';
 import { AutomationRunReason, AutomationRunStatus } from '@boardly/shared-types';
+import { warnSwallowed } from '../../lib/errors';
 
 // ─── System actor + loop-guard context ──────────────────────────────────────
 // Automation writes must not borrow the triggering user's permissions and must
@@ -354,7 +355,7 @@ async function writeRuleHistory(
   await db
     .insert(comments)
     .values({ cardId, userId: dbActor, body })
-    .catch(() => {});
+    .catch((err: unknown) => warnSwallowed(err, 'project-engine.ts:358'));
 }
 
 async function getDisplayName(db: Database, userId: string): Promise<string> {
@@ -750,7 +751,7 @@ export async function executeRuleForCard(
       executionCount: sql`${projectAutomationRules.executionCount} + 1`,
     })
     .where(eq(projectAutomationRules.id, rule.id))
-    .catch(() => {});
+    .catch((err: unknown) => warnSwallowed(err, 'project-engine.ts:754'));
 }
 
 async function recordRun(
@@ -774,7 +775,7 @@ async function recordRun(
       reason,
       details,
     })
-    .catch(() => {});
+    .catch((err: unknown) => warnSwallowed(err, 'project-engine.ts:778'));
   if (status !== 'skipped' || reason === 'LOOP_GUARD') {
     await db
       .update(projectAutomationRules)
@@ -783,7 +784,7 @@ async function recordRun(
         executionCount: sql`${projectAutomationRules.executionCount} + 1`,
       })
       .where(eq(projectAutomationRules.id, rule.id))
-      .catch(() => {});
+      .catch((err: unknown) => warnSwallowed(err, 'project-engine.ts:787'));
   }
 }
 
@@ -863,7 +864,7 @@ export async function handleProjectAutomationEvent(
           event,
           error: err instanceof Error ? err.message : String(err),
         }
-      ).catch(() => {});
+      ).catch((err: unknown) => warnSwallowed(err, 'project-engine.ts:867'));
     }
   }
 }
@@ -926,7 +927,7 @@ export async function flagStaleRules(
       updatedAt: new Date(),
     })
     .where(inArray(projectAutomationRules.id, hitIds))
-    .catch(() => {});
+    .catch((err: unknown) => warnSwallowed(err, 'project-engine.ts:930'));
   return hitIds.length;
 }
 

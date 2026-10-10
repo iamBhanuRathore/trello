@@ -45,6 +45,7 @@ import {
   bumpForCard,
 } from './card-helpers';
 import { createChecklist } from './card-checklists';
+import { warnSwallowed } from '../../lib/errors';
 
 export async function createCard(db: Database, organizationId: string, input: CreateCardInput) {
   await verifyListAccess(db, input.listId, organizationId);
@@ -207,7 +208,7 @@ export async function createCard(db: Database, organizationId: string, input: Cr
         .insert(cardLabels)
         .values(labelIds.map((labelId) => ({ cardId: card.id, labelId })))
         .onConflictDoNothing()
-        .catch(() => {});
+        .catch((err: unknown) => warnSwallowed(err, 'card-crud.ts:211'));
     }
     const participantIds = validIds(input.participantIds);
     if (participantIds.length > 0) {
@@ -222,7 +223,7 @@ export async function createCard(db: Database, organizationId: string, input: Cr
           }))
         )
         .onConflictDoNothing()
-        .catch(() => {});
+        .catch((err: unknown) => warnSwallowed(err, 'card-crud.ts:226'));
     }
     const watcherIds = validIds(input.watcherIds);
     if (watcherIds.length > 0) {
@@ -230,7 +231,7 @@ export async function createCard(db: Database, organizationId: string, input: Cr
         .insert(cardWatchers)
         .values(watcherIds.map((userId) => ({ cardId: card.id, userId, subscribedAt: new Date() })))
         .onConflictDoNothing()
-        .catch(() => {});
+        .catch((err: unknown) => warnSwallowed(err, 'card-crud.ts:234'));
     }
     const checklistItems = (input.checklist?.items || []).map((t) => t.trim()).filter(Boolean);
     if (checklistItems.length > 0) {
@@ -242,7 +243,7 @@ export async function createCard(db: Database, organizationId: string, input: Cr
         0,
         input.actorId,
         checklistItems
-      ).catch(() => {});
+      ).catch((err: unknown) => warnSwallowed(err, 'card-crud.ts:246'));
     }
   }
 
@@ -272,7 +273,7 @@ export async function createCard(db: Database, organizationId: string, input: Cr
       boardInfo.projectId,
       input.actorId,
       `🆕 ${label} created`
-    ).catch(() => {});
+    ).catch((err: unknown) => warnSwallowed(err, 'card-crud.ts:276'));
   }
   // Subtask creation must invalidate the parent card modal (subtasksTotal/Done cached under cv).
   if (input.parentCardId) {

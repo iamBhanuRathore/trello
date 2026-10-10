@@ -1,4 +1,5 @@
 import { env } from '../lib/env';
+import { warnSwallowed } from '../lib/errors';
 
 const allowedOrigins = [...(env.DASHBOARD_URL?.split(',').map((s) => s.trim()) || [])];
 
@@ -31,7 +32,10 @@ export const resolveOrigin = (request: Request): string => {
       if (isAllowedOrigin(refOrigin)) {
         return refOrigin;
       }
-    } catch {}
+    } catch (err) {
+      // Client-controlled input: malformed values are routine, not attacks.
+      warnSwallowed(err, 'cors.refererParse');
+    }
   }
   if (env.NODE_ENV === 'development' || env.NODE_ENV === 'test') {
     return 'http://localhost:5173';

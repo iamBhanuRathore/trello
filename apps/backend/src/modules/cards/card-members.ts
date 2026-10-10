@@ -20,6 +20,7 @@ import {
   getUserDisplayName,
   bumpForCard,
 } from './card-helpers';
+import { warnSwallowed } from '../../lib/errors';
 
 // ─── Assignees (Single Assignee Model) ─────────────────────────────────────────
 export async function assignUserToCard(
@@ -316,7 +317,7 @@ export async function recordCardView(db: Database, cardId: string, userId: strin
       target: [cardViews.cardId, cardViews.userId],
       set: { viewedAt: new Date() },
     })
-    .catch(() => {});
+    .catch((err: unknown) => warnSwallowed(err, 'card-members.ts:320'));
 }
 
 export async function getCardViewers(db: Database, cardId: string, organizationId: string) {

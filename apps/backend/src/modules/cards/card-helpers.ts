@@ -19,6 +19,7 @@ import {
   cachedCardIdForChecklist,
   rememberChecklistCard,
 } from '../../lib/cache';
+import { warnSwallowed } from '../../lib/errors';
 
 export interface CreateCardInput {
   listId: string;
@@ -89,7 +90,7 @@ export async function linkCreateComponents(
     .insert(cardComponents)
     .values(valid.map((c) => ({ cardId, componentId: c.id, addedBy: input.actorId })))
     .onConflictDoNothing()
-    .catch(() => {});
+    .catch((err: unknown) => warnSwallowed(err, 'card-helpers.ts:93'));
   return valid.map((c) => c.id);
 }
 
@@ -187,7 +188,7 @@ export async function logCardHistory(db: Database, cardId: string, userId: strin
   await db
     .insert(comments)
     .values({ cardId, userId, body })
-    .catch(() => {});
+    .catch((err: unknown) => warnSwallowed(err, 'card-helpers.ts:191'));
 }
 
 export async function getUserDisplayName(db: Database, userId: string): Promise<string> {

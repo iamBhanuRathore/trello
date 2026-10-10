@@ -13,6 +13,7 @@ import {
   bumpForCard,
   logCardHistory,
 } from './card-helpers';
+import { warnSwallowed } from '../../lib/errors';
 
 /** Minimum fractional gap before a list is rewritten (precision safety). */
 const MIN_POSITION_GAP = 0.001;
@@ -171,7 +172,9 @@ export async function moveCard(
   await bumpForCard(db, id, boardId ?? null);
   // Fractional positions lose precision after ~20 repeated midpoint inserts.
   // One cheap aggregate per move detects crowding; rewrite is transactional.
-  await maybeRebalanceList(db, newListId).catch(() => {});
+  await maybeRebalanceList(db, newListId).catch((err: unknown) =>
+    warnSwallowed(err, 'card-movement.ts:175')
+  );
   if (actorId) {
     const [targetList] = await db
       .select({ name: lists.name })
@@ -188,7 +191,7 @@ export async function moveCard(
         projectId,
         actorId,
         `🔀 ${label} moved to **${targetList?.name || 'another column'}**`
-      ).catch(() => {});
+      ).catch((err: unknown) => warnSwallowed(err, 'card-movement.ts:192'));
     }
     // Persistent per-card move history, rendered as a system pill in the task
     // chat (same convention as the label/assignee/watcher loggers). Only

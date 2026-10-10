@@ -17,6 +17,7 @@ import { httpError } from '../organizations/service';
 import { resolveInboundToken, tokenAllowsSender, assertActiveMember } from './tokens';
 import { stripQuotedReply } from './parse';
 import { InboundEmailStatus } from '@boardly/shared-types';
+import { warnSwallowed } from '../../lib/errors';
 
 // ─── Inbound email processor (4.6b) ──────────────────────────────────────────
 // Public webhook (HMAC or SNS-verified) → capability token → SPF/DKIM-gated
@@ -253,7 +254,7 @@ export async function processInboundEmail(
         .update(inboundEmails)
         .set({ status, result, failedAt: null })
         .where(eq(inboundEmails.id, logId))
-        .catch(() => {});
+        .catch((err: unknown) => warnSwallowed(err, 'service.ts:257'));
     }
     return {
       ...(result as Record<string, string>),
@@ -369,7 +370,7 @@ export async function processInboundEmail(
         authorId,
         `Mentioned from email: ${mentioned.length} teammate(s)`,
         mentioned
-      ).catch(() => {});
+      ).catch((err: unknown) => warnSwallowed(err, 'service.ts:373'));
     }
     await ingestAll(card!.id);
     return finish(InboundEmailStatus.Created, { cardId: card!.id, attachmentIds });
@@ -387,7 +388,7 @@ export async function processInboundEmail(
           result: { error: err instanceof Error ? err.message : String(err) },
         })
         .where(eq(inboundEmails.id, logId))
-        .catch(() => {});
+        .catch((err: unknown) => warnSwallowed(err, 'service.ts:391'));
     }
     logger.warn(
       { err: err instanceof Error ? err.message : String(err), messageId },

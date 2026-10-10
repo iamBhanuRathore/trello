@@ -20,6 +20,7 @@ import { env } from '../../lib/env';
 import { encryptToken } from '../calendar/google';
 import { loadCardRow, requireCardAccess } from '../cards/access';
 import { GitLinkKind, GitLinkState } from '@boardly/shared-types';
+import { warnSwallowed } from '../../lib/errors';
 
 export function httpError(status: number, message: string): Error & { status: number } {
   const err = new Error(message) as Error & { status: number };
@@ -443,7 +444,7 @@ export async function handleGitHubWebhook(
       .update(gitRepositories)
       .set({ lastEventAt: new Date(), lastError: null })
       .where(eq(gitRepositories.id, repoRow.id))
-      .catch(() => {});
+      .catch((err: unknown) => warnSwallowed(err, 'service.ts:447'));
 
     let res: GitHubWebhookResult;
     if (event === 'push') res = await handlePush(db, repoRow, payload);
@@ -554,7 +555,9 @@ async function handlePullRequest(
     );
     await Promise.all(
       found.map((card) =>
-        moveCardToStageCategory(db, repoRow.organizationId, card.id, 'in_progress').catch(() => {})
+        moveCardToStageCategory(db, repoRow.organizationId, card.id, 'in_progress').catch(
+          (err: unknown) => warnSwallowed(err, 'service.ts:558')
+        )
       )
     );
   } else if (merged) {
@@ -567,7 +570,9 @@ async function handlePullRequest(
     );
     await Promise.all(
       found.map((card) =>
-        moveCardToStageCategory(db, repoRow.organizationId, card.id, 'done').catch(() => {})
+        moveCardToStageCategory(db, repoRow.organizationId, card.id, 'done').catch((err: unknown) =>
+          warnSwallowed(err, 'service.ts:571')
+        )
       )
     );
   } else if (action === 'closed') {
@@ -625,7 +630,7 @@ async function handleReview(
       state,
       author: review.user?.login || null,
     }))
-  ).catch(() => {});
+  ).catch((err: unknown) => warnSwallowed(err, 'service.ts:629'));
   await postBotCommentsBulk(
     db,
     found.map((card) => ({
@@ -682,6 +687,8 @@ async function handleReview(
       });
     }
     if (rows.length > 0) await db.insert(notifications).values(rows);
-  } catch {}
+  } catch (err) {
+    warnSwallowed(err, 'git/service.ts:reviewNotify', { repo: repoRow?.id });
+  }
   return { delivery: 'review', matchedCards: found.length, linksCreated: 0 };
 }

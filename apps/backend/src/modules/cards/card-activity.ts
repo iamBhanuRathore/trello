@@ -13,6 +13,7 @@ import { httpError } from '../organizations/service';
 import { clampLimit } from '../../lib/pagination';
 import { eventBus } from '../../lib/event-bus';
 import { verifyCardAccess, getBoardIdForCard, bumpForCard } from './card-helpers';
+import { warnSwallowed } from '../../lib/errors';
 
 // ─── Comments ─────────────────────────────────────────────────────────────────
 export async function listComments(
@@ -121,7 +122,7 @@ export async function createComment(
               },
             }))
           )
-          .catch(() => {});
+          .catch((err: unknown) => warnSwallowed(err, 'card-activity.ts:125'));
         for (const mentionedId of eligible) {
           void (async () => {
             try {
@@ -137,8 +138,9 @@ export async function createComment(
                   event: 'card.mentioned',
                 });
               }
-            } catch {
-              // Never let mail break the comment write.
+            } catch (err) {
+              // Never let mail break the comment write — still observed.
+              warnSwallowed(err, 'card-activity.ts:mentionMail', { cardId });
             }
           })();
         }
