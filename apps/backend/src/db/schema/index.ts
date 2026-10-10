@@ -1259,6 +1259,8 @@ export const cardViews = pgTable(
   (t) => [
     primaryKey({ columns: [t.cardId, t.userId] }),
     index('card_views_card_idx').on(t.cardId, t.viewedAt),
+    // User side: recently-viewed lookups lead with user_id (PK cannot serve them).
+    index('card_views_user_idx').on(t.userId, t.viewedAt),
   ]
 );
 
@@ -1587,6 +1589,8 @@ export const chatMessages = pgTable(
     index('chat_messages_pinned_idx').on(t.channelId, t.isPinned),
     // Feed: channel + top-level + not-deleted, newest first (5.3).
     index('chat_messages_channel_created_idx').on(t.channelId, t.createdAt),
+    // Keyset page: id tiebreak makes same-millisecond pages exact.
+    index('chat_messages_channel_created_id_idx').on(t.channelId, t.createdAt, t.id),
     index('chat_messages_parent_created_idx').on(t.parentMessageId, t.createdAt),
   ]
 );
@@ -1743,6 +1747,8 @@ export const gitLinks = pgTable(
   (t) => [
     uniqueIndex('git_links_card_ref_idx').on(t.cardId, t.kind, t.ref),
     index('git_links_repo_idx').on(t.repositoryId),
+    // Inbox git source: org + open-state filter, newest-first keyset page.
+    index('git_links_org_state_created_idx').on(t.organizationId, t.state, t.createdAt, t.id),
   ]
 );
 
