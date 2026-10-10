@@ -18,6 +18,7 @@ import {
   ensureCardInboundToken,
   deriveCardToken,
 } from './tokens';
+import { env } from '../../lib/env';
 import { processInboundEmail, extractThreadCardId, cardMessageId } from './service';
 import { parseRawEmail, stripQuotedReply, isAutoMail } from './parse';
 import { verifyGenericHmac } from './routes';
@@ -45,7 +46,7 @@ let listToken: string;
 let cardToken: string;
 
 const prevScanMode = process.env['SCAN_MODE'];
-const prevTokenSecret = process.env['INBOUND_TOKEN_SECRET'];
+const prevTokenSecret = env.INBOUND_TOKEN_SECRET;
 
 beforeAll(async () => {
   client = postgres(TEST_DB_URL, { max: 1 });
@@ -102,8 +103,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   process.env['SCAN_MODE'] = prevScanMode;
-  if (prevTokenSecret === undefined) delete process.env['INBOUND_TOKEN_SECRET'];
-  else process.env['INBOUND_TOKEN_SECRET'] = prevTokenSecret;
+  (env as { INBOUND_TOKEN_SECRET?: string }).INBOUND_TOKEN_SECRET = prevTokenSecret;
   __setSnsVerify(null);
   await client.end();
 });
@@ -430,7 +430,7 @@ describe('Inbound email (4.6b)', () => {
     await expect(resolveInboundToken(db, outsiderBoard)).rejects.toMatchObject({ status: 404 });
   });
   it('derives a stable per-card thread address and rotates it after revocation', async () => {
-    process.env['INBOUND_TOKEN_SECRET'] = 'test-token-secret';
+    (env as { INBOUND_TOKEN_SECRET?: string }).INBOUND_TOKEN_SECRET = 'test-token-secret-16+chars';
     const first = await ensureCardInboundToken(db, orgId, cardId, ownerId);
     expect(first).toMatch(/^bin_/);
     // Same card -> same address (repeat replies keep threading).
@@ -461,7 +461,7 @@ describe('Inbound email (4.6b)', () => {
   });
 
   it('skips threaded addressing when no token secret is configured', async () => {
-    delete process.env['INBOUND_TOKEN_SECRET'];
+    (env as { INBOUND_TOKEN_SECRET?: string }).INBOUND_TOKEN_SECRET = undefined;
     expect(await ensureCardInboundToken(db, orgId, cardId, ownerId)).toBeNull();
   });
 });

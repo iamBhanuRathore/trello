@@ -9,6 +9,7 @@ import { processInboundEmail, type InboundEnvelope } from './service';
 import { createInboundToken, revokeInboundToken, type InboundScope } from './tokens';
 import { inboundDomain } from './service';
 import { parseRawEmail } from './parse';
+import { env } from '../../lib/env';
 import { verifySnsPayload, confirmSnsSubscription } from './sns';
 import { logger } from '../../lib/logger';
 import { httpError } from '../organizations/service';
@@ -151,7 +152,7 @@ export const inboundEmailRoutes = new Elysia({ prefix: '/inbound', tags: ['Inbou
       }
 
       // Generic HMAC webhook path.
-      const secret = process.env['INBOUND_WEBHOOK_SECRET'] || '';
+      const secret = env.INBOUND_WEBHOOK_SECRET;
       if (!secret) {
         set.status = 503;
         return { error: 'Inbound email webhook is not configured' };

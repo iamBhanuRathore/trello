@@ -12,6 +12,7 @@ import {
   auditLog,
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
+import { env } from '../../lib/env';
 import { clampLimit } from '../../lib/pagination';
 import { logger } from '../../lib/logger';
 import { cachedTTL, bumpUserCache, bumpOrgPermVersion } from '../../lib/cache';
@@ -337,7 +338,7 @@ export async function reactivateMember(
 
       if (targetUser?.email) {
         const orgName = org?.name || 'Boardly';
-        const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+        const appUrl = env.APP_URL;
         const loginUrl = `${appUrl}/sign-in`;
 
         const emailContent = renderAccountReactivatedEmail({

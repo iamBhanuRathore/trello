@@ -11,6 +11,7 @@ import {
 } from '../../db/schema/index';
 import { createCard, createComment } from '../cards/service';
 import { ingestBytes } from '../../lib/storage';
+import { env } from '../../lib/env';
 import { logger } from '../../lib/logger';
 import { httpError } from '../organizations/service';
 import { resolveInboundToken, tokenAllowsSender, assertActiveMember } from './tokens';
@@ -53,7 +54,7 @@ export interface InboundResult {
 }
 
 export function inboundDomain(): string {
-  return process.env['INBOUND_DOMAIN'] || 'reply.boardly.app';
+  return env.INBOUND_DOMAIN;
 }
 
 /** Per-card threading identity: replies carry this in In-Reply-To. */

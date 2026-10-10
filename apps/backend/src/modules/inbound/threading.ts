@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { sendEmail } from '../../lib/email';
 import { renderCommentEmail, renderMentionEmail } from '../../lib/emailTemplates';
 import { logger } from '../../lib/logger';
+import { env } from '../../lib/env';
 import { ensureCardInboundToken } from './tokens';
 import { cardMessageId, boardReplyTo, inboundDomain } from './service';
 
@@ -69,7 +70,7 @@ export async function sendThreadedCardEmail(
     return false;
   }
 
-  const appUrl = process.env['APP_URL'] || process.env['API_URL'] || 'http://localhost:5173';
+  const appUrl = env.APP_URL;
   const preview = stripHtml(input.commentText || '').slice(0, PREVIEW_LIMIT);
   const rendered =
     input.event === 'card.mentioned'

@@ -11,6 +11,7 @@ import {
   auditLog,
 } from '../../db/schema/index';
 import { sendEmail } from '../../lib/email';
+import { env } from '../../lib/env';
 import { logger } from '../../lib/logger';
 import { renderInviteEmail } from '../../lib/emailTemplates';
 import { checkAndReserveSeatSlot } from '../billing/service';
@@ -237,7 +238,7 @@ export async function inviteMember(
   });
 
   // Fire-and-forget email send (after transaction commits)
-  const appUrl = process.env.APP_URL ?? 'http://localhost:5173';
+  const appUrl = env.APP_URL;
   const inviteUrl = `${appUrl}/invite?token=${result.inviteToken}`;
 
   sendEmail({

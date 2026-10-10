@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { inboundEmailTokens, organizationMembers } from '../../db/schema/index';
+import { env } from '../../lib/env';
 import { httpError } from '../organizations/service';
 
 // Capability tokens for inbound email (4.6b). The plaintext token is shown
@@ -140,7 +141,7 @@ export async function assertActiveMember(
  * revoking (which keeps the row) rotates the address on the next send.
  */
 export function deriveCardToken(organizationId: string, cardId: string, version = 0): string {
-  const secret = process.env['INBOUND_TOKEN_SECRET'] || '';
+  const secret = env.INBOUND_TOKEN_SECRET;
   if (!secret) throw httpError(503, 'Inbound token secret is not configured');
   const mac = createHmac('sha256', secret)
     .update(`card:${organizationId}:${cardId}:${version}`)
@@ -159,7 +160,7 @@ export async function ensureCardInboundToken(
   cardId: string,
   createdBy: string
 ): Promise<string | null> {
-  const secret = process.env['INBOUND_TOKEN_SECRET'] || '';
+  const secret = env.INBOUND_TOKEN_SECRET;
   if (!secret) return null;
 
   const existing = await db
