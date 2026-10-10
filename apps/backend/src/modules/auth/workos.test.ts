@@ -3,13 +3,13 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq } from 'drizzle-orm';
 import {
   getGoogleAuthorizationUrl,
   getSSOAuthorizationUrl,
   authenticateWithWorkOSCode,
 } from './workos.service';
 import { signUp } from './service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { updateSSOConfig } from '../sso/service';
 
 const TEST_DB_URL =
@@ -20,6 +20,7 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
   let client: ReturnType<typeof postgres>;
   let db: Database;
   let orgId: string;
+  let userEmail: string;
   let testDomain: string;
 
   beforeAll(async () => {
@@ -27,6 +28,7 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
     db = drizzle(client, { schema }) as unknown as Database;
 
     const email = `workos_owner_${Date.now()}@example.com`;
+    userEmail = email;
     testDomain = `workos-enterprise-${Date.now()}.com`;
     const slug = `workos-org-${Date.now()}`;
 
@@ -49,25 +51,8 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
   });
 
   afterAll(async () => {
-    // FK-safe order: seeded team roles, subscriptions and audit rows reference
-    // the org without cascade.
-    const orgRoles = await db
-      .select({ id: schema.roles.id })
-      .from(schema.roles)
-      .where(eq(schema.roles.organizationId, orgId));
-    for (const r of orgRoles) {
-      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-      await db.delete(schema.roles).where(eq(schema.roles.id, r.id));
-    }
-    await db
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, orgId));
-    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, orgId));
-    await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, orgId));
-    await db
-      .delete(schema.ssoConfigurations)
-      .where(eq(schema.ssoConfigurations.organizationId, orgId));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, userEmail);
     await client.end();
   });
 

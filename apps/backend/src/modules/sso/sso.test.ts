@@ -3,8 +3,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq } from 'drizzle-orm';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import {
   getSSOConfig,
   updateSSOConfig,
@@ -21,6 +21,7 @@ describe('Enterprise SSO & SCIM Service', () => {
   let client: ReturnType<typeof postgres>;
   let db: Database;
   let orgId: string;
+  let userEmail: string;
   let domain: string;
   let scimToken: string;
 
@@ -29,6 +30,7 @@ describe('Enterprise SSO & SCIM Service', () => {
     db = drizzle(client, { schema }) as unknown as Database;
 
     const email = `sso_admin_${Date.now()}@example.com`;
+    userEmail = email;
     domain = `enterprise-${Date.now()}.com`;
     const slug = `sso-org-${Date.now()}`;
 
@@ -43,25 +45,8 @@ describe('Enterprise SSO & SCIM Service', () => {
   });
 
   afterAll(async () => {
-    // FK-safe order: seeded team roles, subscriptions and audit rows reference
-    // the org without cascade.
-    const orgRoles = await db
-      .select({ id: schema.roles.id })
-      .from(schema.roles)
-      .where(eq(schema.roles.organizationId, orgId));
-    for (const r of orgRoles) {
-      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-      await db.delete(schema.roles).where(eq(schema.roles.id, r.id));
-    }
-    await db
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, orgId));
-    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, orgId));
-    await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, orgId));
-    await db
-      .delete(schema.ssoConfigurations)
-      .where(eq(schema.ssoConfigurations.organizationId, orgId));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, userEmail);
     await client.end();
   });
 

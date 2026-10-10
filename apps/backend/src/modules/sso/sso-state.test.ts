@@ -4,7 +4,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '../../db/schema/index';
 import { db as appDb } from '../../db/index';
 import { generateSSOLoginUrl } from './service';
-import { deleteTestUser, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 
 /**
  * SSO `state` must be verified from a durable store, never skipped.
@@ -42,19 +42,7 @@ afterAll(async () => {
   // `now - 1000`, not a date before the epoch. The per-state loop above and
   // the per-org deletes below already cover everything this suite creates.
   for (const orgId of orgIds) {
-    // Leaf -> root: sso_configurations and any states cascade from the org, but
-    // deleting the org first trips the organization_id foreign keys.
-    await appDb
-      .delete(schema.ssoConfigurations)
-      .where(eq(schema.ssoConfigurations.organizationId, orgId));
-    await appDb
-      .delete(schema.ssoLoginStates)
-      .where(eq(schema.ssoLoginStates.organizationId, orgId));
-    await appDb
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, orgId));
-    await appDb.delete(schema.roles).where(eq(schema.roles.organizationId, orgId));
-    await appDb.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await deleteTestOrg(appDb, orgId);
   }
   for (const email of emails) await deleteTestUser(appDb, email);
   await client.end();

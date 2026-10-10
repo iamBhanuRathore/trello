@@ -22,7 +22,7 @@ import {
   issueTokenPair,
   refreshReuseWindow,
 } from './service';
-import { deleteTestUserTokens } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser, deleteTestUserTokens } from '../../test-utils';
 
 const TEST_DB_URL =
   process.env['DATABASE_TEST_URL'] ??
@@ -41,36 +41,14 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // Scoped to this suite's users. A bare `db.delete(refreshTokens)` wiped every
-  // live token in the shared boardly_test DB, so an unrelated suite could fail
-  // with a 401 purely from file execution order.
   await deleteTestUserTokens(db, ['refresh@test.example']);
-  // FK-safe teardown: seeded team roles reference the org without cascade.
   const [org] = await db
     .select({ id: schema.organizations.id })
     .from(schema.organizations)
     .where(eq(schema.organizations.slug, 'refresh-corp'))
     .limit(1);
-  if (org) {
-    const orgRoles = await db
-      .select({ id: schema.roles.id })
-      .from(schema.roles)
-      .where(eq(schema.roles.organizationId, org.id));
-    for (const r of orgRoles) {
-      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-      await db.delete(schema.roles).where(eq(schema.roles.id, r.id));
-    }
-    await db
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, org.id));
-    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, org.id));
-    await db
-      .delete(schema.ssoConfigurations)
-      .where(eq(schema.ssoConfigurations.organizationId, org.id));
-    await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, org.id));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, org.id));
-  }
-  await db.delete(schema.users).where(eq(schema.users.email, 'refresh@test.example'));
+  if (org) await deleteTestOrg(db, org.id);
+  await deleteTestUser(db, 'refresh@test.example');
 });
 
 const validSignUp = {

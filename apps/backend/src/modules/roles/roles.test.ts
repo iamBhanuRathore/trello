@@ -5,6 +5,7 @@ import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { eq } from 'drizzle-orm';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import {
   getAvailablePermissions,
   listRoles,
@@ -21,6 +22,7 @@ describe('Roles Service', () => {
   let client: ReturnType<typeof postgres>;
   let db: Database;
   let orgId: string;
+  let userEmail: string;
   let customRoleId: string;
   let permissionIds: string[] = [];
 
@@ -29,6 +31,7 @@ describe('Roles Service', () => {
     db = drizzle(client, { schema }) as unknown as Database;
 
     const email = `roles_${Date.now()}@example.com`;
+    userEmail = email;
     const slug = `roles-org-${Date.now()}`;
 
     const { organization } = await signUp(db, {
@@ -51,23 +54,8 @@ describe('Roles Service', () => {
         .where(eq(schema.rolePermissions.roleId, customRoleId));
       await db.delete(schema.roles).where(eq(schema.roles.id, customRoleId));
     }
-    // Seeded team roles (Lead/Developer/Tester) reference the org without cascade.
-    const orgRoles = await db
-      .select({ id: schema.roles.id })
-      .from(schema.roles)
-      .where(eq(schema.roles.organizationId, orgId));
-    for (const r of orgRoles) {
-      await db
-        .delete(schema.organizationRoleMembers)
-        .where(eq(schema.organizationRoleMembers.roleId, r.id));
-      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-    }
-    await db.delete(schema.roles).where(eq(schema.roles.organizationId, orgId));
-    await db
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, orgId));
-    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, orgId));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, userEmail);
     await client.end();
   });
 

@@ -8,7 +8,7 @@ import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { signUp, signIn, refreshTokens, signOut, getMe } from './service';
-import { deleteTestUserTokens } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser, deleteTestUserTokens } from '../../test-utils';
 import { eq } from 'drizzle-orm';
 
 const TEST_DB_URL =
@@ -27,12 +27,9 @@ afterAll(async () => {
   await client.end();
 });
 
-// Clean test users between tests (FK-safe order: seeded team roles,
-// subscriptions and audit rows reference the org without cascade).
+// Clean test users between tests via the sanctioned helpers (scoped by this
+// suite's slugs/emails — never a bare table-wide delete).
 beforeEach(async () => {
-  // Scoped to this suite's users. A bare `db.delete(refreshTokens)` wiped every
-  // live token in the shared boardly_test DB, so an unrelated suite could fail
-  // with a 401 purely from file execution order.
   await deleteTestUserTokens(db, ['alice@test.example', 'alice2@test.example', 'bob@test.example']);
   for (const slug of ['alice-corp', 'alice-corp-2']) {
     const [org] = await db
@@ -40,27 +37,10 @@ beforeEach(async () => {
       .from(schema.organizations)
       .where(eq(schema.organizations.slug, slug))
       .limit(1);
-    if (!org) continue;
-    const orgRoles = await db
-      .select({ id: schema.roles.id })
-      .from(schema.roles)
-      .where(eq(schema.roles.organizationId, org.id));
-    for (const r of orgRoles) {
-      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-      await db.delete(schema.roles).where(eq(schema.roles.id, r.id));
-    }
-    await db
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, org.id));
-    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, org.id));
-    await db
-      .delete(schema.ssoConfigurations)
-      .where(eq(schema.ssoConfigurations.organizationId, org.id));
-    await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, org.id));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, org.id));
+    if (org) await deleteTestOrg(db, org.id);
   }
-  await db.delete(schema.users).where(eq(schema.users.email, 'alice@test.example'));
-  await db.delete(schema.users).where(eq(schema.users.email, 'alice2@test.example'));
+  await deleteTestUser(db, 'alice@test.example');
+  await deleteTestUser(db, 'alice2@test.example');
 });
 
 const validSignUp = {

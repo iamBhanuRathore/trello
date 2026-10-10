@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import postgres from 'postgres';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import * as schema from '../../db/schema/index';
 import { db as appDb } from '../../db/index';
 import { satisfiesPermission } from '../../lib/permissions-resolver';
-import { deleteTestUser } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 
 /**
  * Guard + parity contract for the sprint/phase permission model (P0-8).
@@ -37,27 +37,7 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
-  for (const orgId of orgIds) {
-    await appDb
-      .delete(schema.organizationRoleMembers)
-      .where(eq(schema.organizationRoleMembers.organizationId, orgId));
-    await appDb
-      .delete(schema.rolePermissions)
-      .where(
-        inArray(
-          schema.rolePermissions.roleId,
-          appDb
-            .select({ id: schema.roles.id })
-            .from(schema.roles)
-            .where(eq(schema.roles.organizationId, orgId))
-        )
-      );
-    await appDb.delete(schema.roles).where(eq(schema.roles.organizationId, orgId));
-    await appDb
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, orgId));
-    await appDb.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
-  }
+  for (const orgId of orgIds) await deleteTestOrg(appDb, orgId);
   for (const email of emails) await deleteTestUser(appDb, email);
   await client.end();
 });

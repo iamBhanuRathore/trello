@@ -6,7 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import * as schema from '../../db/schema/index';
 import { db as appDb } from '../../db/index';
 import { authPlugin, requirePermission, signAccessToken } from '../../middleware/auth';
-import { deleteTestUser, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 
 /**
  * Auth failure-mode status codes (P0).
@@ -52,13 +52,7 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
-  for (const orgId of orgIds) {
-    await appDb
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, orgId));
-    await appDb.delete(schema.roles).where(eq(schema.roles.organizationId, orgId));
-    await appDb.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
-  }
+  for (const orgId of orgIds) await deleteTestOrg(appDb, orgId);
   for (const email of emails) await deleteTestUser(appDb, email);
   await client.end();
 });

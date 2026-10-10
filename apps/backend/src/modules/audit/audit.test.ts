@@ -5,6 +5,7 @@ import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { eq } from 'drizzle-orm';
 import { signUp } from '../auth/service';
+import { deleteTestOrg, deleteTestUser } from '../../test-utils';
 import { recordAuditLog, getAuditLogs } from './service';
 import { pruneLogs } from './retention';
 
@@ -17,6 +18,7 @@ describe('Audit Service', () => {
   let db: Database;
   let orgId: string;
   let userId: string;
+  let userEmail: string;
 
   beforeAll(async () => {
     client = postgres(TEST_DB_URL, { max: 1 });
@@ -24,6 +26,7 @@ describe('Audit Service', () => {
 
     const email = `audit_${Date.now()}@example.com`;
     const slug = `audit-org-${Date.now()}`;
+    userEmail = email;
 
     const { user, organization } = await signUp(db, {
       name: 'Audit Admin',
@@ -37,25 +40,8 @@ describe('Audit Service', () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.auditLog).where(eq(schema.auditLog.organizationId, orgId));
-    await db.delete(schema.notifications).where(eq(schema.notifications.organizationId, orgId));
-    // Signup seeds team roles, which reference the org without cascade.
-    const orgRoles = await db
-      .select({ id: schema.roles.id })
-      .from(schema.roles)
-      .where(eq(schema.roles.organizationId, orgId));
-    for (const r of orgRoles) {
-      await db
-        .delete(schema.organizationRoleMembers)
-        .where(eq(schema.organizationRoleMembers.roleId, r.id));
-      await db.delete(schema.rolePermissions).where(eq(schema.rolePermissions.roleId, r.id));
-    }
-    await db.delete(schema.roles).where(eq(schema.roles.organizationId, orgId));
-    await db
-      .delete(schema.organizationMembers)
-      .where(eq(schema.organizationMembers.organizationId, orgId));
-    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.organizationId, orgId));
-    await db.delete(schema.organizations).where(eq(schema.organizations.id, orgId));
+    await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, userEmail);
     await client.end();
   });
 
