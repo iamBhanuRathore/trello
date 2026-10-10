@@ -154,6 +154,27 @@ describe('teardown cannot fail silently', () => {
       'schema.invitations',
       'schema.organizationMembers',
       'schema.organizations',
+      // Block 1.2: cards/chat/git/media/inbox coverage — anything missing here
+      // forces suites back to hand-rolled chains.
+      'schema.cards',
+      'schema.cardAssignees',
+      'schema.comments',
+      'schema.attachments',
+      'schema.checklists',
+      'schema.boards',
+      'schema.lists',
+      'schema.labels',
+      'schema.projects',
+      'schema.workspaces',
+      'schema.chatChannels',
+      'schema.chatMessages',
+      'schema.chatReactions',
+      'schema.gitRepositories',
+      'schema.gitLinks',
+      'schema.inboundEmailTokens',
+      'schema.inboundEmails',
+      'schema.webhooks',
+      'schema.projectAutomationRules',
     ]) {
       expect(utils).toContain(table);
     }
