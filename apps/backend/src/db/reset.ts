@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import * as path from 'path';
+import { assertWipeAllowed } from './guard';
 import { plans, permissions, rolePermissions } from './schema/index';
 import {
   ALL_PERMISSION_KEYS,
@@ -17,6 +18,13 @@ import {
 const connectionString = process.env['DATABASE_URL'];
 if (!connectionString) {
   console.error('❌  DATABASE_URL is not set');
+  process.exit(1);
+}
+
+try {
+  assertWipeAllowed(connectionString, process.env['ALLOW_REMOTE_DB']);
+} catch (err) {
+  console.error(`❌  ${(err as Error).message}`);
   process.exit(1);
 }
 
