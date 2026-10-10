@@ -248,6 +248,34 @@ async function fetchDMs(
       const last = rows[rows.length - 1]!.channel;
       cur = encodeCursor(last.lastMessageAt, last.id);
     }
+    // One GROUP BY for the whole chunk (was one unread query per channel).
+    const channelIds = rows.map((r) => r.channel.id);
+    const counts =
+      channelIds.length > 0
+        ? await db
+            .select({
+              channelId: chatMessages.channelId,
+              n: sql<number>`count(*)::int`,
+            })
+            .from(chatMessages)
+            .innerJoin(
+              chatChannelMembers,
+              and(
+                eq(chatChannelMembers.channelId, chatMessages.channelId),
+                eq(chatChannelMembers.userId, userId)
+              )
+            )
+            .where(
+              and(
+                inArray(chatMessages.channelId, channelIds),
+                sql`${chatMessages.userId} != ${userId}`,
+                isNull(chatMessages.deletedAt),
+                sql`${chatMessages.createdAt} > "chat_channel_members"."last_read_at"`
+              )
+            )
+            .groupBy(chatMessages.channelId)
+        : [];
+    const unreadByChannel = new Map(counts.map((c) => [c.channelId, c.n]));
     for (const m of rows) {
       if (items.length >= PER_SOURCE_CAP) break;
       const ch = m.channel;
@@ -256,26 +284,8 @@ async function fetchDMs(
       // Watermark: dismiss hides everything up to dismissed_at.
       if (state?.dismissedAt && new Date(ch.lastMessageAt).getTime() <= state.dismissedAt.getTime())
         continue;
-      const unread = await db
-        .select({ id: chatMessages.id })
-        .from(chatMessages)
-        .innerJoin(
-          chatChannelMembers,
-          and(
-            eq(chatChannelMembers.channelId, chatMessages.channelId),
-            eq(chatChannelMembers.userId, userId)
-          )
-        )
-        .where(
-          and(
-            eq(chatMessages.channelId, ch.id),
-            sql`${chatMessages.userId} != ${userId}`,
-            isNull(chatMessages.deletedAt),
-            sql`${chatMessages.createdAt} > "chat_channel_members"."last_read_at"`
-          )
-        )
-        .limit(500);
-      if (unread.length === 0) continue;
+      const unreadCount = Math.min(unreadByChannel.get(ch.id) ?? 0, 500);
+      if (unreadCount === 0) continue;
       items.push({
         key: `dm:${ch.id}`,
         source: 'dm',
@@ -283,7 +293,7 @@ async function fetchDMs(
         refId: ch.id,
         title: ch.type === 'direct' ? ch.name || 'Direct message' : `#${ch.name}`,
         snippet: ch.lastMessagePreview?.slice(0, 200) || undefined,
-        unreadCount: unread.length,
+        unreadCount,
         channelId: ch.id,
       });
     }

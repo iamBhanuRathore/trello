@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { eq, and, isNull } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import * as schema from '../../db/schema/index';
 import { db } from '../../db/index';
 import {
   organizations,
@@ -598,5 +601,43 @@ describe('Project Automation Engine', () => {
     );
     expect(err).not.toBeNull();
     expect(formatErrorResponse(err).status).toBe(422);
+  });
+
+  it('validates references in a fixed number of queries (no per-id N+1)', async () => {
+    // Fixture holds 1 role + 3 users: the old per-id loops cost 4 round-trips,
+    // the batched IN queries cost 2. Counted through drizzle's query logger.
+    const countingClient = postgres(
+      process.env['DATABASE_TEST_URL'] ??
+        'postgresql://boardly:boardly_test@localhost:5433/boardly_test',
+      { max: 1 }
+    );
+    let queries = 0;
+    const countingDb = drizzle(countingClient, {
+      schema,
+      logger: { logQuery: () => queries++ },
+    }) as unknown as typeof db;
+    try {
+      const { validateRuleReferences } = await import('./project-engine');
+      queries = 0;
+      await validateRuleReferences(countingDb, f.orgId, [
+        { id: randomUUID(), type: 'assign_user', roleId: f.roleId, overrideExisting: false },
+        { id: randomUUID(), type: 'assign_user', userId: f.qa[0]!, overrideExisting: false },
+        { id: randomUUID(), type: 'assign_user', userId: f.qa[1]!, overrideExisting: false },
+        { id: randomUUID(), type: 'assign_user', userId: f.qa[2]!, overrideExisting: false },
+      ]);
+      expect(queries).toBeLessThanOrEqual(3);
+      await expect(
+        validateRuleReferences(countingDb, f.orgId, [
+          {
+            id: randomUUID(),
+            type: 'assign_user',
+            roleId: randomUUID(),
+            overrideExisting: false,
+          },
+        ])
+      ).rejects.toMatchObject({ status: 422 });
+    } finally {
+      await countingClient.end();
+    }
   });
 });

@@ -996,9 +996,33 @@ export async function validateRuleReferences(
       for (const u of a.pool.userIds) userIds.add(u);
     }
   }
-  for (const r of roleIds) await assertRoleInOrg(db, organizationId, r);
+  // Batched (was N+1: one query per role/user): single IN queries, same errors.
+  if (roleIds.size > 0) {
+    const found = await db
+      .select({
+        id: roles.id,
+        organizationId: roles.organizationId,
+        isSystemRole: roles.isSystemRole,
+      })
+      .from(roles)
+      .where(inArray(roles.id, [...roleIds]));
+    const byId = new Map(found.map((r) => [r.id, r]));
+    for (const r of roleIds) {
+      const role = byId.get(r);
+      if (!role) throw httpError(422, `Role ${r} does not exist`);
+      const inOrg =
+        role.organizationId === organizationId || role.organizationId === null || role.isSystemRole;
+      if (!inOrg) throw httpError(422, `Role ${r} is outside this organization`);
+    }
+  }
   // All referenced users must be active members now (fast feedback); pools are
   // still re-resolved from live membership on every fire, so mid-rotation
   // deactivations degrade to skips instead of stale picks.
-  for (const u of userIds) await assertUserActiveInOrg(db, organizationId, u);
+  if (userIds.size > 0) {
+    const active = await activeOrgMemberIds(db, organizationId);
+    for (const u of userIds) {
+      if (!active.has(u))
+        throw httpError(422, `User ${u} is not an active member of this organization`);
+    }
+  }
 }

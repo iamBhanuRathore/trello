@@ -61,6 +61,11 @@ describe('Super Admin Routes', () => {
     const tenants = await listTenants(db);
     expect(Array.isArray(tenants)).toBe(true);
     expect(tenants.length).toBeGreaterThan(0);
+    // GROUP BY counts (was: full member-table scan into JS): own org present
+    // with its owner counted exactly once.
+    const mine = tenants.find((t) => t.id === orgId);
+    expect(mine?.memberCounts.total).toBe(1);
+    expect(mine?.memberCounts.active).toBe(1);
   });
 
   it('should list plans', async () => {

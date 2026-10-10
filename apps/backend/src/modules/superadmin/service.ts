@@ -1,4 +1,4 @@
-import { eq, desc, and, isNull } from 'drizzle-orm';
+import { eq, desc, and, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { revokeAllUserSessions } from '../auth/service';
 import {
@@ -34,31 +34,31 @@ export async function listTenants(db: Database) {
     .from(organizations)
     .leftJoin(plans, eq(plans.id, organizations.planId))
     .leftJoin(subscriptions, eq(subscriptions.organizationId, organizations.id))
-    .orderBy(desc(organizations.createdAt));
+    .orderBy(desc(organizations.createdAt))
+    .limit(500);
 
-  // Also calculate active member counts for each tenant
-  const members = await db
+  // Member counts come from one GROUP BY (was: full member-table scan into JS).
+  const counts = await db
     .select({
       organizationId: organizationMembers.organizationId,
-      status: organizationMembers.status,
+      total: sql<number>`count(*)::int`,
+      active: sql<number>`count(*) filter (where ${organizationMembers.status} = 'active')::int`,
+      deactivated: sql<number>`count(*) filter (where ${organizationMembers.status} = 'deactivated')::int`,
     })
     .from(organizationMembers)
-    .where(isNull(organizationMembers.deletedAt));
+    .where(isNull(organizationMembers.deletedAt))
+    .groupBy(organizationMembers.organizationId);
 
   const orgMemberCountMap = new Map<
     string,
     { total: number; active: number; deactivated: number }
   >();
-  for (const m of members) {
-    const existing = orgMemberCountMap.get(m.organizationId) || {
-      total: 0,
-      active: 0,
-      deactivated: 0,
-    };
-    existing.total += 1;
-    if (m.status === 'active') existing.active += 1;
-    if (m.status === 'deactivated') existing.deactivated += 1;
-    orgMemberCountMap.set(m.organizationId, existing);
+  for (const c of counts) {
+    orgMemberCountMap.set(c.organizationId, {
+      total: c.total,
+      active: c.active,
+      deactivated: c.deactivated,
+    });
   }
 
   return allOrgs.map((org) => {

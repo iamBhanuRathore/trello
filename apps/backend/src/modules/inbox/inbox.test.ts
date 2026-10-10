@@ -284,6 +284,62 @@ describe('Federated inbox (4.6a)', () => {
     ).rejects.toMatchObject({ status: 400 });
     expect(() => decodeInboxCursor('!!!not-a-cursor!!!')).toThrow();
   });
+  it('counts unread DMs with one GROUP BY, not one query per channel', async () => {
+    // Four extra peers + DM threads: the old per-channel loop cost a query per
+    // channel here. Counted through drizzle's query logger.
+    const peerIds: string[] = [];
+    const peerEmails: string[] = [];
+    const chanIds: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const email = `dmpeer_${Date.now()}_${i}@example.com`;
+      const [u] = await db
+        .insert(schema.users)
+        .values({ name: `DM Peer ${i}`, email, passwordHash: 'hash' })
+        .returning();
+      peerIds.push(u!.id);
+      peerEmails.push(email);
+      await db
+        .insert(schema.organizationMembers)
+        .values({ userId: u!.id, organizationId: orgId, role: 'member', status: 'active' });
+      const ch = (await createDirectMessage(db, orgId, userId, u!.id)) as { id: string };
+      chanIds.push(ch.id);
+      await sendMessage(db, ch.id, orgId, u!.id, { body: `ping ${i}` });
+    }
+    try {
+      const countingClient = postgres(TEST_DB_URL, { max: 1 });
+      let queries = 0;
+      const countingDb = drizzle(countingClient, {
+        schema,
+        logger: { logQuery: () => queries++ },
+      }) as unknown as Database;
+      try {
+        queries = 0;
+        const page = await getInbox(countingDb, userId, orgId, { limit: 30 });
+        const dms = page.items.filter((it) => it.source === 'dm');
+        // The four threads created above are all unread (the fixture thread may
+        // have been consumed by earlier read-marking tests — hence >= 4, not 5).
+        expect(dms.length).toBeGreaterThanOrEqual(4);
+        for (const dm of dms) expect(dm.unreadCount).toBeGreaterThan(0);
+        expect(queries).toBeLessThanOrEqual(25);
+      } finally {
+        await countingClient.end();
+      }
+    } finally {
+      for (const cid of chanIds) {
+        await db.delete(schema.chatMessages).where(eq(schema.chatMessages.channelId, cid));
+        await db
+          .delete(schema.chatChannelMembers)
+          .where(eq(schema.chatChannelMembers.channelId, cid));
+        await db.delete(schema.chatChannels).where(eq(schema.chatChannels.id, cid));
+      }
+      for (let i = 0; i < peerIds.length; i++) {
+        await db
+          .delete(schema.organizationMembers)
+          .where(eq(schema.organizationMembers.userId, peerIds[i]!));
+        await deleteTestUser(db, peerEmails[i]!);
+      }
+    }
+  });
   it('scopes git review items to the reader and DMs to direct channels', async () => {
     // A PR on a card owned by someone else is not in the reader's triage queue.
     const strangerCard = await createCard(db, orgId, {
