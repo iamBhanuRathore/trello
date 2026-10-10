@@ -8,6 +8,7 @@ import {
 } from '../../db/schema/index';
 import { getDataClient, isRedisAvailable } from '../../redis/client';
 import { eventBus } from '../../lib/event-bus';
+import { warnSwallowed } from '../../lib/errors';
 
 /**
  * Presence topics are organization-scoped: `org:presence:{organizationId}`.
@@ -147,7 +148,9 @@ export async function recordUserHeartbeat(userId: string) {
   if (redis && isRedisAvailable()) {
     try {
       await redis.set(`presence:online:${userId}`, '1', 'EX', 90);
-    } catch {}
+    } catch (err) {
+      warnSwallowed(err, 'presence.heartbeat', { userId });
+    }
   }
 }
 
@@ -157,7 +160,9 @@ export async function recordUserDisconnect(userId: string) {
   if (redis && isRedisAvailable()) {
     try {
       await redis.del(`presence:online:${userId}`);
-    } catch {}
+    } catch (err) {
+      warnSwallowed(err, 'presence.disconnect', { userId });
+    }
   }
 }
 
@@ -171,7 +176,9 @@ export async function isUserOnline(userId: string): Promise<boolean> {
     try {
       const exists = await redis.exists(`presence:online:${userId}`);
       return exists === 1;
-    } catch {}
+    } catch (err) {
+      warnSwallowed(err, 'presence.isOnline', { userId });
+    }
   }
   return false;
 }
@@ -211,7 +218,9 @@ export async function areUsersOnline(userIds: string[]): Promise<Set<string>> {
       chunk.forEach((id, idx) => {
         if (values[idx] != null) online.add(id);
       });
-    } catch {}
+    } catch (err) {
+      warnSwallowed(err, 'presence.batchOnline', { size: chunk.length });
+    }
   }
   return online;
 }

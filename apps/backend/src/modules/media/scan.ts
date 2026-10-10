@@ -14,6 +14,7 @@ import {
 } from '../../lib/storage';
 import { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
 import { logger } from '../../lib/logger';
+import { warnSwallowed } from '../../lib/errors';
 import { captureServerError } from '../../lib/sentry';
 
 // ─── ClamAV sidecar scanner (fail-closed) ─────────────────────────────────────
@@ -303,7 +304,9 @@ async function quarantineObject(storageKey: string | null): Promise<void> {
   // then drop the servable object. A failed copy falls back to a hard delete so
   // an infected object is never left reachable.
   const copied = await copyObject(storageKey, `quarantine/${storageKey}`);
-  await deleteObject(storageKey).catch(() => {});
+  await deleteObject(storageKey).catch((err: unknown) =>
+    warnSwallowed(err, 'scan.quarantineDelete', { storageKey })
+  );
   if (!copied) logger.warn({ storageKey }, 'Quarantine copy failed; object hard-deleted');
 }
 
@@ -500,7 +503,16 @@ async function drain(db: Database): Promise<void> {
       for (const entry of batch) queuedSet.delete(entry.id);
       scanMetrics.queueDepth = queue.length;
       scanMetrics.oldestQueuedAt = queue.length > 0 ? new Date(queue[0]!.at) : null;
-      await Promise.all(batch.map((entry) => scanOne(db, entry.id).catch(() => {})));
+      await Promise.all(
+        batch.map((entry) =>
+          scanOne(db, entry.id).catch((err: unknown) => {
+            // scanOne logs + bumps its own error counter; this is the backstop
+            // for throws outside its try (e.g. markRow DB failure).
+            scanMetrics.errors++;
+            warnSwallowed(err, 'scan.drain', { mediaId: entry.id });
+          })
+        )
+      );
     }
   } finally {
     draining = false;

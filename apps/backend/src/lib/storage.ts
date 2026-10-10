@@ -21,6 +21,7 @@ import {
 } from '../db/schema/index';
 import { s3Client, LOCAL_UPLOADS_DIR, isLocalUploadKeyAllowed } from './s3';
 import { env } from './env';
+import { warnSwallowed } from './errors';
 import { httpError } from '../modules/organizations/service';
 import { MediaScanStatus, MediaStatus } from '@boardly/shared-types';
 export type ScanStatus = MediaScanStatus;
@@ -28,6 +29,21 @@ export type { MediaStatus, MediaScanStatus };
 
 // ─── Shared validation (mirrors the old card/chat mint guards) ───────────────
 export const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+
+/** S3 "missing object" is a normal null-path; anything else gets warnSwallowed. */
+function isMissingObject(err: unknown): boolean {
+  const e = err as {
+    name?: string;
+    Code?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  return (
+    e?.name === 'NotFound' ||
+    e?.name === 'NoSuchKey' ||
+    e?.Code === 'NoSuchKey' ||
+    e?.$metadata?.httpStatusCode === 404
+  );
+}
 const MIME_RE = /^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/;
 
 export const mediaUploadInput = z.object({
@@ -101,7 +117,8 @@ export async function headObject(
         new HeadObjectCommand({ Bucket: env.STORAGE_BUCKET!, Key: storageKey })
       );
       return { size: out.ContentLength ?? 0, mime: out.ContentType };
-    } catch {
+    } catch (err) {
+      if (!isMissingObject(err)) warnSwallowed(err, 'storage.headObject', { storageKey });
       return null;
     }
   }
@@ -127,7 +144,8 @@ export async function getObjectBytes(
         return bytes.slice(0, maxBytes + 1);
       }
       return null;
-    } catch {
+    } catch (err) {
+      if (!isMissingObject(err)) warnSwallowed(err, 'storage.getObjectBytes', { storageKey });
       return null;
     }
   }
@@ -193,7 +211,8 @@ export async function openObjectStream(
       );
       const source = toAsyncIterable(out.Body);
       return source ? capStream(source, maxBytes) : null;
-    } catch {
+    } catch (err) {
+      if (!isMissingObject(err)) warnSwallowed(err, 'storage.openObjectStream', { storageKey });
       return null;
     }
   }
@@ -218,7 +237,8 @@ export async function copyObject(srcKey: string, dstKey: string): Promise<boolea
       })
     );
     return true;
-  } catch {
+  } catch (err) {
+    warnSwallowed(err, 'storage.copyObject', { storageKey: `${srcKey}->${dstKey}` });
     return false;
   }
 }
@@ -227,13 +247,18 @@ export async function deleteObject(storageKey: string): Promise<void> {
   if (isS3Enabled()) {
     await s3Client!
       .send(new DeleteObjectCommand({ Bucket: env.STORAGE_BUCKET!, Key: storageKey }))
-      .catch(() => {});
+      .catch((err: unknown) => warnSwallowed(err, 'storage.deleteObject', { storageKey }));
     return;
   }
   const safe = storageKey.split('/').pop() || storageKey;
   try {
     fs.unlinkSync(path.join(LOCAL_UPLOADS_DIR, safe));
-  } catch {}
+  } catch (err) {
+    // Idempotent delete: a missing file is the expected steady state.
+    if ((err as { code?: string })?.code !== 'ENOENT') {
+      warnSwallowed(err, 'storage.deleteObjectLocal', { storageKey: safe });
+    }
+  }
 }
 
 export function sha256Hex(bytes: Uint8Array): string {

@@ -703,7 +703,8 @@ export async function seedFullOrganization(force = false) {
     }
 
     // 3. Provision All 50 Users & Org Memberships
-    console.log('👥  Creating 50 Team Members with "Password123!" credentials...');
+    // NOTE: demo credential omitted from logs — see SEED_USERS / passwordHash above.
+    console.log('👥  Creating 50 Team Members with demo credentials...');
     const userMap = new Map<string, { id: string; persona: UserPersona }>();
 
     for (const persona of SEED_USERS) {
@@ -2280,7 +2281,7 @@ export async function seedFullOrganization(force = false) {
     console.log(`• Projects: 8 Active/Scrum/Kanban Projects`);
     console.log(`• Sprints: 4 Sprints across 60 days history`);
     console.log(`• Cards: 120+ Detailed Cards with Checklists & Time Tracking`);
-    console.log(`• Standard Password: Password123!`);
+    console.log(`• Standard Password: <redacted — demo credential, see seed script>`);
     console.log('═══════════════════════════════════════════════════════════════\n');
   } finally {
     await client.end();

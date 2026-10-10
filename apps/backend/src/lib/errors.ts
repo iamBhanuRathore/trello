@@ -51,6 +51,26 @@ export function errorResponseStatus(err: unknown): unknown {
   return undefined;
 }
 
+// ─── Swallowed-error observability ──────────────────────────────────────────
+// Fire-and-forget paths (best-effort cache writes, notification fan-out,
+// idempotent deletes) historically used bare `.catch(() => {})`, making
+// outages invisible. Route every intentional swallow through here: behavior is
+// unchanged (still swallowed) but each one emits a structured warn and bumps a
+// process-local counter exposed via `swallowedErrorCount()` (health/debugging).
+let swallowedErrors = 0;
+
+export function swallowedErrorCount(): number {
+  return swallowedErrors;
+}
+
+export function warnSwallowed(err: unknown, op: string, extra?: Record<string, unknown>): void {
+  swallowedErrors++;
+  logger.warn(
+    { err: errorMessage(err), op, swallowedErrors, ...extra },
+    `Swallowed error in ${op}`
+  );
+}
+
 /**
  * Checks if a string contains internal/sensitive database queries, SQL keywords, or connection strings.
  */

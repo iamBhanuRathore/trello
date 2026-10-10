@@ -3,12 +3,16 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import path from 'path';
 import fs from 'fs';
 import { env } from './env';
+import { warnSwallowed } from './errors';
 
 export const LOCAL_UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 if (!fs.existsSync(LOCAL_UPLOADS_DIR)) {
   try {
     fs.mkdirSync(LOCAL_UPLOADS_DIR, { recursive: true });
-  } catch {}
+  } catch (err) {
+    // Boot-time directory creation failing means every local upload fails.
+    warnSwallowed(err, 's3.mkdirUploads', { dir: LOCAL_UPLOADS_DIR });
+  }
 }
 
 let s3Client: S3Client | null = null;

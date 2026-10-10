@@ -5,6 +5,8 @@ import {
   formatValidationError,
   handleRouteError,
   isSensitiveDatabaseMessage,
+  warnSwallowed,
+  swallowedErrorCount,
 } from './errors';
 
 describe('Error Sanitization and Handling Utility', () => {
@@ -156,6 +158,15 @@ describe('Error Sanitization and Handling Utility', () => {
       const res = formatValidationError(typeBoxError);
       expect(res.error).toBe('Validation failed');
       expect(res.message).toBe("Field 'password' is required");
+    });
+  });
+
+  describe('warnSwallowed', () => {
+    it('counts intentional swallows without throwing', () => {
+      const before = swallowedErrorCount();
+      warnSwallowed(new Error('boom'), 'test-op', { detail: 'x' });
+      warnSwallowed('string-failure', 'test-op-2');
+      expect(swallowedErrorCount()).toBe(before + 2);
     });
   });
 });
