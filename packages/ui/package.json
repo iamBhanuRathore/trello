@@ -19,7 +19,9 @@
     "./select": "./src/components/select.tsx",
     "./sidebar": "./src/components/sidebar.tsx",
     "./switch": "./src/components/switch.tsx",
-    "./tooltip": "./src/components/tooltip.tsx"
+    "./tooltip": "./src/components/tooltip.tsx",
+    "./hooks/use-dialog-close": "./src/hooks/useDialogClose.ts",
+    "./hooks/use-focus-return": "./src/hooks/useFocusReturn.ts"
   },
   "peerDependencies": {
     "@base-ui/react": ">=1.0.0",

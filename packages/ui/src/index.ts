@@ -13,4 +13,6 @@ export * from './components/select';
 export * from './components/sidebar';
 export * from './components/switch';
 export * from './components/tooltip';
+export * from './hooks/useDialogClose';
+export * from './hooks/useFocusReturn';
 export { cn } from './utils';

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from './dialog';
 import { Button } from './button';
+import { useDialogClose } from '../hooks/useDialogClose';
 import { AlertTriangle, Info, AlertCircle, RotateCcw } from 'lucide-react';
 
 export interface ConfirmDialogProps {
@@ -29,6 +30,15 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const [internalLoading, setInternalLoading] = useState(false);
   const isLoading = externalLoading || internalLoading;
 
+  // Single close path (dialog close contract): X, backdrop, and Esc funnel
+  // through one idempotent requestClose. Fixes every ConfirmDialog consumer
+  // (PlatformUsers, ChatDetailsPane, TaskChatPane, TaskDetailView,
+  // TrashBinModal, RuleEditor) in one place instead of per call site.
+  const { requestClose, handleOpenChange } = useDialogClose({
+    isOpen: open,
+    onClose: () => onOpenChange(false),
+  });
+
   const isDestructive = variant === 'destructive';
   const isWarning = variant === 'warning';
   const isSuccess = variant === 'success';
@@ -46,7 +56,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-card border border-border/80 rounded-2xl shadow-2xl">
         <div className="p-6 space-y-4">
           <div className="flex items-start gap-3.5 pr-6">
@@ -89,7 +99,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             size="sm"
             disabled={isLoading}
             className="w-full sm:w-auto text-xs font-medium cursor-pointer border-border hover:bg-muted"
-            onClick={() => onOpenChange(false)}
+            onClick={requestClose}
           >
             {cancelLabel}
           </Button>

@@ -208,7 +208,11 @@ describe('dialog close contract', () => {
   it('the contract hook captures Escape on document, not in the bubble phase', async () => {
     // This ordering is the whole reason the mention menus need the stack: capture
     // on document preempts any bubble-phase handler on a focused child.
-    const src = await readFile(join(SRC, 'hooks/useDialogClose.ts'), 'utf-8');
+    // Canonical source lives in @boardly/ui; the dashboard path re-exports it.
+    const src = await readFile(
+      join(SRC, '../../../packages/ui/src/hooks/useDialogClose.ts'),
+      'utf-8'
+    );
     expect(src.includes("document.addEventListener('keydown', onKey, true)")).toBe(true);
     expect(src.includes("document.addEventListener('keydown', onKey)")).toBe(false);
 
@@ -221,7 +225,10 @@ describe('dialog close contract', () => {
   });
 
   it('the contract hook exposes exactly one idempotent close sink', async () => {
-    const src = await readFile(join(SRC, 'hooks/useDialogClose.ts'), 'utf-8');
+    const src = await readFile(
+      join(SRC, '../../../packages/ui/src/hooks/useDialogClose.ts'),
+      'utf-8'
+    );
     // Guard contract: requestClose is the single sink, handleOpenChange and
     // handleOverlayClick both delegate to it.
     expect(src.includes('requestClose')).toBe(true);

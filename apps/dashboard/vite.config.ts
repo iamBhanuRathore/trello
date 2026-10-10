@@ -100,6 +100,8 @@ export default defineConfig({
       '@boardly/ui/sidebar': path.join(UI_PKG, 'components/sidebar.tsx'),
       '@boardly/ui/switch': path.join(UI_PKG, 'components/switch.tsx'),
       '@boardly/ui/tooltip': path.join(UI_PKG, 'components/tooltip.tsx'),
+      '@boardly/ui/hooks/use-dialog-close': path.join(UI_PKG, 'hooks/useDialogClose.ts'),
+      '@boardly/ui/hooks/use-focus-return': path.join(UI_PKG, 'hooks/useFocusReturn.ts'),
       '@boardly/ui/utils': path.join(UI_PKG, 'utils.ts'),
       '@boardly/ui': path.join(UI_PKG, 'index.ts'),
     },
