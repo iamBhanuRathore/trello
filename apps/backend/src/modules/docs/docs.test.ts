@@ -3,9 +3,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq, inArray } from 'drizzle-orm';
 import { signUp } from '../auth/service';
-import { deleteTestOrg, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
 import { createList } from '../lists/service';
@@ -28,6 +27,7 @@ describe('Docs & Wiki Service', () => {
   let client: ReturnType<typeof postgres>;
   let db: Database;
   let orgId: string;
+  let userEmail: string;
   let userId: string;
   let projectId: string;
   let boardId: string;
@@ -40,6 +40,7 @@ describe('Docs & Wiki Service', () => {
     db = drizzle(client, { schema }) as unknown as Database;
 
     const email = uniqueTestEmail('docs');
+    userEmail = email;
     const slug = uniqueTestSlug('docs-org');
 
     const { user, organization } = await signUp(db, {
@@ -87,26 +88,8 @@ describe('Docs & Wiki Service', () => {
   });
 
   afterAll(async () => {
-    // Scoped to this suite's documents. A bare `db.delete(schema.documentCards)`
-    // deleted every card↔document link in boardly_test.
-    await db
-      .delete(schema.documentCards)
-      .where(
-        inArray(
-          schema.documentCards.documentId,
-          db
-            .select({ id: schema.documents.id })
-            .from(schema.documents)
-            .where(eq(schema.documents.organizationId, orgId))
-        )
-      );
-    await db.delete(schema.documents).where(eq(schema.documents.organizationId, orgId));
-    await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
-    await db.delete(schema.lists).where(eq(schema.lists.boardId, boardId));
-    await db.delete(schema.boards).where(eq(schema.boards.id, boardId));
-    await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
-    await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
     await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, userEmail);
     await client.end();
   });
 

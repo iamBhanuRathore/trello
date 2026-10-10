@@ -22,6 +22,7 @@ describe('Enterprise SSO & SCIM Service', () => {
   let db: Database;
   let orgId: string;
   let userEmail: string;
+  const provisionedEmails: string[] = [];
   let domain: string;
   let scimToken: string;
 
@@ -47,6 +48,7 @@ describe('Enterprise SSO & SCIM Service', () => {
   afterAll(async () => {
     await deleteTestOrg(db, orgId);
     await deleteTestUser(db, userEmail);
+    for (const email of provisionedEmails) await deleteTestUser(db, email);
     await client.end();
   });
 
@@ -87,6 +89,7 @@ describe('Enterprise SSO & SCIM Service', () => {
     // Test-only WorkOS mock code (honored because bun test sets NODE_ENV=test).
     const mockCode = `mock_test_engineer${Date.now()}_${domain}`;
     const res = await processSSOCallback(db, { code: mockCode });
+    provisionedEmails.push(res.user.email);
 
     expect(res.user.id).toBeDefined();
     expect(res.user.email).toContain(`@${domain}`);
@@ -96,6 +99,7 @@ describe('Enterprise SSO & SCIM Service', () => {
 
   it('should provision and deactivate users via SCIM webhook events', async () => {
     const scimUserEmail = `scim_user_${Date.now()}@${domain}`;
+    provisionedEmails.push(scimUserEmail);
 
     // 1. SCIM User Create
     const createRes = await processSCIMWebhook(db, scimToken, {

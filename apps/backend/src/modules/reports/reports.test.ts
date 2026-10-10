@@ -3,9 +3,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq } from 'drizzle-orm';
 import { signUp } from '../auth/service';
-import { deleteTestOrg, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 import { createProject } from '../projects/service';
 import { createBoard } from '../boards/service';
 import { createList } from '../lists/service';
@@ -29,6 +28,7 @@ describe('Reports Service', () => {
   let client: ReturnType<typeof postgres>;
   let db: Database;
   let orgId: string;
+  let userEmail: string;
   let workspaceId: string;
   let projectId: string;
   let boardId: string;
@@ -42,6 +42,7 @@ describe('Reports Service', () => {
     db = drizzle(client, { schema });
 
     const email = uniqueTestEmail('reports');
+    userEmail = email;
     const slug = uniqueTestSlug('reports-org');
 
     const { organization } = await signUp(db, {
@@ -112,14 +113,8 @@ describe('Reports Service', () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.cardSprints).where(eq(schema.cardSprints.sprintId, sprintId));
-    await db.delete(schema.sprints).where(eq(schema.sprints.projectId, projectId));
-    await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
-    await db.delete(schema.lists).where(eq(schema.lists.boardId, boardId));
-    await db.delete(schema.boards).where(eq(schema.boards.id, boardId));
-    await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
-    await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
     await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, userEmail);
     await client.end();
   });
 

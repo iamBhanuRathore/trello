@@ -47,6 +47,8 @@ beforeAll(() => {
 afterAll(async () => {
   for (const orgId of createdOrgIds) await deleteTestOrg(db, orgId);
   for (const email of createdEmails) await deleteTestUser(db, email);
+  // Webhook handler auto-provisions a global bot user on demand.
+  await deleteTestUser(db, 'github-bot@boardly.internal');
   await client.end();
 });
 

@@ -25,6 +25,7 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
   let soloEmail: string;
   let repeatOrgId: string;
   let repeatEmail: string;
+  let empEmail: string;
   let testDomain: string;
 
   beforeAll(async () => {
@@ -59,7 +60,8 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
     if (userEmail) await deleteTestUser(db, userEmail);
     // WorkOS auto-provisions an org+user on first login for unknown domains.
     for (const oid of [soloOrgId, repeatOrgId]) if (oid) await deleteTestOrg(db, oid);
-    for (const email of [soloEmail, repeatEmail]) if (email) await deleteTestUser(db, email);
+    for (const email of [soloEmail, repeatEmail, empEmail])
+      if (email) await deleteTestUser(db, email);
     await client.end();
   });
 
@@ -95,6 +97,7 @@ describe('WorkOS OAuth & Enterprise SSO Service', () => {
     const code = `mock_test_${randomUser}_${testDomain}`;
 
     const res = await authenticateWithWorkOSCode(db, code);
+    empEmail = res.user.email;
 
     expect(res.user).toBeDefined();
     expect(res.user.email).toBe(`${randomUser}@${testDomain}`);

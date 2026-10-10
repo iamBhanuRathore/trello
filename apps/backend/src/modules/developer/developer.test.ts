@@ -3,9 +3,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
-import { eq } from 'drizzle-orm';
 import { signUp } from '../auth/service';
-import { deleteTestOrg, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 import {
   generateApiKey,
   listApiKeys,
@@ -26,6 +25,7 @@ describe('Developer API Keys & Marketplace Service', () => {
   let client: ReturnType<typeof postgres>;
   let db: Database;
   let orgId: string;
+  let userEmail: string;
   let createdKeyId: string;
   let rawGeneratedKey: string;
   let sampleAppId: string;
@@ -36,6 +36,7 @@ describe('Developer API Keys & Marketplace Service', () => {
     db = drizzle(client, { schema }) as unknown as Database;
 
     const email = uniqueTestEmail('dev_admin');
+    userEmail = email;
     const slug = uniqueTestSlug('dev-org');
 
     const { organization } = await signUp(db, {
@@ -49,9 +50,8 @@ describe('Developer API Keys & Marketplace Service', () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.installedApps).where(eq(schema.installedApps.organizationId, orgId));
-    await db.delete(schema.apiKeys).where(eq(schema.apiKeys.organizationId, orgId));
     await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, userEmail);
     await client.end();
   });
 

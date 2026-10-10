@@ -5,7 +5,7 @@ import * as schema from '../../db/schema/index';
 import type { Database } from '../../db/index';
 import { eq, inArray } from 'drizzle-orm';
 import { signUp } from '../auth/service';
-import { deleteTestOrg, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
+import { deleteTestOrg, deleteTestUser, uniqueTestEmail, uniqueTestSlug } from '../../test-utils';
 import { createProject } from '../projects/service';
 import { importTrelloBoard, importGenericTasks } from './service';
 import { listLists } from '../lists/service';
@@ -19,15 +19,16 @@ describe('Importers Service', () => {
   let client: ReturnType<typeof postgres>;
   let db: Database;
   let orgId: string;
+  let userEmail: string;
   let projectId: string;
   let importedBoardId: string;
-  let genericBoardId: string;
 
   beforeAll(async () => {
     client = postgres(TEST_DB_URL, { max: 1 });
     db = drizzle(client, { schema });
 
     const email = uniqueTestEmail('import');
+    userEmail = email;
     const slug = uniqueTestSlug('import-org');
 
     const { organization } = await signUp(db, {
@@ -53,36 +54,8 @@ describe('Importers Service', () => {
   });
 
   afterAll(async () => {
-    const boardIds = [importedBoardId, genericBoardId].filter(Boolean);
-    // These three were bare `db.delete(...)` with no WHERE, so they emptied
-    // cardLabels / checklistItems / checklists for every suite sharing the DB.
-    // Scope each through this suite's own cards.
-    const ownCardIds = db
-      .select({ id: schema.cards.id })
-      .from(schema.cards)
-      .where(eq(schema.cards.organizationId, orgId));
-    await db.delete(schema.cardLabels).where(inArray(schema.cardLabels.cardId, ownCardIds));
-    await db
-      .delete(schema.checklistItems)
-      .where(
-        inArray(
-          schema.checklistItems.checklistId,
-          db
-            .select({ id: schema.checklists.id })
-            .from(schema.checklists)
-            .where(inArray(schema.checklists.cardId, ownCardIds))
-        )
-      );
-    await db.delete(schema.checklists).where(inArray(schema.checklists.cardId, ownCardIds));
-    await db.delete(schema.cards).where(eq(schema.cards.organizationId, orgId));
-    if (boardIds.length > 0) {
-      await db.delete(schema.lists).where(inArray(schema.lists.boardId, boardIds));
-      await db.delete(schema.labels).where(inArray(schema.labels.boardId, boardIds));
-      await db.delete(schema.boards).where(inArray(schema.boards.id, boardIds));
-    }
-    await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
-    await db.delete(schema.workspaces).where(eq(schema.workspaces.organizationId, orgId));
     await deleteTestOrg(db, orgId);
+    await deleteTestUser(db, userEmail);
     await client.end();
   });
 
@@ -172,7 +145,6 @@ describe('Importers Service', () => {
     expect(result.board.name).toBe('Quick Tasks Board');
     expect(result.stats.listsCount).toBe(2);
     expect(result.stats.cardsCount).toBe(3);
-    genericBoardId = result.board.id;
   });
 
   it('should create and attach labels when task imports include label names', async () => {
