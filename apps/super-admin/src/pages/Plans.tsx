@@ -9,6 +9,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@boardly/ui/dialog';
+import { ConfirmDialog } from '@boardly/ui/confirm-dialog';
+import { useDialogClose } from '@boardly/ui/hooks/use-dialog-close';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Layers, Sparkles, Sliders, HardDrive, Users, LayoutGrid } from 'lucide-react';
@@ -22,6 +24,7 @@ export const Plans: React.FC = () => {
   const [maxBoards, setMaxBoards] = useState<number | ''>('');
   const [maxSeats, setMaxSeats] = useState<number | ''>('');
   const [maxStorageGb, setMaxStorageGb] = useState<number | ''>('');
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const {
     data: plans = [],
@@ -49,6 +52,26 @@ export const Plans: React.FC = () => {
     setMaxSeats(plan.maxSeats ?? '');
     setMaxStorageGb(plan.maxStorageGb ?? '');
   };
+
+  // Dirty = any limit field differs from the plan being edited. Close gestures
+  // (X, backdrop, Esc) route to the discard prompt instead of silently
+  // dropping edits — same pattern as the dashboard RuleEditor.
+  const limitsDirty =
+    editingPlan !== null &&
+    (maxWorkspaces !== (editingPlan.maxWorkspaces ?? '') ||
+      maxBoards !== (editingPlan.maxBoards ?? '') ||
+      maxSeats !== (editingPlan.maxSeats ?? '') ||
+      maxStorageGb !== (editingPlan.maxStorageGb ?? ''));
+  const { requestClose, handleOpenChange } = useDialogClose({
+    isOpen: editingPlan !== null,
+    onClose: () => setEditingPlan(null),
+    isDirty: limitsDirty,
+    onDirtyRequest: () => setConfirmDiscard(true),
+  });
+  const { handleOpenChange: handleDiscardOpenChange } = useDialogClose({
+    isOpen: confirmDiscard,
+    onClose: () => setConfirmDiscard(false),
+  });
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,7 +204,7 @@ export const Plans: React.FC = () => {
       </div>
 
       {/* Edit Limits Dialog */}
-      <Dialog open={!!editingPlan} onOpenChange={(open) => !open && setEditingPlan(null)}>
+      <Dialog open={!!editingPlan} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md p-5 bg-card border border-border/80 rounded-2xl shadow-2xl">
           {editingPlan && (
             <form onSubmit={handleSave} className="space-y-4">
@@ -252,12 +275,7 @@ export const Plans: React.FC = () => {
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-border">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  onClick={() => setEditingPlan(null)}
-                >
+                <Button variant="outline" size="sm" type="button" onClick={requestClose}>
                   Cancel
                 </Button>
                 <Button
@@ -273,6 +291,21 @@ export const Plans: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Discard prompt — dirty close gestures land here instead of dropping edits. */}
+      <ConfirmDialog
+        open={confirmDiscard}
+        onOpenChange={handleDiscardOpenChange}
+        title="Discard unsaved changes?"
+        description="Your tier limit edits will be lost."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        variant="warning"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          setEditingPlan(null);
+        }}
+      />
     </div>
   );
 };

@@ -11,6 +11,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@boardly/ui/dialog';
+import { ConfirmDialog } from '@boardly/ui/confirm-dialog';
+import { useDialogClose } from '@boardly/ui/hooks/use-dialog-close';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { EnterpriseDataGrid, type ColumnDef } from '@boardly/ui/enterprise-data-grid';
@@ -23,6 +25,7 @@ export const Tenants: React.FC = () => {
   const [isDedicated, setIsDedicated] = useState(false);
   const [planFilter, setPlanFilter] = useState('all');
   const [dbFilter, setDbFilter] = useState<'all' | 'dedicated' | 'shared'>('all');
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   const {
     data: orgs = [],
@@ -36,6 +39,23 @@ export const Tenants: React.FC = () => {
     setIsDedicated(org.isDedicatedDb || false);
     setDedicatedUrl(org.dedicatedDbUrl || '');
   };
+
+  // Dirty = routing toggle or URL differs from the org being edited. Close
+  // gestures route to the discard prompt — same pattern as Plans above.
+  const routingDirty =
+    selectedOrg !== null &&
+    (isDedicated !== (selectedOrg.isDedicatedDb || false) ||
+      dedicatedUrl !== (selectedOrg.dedicatedDbUrl || ''));
+  const { requestClose, handleOpenChange } = useDialogClose({
+    isOpen: selectedOrg !== null,
+    onClose: () => setSelectedOrg(null),
+    isDirty: routingDirty,
+    onDirtyRequest: () => setConfirmDiscard(true),
+  });
+  const { handleOpenChange: handleDiscardOpenChange } = useDialogClose({
+    isOpen: confirmDiscard,
+    onClose: () => setConfirmDiscard(false),
+  });
 
   const updateDbMutation = useMutation({
     mutationFn: ({
@@ -346,7 +366,7 @@ export const Tenants: React.FC = () => {
       />
 
       {/* Dedicated DB Routing Modal */}
-      <Dialog open={!!selectedOrg} onOpenChange={(open) => !open && setSelectedOrg(null)}>
+      <Dialog open={!!selectedOrg} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md p-5 bg-card border border-border/80 rounded-2xl shadow-2xl">
           {selectedOrg && (
             <div className="space-y-4">
@@ -399,7 +419,7 @@ export const Tenants: React.FC = () => {
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-border">
-                <Button variant="outline" size="sm" onClick={() => setSelectedOrg(null)}>
+                <Button variant="outline" size="sm" onClick={requestClose}>
                   Cancel
                 </Button>
                 <Button
@@ -415,6 +435,21 @@ export const Tenants: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Discard prompt — dirty close gestures land here instead of dropping edits. */}
+      <ConfirmDialog
+        open={confirmDiscard}
+        onOpenChange={handleDiscardOpenChange}
+        title="Discard unsaved changes?"
+        description="Your database routing edits will be lost."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        variant="warning"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          setSelectedOrg(null);
+        }}
+      />
     </div>
   );
 };

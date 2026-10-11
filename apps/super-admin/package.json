@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint",
+    "test": "bun test src",
     "preview": "vite preview --port 5174"
   },
   "dependencies": {
@@ -37,6 +38,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "bun-types": "^1.4.2",
     "oxlint": "^1.78.0",
     "typescript": "~6.0.3",
     "vite": "^8.2.1"

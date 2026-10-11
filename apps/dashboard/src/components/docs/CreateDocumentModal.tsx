@@ -10,6 +10,8 @@ import {
 import { Button } from '@boardly/ui/button';
 import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
+import { ConfirmDialog } from '../common/ConfirmDialog';
+import { useDialogClose } from '../../hooks/useDialogClose';
 import { BookOpen, FileText, Cpu, GitBranch, Users, Sparkles, Target } from 'lucide-react';
 
 export interface CreateDocumentModalProps {
@@ -137,6 +139,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
 }) => {
   const [title, setTitle] = useState('New Specification');
   const [selectedTemplateId, setSelectedTemplateId] = useState('spec');
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -144,6 +147,20 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       setSelectedTemplateId('spec');
     }
   }, [open]);
+
+  // Dirty = title or template differs from the reset defaults. Close gestures
+  // route to the discard prompt instead of dropping the draft.
+  const docDirty = title.trim() !== 'New Specification' || selectedTemplateId !== 'spec';
+  const { requestClose, handleOpenChange } = useDialogClose({
+    isOpen: open,
+    onClose: () => onOpenChange(false),
+    isDirty: docDirty,
+    onDirtyRequest: () => setConfirmDiscard(true),
+  });
+  const { handleOpenChange: handleDiscardOpenChange } = useDialogClose({
+    isOpen: confirmDiscard,
+    onClose: () => setConfirmDiscard(false),
+  });
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -160,119 +177,137 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl p-0 overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
-        <form onSubmit={handleSubmit} className="flex flex-col">
-          {/* Header */}
-          <DialogHeader className="p-6 border-b border-border/70 bg-card shrink-0 space-y-1.5">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-                <BookOpen className="w-5 h-5" />
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-xl p-0 overflow-hidden bg-card border border-border rounded-2xl shadow-2xl">
+          <form onSubmit={handleSubmit} className="flex flex-col">
+            {/* Header */}
+            <DialogHeader className="p-6 border-b border-border/70 bg-card shrink-0 space-y-1.5">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg font-bold tracking-tight text-foreground">
+                    Create New Document
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    Start a technical document, specification, or knowledge base article.
+                  </DialogDescription>
+                </div>
               </div>
-              <div>
-                <DialogTitle className="text-lg font-bold tracking-tight text-foreground">
-                  Create New Document
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
-                  Start a technical document, specification, or knowledge base article.
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
+            </DialogHeader>
 
-          {/* Body */}
-          <div className="p-6 space-y-5">
-            {/* Title Input */}
-            <div className="space-y-1.5">
-              <Label htmlFor="doc-title" className="text-xs font-semibold text-foreground">
-                Document Title
-              </Label>
-              <Input
-                id="doc-title"
-                autoFocus
-                placeholder="e.g. Real-Time Sync Architecture"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="h-10 text-sm focus-visible:ring-teal-500/50"
-                disabled={isLoading}
-              />
-            </div>
-
-            {/* Template Chooser */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-teal-500" /> Starter Template
+            {/* Body */}
+            <div className="p-6 space-y-5">
+              {/* Title Input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="doc-title" className="text-xs font-semibold text-foreground">
+                  Document Title
                 </Label>
-                <span className="text-[11px] text-muted-foreground">Choose a format to begin</span>
+                <Input
+                  id="doc-title"
+                  autoFocus
+                  placeholder="e.g. Real-Time Sync Architecture"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="h-10 text-sm focus-visible:ring-teal-500/50"
+                  disabled={isLoading}
+                />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
-                {TEMPLATES.map((t) => {
-                  const isSelected = t.id === selectedTemplateId;
-                  const Icon = t.icon;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setSelectedTemplateId(t.id)}
-                      className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${
-                        isSelected
-                          ? 'border-teal-500/60 bg-teal-500/10 dark:bg-teal-500/15 shadow-xs'
-                          : 'border-border hover:border-border/80 hover:bg-muted/40'
-                      }`}
-                    >
-                      <div
-                        className={`p-1.5 rounded-lg shrink-0 ${
+              {/* Template Chooser */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-teal-500" /> Starter Template
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">
+                    Choose a format to begin
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                  {TEMPLATES.map((t) => {
+                    const isSelected = t.id === selectedTemplateId;
+                    const Icon = t.icon;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSelectedTemplateId(t.id)}
+                        className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${
                           isSelected
-                            ? 'bg-teal-500/20 text-teal-600 dark:text-teal-400'
-                            : 'bg-muted text-muted-foreground'
+                            ? 'border-teal-500/60 bg-teal-500/10 dark:bg-teal-500/15 shadow-xs'
+                            : 'border-border hover:border-border/80 hover:bg-muted/40'
                         }`}
                       >
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
                         <div
-                          className={`text-xs font-semibold truncate ${
-                            isSelected ? 'text-teal-950 dark:text-teal-200' : 'text-foreground'
+                          className={`p-1.5 rounded-lg shrink-0 ${
+                            isSelected
+                              ? 'bg-teal-500/20 text-teal-600 dark:text-teal-400'
+                              : 'bg-muted text-muted-foreground'
                           }`}
                         >
-                          {t.name}
+                          <Icon className="w-4 h-4" />
                         </div>
-                        <p className="text-[10px] text-muted-foreground line-clamp-2 mt-0.5 leading-snug">
-                          {t.description}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
+                        <div className="min-w-0 flex-1">
+                          <div
+                            className={`text-xs font-semibold truncate ${
+                              isSelected ? 'text-teal-950 dark:text-teal-200' : 'text-foreground'
+                            }`}
+                          >
+                            {t.name}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground line-clamp-2 mt-0.5 leading-snug">
+                            {t.description}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Footer */}
-          <DialogFooter className="p-4 bg-muted/30 border-t border-border flex flex-col sm:flex-row items-center justify-end gap-2 shrink-0">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={isLoading}
-              className="w-full sm:w-auto text-xs cursor-pointer"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={isLoading || !title.trim()}
-              className="w-full sm:w-auto text-xs bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
-            >
-              {isLoading ? 'Creating...' : 'Create Document'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            {/* Footer */}
+            <DialogFooter className="p-4 bg-muted/30 border-t border-border flex flex-col sm:flex-row items-center justify-end gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={isLoading}
+                className="w-full sm:w-auto text-xs cursor-pointer"
+                onClick={requestClose}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isLoading || !title.trim()}
+                className="w-full sm:w-auto text-xs bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
+              >
+                {isLoading ? 'Creating...' : 'Create Document'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        onOpenChange={handleDiscardOpenChange}
+        title="Discard unsaved changes?"
+        description="Your document title and template selection will be lost."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        variant="warning"
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          onOpenChange(false);
+        }}
+      />
+    </>
   );
 };

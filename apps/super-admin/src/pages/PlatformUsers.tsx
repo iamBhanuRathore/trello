@@ -4,6 +4,7 @@ import { superAdminService, type PlatformUser } from '../lib/superAdminService';
 import { Avatar, AvatarFallback, AvatarImage } from '@boardly/ui/avatar';
 import { Button } from '@boardly/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@boardly/ui/dialog';
+import { useDialogClose } from '@boardly/ui/hooks/use-dialog-close';
 import { EnterpriseDataGrid, type ColumnDef } from '@boardly/ui/enterprise-data-grid';
 import { ConfirmDialog } from '@boardly/ui/confirm-dialog';
 import {
@@ -60,6 +61,14 @@ export const PlatformUsers: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<PlatformUser | null>(null);
   const [userToLogout, setUserToLogout] = useState<PlatformUser | null>(null);
+
+  // Single close path (dialog close contract): X, backdrop, and Esc funnel
+  // through one idempotent requestClose. Read-only inspection — no dirty
+  // guard, nothing editable.
+  const { requestClose, handleOpenChange } = useDialogClose({
+    isOpen: selectedUser !== null,
+    onClose: () => setSelectedUser(null),
+  });
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['superAdminUsers'],
@@ -508,7 +517,7 @@ export const PlatformUsers: React.FC = () => {
       />
 
       {/* Cross-Company Inspection Dialog */}
-      <Dialog open={!!selectedUser} onOpenChange={(open) => !open && setSelectedUser(null)}>
+      <Dialog open={!!selectedUser} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-xl p-0 overflow-hidden bg-card border border-border/80 rounded-2xl shadow-2xl">
           {selectedUser && (
             <div>
@@ -658,7 +667,7 @@ export const PlatformUsers: React.FC = () => {
                   <span>Terminate All Sessions</span>
                 </Button>
 
-                <Button variant="outline" size="sm" onClick={() => setSelectedUser(null)}>
+                <Button variant="outline" size="sm" onClick={requestClose}>
                   Close
                 </Button>
               </div>
