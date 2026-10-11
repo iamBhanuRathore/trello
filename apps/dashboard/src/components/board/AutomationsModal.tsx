@@ -558,7 +558,7 @@ function ProjectDefaultsPanel(props: {
       <div className="space-y-4 rounded-xl border border-border bg-muted/30 p-4">
         <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-2">
-            <label className="text-xs font-semibold text-foreground">Project</label>
+            <div className="text-xs font-semibold text-foreground">Project</div>
             {selectedRule && (
               <span className="text-[10px] text-muted-foreground">
                 Current default:{' '}
@@ -586,9 +586,7 @@ function ProjectDefaultsPanel(props: {
 
         <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-2">
-            <label className="text-xs font-semibold text-foreground">
-              New cards are assigned to
-            </label>
+            <div className="text-xs font-semibold text-foreground">New cards are assigned to</div>
             <div
               role="group"
               aria-label="Assignee type"

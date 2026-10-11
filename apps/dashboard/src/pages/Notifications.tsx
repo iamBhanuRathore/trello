@@ -123,6 +123,9 @@ export function Notifications() {
   // Keep the input in sync when navigating back/forward.
   useEffect(() => {
     setSearchInput(parsed.q);
+    // Keyed on the serialized query string, not `parsed.q`: the URL is the
+    // source of truth for back/forward navigation, and `parsed` is rebuilt on
+    // every render. Depending on it would reset the input mid-keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.toString()]);
 
@@ -198,6 +201,10 @@ export function Notifications() {
     );
     io.observe(el);
     return () => io.disconnect();
+    // Re-arm only when paging state changes. `flatVisible` is rebuilt on every
+    // render and `fetchNextPage` is stable; including the former would tear
+    // down and recreate the observer on every keystroke, so the sentinel would
+    // stop firing at exactly the moment the user scrolls to load more.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listQuery.hasNextPage, listQuery.isFetchingNextPage, listQuery.dataUpdatedAt]);
 
@@ -315,6 +322,12 @@ export function Notifications() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+    // The shortcut set is rebuilt on purpose: `flatVisible` and `focusedId`
+    // are what decide which row j/k/Enter/u/s/e act on, so binding a stale
+    // closure would navigate the wrong row. The per-render handlers it calls
+    // (toggleSelect, clearSelection, handleArchiveWithUndo) are either stable
+    // useCallbacks or effects-on-data, so re-binding on these two keys is the
+    // intended behaviour, not a missed dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flatVisible, focusedId, selectMode]);
 

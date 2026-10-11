@@ -162,7 +162,10 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
 
               {/* Channel Name */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                <label
+                  htmlFor="channel-name"
+                  className="text-xs font-semibold text-foreground flex items-center justify-between"
+                >
                   <span className="flex items-center gap-1">
                     Channel Name <span className="text-rose-500">*</span>
                   </span>
@@ -175,6 +178,7 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
                     #
                   </span>
                   <input
+                    id="channel-name"
                     type="text"
                     value={name}
                     maxLength={40}
@@ -191,11 +195,12 @@ export const NewChannelModal: React.FC<NewChannelModalProps> = ({ isOpen, onClos
 
               {/* Channel Topic / Description */}
               <div className="space-y-1.5 mt-3">
-                <label className="text-xs font-semibold text-foreground">
+                <label htmlFor="channel-topic" className="text-xs font-semibold text-foreground">
                   Topic or Purpose{' '}
                   <span className="text-muted-foreground font-normal">(optional)</span>
                 </label>
                 <textarea
+                  id="channel-topic"
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   placeholder="What is this channel about? Set topic or team guidelines..."

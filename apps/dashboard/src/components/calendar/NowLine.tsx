@@ -31,6 +31,8 @@ export function NowLine({ days, headerOffset, gridRef }: NowLineProps) {
     if (!container) return;
     const top = headerOffset(todayIdx) + (now.getHours() * 60 + now.getMinutes()) * (HOUR_H / 60);
     container.scrollTop = Math.max(0, top - container.clientHeight / 4);
+    // Once per day-entry, on purpose: depending on `now` would re-scroll on
+    // every 60s tick and yank the grid out from under the user mid-read.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isToday]);
 

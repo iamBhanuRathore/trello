@@ -354,7 +354,10 @@ export function useRealtimeBoard(boardId: string | undefined) {
       if (wsRef.current === ws) wsRef.current = null;
     };
     // userId (stable string) instead of the user object — identity churn
-    // used to reconnect on every auth-store write.
+    // used to reconnect on every auth-store write. `presenceUsers` and the
+    // card/emit callbacks are read through refs inside handlers that outlive
+    // a render; re-connecting the socket to pick up a new closure is exactly
+    // the reconnect storm this dependency list avoids.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, token, userId, queryClient]);
 

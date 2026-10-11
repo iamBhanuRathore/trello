@@ -97,6 +97,10 @@ export function Calendar() {
       searchParams.delete('error');
       setSearchParams(searchParams, { replace: true });
     }
+    // Mount-once: consumes the `connected`/`error` query params exactly once on
+    // arrival, then deletes them from the URL. Depending on `searchParams` (a
+    // new object every render) would re-run the toast and re-invalidate on
+    // every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

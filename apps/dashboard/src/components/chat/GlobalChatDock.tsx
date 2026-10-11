@@ -192,7 +192,7 @@ export const GlobalChatDock: React.FC = () => {
 
   // Render expanded floating messenger window
   return (
-    <div className="fixed bottom-5 right-5 w-88 sm:w-96 h-[520px] max-w-[calc(100vw-2rem)] rounded-2xl shadow-2xl bg-card border border-border flex flex-col overflow-hidden z-40 animate-in slide-in-from-bottom-5">
+    <div className="fixed bottom-5 right-5 w-88 sm:w-96 h-[520px] max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2.5rem)] rounded-2xl shadow-2xl bg-card border border-border flex flex-col overflow-hidden z-40 animate-in slide-in-from-bottom-5">
       {/* Dock Window Header */}
       <div className="h-13 px-3.5 border-b border-border bg-muted/40 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2 min-w-0">

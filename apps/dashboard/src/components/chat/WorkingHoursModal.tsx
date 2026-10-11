@@ -288,11 +288,15 @@ export const WorkingHoursModal: React.FC<WorkingHoursModalProps> = ({ isOpen, on
           <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
             {/* Timezone selector */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <label
+                htmlFor="working-hours-timezone"
+                className="text-xs font-semibold text-foreground flex items-center gap-1.5"
+              >
                 <Globe className="w-3.5 h-3.5 text-muted-foreground" />
                 <span>Your Timezone</span>
               </label>
               <select
+                id="working-hours-timezone"
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-muted/40 border border-border focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors cursor-pointer"

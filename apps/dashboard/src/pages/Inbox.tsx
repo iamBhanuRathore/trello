@@ -300,6 +300,10 @@ export function Inbox() {
     });
     io.observe(el);
     return () => io.disconnect();
+    // Same paging contract as Notifications: the observer is keyed on paging
+    // state, and including the rebuilt query result object would disconnect it
+    // on every render — so the sentinel would stop firing precisely when the
+    // user scrolls to load the next page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listQuery.hasNextPage, listQuery.isFetchingNextPage, listQuery.dataUpdatedAt]);
 

@@ -675,7 +675,9 @@ export const Billing: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-foreground">Seats to Add</label>
+              <label htmlFor="billing-add-seats" className="text-xs font-semibold text-foreground">
+                Seats to Add
+              </label>
               <div className="flex items-center gap-3">
                 <Button
                   type="button"
@@ -688,6 +690,7 @@ export const Billing: React.FC = () => {
                   <Minus className="h-4 w-4" />
                 </Button>
                 <Input
+                  id="billing-add-seats"
                   type="number"
                   min={1}
                   max={500}
@@ -782,10 +785,14 @@ export const Billing: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-foreground">
+              <label
+                htmlFor="billing-downsize-seats"
+                className="text-xs font-semibold text-foreground"
+              >
                 Desired New Seat Count
               </label>
               <Input
+                id="billing-downsize-seats"
                 type="number"
                 min={seats.usedBillable}
                 max={subscription.seatCount - 1}
@@ -1027,8 +1034,14 @@ export const Billing: React.FC = () => {
             className="space-y-4 pt-2"
           >
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Company Name</label>
+              <label
+                htmlFor="billing-enterprise-company"
+                className="text-xs font-semibold text-foreground"
+              >
+                Company Name
+              </label>
               <Input
+                id="billing-enterprise-company"
                 placeholder="e.g. Acme Corporation"
                 value={enterpriseCompany}
                 onChange={(e) => setEnterpriseCompany(e.target.value)}
@@ -1037,8 +1050,14 @@ export const Billing: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Team Size (Seats)</label>
+              <label
+                htmlFor="billing-enterprise-seats"
+                className="text-xs font-semibold text-foreground"
+              >
+                Team Size (Seats)
+              </label>
               <Input
+                id="billing-enterprise-seats"
                 type="number"
                 min="50"
                 value={enterpriseTeamSize}
@@ -1048,10 +1067,14 @@ export const Billing: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
+              <label
+                htmlFor="billing-enterprise-requirements"
+                className="text-xs font-semibold text-foreground"
+              >
                 Security or Invoicing Requirements
               </label>
               <textarea
+                id="billing-enterprise-requirements"
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[80px]"
                 placeholder="e.g. SAML SSO with Okta, custom SLA, NET-30 invoicing..."
                 value={enterpriseRequirements}

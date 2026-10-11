@@ -136,6 +136,10 @@ export function useNotificationRealtime(enabled = true): void {
         /* Already closed. */
       }
     };
+    // `tick` is already a dep: it is the deliberate re-arm key for the backoff
+    // retry, and `queryClient` is a stable singleton. Everything else read here
+    // is either in the dep list or read only inside async callbacks that
+    // resolve after teardown (guarded by `mounted`).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, token, user?.id, tick, queryClient]);
 }

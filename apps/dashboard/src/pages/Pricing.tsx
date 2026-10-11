@@ -610,8 +610,11 @@ export const Pricing: React.FC = () => {
 
           <form onSubmit={handleEnterpriseSubmit} className="space-y-4 pt-2">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Company Name</label>
+              <label htmlFor="enterprise-company" className="text-xs font-semibold text-foreground">
+                Company Name
+              </label>
               <Input
+                id="enterprise-company"
                 placeholder="e.g. Acme Corporation"
                 value={enterpriseCompany}
                 onChange={(e) => setEnterpriseCompany(e.target.value)}
@@ -620,10 +623,11 @@ export const Pricing: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
+              <label htmlFor="enterprise-seats" className="text-xs font-semibold text-foreground">
                 Expected Team Size (Seats)
               </label>
               <Input
+                id="enterprise-seats"
                 type="number"
                 min="50"
                 placeholder="50"
@@ -634,10 +638,14 @@ export const Pricing: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">
+              <label
+                htmlFor="enterprise-requirements"
+                className="text-xs font-semibold text-foreground"
+              >
                 Specific Requirements or Integrations
               </label>
               <textarea
+                id="enterprise-requirements"
                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[80px]"
                 placeholder="e.g. SAML SSO with Okta, custom SLA, European data residency..."
                 value={enterpriseRequirements}

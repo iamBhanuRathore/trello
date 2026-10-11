@@ -83,6 +83,9 @@ function usePopoverPosition(anchor: { x: number; y: number }) {
     if (left + rect.width > window.innerWidth - 8) left = window.innerWidth - rect.width - 8;
     if (top + rect.height > window.innerHeight - 8) top = window.innerHeight - rect.height - 8;
     setPos({ left: Math.max(8, left), top: Math.max(8, top) });
+    // Mount-once: clamp to the viewport when the popover opens. The popover is
+    // unmounted on close, so re-running on an `anchor` change would reposition
+    // a card the user is looking at instead of a newly opened one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return { ref, pos };
@@ -116,6 +119,9 @@ export const EventPopover: React.FC<{
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+    // Mount-once: `onClose` is a fresh arrow each render, so depending on it
+    // would re-register the listener every render. The popover is destroyed on
+    // close, so it never needs to observe a newer handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -130,7 +130,10 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
           <div className="space-y-3.5">
             {/* 1. Direct Web Link */}
             <div>
-              <label className="text-xs font-semibold text-foreground flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="share-url"
+                className="text-xs font-semibold text-foreground flex items-center justify-between mb-1.5"
+              >
                 <span className="flex items-center gap-1.5">
                   <ExternalLink className="w-3.5 h-3.5 text-primary" /> Direct Task URL
                 </span>
@@ -142,6 +145,7 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
               </label>
               <div className="flex items-center gap-2">
                 <Input
+                  id="share-url"
                   readOnly
                   value={shareUrl}
                   className="text-xs font-mono bg-muted/40 h-9 select-all"
@@ -164,7 +168,10 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
 
             {/* 2. Markdown Reference */}
             <div>
-              <label className="text-xs font-semibold text-foreground flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="share-markdown"
+                className="text-xs font-semibold text-foreground flex items-center justify-between mb-1.5"
+              >
                 <span className="flex items-center gap-1.5">
                   <FileCode className="w-3.5 h-3.5 text-primary" /> Markdown Link
                 </span>
@@ -176,6 +183,7 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
               </label>
               <div className="flex items-center gap-2">
                 <Input
+                  id="share-markdown"
                   readOnly
                   value={markdownLink}
                   className="text-xs font-mono bg-muted/40 h-9 select-all"
@@ -199,7 +207,10 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
 
             {/* 3. Git Branch Checkout */}
             <div>
-              <label className="text-xs font-semibold text-foreground flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="share-git"
+                className="text-xs font-semibold text-foreground flex items-center justify-between mb-1.5"
+              >
                 <span className="flex items-center gap-1.5">
                   <GitBranch className="w-3.5 h-3.5 text-primary" /> Git Branch Command
                 </span>
@@ -211,6 +222,7 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
               </label>
               <div className="flex items-center gap-2">
                 <Input
+                  id="share-git"
                   readOnly
                   value={gitCommand}
                   className="text-xs font-mono bg-muted/40 h-9 select-all"
@@ -257,10 +269,14 @@ export function ShareTaskModal({ card, open, onClose }: ShareTaskModalProps) {
 
           {/* Social / Team Integration Buttons */}
           <div>
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">
+            <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
               Share to Channels
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            </div>
+            <div
+              className="grid grid-cols-2 sm:grid-cols-4 gap-2"
+              role="group"
+              aria-label="Share to Channels"
+            >
               {/* MS Teams */}
               <a
                 href={teamsShareUrl}

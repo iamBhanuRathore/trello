@@ -45,6 +45,10 @@ export const QuickCreatePopover: React.FC<{
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+    // Mount-once, like EventPopover: position clamping and outside-click
+    // dismissal both belong to the open popover. Depending on the per-render
+    // `anchor`/`onClose` arrows would re-register on every keystroke while
+    // typing a task title.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
