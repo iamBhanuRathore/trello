@@ -81,6 +81,13 @@ jobs:
         # without ALLOW_REMOTE_DB=1.
         run: ./scripts/dev.sh.test.sh
 
+      - name: Setup/DB-CLI remote-mode tests
+        # setup.sh blocked forever in `until docker exec … pg_isready` for
+        # anyone on managed databases, and db.sh returned raw daemon errors for
+        # up/down/status/logs. This asserts both complete without Docker, seed
+        # the resolved INFRA_MODE, and keep ALLOW_REMOTE_DB=1 as the opt-in.
+        run: ./scripts/remote-mode.sh.test.sh
+
       - name: Documentation-gate tests
         # check-docs.sh is itself a gate, so it needs the same treatment: it had
         # an ordering bug that made it unsatisfiable by a `docs:` commit.

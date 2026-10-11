@@ -25,6 +25,7 @@ cd "$ROOT_DIR"
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 RED='\033[1;31m'
 BOLD='\033[1m'
@@ -66,6 +67,48 @@ load_dotenv() {
 load_dotenv "$ROOT_DIR/.env"
 
 LOCAL_TEST_DB_URL="postgresql://boardly:boardly_test@localhost:5433/boardly_test"
+
+# ------------------------------------------------------------------------------
+# Infrastructure mode
+#
+# db.sh used to answer every container question with Docker, so a developer on
+# managed databases who typed `db.sh status` or `db.sh up` got a raw daemon
+# error instead of a useful answer — the commands have no local container to act
+# on at all in that mode. The mode is read from the active APP_ENV's env file
+# (scripts/infra-mode.sh); the real environment still wins, matching dev.sh.
+# ------------------------------------------------------------------------------
+APP_ENV="${APP_ENV:-development}"
+# shellcheck source=scripts/infra-mode.sh
+. "$SCRIPT_DIR/infra-mode.sh"
+# A bad value is fatal here for the same reason it is in dev.sh: a typo must not
+# quietly select a mode.
+resolve_infra_mode
+infra_endpoint_label
+
+# One message for every container-only command: says there is nothing to do here
+# and names where the data actually lives, so the command is informational
+# rather than a daemon error.
+no_local_containers() {
+  local action="$1"
+  echo -e "${CYAN}☁️  INFRA_MODE=remote — there are no local containers to ${action}.${NC}"
+  echo -e "  Postgres: ${CYAN}${INFRA_DB_EP:-unconfigured}${NC}"
+  echo -e "  Redis:    ${CYAN}${INFRA_REDIS_EP:-unconfigured}${NC}"
+  echo -e "  ${YELLOW}Container commands apply when INFRA_MODE=local.${NC}"
+  case "$action" in
+    up | start)
+      echo -e "  To use containers: set ${CYAN}INFRA_MODE=local${NC} and run again."
+      ;;
+    down | stop)
+      echo -e "  Nothing to stop — managed services are not stopped from here."
+      ;;
+    status | ps)
+      echo -e "  Run ${CYAN}./scripts/doctor.sh${NC} to check whether those endpoints answer."
+      ;;
+    logs)
+      echo -e "  Managed providers expose their own logs in their web console."
+      ;;
+  esac
+}
 
 # ------------------------------------------------------------------------------
 # Target resolution
@@ -140,24 +183,40 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 
   case "$ACTION" in
     up|start)
-      echo -e "${BLUE}📦 Starting PostgreSQL & Redis via Docker...${NC}"
-      docker compose up -d postgres postgres_test redis
-      echo -e "${GREEN}✅ Database services started.${NC}"
+      if [ "$INFRA_MODE" = "remote" ]; then
+        no_local_containers "start"
+      else
+        echo -e "${BLUE}📦 Starting PostgreSQL & Redis via Docker...${NC}"
+        docker compose up -d postgres postgres_test redis
+        echo -e "${GREEN}✅ Database services started.${NC}"
+      fi
       ;;
 
     down|stop)
-      echo -e "${YELLOW}🛑 Stopping PostgreSQL & Redis...${NC}"
-      docker compose stop postgres postgres_test redis
-      echo -e "${GREEN}✅ Database services stopped.${NC}"
+      if [ "$INFRA_MODE" = "remote" ]; then
+        no_local_containers "stop"
+      else
+        echo -e "${YELLOW}🛑 Stopping PostgreSQL & Redis...${NC}"
+        docker compose stop postgres postgres_test redis
+        echo -e "${GREEN}✅ Database services stopped.${NC}"
+      fi
       ;;
 
     status|ps)
-      echo -e "${BLUE}🔍 Container Status:${NC}"
-      docker compose ps postgres postgres_test redis
+      if [ "$INFRA_MODE" = "remote" ]; then
+        no_local_containers "show status for"
+      else
+        echo -e "${BLUE}🔍 Container Status:${NC}"
+        docker compose ps postgres postgres_test redis
+      fi
       ;;
 
     logs)
-      docker compose logs -f postgres redis
+      if [ "$INFRA_MODE" = "remote" ]; then
+        no_local_containers "read logs from"
+      else
+        docker compose logs -f postgres redis
+      fi
       ;;
 
     migrate)

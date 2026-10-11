@@ -65,26 +65,53 @@ else
   fi
 fi
 
-# 4. Check .env file
-echo -n "Checking root .env file... "
-if [ -f "$ROOT_DIR/.env" ]; then
-  if grep -q "replace-me" "$ROOT_DIR/.env"; then
-    echo -e "${YELLOW}WARNING${NC} (.env has placeholder JWT secrets)"
+# 4. Check the ACTIVE env file
+#
+# This was hardcoded to `$ROOT_DIR/.env`, the legacy path. Under
+# `APP_ENV=production ./scripts/doctor.sh` that reports the development file as
+# the one in force, so a production run could be signed off against a file the
+# stack never reads. dev.sh, stop.sh and setup.sh all key off
+# `.env.${APP_ENV}`; this now matches them.
+echo -n "Checking .env.${APP_ENV} file... "
+if [ -f "$ROOT_DIR/.env.${APP_ENV}" ]; then
+  if grep -q "replace-me" "$ROOT_DIR/.env.${APP_ENV}"; then
+    echo -e "${YELLOW}WARNING${NC} (.env.${APP_ENV} has placeholder JWT secrets)"
     WARNINGS=$((WARNINGS + 1))
   else
     echo -e "${GREEN}OK${NC}"
   fi
 else
-  echo -e "${RED}MISSING${NC} (Run ./scripts/setup.sh to generate)"
+  echo -e "${RED}MISSING${NC} (Run APP_ENV=${APP_ENV} ./scripts/setup.sh to generate)"
   ERRORS=$((ERRORS + 1))
+fi
+
+# The legacy copy is a fallback for older tooling; it is only worth reporting
+# when it disagrees with the active file, since nothing in the stack prefers it.
+echo -n "Checking legacy .env sync... "
+if [ ! -f "$ROOT_DIR/.env" ]; then
+  echo -e "${YELLOW}MISSING${NC} (Older scripts fall back to it; setup.sh writes it)"
+  WARNINGS=$((WARNINGS + 1))
+elif cmp -s "$ROOT_DIR/.env" "$ROOT_DIR/.env.${APP_ENV}"; then
+  echo -e "${GREEN}OK${NC} (identical to .env.${APP_ENV})"
+else
+  echo -e "${YELLOW}DIFFERS${NC} (.env.${APP_ENV} wins; run setup.sh to re-sync)"
+  WARNINGS=$((WARNINGS + 1))
 fi
 
 # 5. Check apps/backend/.env file
 echo -n "Checking apps/backend/.env file... "
 if [ -f "$ROOT_DIR/apps/backend/.env" ]; then
-  echo -e "${GREEN}OK${NC}"
+  if cmp -s "$ROOT_DIR/apps/backend/.env" "$ROOT_DIR/.env.${APP_ENV}"; then
+    echo -e "${GREEN}OK${NC} (in sync with .env.${APP_ENV})"
+  else
+    # Bun loads apps/backend/.env, not the root file, so a stale copy here is
+    # what the backend actually boots against — worth a warning, not an error,
+    # because dev.sh re-copies on every launch.
+    echo -e "${YELLOW}OUT OF SYNC${NC} (Backend reads this file; ./start.sh re-syncs it)"
+    WARNINGS=$((WARNINGS + 1))
+  fi
 else
-  echo -e "${YELLOW}MISSING${NC} (Will be auto-copied from root .env)"
+  echo -e "${YELLOW}MISSING${NC} (Will be auto-copied from .env.${APP_ENV})"
 fi
 
 # 6. Check where Postgres and Redis actually are
