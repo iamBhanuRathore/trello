@@ -136,7 +136,8 @@ Checkable version of the Build Order from `docs/project-tech-stack.md` §5 + `do
 - [x] Swallowed-error observability (`warnSwallowed`), inbox cursor 400, media unknown-kind 400, unified `{ error, details? }` envelope, single `httpError`
 - [x] Fail-closed uploads / webhooks / quota / plan-tier / CORS / scan (+ Redis-down drill)
 - [x] Migration `0043` indexes, 200-row / 10k-offset caps, 3 N+1s batched with query-count asserts
-- [ ] Block 5 (if time, in order): frontend toasts + optimistic invalidation + loading/empty/error → `useDialogClose` in super-admin + dirty-guards → a11y + responsive → `setup.sh` remote / `db.sh` remote message / `doctor.sh` APP_ENV
+- [x] Block 5 — 5.2 dialog close contract + dirty-guards (super-admin + `CreateDocumentModal`/`ImportModal`) · 5.4 `setup.sh` remote mode, `db.sh` remote messages, `doctor.sh` APP_ENV-aware · 5.3 orphaned labels, hook-dep rationale, chat-dock height, responsive matrix spec
+- [ ] Block 5 (not done): 5.1 frontend toasts + optimistic invalidation + loading/empty/error states — untouched this pass, the first item in the original Block 5 ordering
 
 ### Open items from the 2026-10-04 fix-only pass (P0–P4)
 
