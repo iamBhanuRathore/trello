@@ -14,9 +14,48 @@ interface UseDialogCloseOptions {
   handleEscape?: boolean;
 }
 
+export type CloseAction = 'close' | 'dirty' | 'ignore';
+
+export interface CloseDecisionInput {
+  /** The dialog's real open state (AGENTS.md §11 — name the state that drives `open=`). */
+  isOpen: boolean;
+  /** Whether this open session has already been closed. */
+  alreadyClosed: boolean;
+  /** Whether there are unsaved edits. */
+  isDirty: boolean;
+  /** Whether a dirty prompt handler was supplied. */
+  hasDirtyRequest: boolean;
+}
+
 /**
- * The one sanctioned close path for every dialog (AGENTS.md §9-adjacent UI
- * standard — see "Dialog Close Contract" in docs/Decisions.md).
+ * Decides what a close gesture does. Pure, and the whole reason the behaviour
+ * is testable without a DOM: the hook's only non-trivial branch is this table,
+ * and it is the part that regressed most often (duplicate gestures closing
+ * twice, or discarding a dirty editor).
+ *
+ * `ignore` is what makes the close path idempotent. X, the backdrop and Esc all
+ * land here, so a second gesture in the same open session — or one arriving
+ * after the dialog is already closed — must do nothing.
+ *
+ * A dirty editor with **no** handler still closes. Trapping someone in a dialog
+ * they cannot leave, on the strength of a prop they did not pass, is a worse
+ * failure than losing the edit; `isDirty` without `onDirtyRequest` is treated as
+ * "nothing to protect".
+ */
+export function resolveCloseAction({
+  isOpen,
+  alreadyClosed,
+  isDirty,
+  hasDirtyRequest,
+}: CloseDecisionInput): CloseAction {
+  if (!isOpen || alreadyClosed) return 'ignore';
+  if (isDirty && hasDirtyRequest) return 'dirty';
+  return 'close';
+}
+
+/**
+ * The one sanctioned close path for every dialog (AGENTS.md §11 — see
+ * "Dialog Close Contract" in docs/Decisions.md).
  *
  * Every close gesture — X button, backdrop click, Esc — funnels through
  * `requestClose`, which is idempotent per open session: duplicate gestures
@@ -51,13 +90,16 @@ export function useDialogClose({
   }, [isOpen]);
 
   const requestClose = useCallback(() => {
-    if (!openRef.current || closedRef.current) return;
-    if (dirtyRef.current) {
-      const fn = dirtyRequestRef.current;
-      if (fn) {
-        fn();
-        return;
-      }
+    const action = resolveCloseAction({
+      isOpen: openRef.current,
+      alreadyClosed: closedRef.current,
+      isDirty: dirtyRef.current,
+      hasDirtyRequest: Boolean(dirtyRequestRef.current),
+    });
+    if (action === 'ignore') return;
+    if (action === 'dirty') {
+      dirtyRequestRef.current?.();
+      return;
     }
     closedRef.current = true;
     closeRef.current();

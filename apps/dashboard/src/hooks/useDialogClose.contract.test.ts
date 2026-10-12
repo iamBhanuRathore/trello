@@ -230,9 +230,12 @@ describe('dialog close contract', () => {
       'utf-8'
     );
     // Guard contract: requestClose is the single sink, handleOpenChange and
-    // handleOverlayClick both delegate to it.
+    // handleOverlayClick both delegate to it. The idempotence guard itself moved
+    // into the pure `resolveCloseAction`, whose decision table is covered
+    // behaviourally in packages/ui/src/hooks/useDialogClose.test.ts — asserting
+    // on its source text here would only re-pin the refactor.
     expect(src.includes('requestClose')).toBe(true);
-    expect(src.includes('if (!openRef.current || closedRef.current) return;')).toBe(true);
+    expect(src).toContain('resolveCloseAction({');
     expect(src.match(/if \(!nextOpen\) requestClose\(\)/)).toBeTruthy();
     expect(src.includes('if (e.target === e.currentTarget) requestClose();')).toBe(true);
     // Capture phase is what makes Esc unambiguous against nested surfaces.
