@@ -22,6 +22,7 @@ import { NewDirectMessageModal } from './NewDirectMessageModal';
 import { NewChannelModal } from './NewChannelModal';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { getInitials } from '../../utils/avatar';
+import { QueryError } from '../common/QueryError';
 
 export const GlobalChatDock: React.FC = () => {
   const location = useLocation();
@@ -62,7 +63,14 @@ export const GlobalChatDock: React.FC = () => {
   // invalidate this key (see useChatRealtime), so polling every 10s from the
   // persistent shell was pure overhead on every non-chat route. The unread
   // badge on the collapsed launcher still reads from the shared cache.
-  const { data: channels = [] } = useQuery({
+  const {
+    data: channels = [],
+    // A failed fetch rendered "No conversations yet." — the same query key
+    // ChatSidebar and ChatPage already handle, each with a comment saying so.
+    // The dock was left behind, so an outage looked like a new account.
+    isError: channelsError,
+    refetch: refetchChannels,
+  } = useQuery({
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
     refetchInterval: wsConnected ? false : 15000,
@@ -83,7 +91,14 @@ export const GlobalChatDock: React.FC = () => {
   );
 
   // Fetch messages for docked channel
-  const { data: messages = [], isLoading: isMessagesLoading } = useQuery({
+  const {
+    data: messages = [],
+    isLoading: isMessagesLoading,
+    // "No messages yet" below a channel that has 400 of them is the same
+    // failure wearing a different hat.
+    isError: messagesError,
+    refetch: refetchMessages,
+  } = useQuery({
     queryKey: ['chat', 'messages', dockedChannelId],
     queryFn: () =>
       dockedChannelId ? chatService.listMessages(dockedChannelId, undefined, 25) : [],
@@ -292,6 +307,12 @@ export const GlobalChatDock: React.FC = () => {
                 <div className="flex items-center justify-center h-full text-muted-foreground">
                   <Loader2 className="w-5 h-5 animate-spin" />
                 </div>
+              ) : messagesError ? (
+                <QueryError
+                  className="h-full"
+                  message="Couldn't load messages."
+                  onRetry={() => void refetchMessages()}
+                />
               ) : messages.length === 0 ? (
                 <div className="text-center py-12 text-xs text-muted-foreground">
                   No messages yet. Send a note to say hi!
@@ -374,7 +395,14 @@ export const GlobalChatDock: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
-              {channels.length === 0 ? (
+              {channelsError ? (
+                <QueryError
+                  compact
+                  className="mt-2"
+                  message="Couldn't load conversations."
+                  onRetry={() => void refetchChannels()}
+                />
+              ) : channels.length === 0 ? (
                 <div className="text-center py-10 text-xs text-muted-foreground">
                   No conversations yet.
                 </div>

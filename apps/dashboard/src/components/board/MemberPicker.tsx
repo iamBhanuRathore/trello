@@ -4,6 +4,7 @@ import { orgService, type OrgMember } from '../../lib/orgService';
 import { Search, X, Check, User, Sparkles, Loader2, Users } from 'lucide-react';
 import { Button } from '@boardly/ui/button';
 import { getAvatarGradient, getInitials } from '../../utils/avatar';
+import { QueryError } from '../common/QueryError';
 
 interface MemberPickerProps {
   orgId?: string;
@@ -145,6 +146,12 @@ export function MemberPicker({
     isFetchingNextPage,
     isLoading: isLoadingMembers,
     isFetching,
+    // The empty state below blames the user's search ("No team members match
+    // \"x\"") and offers a Reset filters button that cannot fix a network
+    // error. This is the assignee picker, so a silently empty list means tasks
+    // created with nobody assigned.
+    isError: membersError,
+    refetch: refetchMembers,
   } = useInfiniteQuery({
     queryKey: ['orgMembersInfinite', orgId, debouncedQuery, roleFilter],
     queryFn: ({ pageParam = 0 }) =>
@@ -417,6 +424,11 @@ export function MemberPicker({
             <Loader2 className="w-5 h-5 animate-spin text-primary" />
             <span>Loading team members...</span>
           </div>
+        ) : membersError ? (
+          // Before this branch existed, a failed fetch rendered the empty state
+          // below — which blames the user's search and offers a Reset filters
+          // button that cannot possibly fix a network error.
+          <QueryError message="Couldn't load team members." onRetry={() => void refetchMembers()} />
         ) : assignedMembers.length === 0 && unassignedMembers.length === 0 ? (
           <div className="p-8 text-center space-y-2">
             <div className="w-10 h-10 rounded-full bg-muted/60 flex items-center justify-center mx-auto text-muted-foreground/60">

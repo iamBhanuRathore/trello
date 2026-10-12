@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useDialogClose } from '../../hooks/useDialogClose';
 import { chatService, type ChatChannel, type SeenByResult } from '../../lib/chatService';
 import { getInitials } from '../../utils/avatar';
+import { QueryError } from '../common/QueryError';
 
 const TARGET_LANGS = [
   { code: 'en', label: 'English' },
@@ -127,7 +128,14 @@ export const MessageForwardModal: React.FC<{
 }> = ({ messagePreview, onClose, onForward, isPending }) => {
   // One sanctioned close path (X / backdrop / Esc, idempotent).
   const { requestClose, handleOverlayClick } = useDialogClose({ isOpen: true, onClose });
-  const { data: channels = [], isLoading } = useQuery({
+  const {
+    data: channels = [],
+    isLoading,
+    // Third consumer of this key without it; a failure rendered "No channels
+    // found." and left the Forward picker a dead panel with no way out.
+    isError: channelsError,
+    refetch: refetchChannels,
+  } = useQuery({
     queryKey: ['chat', 'channels'],
     queryFn: () => chatService.listChannels(),
   });
@@ -181,6 +189,8 @@ export const MessageForwardModal: React.FC<{
             <div className="flex justify-center py-6 text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
+          ) : channelsError ? (
+            <QueryError message="Couldn't load channels." onRetry={() => void refetchChannels()} />
           ) : filtered.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-6">No channels found.</p>
           ) : (

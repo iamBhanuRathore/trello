@@ -15,6 +15,7 @@ import {
 } from '@boardly/ui/dialog';
 import { useDialogClose } from '../../hooks/useDialogClose';
 import { toast } from 'sonner';
+import { QueryError } from '../common/QueryError';
 
 interface FormBuilderModalProps {
   boardId: string;
@@ -33,7 +34,14 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
   const [slaHours, setSlaHours] = useState<number | ''>(24);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const { data: forms = [], isLoading } = useQuery({
+  const {
+    data: forms = [],
+    isLoading,
+    // isLoading goes false on error, so the counter read "Configured Forms (0)"
+    // and the list claimed no intake forms exist for this board.
+    isError: formsError,
+    refetch: refetchForms,
+  } = useQuery({
     queryKey: ['boardForms', boardId],
     queryFn: () => getBoardForms(boardId),
     enabled: isOpen && !!boardId,
@@ -219,6 +227,8 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
           {/* Forms List */}
           {isLoading ? (
             <div className="p-8 text-center text-xs text-muted-foreground">Loading forms...</div>
+          ) : formsError ? (
+            <QueryError message="Couldn't load intake forms." onRetry={() => void refetchForms()} />
           ) : forms.length > 0 ? (
             <div className="space-y-3">
               {forms.map((form: any) => (

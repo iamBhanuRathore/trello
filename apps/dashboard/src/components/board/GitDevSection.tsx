@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { gitService } from '../../lib/gitService';
+import { QueryError } from '../common/QueryError';
 
 const STATE_STYLES: Record<string, string> = {
   open: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25',
@@ -34,7 +35,13 @@ const retryServerFaults = (failureCount: number, error: unknown) =>
 export const GitDevSection: React.FC<{ cardId: string }> = ({ cardId }) => {
   const [copied, setCopied] = useState(false);
 
-  const { data: links = [] } = useQuery({
+  const {
+    data: links = [],
+    // A 403 (no repo linked) and a 500 rendered identically, under copy telling
+    // the user to connect a repo they may already have connected.
+    isError: linksError,
+    refetch: refetchLinks,
+  } = useQuery({
     queryKey: ['git', 'card-links', cardId],
     queryFn: () => gitService.cardLinks(cardId),
     staleTime: 30000,
@@ -96,7 +103,13 @@ export const GitDevSection: React.FC<{ cardId: string }> = ({ cardId }) => {
         )}
       </div>
 
-      {links.length === 0 ? (
+      {linksError ? (
+        <QueryError
+          compact
+          message="Couldn't load linked branches."
+          onRetry={() => void refetchLinks()}
+        />
+      ) : links.length === 0 ? (
         <p className="text-xs text-muted-foreground leading-relaxed">
           No branches, commits, or PRs linked yet. Mention the ticket key (e.g.{' '}
           <span className="font-mono font-semibold text-foreground">BCW-12</span>) in a branch name,

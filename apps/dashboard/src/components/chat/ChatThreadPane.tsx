@@ -12,6 +12,7 @@ import { TaskPreviewCard } from './TaskPreviewCard';
 import { TaskMentionPickerModal } from './TaskMentionPickerModal';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { getInitials } from '../../utils/avatar';
+import { QueryError } from '../common/QueryError';
 
 interface ChatThreadPaneProps {
   parentMessage: ChatMessageItem;
@@ -41,7 +42,14 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Fetch thread replies (WS appends live; poll only when disconnected)
-  const { data: replies = [], isLoading } = useQuery({
+  const {
+    data: replies = [],
+    isLoading,
+    // The header above this pane reads replyCount off the parent message, so a
+    // failed fetch rendered "12 Replies" directly above "No replies yet."
+    isError: repliesError,
+    refetch: refetchReplies,
+  } = useQuery({
     queryKey: ['chat', 'thread', parentMessage.id],
     queryFn: () => chatService.listThreadReplies(parentMessage.id),
     refetchInterval: wsConnected ? false : 12000,
@@ -248,6 +256,8 @@ export const ChatThreadPane: React.FC<ChatThreadPaneProps> = ({ parentMessage, o
             <div className="flex items-center justify-center py-8 text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
+          ) : repliesError ? (
+            <QueryError message="Couldn't load replies." onRetry={() => void refetchReplies()} />
           ) : replies.length === 0 ? (
             <div className="text-center py-8 text-xs text-muted-foreground">
               No replies yet. Start the conversation!
