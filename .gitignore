@@ -50,7 +50,13 @@ test-results
 postgres_data
 
 # Local object storage (dev/test uploads + quarantine)
+# Both roots: LOCAL_UPLOADS_DIR is process.cwd()/uploads, so where files land
+# depends on which directory the process was launched from. apps/backend is the
+# normal one (dev.sh starts it with --cwd), but a run from the repo root — a
+# root-level `bun test`, `bun run dev` — writes to <root>/uploads instead.
+# These are real uploaded documents (PDFs, attachments), never source.
 apps/backend/uploads/
+/uploads/
 
 # TypeScript build info
 *.tsbuildinfo

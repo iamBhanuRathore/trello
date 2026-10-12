@@ -348,7 +348,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       mutationFn: async (userId?: string) => await api.post(`/cards/${cardId}/watch`, { userId }),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
-        queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
       },
       onError: (err: unknown) => {
         toast.error(getApiErrorMessage(err, 'Unable to start watching this task.'));
@@ -359,7 +358,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       mutationFn: async (userId?: string) => await api.post(`/cards/${cardId}/unwatch`, { userId }),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
-        queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
       },
       onError: (err: unknown) => {
         toast.error(getApiErrorMessage(err, 'Unable to stop watching this task.'));
@@ -422,8 +420,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         mentionedUserIds?: string[];
       }) => await api.post(`/cards/${cardId}/comments`, { body, mentionedUserIds }),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
-        queryClient.invalidateQueries({ queryKey: ['card-watchers', cardId] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
       onError: (err: unknown) => {
@@ -435,7 +431,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       mutationFn: async ({ commentId, body }: { commentId: string; body: string }) =>
         await api.patch(`/cards/comments/${commentId}`, { body }),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
       onError: (err: any) => {
@@ -446,7 +441,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const deleteCommentMutation = useMutation({
       mutationFn: async (commentId: string) => await api.delete(`/cards/comments/${commentId}`),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'comments'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
       onError: (err: any) => {
@@ -458,7 +452,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       mutationFn: async ({ title, items }: { title: string; items?: string[] }) =>
         await api.post(`/cards/${cardId}/checklists`, { title, position: 0, items }),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
       onError: (err: any) => {
@@ -470,7 +463,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       mutationFn: async ({ checklistId, title }: { checklistId: string; title: string }) =>
         await api.patch(`/cards/checklists/${checklistId}`, { title }),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
       onError: (err: any) => {
@@ -482,7 +474,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       mutationFn: async (checklistId: string) =>
         await api.delete(`/cards/checklists/${checklistId}`),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         setConfirmDeleteChecklist(null);
       },
@@ -495,7 +486,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       mutationFn: async ({ checklistId, text }: { checklistId: string; text: string }) =>
         await api.post(`/cards/checklists/${checklistId}/items`, { text, position: 0 }),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
       onError: (err: any) => {
@@ -507,7 +497,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
       mutationFn: async ({ checklistId, items }: { checklistId: string; items: string[] }) =>
         await api.post(`/cards/checklists/${checklistId}/bulk-items`, { items }),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
       onError: (err: any) => {
@@ -549,7 +538,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
     const deleteChecklistItemMutation = useMutation({
       mutationFn: async (itemId: string) => await api.delete(`/cards/checklist-items/${itemId}`),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'checklists'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
       onError: (err: any) => {
@@ -575,7 +563,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         return { id: mediaId, fileName: file.name } as any;
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'attachments'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
       },
       onError: (err: any) => {
@@ -604,7 +591,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
         });
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'time-logs'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         setIsLoggingTime(false);
         setLogHours('');
@@ -840,7 +826,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           loggedDate: new Date().toISOString().split('T')[0],
           isBillable: true,
         });
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'time-logs'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         setTimerSeconds(0);
         toast.info(`Task paused. Logged ${mins} minutes.`);
@@ -871,7 +856,6 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           loggedDate: new Date().toISOString().split('T')[0],
           isBillable: true,
         });
-        queryClient.invalidateQueries({ queryKey: ['card', cardId, 'time-logs'] });
         queryClient.invalidateQueries({ queryKey: ['card', cardId] });
         setTimerSeconds(0);
       }
@@ -980,10 +964,15 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
           onCopyLink={handleCopyLink}
           onCopyBranch={async () => {
             const branch = getGitBranchName(taskIdentifier, card.title);
-            await copyTextToClipboard(`git checkout -b ${branch}`);
-            setCopiedBranch(true);
-            setTimeout(() => setCopiedBranch(false), 2000);
-            toast.success('Git branch command copied');
+            // copyTextToClipboard resolves false when the browser denies access;
+            // checking it is what keeps the "copied" confirmation honest.
+            const ok = await copyTextToClipboard(`git checkout -b ${branch}`);
+            if (ok) {
+              setCopiedBranch(true);
+              setTimeout(() => setCopiedBranch(false), 2000);
+            } else {
+              toast.error('Clipboard unavailable — select the command and copy manually');
+            }
           }}
           onOpenShareModal={() => setShowShareModal(true)}
           onCloneTask={() => {
@@ -1295,6 +1284,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               onClose={() => setShowSubtaskComposer(false)}
               onTaskCreated={(sub) => {
                 queryClient.invalidateQueries({ queryKey: ['card', cardId] });
+                if (card?.boardId) {
+                  queryClient.invalidateQueries({ queryKey: ['board', 'full', card.boardId] });
+                }
                 setShowSubtaskComposer(false);
                 if (sub?.id && onSelectCard) onSelectCard(sub.id);
               }}
@@ -1321,6 +1313,9 @@ export const TaskDetailView = forwardRef<TaskDetailViewHandle, TaskDetailViewPro
               queryClient.invalidateQueries({ queryKey: ['card', cardId] });
               if (card.boardId) {
                 queryClient.invalidateQueries({ queryKey: ['lists', card.boardId] });
+                // ['lists'] is the list-options query, not board content — the
+                // clone's new card also has to reach the kanban itself.
+                queryClient.invalidateQueries({ queryKey: ['board', 'full', card.boardId] });
               }
               setCloneMode(null);
               if (cloned?.id) {

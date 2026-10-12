@@ -77,7 +77,6 @@ export function BoardHeader({
     mutationFn: async (name: string) => await api.patch(`/boards/${boardId}`, { name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
-      queryClient.invalidateQueries({ queryKey: ['board', boardId] });
       setIsEditingBoard(false);
     },
     onError: (err) => {

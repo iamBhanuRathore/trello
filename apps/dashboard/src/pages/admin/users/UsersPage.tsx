@@ -95,7 +95,9 @@ export const UsersPage: React.FC = () => {
     mutationFn: (invitationId: string) => orgService.resendInvitation(orgId!, invitationId),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['orgInvitations', orgId] });
-      navigator.clipboard.writeText(`${window.location.origin}/invite?token=${data.token}`);
+      navigator.clipboard
+        .writeText(`${window.location.origin}/invite?token=${data.token}`)
+        .catch(() => toast.error('Clipboard unavailable — copy the invite link manually'));
       toast.success('Invitation refreshed & new link copied to clipboard!');
     },
     onError: (err: any) => {

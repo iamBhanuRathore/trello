@@ -32,11 +32,14 @@ import { BoardsList } from './BoardsList';
 const EMPTY_PROJECTS: any[] = [];
 
 interface ProjectsListProps {
+  /** Kept for the caller's API. Projects come in via initialProjects, not a
+   *  ['projects', workspaceId] query — there is no such key to read or
+   *  invalidate, which is why the mutations below refresh ['workspaces','tree']. */
   workspaceId: string;
   initialProjects?: any[];
 }
 
-export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps) {
+export function ProjectsList({ initialProjects }: ProjectsListProps) {
   const queryClient = useQueryClient();
   const [importProjectId, setImportProjectId] = useState<string | null>(null);
   const [importProjectName, setImportProjectName] = useState<string>('');
@@ -60,7 +63,6 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
   const deleteProjMutation = useMutation({
     mutationFn: async (id: string) => await api.delete(`/projects/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', workspaceId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setDeletingProj(null);
     },
@@ -70,7 +72,6 @@ export function ProjectsList({ workspaceId, initialProjects }: ProjectsListProps
     mutationFn: async ({ id, name }: { id: string; name: string }) =>
       await api.patch(`/projects/${id}`, { name }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', workspaceId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setEditingProj(null);
     },

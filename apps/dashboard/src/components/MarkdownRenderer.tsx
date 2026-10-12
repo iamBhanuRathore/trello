@@ -1,5 +1,6 @@
 import { memo, useState, type ReactNode } from 'react';
 import { Copy, Check, ExternalLink, AtSign } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface MarkdownRendererProps {
   content: string;
@@ -413,7 +414,9 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(code);
+    navigator.clipboard
+      .writeText(code)
+      .catch(() => toast.error('Clipboard unavailable — select the code and copy manually'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

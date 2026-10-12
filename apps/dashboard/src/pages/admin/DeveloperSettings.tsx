@@ -25,6 +25,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@boardly/ui/select';
 import { QueryError } from '../../components/common/QueryError';
 import { useDialogClose } from '../../hooks/useDialogClose';
+import { toast } from 'sonner';
 
 const AVAILABLE_SCOPES = [
   { id: '*', label: 'Full Access (All Scopes)' },
@@ -103,7 +104,9 @@ export function DeveloperSettings() {
   };
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard
+      .writeText(text)
+      .catch(() => toast.error('Clipboard unavailable — select the value and copy manually'));
     setCopiedKey(true);
     setTimeout(() => setCopiedKey(false), 2000);
   };

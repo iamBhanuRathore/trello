@@ -9,7 +9,6 @@ import {
   Trash2,
   MoreHorizontal,
   CheckSquare,
-  Flag,
   Share2,
   FileImage,
   Loader2,
@@ -325,19 +324,6 @@ export function ChatMessageItem({
             >
               <span className="font-medium">Create task</span>
               <CheckSquare className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-
-            {/* Add to status summaries */}
-            <button
-              type="button"
-              onClick={() => {
-                toast.success('Added to task status summaries');
-                onCloseMenu();
-              }}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl hover:bg-muted/70 transition-colors cursor-pointer text-left"
-            >
-              <span className="font-medium">Add to status summaries</span>
-              <Flag className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
 
             {/* Delete (Permission Protected) */}

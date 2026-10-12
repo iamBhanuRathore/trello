@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@boardly/ui/button';
 import { Star } from 'lucide-react';
 import { useDialogClose } from '../../../hooks/useDialogClose';
-import { toast } from 'sonner';
+import {} from 'sonner';
 
 interface TaskRateModalProps {
   isOpen: boolean;
@@ -79,7 +79,9 @@ export const TaskRateModal: React.FC<TaskRateModalProps> = ({
               } catch {
                 // ignore
               }
-              toast.success(`Rated ${userRating} stars!`);
+              // No toast: a localStorage write plus a closing dialog is a
+              // routine local interaction, and the filled stars are the
+              // feedback (AGENTS.md §5).
               requestClose();
             }}
           >

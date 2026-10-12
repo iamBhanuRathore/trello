@@ -69,7 +69,6 @@ export function ImportModal({ open, onOpenChange, projectId, projectName }: Impo
   const importTrelloMutation = useMutation({
     mutationFn: async (data: any) => await importTrelloBoard(projectId, data),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       onOpenChange(false);
       if (res?.board?.id) {
@@ -84,7 +83,6 @@ export function ImportModal({ open, onOpenChange, projectId, projectName }: Impo
   const importTasksMutation = useMutation({
     mutationFn: async (data: any) => await importTasksData(projectId, data),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
       onOpenChange(false);
       if (res?.board?.id) {

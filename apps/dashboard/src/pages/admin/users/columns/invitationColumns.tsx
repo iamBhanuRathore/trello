@@ -74,8 +74,11 @@ export function getInvitationColumns({
                 return;
               }
               const link = `${window.location.origin}/invite?token=${row.token}`;
-              navigator.clipboard.writeText(link);
-              toast.success('Invite link copied to clipboard!');
+              // Awaited with a failure path: the old fire-and-forget claimed
+              // success unconditionally and could reject unhandled.
+              navigator.clipboard
+                .writeText(link)
+                .catch(() => toast.error('Clipboard unavailable — copy the link manually'));
             }}
           >
             <Copy className="w-3 h-3" />

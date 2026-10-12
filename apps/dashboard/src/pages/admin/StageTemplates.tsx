@@ -41,10 +41,18 @@ export const StageTemplates = () => {
     enabled: !!activeTemplate,
   });
 
+  // TaskDetailView reads the stage picker under this key with a 5-minute
+  // staleTime; it is not a prefix-descendant of either key this page caches,
+  // so without this an admin renaming or deleting a stage here leaves the task
+  // selector stale for minutes and allows saving against a deleted stage.
+  const invalidateStagePickers = () =>
+    queryClient.invalidateQueries({ queryKey: ['stageTemplatesWithStages', orgId] });
+
   const createTemplateMutation = useMutation({
     mutationFn: (name: string) => stagesService.createTemplate(orgId!, { name }),
     onSuccess: (newTemplate) => {
       queryClient.invalidateQueries({ queryKey: ['stageTemplates', orgId] });
+      invalidateStagePickers();
       setNewTemplateName('');
       setActiveTemplate(newTemplate.id);
     },
@@ -54,6 +62,7 @@ export const StageTemplates = () => {
     mutationFn: (id: string) => stagesService.deleteTemplate(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stageTemplates', orgId] });
+      invalidateStagePickers();
       setActiveTemplate(null);
     },
   });
@@ -62,6 +71,7 @@ export const StageTemplates = () => {
     mutationFn: (data: any) => stagesService.createStage(activeTemplate!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stageTemplate', activeTemplate] });
+      invalidateStagePickers();
     },
   });
 
@@ -70,6 +80,7 @@ export const StageTemplates = () => {
       stagesService.updateStage(data.id, data.payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stageTemplate', activeTemplate] });
+      invalidateStagePickers();
     },
   });
 
@@ -77,6 +88,7 @@ export const StageTemplates = () => {
     mutationFn: (id: string) => stagesService.deleteStage(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stageTemplate', activeTemplate] });
+      invalidateStagePickers();
     },
   });
 

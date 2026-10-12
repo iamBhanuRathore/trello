@@ -7,6 +7,7 @@ import { Input } from '@boardly/ui/input';
 import { Label } from '@boardly/ui/label';
 import { Switch } from '@boardly/ui/switch';
 import { QueryError } from '../../components/common/QueryError';
+import { toast } from 'sonner';
 
 export function SSOSettings() {
   const queryClient = useQueryClient();
@@ -88,7 +89,9 @@ export function SSOSettings() {
 
   const copySCIMToken = () => {
     if (!config?.scimToken) return;
-    navigator.clipboard.writeText(config.scimToken);
+    navigator.clipboard
+      .writeText(config.scimToken)
+      .catch(() => toast.error('Clipboard unavailable — select the token and copy manually'));
     setCopiedToken(true);
     setTimeout(() => setCopiedToken(false), 2000);
   };
@@ -345,9 +348,11 @@ export function SSOSettings() {
                     size="sm"
                     className="h-9 text-xs gap-1"
                     onClick={() => {
-                      navigator.clipboard.writeText(
-                        `${window.location.origin.replace(':5173', ':3001')}/v1/sso/scim`
-                      );
+                      navigator.clipboard
+                        .writeText(
+                          `${window.location.origin.replace(':5173', ':3001')}/v1/sso/scim`
+                        )
+                        .catch(() => toast.error('Clipboard unavailable — copy the URL above'));
                     }}
                   >
                     <Copy className="w-3.5 h-3.5" /> Copy

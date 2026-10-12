@@ -52,8 +52,9 @@ export const GitDevSection: React.FC<{ cardId: string }> = ({ cardId }) => {
     if (!branchData?.branch) return;
     try {
       await navigator.clipboard.writeText(branchData.branch);
+      // The Copy -> Check icon swap for 2s IS the confirmation; a toast here
+      // duplicates it for a purely local action (AGENTS.md §5).
       setCopied(true);
-      toast.success('Branch name copied');
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error('Copy failed — select the name manually');

@@ -58,7 +58,6 @@ export function CreateBoardDialog({ projectId }: CreateBoardDialogProps) {
       });
       setName('');
       setOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Failed to create board. Please try again.'));

@@ -67,7 +67,6 @@ export function BoardsList({ projectId, initialBoards }: BoardsListProps) {
   const deleteBoardMutation = useMutation({
     mutationFn: async (id: string) => await api.delete(`/boards/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setDeletingBoard(null);
     },
@@ -84,7 +83,6 @@ export function BoardsList({ projectId, initialBoards }: BoardsListProps) {
       background?: string;
     }) => await api.patch(`/boards/${id}`, { name, background }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['boards', projectId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setEditingBoard(null);
     },

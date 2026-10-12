@@ -85,10 +85,8 @@ export const TrashBinModal: React.FC<TrashBinModalProps> = ({ open, onOpenChange
     onSuccess: (_, item) => {
       queryClient.invalidateQueries({ queryKey: ['trash'] });
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['board'] });
       queryClient.invalidateQueries({ queryKey: ['lists'] });
-      queryClient.invalidateQueries({ queryKey: ['cards'] });
       queryClient.invalidateQueries({ queryKey: ['my-tasks'] });
       toast.success(`Successfully restored "${item.name}"`);
       setItemToRestore(null);

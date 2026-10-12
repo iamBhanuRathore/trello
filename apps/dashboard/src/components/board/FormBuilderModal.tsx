@@ -14,6 +14,7 @@ import {
   DialogDescription,
 } from '@boardly/ui/dialog';
 import { useDialogClose } from '../../hooks/useDialogClose';
+import { toast } from 'sonner';
 
 interface FormBuilderModalProps {
   boardId: string;
@@ -76,7 +77,9 @@ export function FormBuilderModal({ boardId, lists, isOpen, onClose }: FormBuilde
 
   const copyShareLink = (slug: string, id: string) => {
     const url = `${window.location.origin}/forms/${slug}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard
+      .writeText(url)
+      .catch(() => toast.error('Clipboard unavailable — copy the link manually'));
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };

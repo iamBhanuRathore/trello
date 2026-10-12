@@ -136,8 +136,13 @@ export function CreateTaskFromMessageModal({
       return res.data;
     },
     onSuccess: (newCard) => {
-      queryClient.invalidateQueries({ queryKey: ['cards', boardId] });
-      queryClient.invalidateQueries({ queryKey: ['board', boardId] });
+      // The board the user is looking at is cached under ['board','full',id].
+      // The old `['cards', boardId]` matched no query at all and
+      // `['board', boardId]` is not a prefix of it (index 1 is boardId, not
+      // 'full'), so creating a task from a chat message left the kanban stale.
+      if (boardId) {
+        queryClient.invalidateQueries({ queryKey: ['board', 'full', boardId] });
+      }
       toast.success('Task created successfully');
       if (onTaskCreated) {
         onTaskCreated(newCard);

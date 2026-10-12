@@ -434,12 +434,19 @@ export const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
                     size="sm"
                     variant="secondary"
                     className="h-7 text-xs gap-1 shrink-0"
-                    onClick={() => {
-                      navigator.clipboard.writeText(
-                        `${window.location.origin}/invite?token=${invitedSuccessData!.inviteToken}`
-                      );
-                      setCopiedInviteLink(true);
-                      toast.success('Link copied to clipboard!');
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(
+                          `${window.location.origin}/invite?token=${invitedSuccessData!.inviteToken}`
+                        );
+                        // Icon + label swap is the confirmation. Awaiting first is
+                        // what keeps it honest when the browser denies clipboard
+                        // access — the old fire-and-forget fired all three
+                        // success signals regardless, plus an unhandled rejection.
+                        setCopiedInviteLink(true);
+                      } catch {
+                        toast.error('Clipboard unavailable — copy the link above');
+                      }
                     }}
                   >
                     {copiedInviteLink ? (

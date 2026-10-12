@@ -47,7 +47,6 @@ export function CreateProjectDialog({ workspaceId }: CreateProjectDialogProps) {
       await api.post('/projects', { workspaceId, name: name.trim() });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', workspaceId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces', 'tree'] });
       setName('');
       setOpen(false);
