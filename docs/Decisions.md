@@ -1961,3 +1961,18 @@ The helpers live in `scripts/infra-mode.sh`, sourced by all three scripts rather
 **Benchmark.** Linear, Jira and Notion all prompt before discarding an edited dialog, and all three treat Escape/backdrop as the same gesture as the close button — matched, including the prompt's "Keep editing" affordance rather than a bare OK.
 
 **Consequences.** Dashboard 99 pass / 0 fail, super-admin 6 / 0, backend 511 pass / 1 skip / 0 fail, leaks 0-delta, e2e smoke 27 pass. `scripts/remote-mode.sh.test.sh` adds 65 assertions and fails 15 when either script defect is reinstated. 5.1 (frontend toasts, optimistic invalidation, loading/empty/error states) remains open.
+
+## 2026-10-12 — A Test That Fails on Refactor and Passes on Regression Is Not a Test
+
+**Context.** The dialog close contract's whole purpose is preventing two recurring failures: duplicate close gestures firing twice, and a dirty editor being discarded without a prompt. The guard I added when moving `useDialogClose` into `@boardly/ui` asserted on source text — `src.includes('if (!openRef.current || closedRef.current) return;')`. It reads like protection and is the opposite: it fails when the guard is correctly refactored and passes when the behaviour breaks.
+
+**Decision.** The hook's only non-trivial branch is extracted into a pure `resolveCloseAction({ isOpen, alreadyClosed, isDirty, hasDirtyRequest })` and tested as a decision table, with no DOM and no testing-library — the same shape as `db.sh.test.sh`'s `db_target` assertions, and for the same reason: the behaviour is a table, and testing the table directly is both possible and stronger than mocking a component to reach it.
+
+Two decisions inside it worth recording:
+
+- **A dirty dialog with no `onDirtyRequest` still closes.** The alternative — treating `isDirty` alone as grounds to suppress the close — produces a dialog the user cannot leave, on the strength of a prop the caller never passed. Losing an edit is recoverable; a trapped dialog is not. `isDirty` without `onDirtyRequest` is read as "nothing to protect", and that case is pinned by test because it looks like an oversight otherwise.
+- **A dirty prompt does not consume the open session.** The prompt opens a second dialog; dismissing that one must still work, so `alreadyClosed` is not latched on the `dirty` branch. Only the `close` branch latches, and that latch is the single structural assertion left, because the pure function cannot observe a ref the hook owns.
+
+**Verification.** By mutation rather than by inspection: removing the latch, inverting the `isOpen` guard, and disabling the dirty branch each fail the suite. The earlier string assertions passed through all three — which is the evidence that the replacement is worth more than what it replaced.
+
+**Consequences.** `packages/ui` 10 pass, dashboard 99 pass. Where a static read still owns the fact — the capture-phase listener registration and what `ConfirmDialog` hands the Radix primitive — the assertions are kept and labelled as structural rather than dressed up as behavioural.
