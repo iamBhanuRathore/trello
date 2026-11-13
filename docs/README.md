@@ -24,13 +24,10 @@ When documents conflict, truth resolves in this order:
 5. **Project State & Planning**:
    - `docs/Progress.md`: Current build state, blockers, and append-only session history.
    - `docs/Roadmap.md`: Checkable task queue derived from the build order.
-6. **Historical Snapshots (Informative only; superseded by current code)**:
+6. **Historical Snapshots & Reference (Informative only; superseded by current code)**:
    - `docs/project.md`: Initial design draft (partially superseded).
-   - `docs/SCAFFOLD.md`: Phase 0 bootstrap instructions.
-   - `docs/SECURITY_AUDIT.md`: 2026-09-28 point-in-time security audit.
-   - `docs/E2E_TESTING_REPORT.md`: 2026-08-26 point-in-time defect log.
-   - `docs/FULL_TEST_LOG.md`: 2026-09-26 1-hour blitz test log.
    - `docs/SEED_CREDENTIALS.md`: Demo accounts and seed catalog.
+     _(Past audit and bootstrap logs — E2E testing report, 1-hour test log, scaffold guide, and security audit checklist — are fully resolved and archived in Git history)._
 
 ---
 
@@ -41,8 +38,6 @@ When documents conflict, truth resolves in this order:
 | `docs/DATABASE_SCHEMA.md`    | Canonical     | Exhaustive Drizzle schema reference; update before generating migrations    |
 | `docs/Decisions.md`          | Canonical ADR | Chronological log of architecture decisions, trade-offs, and accepted risks |
 | `docs/DESIGN_TOKENS.md`      | Canonical     | Tailwind v4 palette, semantic color tokens, and elevation levels            |
-| `docs/E2E_TESTING_REPORT.md` | Snapshot      | Point-in-time (2026-08-26) testing report and historical bug log            |
-| `docs/FULL_TEST_LOG.md`      | Snapshot      | Point-in-time (2026-09-26) 1-hour blitz test findings across all surfaces   |
 | `docs/Glossary.md`           | Canonical     | Domain concepts (Org vs Workspace, Board vs List, Task vs Subtask)          |
 | `docs/PERMISSIONS_MATRIX.md` | Canonical     | RBAC key registry, naming conventions, and role-to-permission grants        |
 | `docs/Progress.md`           | Log           | Append-only work session logs, current state summaries, and known blockers  |
@@ -51,8 +46,6 @@ When documents conflict, truth resolves in this order:
 | `docs/project.md`            | Snapshot      | Design-era architecture spec; superseded where it conflicts with code       |
 | `docs/PROMPT_PATTERNS.md`    | Guide         | Prompt templates and context checklists for developers steering AI agents   |
 | `docs/Roadmap.md`            | Task Queue    | Checkable build-order task list and definition of done                      |
-| `docs/SCAFFOLD.md`           | Snapshot      | Historical Phase 0 bootstrapping guide                                      |
-| `docs/SECURITY_AUDIT.md`     | Snapshot      | Historical security audit findings from 2026-09-28                          |
 | `docs/SEED_CREDENTIALS.md`   | Reference     | Enterprise demo credentials and seed user catalog                           |
 
 ---
