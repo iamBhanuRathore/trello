@@ -1,6 +1,6 @@
 # DECISIONS.md — Architecture Decision Records
 
-Short log of significant technical decisions: what was decided, why, and what alternatives were rejected. Append new entries at the top (most recent first). Keep each entry short — a paragraph or two, not an essay. The goal is answering "why did we choose X?" a year from now without re-deriving it.
+Short log of significant technical decisions: what was decided, why, and what alternatives were rejected. Append new entries at the end (chronological order). Keep each entry short — a paragraph or two, not an essay. The goal is answering "why did we choose X?" a year from now without re-deriving it.
 
 **When to add an entry:** any decision that would be annoying to re-litigate later — framework/library choices, data model trade-offs, security/multi-tenancy approach, anything a future session might otherwise "helpfully" second-guess and change without knowing why it was picked.
 
@@ -1992,3 +1992,18 @@ Two decisions inside it worth recording:
 7. **Pre-existing e2e failures were checked against the baseline, not assumed.** Four smoke specs fail. Before blaming this work, `b676b56` (before any Block 5 change) was checked out and the identical four failed there — so they are pre-existing and were reported as such rather than either fixed silently or claimed as regressions. `boards.spec` failing first is the likely upstream cause for the other three, since the E2E workspace it creates is what they open.
 
 **Consequences.** Dashboard 109 pass / 0 fail. The task modal now refreshes after a comment, checklist item, time log or watcher — a defect that predates this block and that no existing test could see, because every existing check inspected shape rather than whether an invalidation matched anything.
+
+## 2026-11-14 — AI Documentation Navigation Contract: Document Hierarchy, Single-Source Steering, and Graph Report Lifecycle
+
+**Context.** As the repository expanded across Bun backend, React dashboard, and Super Admin, documentation grew to 16 files totaling >10,000 lines. Multiple steering documents contained conflicting claims: `PERMISSIONS_MATRIX.md` claimed "there is no `usePermission` hook" despite 20 dashboard files actively using `usePermissions()`; `PROMPT_PATTERNS.md` cited `AGENTS.md §5` for module architecture (where §5 is Toast Etiquette) and asserted no dashboard unit tests existed (despite 17 contract and unit test files); `CLAUDE.md` duplicated instructions from `AGENTS.md`; and `AGENTS.md` referenced a local machine `file:///Users/bhanurathore/...` absolute URI. Furthermore, `graphify-out/GRAPH_REPORT.md` was 250 commits behind HEAD because `graphify-out/` was ignored without an exception.
+
+**Decisions.**
+
+1. **Single-source steering via `@AGENTS.md`.** `CLAUDE.md` is reduced to an `@AGENTS.md` import line. Guidelines live solely in root `AGENTS.md` to prevent instruction drift across tools.
+2. **Explicit document authority hierarchy.** New `docs/README.md` establishes the hierarchy: `Decisions.md` (ADRs) > Canonical Registries (`DATABASE_SCHEMA.md`, `PERMISSIONS_MATRIX.md`, `DESIGN_TOKENS.md`, `Glossary.md`) > Architecture & Engineering Standards (`project-tech-stack.md`, `AGENTS.md`) > Product Map (`PROJECT_OVERVIEW.md`) > State/Queue (`Progress.md`, `Roadmap.md`) > Historical Snapshots (`project.md`, `SECURITY_AUDIT.md`, `E2E_TESTING_REPORT.md`, `FULL_TEST_LOG.md`, `SCAFFOLD.md`, `SEED_CREDENTIALS.md`).
+3. **Separate code routing from document routing.** `AGENTS.md` §12 hosts a compact Task → Code Path Routing table for immediate file-level targeting, while `docs/README.md` maps developer/agent tasks to relevant conceptual documents.
+4. **Knowledge graph freshness contract & tracking.** `graphify-out/*` remains ignored except `!graphify-out/GRAPH_REPORT.md`. The lightweight report (40 KB markdown) is tracked so fresh checkouts have immediate structural awareness, while multi-megabyte `graph.json` and caches stay gitignored and `.aiignore`d. A header staleness check (`Built from commit: <short-sha>` vs `git rev-parse --short HEAD`) triggers a zero-cost local AST update (`graphify update .`) when out of date.
+5. **Clean up legacy cache.** Untracked the 27 orphaned AST cache JSONs in `apps/graphify-out/` and added `apps/graphify-out/` to `.gitignore`.
+6. **Corrected stale references.** Updated `PERMISSIONS_MATRIX.md` and `project.md` to reflect `usePermissions()` and clarify `GET /roles/permissions` as the custom role admin catalog; corrected all 5 broken citations in `PROMPT_PATTERNS.md`.
+
+**Consequences.** Clean single-entry navigation for human developers and AI assistants. Stale guidance eliminated. `graphify update .` brings the report to HEAD `f2adbc00` (5,043 nodes, 13,036 edges across 298 communities). All package typechecks and pre-push documentation gates pass.

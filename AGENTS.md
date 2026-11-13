@@ -2,9 +2,11 @@
 
 ## 1. Codebase Knowledge Graph & Navigation (MANDATORY)
 
-- **Primary Architecture Reference**: Always inspect [`graphify-out/GRAPH_REPORT.md`](file:///Users/bhanurathore/projects/trello/graphify-out/GRAPH_REPORT.md) **first** before performing broad multi-file searches or code modifications.
+- **Primary Architecture Reference**: Always inspect `graphify-out/GRAPH_REPORT.md` **first** before performing broad multi-file searches or code modifications.
 - **Community Hubs**: Consult the community clusters in `graphify-out/GRAPH_REPORT.md` to locate exact dependency trees, module entrypoints, database models, and service interfaces.
 - **Token Efficiency**: Rely on the Knowledge Graph index rather than repeatedly reading unindexed directories.
+- **Freshness**: `GRAPH_REPORT.md` states `Built from commit: <short-sha>`. If that sha ≠ `git rev-parse --short HEAD`, or the file is absent (`graphify-out/` is gitignored), the graph is stale — run `graphify update .` from the repo root before relying on it (local AST code re-extraction, 0 token cost). If community naming fails or no LLM is configured, fall back to `graphify cluster-only . --no-label`. If graphify is unavailable, fall back to ripgrep/glob and state that the graph was unavailable rather than guessing at structure.
+- **Visibility**: `.aiignore` keeps `graph.json`, `.graphify_analysis.json`, and cache directories out of agent context; `GRAPH_REPORT.md` (text) is intentionally readable.
 
 ## 2. Project Architecture & Stack
 
@@ -77,3 +79,19 @@ Every page in `apps/dashboard` (and `apps/super-admin`) MUST be usable at all of
 - **One close path**: every dialog (Radix or hand-rolled portal) MUST close exclusively through `useDialogClose({ isOpen, onClose, ... })` (`apps/dashboard/src/hooks/useDialogClose.ts`) — X button → `requestClose`, backdrop → `handleOverlayClick`, Radix → `handleOpenChange`. Never wire `onClose`, `useEscapeKey`, or inline overlay checks directly.
 - **Why**: duplicate close gestures (double Esc listeners, overlay+button both firing, focus-strand shortcut refires) caused the recurring "close twice / reopens" bug class. `requestClose` is idempotent per open session; Esc is capture-phase so it can't double-fire with inner handlers; invoker focus restores automatically.
 - **Dirty editors**: pass `isDirty` + `onDirtyRequest` (open the unsaved-changes prompt) instead of branching close logic inside the dialog.
+
+## 12. Task → Code-Path Routing
+
+| Task                      | Target Code Paths                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------- |
+| New backend module        | `apps/backend/src/modules/<name>/` (`routes.ts`, `service.ts`, `<name>.test.ts`)                          |
+| Table / schema change     | `apps/backend/src/db/schema/index.ts` (update `docs/DATABASE_SCHEMA.md` first)                            |
+| DB migration              | `cd apps/backend && bun run db:generate` (drizzle-kit; never hand-write)                                  |
+| RBAC permission key       | `packages/shared-types/src/permissions.ts` → `apps/backend/src/db/seed.ts` → `docs/PERMISSIONS_MATRIX.md` |
+| Frontend permission check | `usePermissions()` in `apps/dashboard/src/hooks/usePermissions.ts` (`can` ANY, `canAll` ALL, fail-closed) |
+| Dialog open / close       | `useDialogClose` from `@boardly/ui/hooks/use-dialog-close` (§11; dashboard re-exports)                    |
+| Shared UI component       | `packages/ui/src/components/` (barrel export in `packages/ui/src/index.ts`)                               |
+| Design tokens / theme     | `docs/DESIGN_TOKENS.md` + `packages/config/tailwind/preset.ts`                                            |
+| Backend tests             | `cd apps/backend && bun test src/modules/<name>/<name>.test.ts` (test DB on `:5433`)                      |
+| Dashboard tests           | `cd apps/dashboard && bun test src` (17 unit/contract tests) + `bun run test:e2e:smoke`                   |
+| Pre-push check            | `bun run typecheck && ./scripts/check-docs.sh` (docs required for non-exempt code commits)                |

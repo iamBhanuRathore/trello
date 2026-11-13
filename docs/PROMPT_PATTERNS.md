@@ -12,7 +12,7 @@ AI agents work best when they have the full picture before writing code. Always 
 
 1. **What file/module you're working in** (e.g. `apps/backend/src/modules/cards/`)
 2. **Which architectural doc section is relevant** (e.g. "See `project.md` §4a for the card people model")
-3. **What already exists** (e.g. "The `boards` module already exists with `routes.ts`, `service.ts`, `schema.ts` following the established pattern")
+3. **What already exists** (e.g. "The `boards` module already exists with `routes.ts`, `service.ts`, `board.test.ts` following the established pattern")
 4. **What specifically you want built or changed**
 
 ---
@@ -41,7 +41,7 @@ Template for asking an agent to build a new Elysia route module (e.g. cards, boa
 ```
 Build the `[module name]` backend module at `apps/backend/src/modules/[name]/`.
 
-Follow the exact module structure from AGENTS.md (root) §5 and docs/project-tech-stack.md §5:
+Follow the established module structure from docs/project-tech-stack.md §5 and AGENTS.md §12:
 - routes.ts — Elysia route handlers only, no business logic
 - service.ts — all business logic and DB queries via Drizzle
 - validation schemas live at the route boundary (only modules/importers keeps a dedicated schema.ts; shared shapes belong in packages/shared-types)
@@ -80,10 +80,7 @@ Behavior:
 - [list props/state it needs]
 - [list interactions — hover, click, keyboard nav]
 
-Tests: add a Playwright flow in apps/dashboard/e2e/smoke/ (see e2e/helpers.ts personas + e2e/README.md).
-There is no dashboard unit-test setup (no Vitest) — test component behavior
-through the UI, NOT implementation internals. Backend logic gets `bun test`
-service tests co-located as [name].test.ts.
+Tests: run `bun test src` for dashboard unit and contract tests (*.test.ts / *.contract.test.ts beside the code), and add Playwright flows in apps/dashboard/e2e/smoke/ (see e2e/helpers.ts personas + e2e/README.md) for user-visible flows. Backend logic gets `bun test` service tests co-located as [name].test.ts.
 
 Code-splitting (mandatory for every new page/route — see Decisions.md 2026-09-09):
 - NEVER static-import a page into `App.tsx`. Register it as a `React.lazy` chunk:
@@ -120,9 +117,9 @@ Add a permission check to [route/component].
 
 Permission key: '[correct.key]' — verify this exists in PERMISSIONS_MATRIX.md before using it.
 
-Backend: wrap the route with requirePermission('[key]') using the Elysia plugin guard pattern from Agents.md §5.
+Backend: wrap the route with requirePermission('[key]') using the Elysia plugin guard pattern (apps/backend/src/middleware/auth.ts; docs/project-tech-stack.md §5).
 
-Frontend: wrap the UI element with usePermission('[key]') and hide/disable it when the user lacks permission — do NOT just hide it, also disable it to prevent keyboard/screenreader access.
+Frontend: gate with `const { can } = usePermissions();` (`apps/dashboard/src/hooks/usePermissions.ts`) and hide or disable the control when `!can('[key]')` — ensure disabled controls include an explanatory reason (permissionReason(key)).
 
 Add a test asserting:
 
@@ -222,9 +219,9 @@ Check for:
 
 1. Missing permission checks (every mutating route should call requirePermission())
 2. Missing organization_id scoping in any Drizzle query
-3. Any `any` TypeScript types (Agents.md §3 forbids these)
-4. console.log or commented-out code left in (Agents.md §3)
-5. Missing tests for any business logic added (Agents.md §6)
+3. Any `any` TypeScript types (strictly forbidden; verify with `bun run typecheck`)
+4. console.log or commented-out code left in (verify with `bun run lint`)
+5. Missing tests for any business logic added (docs/project-tech-stack.md §8)
 6. Hardcoded hex colors or pixel values that should use design tokens (DESIGN_TOKENS.md)
 7. Any import that should come from @boardly/shared-types but was defined locally instead
 8. Enterprise-standard gaps (AGENTS.md §7): single-line inputs where multi-line is expected, missing Enter/Shift+Enter/Escape handling, enabled buttons with nothing to do, missing loading/empty/error states

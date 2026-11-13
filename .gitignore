@@ -61,7 +61,7 @@ apps/backend/uploads/
 # TypeScript build info
 *.tsbuildinfo
 
-# Graphify temporary cache and backups
-graphify-out/cache/
-graphify-out/202*/
-graphify-out/
+# Graphify temporary cache, visualizers, and raw graph models (keep report tracked)
+graphify-out/*
+!graphify-out/GRAPH_REPORT.md
+apps/graphify-out/

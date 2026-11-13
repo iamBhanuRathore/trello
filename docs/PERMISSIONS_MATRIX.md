@@ -3,7 +3,7 @@
 The exhaustive list of every permission key in the system. These are the string literals used in:
 
 - `requirePermission('key.name')` guard in backend routes (see `packages/shared-types/src/permissions.ts`)
-- The dashboard via `GET /roles/permissions` (there is no `usePermission` hook — UI reads the permission payload from that endpoint)
+- The dashboard via `usePermissions()` (`apps/dashboard/src/hooks/usePermissions.ts`, `can` = ANY-of, `canAll` = ALL-of, fail-closed), reading the server-expanded `permissions[]` from `GET /auth/me`
 - The `permissions` table seed data
 - `role_permissions` seed data linking roles to permissions
 
@@ -214,6 +214,6 @@ This is the seed data blueprint. Custom roles (created by Org Admins) can grant 
 1. Add it to this file under the appropriate resource group.
 2. Add it to `ALL_PERMISSION_KEYS` in `packages/shared-types/src/permissions.ts` (seeded via `apps/backend/src/db/seed.ts`).
 3. Update the `role_permissions` seed data to assign it to the correct default roles.
-4. Use `requirePermission('new.key')` in the backend route; the dashboard reads permissions via `GET /roles/permissions`.
+4. Use `requirePermission('new.key')` in the backend route; gate frontend UI via `usePermissions()`. (`GET /roles/permissions` serves the catalog of available permissions for custom role administration).
 5. Add a test asserting that the appropriate roles can/cannot perform the action.
 6. Update `docs/Decisions.md` if the permission boundary is non-obvious.

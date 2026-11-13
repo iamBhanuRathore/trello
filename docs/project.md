@@ -381,7 +381,7 @@ You can start as a **modular monolith** (all "services" above as modules in one 
 
 To keep this genuinely easy to extend later:
 
-1. **Permission-driven UI**: every button/menu checks a permission key from the `GET /roles/permissions` payload — new roles never require UI code changes. (This doc once named a `usePermission` hook; none exists.)
+1. **Permission-driven UI**: every button/menu checks a permission key via `usePermissions()` (reading permissions from `GET /auth/me`) — new roles never require UI code changes. (`GET /roles/permissions` provides the available catalog for role management).
 2. **Config-driven custom fields**: let Org Admins define custom fields (text/number/dropdown/date) per board via JSON schema, rendered dynamically — no schema migration needed per client.
 3. **Plugin/Power-up architecture**: define a manifest format (name, iframe URL, permissions requested) so third-party or internal mini-apps can attach to a card/board without touching core code.
 4. **Feature flags** (e.g., LaunchDarkly or a simple `feature_flags` table) so Super Admin can turn features on per org without deploys.
