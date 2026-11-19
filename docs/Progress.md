@@ -135,6 +135,7 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - Decisions: reuse `integration.manage`/`webhook.manage` (no new RBAC key); revocation is soft (`revokedAt`) with hard delete separate; per-module counters carry `hitsPeriodStart`; public comments are attributed to the org owner (API keys have no user) or endpoint creator (inbound); public card moves route through `moveCard`; outbound auth/data configs are sealed but decrypted for authorized admins.
 - Tests added: `developer.test.ts` (rebased on soft revoke, module/field validation, scoping), `public-api.test.ts` (quota, scope denial, serializers, route-guard structure), `inbound.test.ts` (card/board/comment targets, idempotency, disabled/invalid tokens, org isolation), `outbound.test.ts` (mapping, auth cache, 5xx retry, success check, SSRF/validation), dashboard `scopeState.test.ts` + `outboundState.test.ts`. Typecheck green; DB-backed suites require the `:5433` test Postgres (Docker was down locally).
 - What's next: run the DB-backed suites against `bun run test` with the test database up; production deploy needs `INTEGRATION_SECRET_KEY` set.
+- Follow-up (same day): Vite resolves `@boardly/ui` subpaths through explicit prefix aliases, and the missing `@boardly/ui/tabs` entry made the hub page fail at dev/build time. Added the alias and verified `bun run build`; a catch-all alias cannot cover new subpaths.
 
 ### 2026-10-09 — Boot-migration ledger + Postgres notice suppression
 
