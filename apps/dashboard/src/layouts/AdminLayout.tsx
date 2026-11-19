@@ -37,10 +37,8 @@ import {
   Workflow,
   Shield,
   FileText,
-  Webhook,
   Layers,
   KeyRound,
-  Code,
   Tag,
   Flag,
 } from 'lucide-react';
@@ -55,14 +53,12 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { name: 'Users', path: `/admin/users`, icon: Users },
   { name: 'Roles & Permissions', path: `/admin/roles`, icon: Shield },
   { name: 'Single Sign-On (SSO)', path: `/admin/sso`, icon: KeyRound },
-  { name: 'Developer API Keys', path: `/admin/developer`, icon: Code },
   { name: 'Audit Logs', path: `/admin/audit-logs`, icon: FileText },
   { name: 'Billing', path: `/admin/billing`, icon: CreditCard },
   { name: 'Branding', path: `/admin/branding`, icon: Palette },
   { name: 'Stage Templates', path: `/admin/stages`, icon: Workflow },
   { name: 'Labels & Tags', path: `/admin/labels`, icon: Tag },
   { name: 'Task Priorities', path: `/admin/priorities`, icon: Flag },
-  { name: 'Webhooks', path: `/admin/webhooks`, icon: Webhook },
   { name: 'Integrations', path: `/admin/integrations`, icon: Layers },
 ];
 

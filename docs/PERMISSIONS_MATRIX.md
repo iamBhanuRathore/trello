@@ -44,30 +44,34 @@ Use `manage` when a permission bundles multiple actions (e.g. `billing.manage` =
 
 ### Organization-level
 
-| Permission Key           | Who typically holds it     | Description                                        |
-| ------------------------ | -------------------------- | -------------------------------------------------- |
-| `org.read`               | All org members            | Read basic org info (name, logo, members list)     |
-| `org.update`             | Org Owner, Org Admin       | Update org name, slug, branding                    |
-| `org.delete`             | Org Owner only             | Delete the organization                            |
-| `org.transfer_ownership` | Org Owner only             | Transfer Org Owner role to another user            |
-| `member.invite`          | Org Admin+                 | Invite new users to the organization               |
-| `member.remove`          | Org Admin+                 | Remove a user from the organization                |
-| `member.role.update`     | Org Admin+                 | Change another member's role                       |
-| `member.deactivate`      | Org Admin+                 | Deactivate (not delete) a user account             |
-| `billing.read`           | Org Owner, Billing Manager | View invoices and current plan                     |
-| `billing.manage`         | Org Owner, Billing Manager | Upgrade/downgrade plan, manage seats               |
-| `sso.configure`          | Org Owner, Org Admin       | Configure SAML/OIDC/SCIM settings                  |
-| `security_policy.manage` | Org Owner, Org Admin       | Set 2FA enforcement, IP allowlist, session timeout |
-| `branding.manage`        | Org Admin+                 | Upload logo, set colors, configure custom domain   |
-| `integration.manage`     | Org Admin+                 | Configure Slack, GitHub, Zapier integrations       |
-| `webhook.manage`         | Org Admin+                 | Create/delete/update org-level webhooks            |
-| `audit_log.read`         | Org Admin+                 | Read this org's audit log                          |
-| `audit_log.export`       | Org Admin+                 | Export audit log to CSV                            |
-| `data.export`            | Org Owner                  | Export all org data (GDPR)                         |
-| `custom_role.manage`     | Org Admin+                 | Create/edit/delete custom roles                    |
-| `stage_template.manage`  | Org Admin+                 | Create/edit stage templates (Stage Manager)        |
+| Permission Key           | Who typically holds it     | Description                                                                         |
+| ------------------------ | -------------------------- | ----------------------------------------------------------------------------------- |
+| `org.read`               | All org members            | Read basic org info (name, logo, members list)                                      |
+| `org.update`             | Org Owner, Org Admin       | Update org name, slug, branding                                                     |
+| `org.delete`             | Org Owner only             | Delete the organization                                                             |
+| `org.transfer_ownership` | Org Owner only             | Transfer Org Owner role to another user                                             |
+| `member.invite`          | Org Admin+                 | Invite new users to the organization                                                |
+| `member.remove`          | Org Admin+                 | Remove a user from the organization                                                 |
+| `member.role.update`     | Org Admin+                 | Change another member's role                                                        |
+| `member.deactivate`      | Org Admin+                 | Deactivate (not delete) a user account                                              |
+| `billing.read`           | Org Owner, Billing Manager | View invoices and current plan                                                      |
+| `billing.manage`         | Org Owner, Billing Manager | Upgrade/downgrade plan, manage seats                                                |
+| `sso.configure`          | Org Owner, Org Admin       | Configure SAML/OIDC/SCIM settings                                                   |
+| `security_policy.manage` | Org Owner, Org Admin       | Set 2FA enforcement, IP allowlist, session timeout                                  |
+| `branding.manage`        | Org Admin+                 | Upload logo, set colors, configure custom domain                                    |
+| `integration.manage`     | Org Admin+                 | Integration Hub: API keys, inbound URLs, outbound integrations, Slack/GitHub/Zapier |
+| `webhook.manage`         | Org Admin+                 | Create/delete/update org-level event webhooks                                       |
+| `audit_log.read`         | Org Admin+                 | Read this org's audit log                                                           |
+| `audit_log.export`       | Org Admin+                 | Export audit log to CSV                                                             |
+| `data.export`            | Org Owner                  | Export all org data (GDPR)                                                          |
+| `custom_role.manage`     | Org Admin+                 | Create/edit/delete custom roles                                                     |
+| `stage_template.manage`  | Org Admin+                 | Create/edit stage templates (Stage Manager)                                         |
 
 ---
+
+> **Integration Hub:** `/admin/integrations` introduces **no new permission
+> keys**. API keys, inbound URLs and outbound integrations are gated by
+> `integration.manage`; the Event Webhooks tab keeps `webhook.manage`.
 
 ### Workspace-level
 

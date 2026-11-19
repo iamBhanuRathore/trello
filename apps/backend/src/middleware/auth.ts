@@ -194,6 +194,10 @@ const PUBLIC_PATH_PREFIXES = [
   // it via verifyAccessToken (closing on failure). Rejecting here would kill
   // every socket (presence heartbeats, typing, live messages) with a 401.
   '/v1/realtime/ws',
+  // Public developer API — authenticated by API key (Bearer bk_live_… or
+  // x-api-key) or by inbound token capability in the route handler. Never by
+  // user JWT. Every route under this prefix is explicitly guarded.
+  '/v1/public/',
 ];
 
 /**

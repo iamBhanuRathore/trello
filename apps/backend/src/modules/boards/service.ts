@@ -23,6 +23,7 @@ import {
   stages,
   priorities,
 } from '../../db/schema/index';
+import { eventBus } from '../../lib/event-bus';
 import { httpError } from '../organizations/service';
 import {
   cachedBoardRead,
@@ -52,6 +53,12 @@ export async function createBoard(db: Database, input: CreateBoardInput) {
 
   await bumpProjectCache(input.projectId);
   await bumpOrgCache(input.organizationId);
+  eventBus.emit('internal', {
+    event: 'board.created',
+    payload: { boardId: board!.id, projectId: input.projectId },
+    actorId: 'system',
+    organizationId: input.organizationId,
+  });
   return board;
 }
 
@@ -117,6 +124,12 @@ export async function updateBoard(
   await bumpBoardCache(id);
   await bumpProjectCache(board.projectId);
   await bumpOrgCache(organizationId);
+  eventBus.emit('internal', {
+    event: 'board.updated',
+    payload: { boardId: board.id, projectId: board.projectId },
+    actorId: 'system',
+    organizationId,
+  });
   return board;
 }
 
@@ -133,6 +146,12 @@ export async function archiveBoard(db: Database, id: string, organizationId: str
   await bumpBoardCache(id);
   await bumpProjectCache(board.projectId);
   await bumpOrgCache(organizationId);
+  eventBus.emit('internal', {
+    event: 'board.updated',
+    payload: { boardId: board.id, projectId: board.projectId },
+    actorId: 'system',
+    organizationId,
+  });
   return board;
 }
 
@@ -150,6 +169,12 @@ export async function deleteBoard(db: Database, id: string, organizationId: stri
   await bumpBoardCache(id);
   await bumpProjectCache(board.projectId);
   await bumpOrgCache(organizationId);
+  eventBus.emit('internal', {
+    event: 'board.updated',
+    payload: { boardId: board.id, projectId: board.projectId },
+    actorId: 'system',
+    organizationId,
+  });
   return board;
 }
 

@@ -914,6 +914,12 @@ export async function updateCard(db: Database, id: string, organizationId: strin
   const boardId = await getBoardIdForCard(db, id);
   if (boardId) {
     eventBus.broadcast(`board:${boardId}`, 'card.updated', card);
+    eventBus.emit('internal', {
+      event: 'card.updated',
+      payload: { cardId: card.id, boardId },
+      actorId: 'system',
+      organizationId,
+    });
   }
   await bumpCardAndBoard(id, boardId ?? null);
   // Subtasks are embedded in the parent's cached payload — bump it too.

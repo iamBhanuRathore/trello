@@ -41,6 +41,12 @@ import { calendarRoutes, calendarCallbackRoutes } from '../modules/calendar/rout
 import { gitRoutes, gitWebhookRoutes } from '../modules/git/routes';
 import { inboxRoutes } from '../modules/inbox/routes';
 import { inboundEmailRoutes, inboundTokenRoutes } from '../modules/inbound/routes';
+import {
+  inboundWebhookAdminRoutes,
+  inboundWebhookPublicRoutes,
+} from '../modules/integrations/inbound-routes';
+import { outboundRoutes } from '../modules/integrations/outbound-routes';
+import { publicApiRoutes } from '../modules/public-api/routes';
 
 /**
  * Aggregated /v1 domain routes.
@@ -91,6 +97,10 @@ export const v1Routes = new Elysia()
   .use(calendarCallbackRoutes)
   .use(inboundEmailRoutes)
   .use(inboundTokenRoutes)
+  .use(inboundWebhookAdminRoutes)
+  .use(inboundWebhookPublicRoutes)
+  .use(outboundRoutes)
+  .use(publicApiRoutes)
 
   // ── Documents, Forms, Media & Search ──
   .use(docRoutes)

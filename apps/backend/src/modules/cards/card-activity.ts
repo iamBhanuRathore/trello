@@ -20,9 +20,10 @@ export async function listComments(
   db: Database,
   cardId: string,
   organizationId: string,
-  options: { limit?: number | string } = {}
+  options: { limit?: number | string; offset?: number | string } = {}
 ) {
   await verifyCardAccess(db, cardId, organizationId);
+  const offset = Math.max(0, Number(options.offset) || 0);
   return db
     .select({
       id: comments.id,
@@ -40,7 +41,8 @@ export async function listComments(
     .leftJoin(users, eq(users.id, comments.userId))
     .where(and(eq(comments.cardId, cardId), isNull(comments.deletedAt)))
     .orderBy(desc(comments.createdAt))
-    .limit(clampLimit(options.limit));
+    .limit(clampLimit(options.limit))
+    .offset(offset);
 }
 
 export async function createComment(
@@ -154,6 +156,7 @@ export async function createComment(
       event: 'card.commented',
       payload: {
         cardId,
+        commentId: comment!.id,
         commentText: body,
         mentionedUserIds: Array.from(targetMentionIds),
       },

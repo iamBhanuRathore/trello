@@ -1146,8 +1146,12 @@ export const apiKeys = pgTable('api_keys', {
   keyPrefix: varchar('key_prefix', { length: 20 }).notNull(),
   keyHash: varchar('key_hash', { length: 255 }).notNull().unique(),
   scopes: jsonb('scopes').notNull().default('[]'),
+  hitLimit: integer('hit_limit'), // monthly global quota; null = unlimited
+  hits: bigint('hits', { mode: 'number' }).notNull().default(0),
+  hitsPeriodStart: timestamp('hits_period_start').notNull().defaultNow(),
   lastUsedAt: timestamp('last_used_at'),
   expiresAt: timestamp('expires_at'),
+  revokedAt: timestamp('revoked_at'), // soft revoke; delete is separate
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   deletedAt: timestamp('deleted_at'),
@@ -1720,6 +1724,124 @@ export const cardViews = pgTable('card_views', {
 ```
 
 > **Note:** trash ("Trash Bin" UI) is a soft-delete surfacing flow over existing `deleted_at` columns — no dedicated table. `notifications.is_dispatched` (§12) is the digest-worker claim flag. `cards.version` / `cards.change_seq` and `lists.version` / `lists.change_seq` back OCC moves + the realtime changes feed (`board_change_seq`, migrations 0027–0029).
+
+---
+
+## 30. Integration Hub (Public API, Inbound & Outbound)
+
+The hub reuses `integration.manage` for API keys/inbound/outbound and
+`webhook.manage` for event webhooks. API key secrets are SHA-256 hashed;
+integration auth/data configs and inbound tokens are AES-256-GCM sealed via
+`lib/secret-box.ts` (`enc:v1:` prefix, `INTEGRATION_SECRET_KEY`).
+
+### `api_key_modules`
+
+```typescript
+export const apiKeyModules = pgTable(
+  'api_key_modules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    apiKeyId: uuid('api_key_id')
+      .notNull()
+      .references(() => apiKeys.id, { onDelete: 'cascade' }),
+    module: varchar('module', { length: 32 }).notNull(), // cards | boards | projects | comments
+    canRead: boolean('can_read').notNull().default(false),
+    canWrite: boolean('can_write').notNull().default(false),
+    fields: jsonb('fields'), // null = all catalogue fields
+    hitLimit: integer('hit_limit'), // per-module monthly quota; null = unlimited
+    hits: bigint('hits', { mode: 'number' }).notNull().default(0),
+    hitsPeriodStart: timestamp('hits_period_start').notNull().defaultNow(),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('api_key_modules_key_module_idx').on(t.apiKeyId, t.module)]
+);
+```
+
+### `inbound_webhook_endpoints` / `inbound_webhook_deliveries`
+
+```typescript
+export const inboundWebhookEndpoints = pgTable('inbound_webhook_endpoints', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  label: varchar('label', { length: 255 }).notNull(),
+  targetModule: varchar('target_module', { length: 32 }).notNull(),
+  defaultRefId: uuid('default_ref_id'), // list | project | workspace | card
+  tokenHash: varchar('token_hash', { length: 255 }).notNull().unique(),
+  tokenCiphertext: text('token_ciphertext').notNull(), // for re-display
+  tokenPrefix: varchar('token_prefix', { length: 20 }).notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  hits: bigint('hits', { mode: 'number' }).notNull().default(0),
+  lastUsedAt: timestamp('last_used_at'),
+  lastStatusCode: integer('last_status_code'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  ...timestamps,
+});
+
+export const inboundWebhookDeliveries = pgTable('inbound_webhook_deliveries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  endpointId: uuid('endpoint_id')
+    .notNull()
+    .references(() => inboundWebhookEndpoints.id, { onDelete: 'cascade' }),
+  idempotencyKey: varchar('idempotency_key', { length: 255 }),
+  statusCode: integer('status_code').notNull(),
+  entityType: varchar('entity_type', { length: 32 }),
+  entityId: uuid('entity_id'),
+  error: text('error'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+// UNIQUE(endpoint_id, idempotency_key) + INDEX(endpoint_id, created_at)
+```
+
+### `outbound_integrations` / `outbound_integration_runs`
+
+```typescript
+export const outboundIntegrations = pgTable('outbound_integrations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  sourceModule: varchar('source_module', { length: 32 }).notNull(),
+  triggerEvents: jsonb('trigger_events').notNull().default('[]'),
+  triggerFilter: jsonb('trigger_filter'), // { listId?, stageId? }
+  authEnabled: boolean('auth_enabled').notNull().default(false),
+  authConfig: jsonb('auth_config'), // sealed { url, method, headers, body, tokenPath, token2Path, ttlSeconds }
+  dataConfig: jsonb('data_config').notNull().default('{}'), // sealed { url, method, headers, bodyTemplate }
+  fieldMappings: jsonb('field_mappings').notNull().default('[]'),
+  successCheck: jsonb('success_check'), // { path, equals }
+  isActive: boolean('is_active').notNull().default(true),
+  lastStatus: varchar('last_status', { length: 32 }),
+  lastStatusCode: integer('last_status_code'),
+  lastRunAt: timestamp('last_run_at'),
+  lastError: text('last_error'),
+  ...timestamps,
+});
+
+export const outboundIntegrationRuns = pgTable('outbound_integration_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  integrationId: uuid('integration_id')
+    .notNull()
+    .references(() => outboundIntegrations.id, { onDelete: 'cascade' }),
+  organizationId: uuid('organization_id').notNull(),
+  event: varchar('event', { length: 64 }).notNull(),
+  entityType: varchar('entity_type', { length: 32 }).notNull(),
+  entityId: uuid('entity_id'),
+  status: varchar('status', { length: 16 }).notNull(),
+  stage: varchar('stage', { length: 16 }), // auth | data | skip
+  requestSummary: jsonb('request_summary'),
+  responseStatus: integer('response_status'),
+  responseBody: text('response_body'),
+  durationMs: integer('duration_ms'),
+  error: text('error'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+// Runs are pruned after 30 days by startOutboundRunRetention().
+```
+
+Migration: `0044_integration_hub.sql` (idempotent `IF NOT EXISTS`, matching the
+repo's replay-safe migration convention).
 
 ---
 

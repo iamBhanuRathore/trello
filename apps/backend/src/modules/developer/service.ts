@@ -1,7 +1,8 @@
-import { eq, and, desc, ilike, or } from 'drizzle-orm';
+import { eq, and, desc, ilike, or, inArray } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import type { Database } from '../../db/index';
-import { apiKeys, marketplaceApps, installedApps } from '../../db/schema/index';
+import { apiKeys, apiKeyModules, marketplaceApps, installedApps } from '../../db/schema/index';
+import { API_MODULES, getApiModule, isApiModuleId, scopeChip } from '@boardly/shared-types';
 
 import { httpError } from '../../lib/errors';
 export { httpError };
@@ -12,12 +13,112 @@ function hashKey(rawKey: string): string {
 
 // ─── Developer API Keys ───────────────────────────────────────────────────────
 
+export interface ModuleScopeInput {
+  module: string;
+  read?: boolean;
+  write?: boolean;
+  /** null/undefined = all catalogue fields. */
+  fields?: string[] | null;
+  /** Monthly quota for this module; null = unlimited. */
+  hitLimit?: number | null;
+}
+
+export interface NormalizedModuleScope {
+  module: string;
+  read: boolean;
+  write: boolean;
+  fields: string[] | null;
+  hitLimit: number | null;
+}
+
+/** Accept legacy `cards:read` chips and `*`. */
+function scopesFromLegacy(scopes?: string[]): NormalizedModuleScope[] {
+  if (!scopes || scopes.length === 0) return [];
+  if (scopes.includes('*')) {
+    return API_MODULES.map((m) => ({
+      module: m.id,
+      read: true,
+      write: true,
+      fields: null,
+      hitLimit: null,
+    }));
+  }
+  const byModule = new Map<string, NormalizedModuleScope>();
+  for (const scope of scopes) {
+    const [module, action] = scope.split(':');
+    if (!module || !isApiModuleId(module)) continue;
+    if (action !== 'read' && action !== 'write') continue;
+    const entry =
+      byModule.get(module) ??
+      ({
+        module,
+        read: false,
+        write: false,
+        fields: null,
+        hitLimit: null,
+      } as NormalizedModuleScope);
+    entry[action] = true;
+    byModule.set(module, entry);
+  }
+  return [...byModule.values()];
+}
+
+function normalizeModuleScopes(input: ModuleScopeInput[]): NormalizedModuleScope[] {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw httpError(422, 'At least one module scope is required');
+  }
+  const seen = new Set<string>();
+  return input.map((scope) => {
+    if (!isApiModuleId(scope.module)) {
+      throw httpError(422, `Unknown API module: ${scope.module}`);
+    }
+    if (seen.has(scope.module)) {
+      throw httpError(422, `Duplicate module scope: ${scope.module}`);
+    }
+    seen.add(scope.module);
+    if (!scope.read && !scope.write) {
+      throw httpError(422, `Module ${scope.module} needs read and/or write permission`);
+    }
+    const moduleDef = getApiModule(scope.module)!;
+    const validFields = new Set(moduleDef.fields.map((f) => f.id));
+    let fields: string[] | null = null;
+    if (Array.isArray(scope.fields)) {
+      const unknown = scope.fields.filter((f) => !validFields.has(f));
+      if (unknown.length > 0) {
+        throw httpError(422, `Unknown fields for ${scope.module}: ${unknown.join(', ')}`);
+      }
+      fields = [...new Set(scope.fields)];
+      // Required-on-create fields must survive field restriction or writes
+      // could never succeed; lock them in server-side too.
+      if (scope.write) {
+        for (const f of moduleDef.fields) {
+          if (f.requiredOnCreate && !fields.includes(f.id)) fields.push(f.id);
+        }
+      }
+    }
+    if (scope.hitLimit !== undefined && scope.hitLimit !== null) {
+      if (!Number.isInteger(scope.hitLimit) || scope.hitLimit < 0) {
+        throw httpError(422, 'Module hit limit must be a non-negative integer');
+      }
+    }
+    return {
+      module: scope.module,
+      read: !!scope.read,
+      write: !!scope.write,
+      fields,
+      hitLimit: scope.hitLimit ?? null,
+    };
+  });
+}
+
 export async function generateApiKey(
   db: Database,
   organizationId: string,
   input: {
     name: string;
     scopes?: string[];
+    moduleScopes?: ModuleScopeInput[];
+    hitLimit?: number | null;
     expiresInDays?: number;
   }
 ) {
@@ -27,6 +128,20 @@ export async function generateApiKey(
   // An empty-org JWT would otherwise mint a key row scoped to no tenant.
   if (!organizationId) {
     throw httpError(400, 'Cannot create an API key without an organization context');
+  }
+  if (
+    input.hitLimit !== undefined &&
+    input.hitLimit !== null &&
+    (!Number.isInteger(input.hitLimit) || input.hitLimit < 0)
+  ) {
+    throw httpError(422, 'Global hit limit must be a non-negative integer');
+  }
+
+  const moduleScopes = input.moduleScopes
+    ? normalizeModuleScopes(input.moduleScopes)
+    : scopesFromLegacy(input.scopes ?? ['*']);
+  if (moduleScopes.length === 0) {
+    throw httpError(422, 'At least one module scope is required');
   }
 
   // Format: bk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -39,46 +154,112 @@ export async function generateApiKey(
     ? new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000)
     : null;
 
-  const [created] = await db
-    .insert(apiKeys)
-    .values({
-      organizationId,
-      name: input.name.trim(),
-      keyPrefix,
-      keyHash,
-      scopes: input.scopes || ['*'],
-      expiresAt,
-    })
-    .returning();
+  const legacyScopes = moduleScopes.flatMap((s) => [
+    ...(s.read ? [scopeChip(s.module, 'read')] : []),
+    ...(s.write ? [scopeChip(s.module, 'write')] : []),
+  ]);
+
+  const created = await db.transaction(async (tx) => {
+    const [key] = await tx
+      .insert(apiKeys)
+      .values({
+        organizationId,
+        name: input.name.trim(),
+        keyPrefix,
+        keyHash,
+        scopes: legacyScopes,
+        hitLimit: input.hitLimit ?? null,
+        expiresAt,
+      })
+      .returning();
+
+    await tx.insert(apiKeyModules).values(
+      moduleScopes.map((s) => ({
+        apiKeyId: key!.id,
+        module: s.module,
+        canRead: s.read,
+        canWrite: s.write,
+        fields: s.fields,
+        hitLimit: s.hitLimit,
+      }))
+    );
+    return key!;
+  });
 
   return {
-    ...created!,
+    ...created,
+    moduleScopes,
     rawKey, // Only returned ONCE at creation
   };
 }
 
 export async function listApiKeys(db: Database, organizationId: string) {
-  return await db
+  const keys = await db
     .select({
       id: apiKeys.id,
       organizationId: apiKeys.organizationId,
       name: apiKeys.name,
       keyPrefix: apiKeys.keyPrefix,
       scopes: apiKeys.scopes,
+      hitLimit: apiKeys.hitLimit,
+      hits: apiKeys.hits,
+      hitsPeriodStart: apiKeys.hitsPeriodStart,
       lastUsedAt: apiKeys.lastUsedAt,
       expiresAt: apiKeys.expiresAt,
+      revokedAt: apiKeys.revokedAt,
       createdAt: apiKeys.createdAt,
     })
     .from(apiKeys)
     .where(eq(apiKeys.organizationId, organizationId))
     .orderBy(desc(apiKeys.createdAt));
+
+  if (keys.length === 0) return [];
+  const modules = await db
+    .select()
+    .from(apiKeyModules)
+    .where(
+      inArray(
+        apiKeyModules.apiKeyId,
+        keys.map((k) => k.id)
+      )
+    );
+
+  const byKey = new Map<string, NormalizedModuleScope[]>();
+  for (const m of modules) {
+    const list = byKey.get(m.apiKeyId) ?? [];
+    list.push({
+      module: m.module,
+      read: m.canRead,
+      write: m.canWrite,
+      fields: (m.fields as string[] | null) ?? null,
+      hitLimit: m.hitLimit ?? null,
+    });
+    byKey.set(m.apiKeyId, list);
+  }
+  return keys.map((k) => ({ ...k, moduleScopes: byKey.get(k.id) ?? [] }));
 }
 
+/** Soft revoke: the key stays visible (auditable) but auth is rejected. */
 export async function revokeApiKey(db: Database, organizationId: string, keyId: string) {
+  const [updated] = await db
+    .update(apiKeys)
+    .set({ revokedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, organizationId)))
+    .returning({ id: apiKeys.id, revokedAt: apiKeys.revokedAt });
+
+  if (!updated) {
+    throw httpError(404, 'API Key not found or unauthorized');
+  }
+
+  return { success: true, id: keyId, revokedAt: updated.revokedAt };
+}
+
+/** Hard delete — removes the key and its module scopes (FK cascade). */
+export async function deleteApiKey(db: Database, organizationId: string, keyId: string) {
   const [deleted] = await db
     .delete(apiKeys)
     .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, organizationId)))
-    .returning();
+    .returning({ id: apiKeys.id });
 
   if (!deleted) {
     throw httpError(404, 'API Key not found or unauthorized');
@@ -93,6 +274,7 @@ export async function verifyApiKey(db: Database, rawKey: string) {
 
   if (!key) return null;
 
+  if (key.revokedAt) return null;
   if (key.expiresAt && key.expiresAt < new Date()) {
     return null; // Expired
   }
@@ -101,6 +283,38 @@ export async function verifyApiKey(db: Database, rawKey: string) {
   await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, key.id));
 
   return key;
+}
+
+/** Verify + resolve module scopes for the public API auth middleware. */
+export async function verifyApiKeyWithScopes(db: Database, rawKey: string) {
+  const key = await verifyApiKey(db, rawKey);
+  if (!key) return null;
+
+  const modules = await db.select().from(apiKeyModules).where(eq(apiKeyModules.apiKeyId, key.id));
+
+  // Defensive fallback for a key that never got its module rows (created by an
+  // older build, or a database where the 0044 backfill did not run). Reads the
+  // legacy chips instead of silently denying every request.
+  const moduleScopes: Array<{
+    module: string;
+    read: boolean;
+    write: boolean;
+    fields: string[] | null;
+    hitLimit: number | null;
+    hits: number;
+  }> =
+    modules.length > 0
+      ? modules.map((m) => ({
+          module: m.module,
+          read: m.canRead,
+          write: m.canWrite,
+          fields: (m.fields as string[] | null) ?? null,
+          hitLimit: m.hitLimit ?? null,
+          hits: m.hits,
+        }))
+      : scopesFromLegacy(key.scopes as string[]).map((s) => ({ ...s, hits: 0 }));
+
+  return { key, moduleScopes };
 }
 
 // ─── Marketplace & Power-Ups ──────────────────────────────────────────────────

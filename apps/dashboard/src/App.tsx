@@ -71,8 +71,10 @@ const Timesheets = lazy(() =>
 const MyTasks = lazy(() => import('./pages/MyTasks').then((m) => ({ default: m.MyTasks })));
 const ChatPage = lazy(() => import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })));
 const Calendar = lazy(() => import('./pages/Calendar').then((m) => ({ default: m.Calendar })));
-const Integrations = lazy(() =>
-  import('./pages/Integrations').then((m) => ({ default: m.Integrations }))
+const IntegrationHub = lazy(() =>
+  import('./pages/integrations/IntegrationsPage').then((m) => ({
+    default: m.IntegrationsPage,
+  }))
 );
 const ProfileSettings = lazy(() =>
   import('./pages/ProfileSettings').then((m) => ({ default: m.ProfileSettings }))
@@ -98,9 +100,6 @@ const Priorities = lazy(() =>
 const SSOSettings = lazy(() =>
   import('./pages/admin/SSOSettings').then((m) => ({ default: m.SSOSettings }))
 );
-const DeveloperSettings = lazy(() =>
-  import('./pages/admin/DeveloperSettings').then((m) => ({ default: m.DeveloperSettings }))
-);
 const AuditLogs = lazy(() =>
   import('./pages/admin/AuditLogs').then((m) => ({ default: m.AuditLogs }))
 );
@@ -113,9 +112,6 @@ const StageTemplates = lazy(() =>
 );
 const LabelsAdmin = lazy(() =>
   import('./pages/admin/LabelsAdmin').then((m) => ({ default: m.LabelsAdmin }))
-);
-const WebhookSettings = lazy(() =>
-  import('./pages/Settings/WebhookSettings').then((m) => ({ default: m.WebhookSettings }))
 );
 const SettingsLayout = lazy(() =>
   import('./components/settings/SettingsShell').then((m) => ({ default: m.SettingsLayout }))
@@ -232,14 +228,20 @@ export function App() {
                 <Route path="roles" element={<CustomRoles />} />
                 <Route path="priorities" element={<Priorities />} />
                 <Route path="sso" element={<SSOSettings />} />
-                <Route path="developer" element={<DeveloperSettings />} />
+                <Route
+                  path="developer"
+                  element={<Navigate to="/admin/integrations/api-keys" replace />}
+                />
                 <Route path="audit-logs" element={<AuditLogs />} />
                 <Route path="billing" element={<Billing />} />
                 <Route path="branding" element={<Branding />} />
                 <Route path="stages" element={<StageTemplates />} />
                 <Route path="labels" element={<LabelsAdmin />} />
-                <Route path="webhooks" element={<WebhookSettings />} />
-                <Route path="integrations" element={<Integrations />} />
+                <Route
+                  path="webhooks"
+                  element={<Navigate to="/admin/integrations/webhooks" replace />}
+                />
+                <Route path="integrations/*" element={<IntegrationHub />} />
               </Route>
 
               {/* 404 Catch-All Route */}

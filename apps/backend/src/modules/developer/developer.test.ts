@@ -9,6 +9,7 @@ import {
   generateApiKey,
   listApiKeys,
   revokeApiKey,
+  deleteApiKey,
   verifyApiKey,
   listMarketplaceApps,
   getMarketplaceApp,
@@ -127,6 +128,36 @@ describe('Developer API Keys & Marketplace Service', () => {
     expect((updated.config as any).repo).toBe('org/new-repo');
   });
 
+  it('should reject unknown modules and fields', async () => {
+    await expect(
+      generateApiKey(db, orgId, {
+        name: 'Bad module',
+        moduleScopes: [{ module: 'invoices', read: true }],
+      } as never)
+    ).rejects.toThrow(/Unknown API module/);
+
+    await expect(
+      generateApiKey(db, orgId, {
+        name: 'Bad field',
+        moduleScopes: [{ module: 'cards', read: true, fields: ['nope'] }],
+      })
+    ).rejects.toThrow(/Unknown fields for cards/);
+  });
+
+  it('should lock required create fields into write scopes', async () => {
+    const key = await generateApiKey(db, orgId, {
+      name: 'Restricted cards key',
+      moduleScopes: [{ module: 'cards', write: true, fields: ['description'], hitLimit: 5 }],
+    });
+
+    const listed = (await listApiKeys(db, orgId)).find((k) => k.id === key.id)!;
+    const cardsScope = listed.moduleScopes.find((s) => s.module === 'cards')!;
+    expect(cardsScope.fields).toContain('title');
+    expect(cardsScope.fields).toContain('listId');
+    expect(cardsScope.hitLimit).toBe(5);
+    await deleteApiKey(db, orgId, key.id);
+  });
+
   it('should uninstall marketplace app and revoke API key', async () => {
     const uninstallRes = await uninstallMarketplaceApp(db, orgId, installedRecordId);
     expect(uninstallRes.success).toBe(true);
@@ -134,6 +165,16 @@ describe('Developer API Keys & Marketplace Service', () => {
     const revokeRes = await revokeApiKey(db, orgId, createdKeyId);
     expect(revokeRes.success).toBe(true);
 
+    // Revocation is soft: the row stays for audit, but it can no longer authenticate.
+    const keysAfter = await listApiKeys(db, orgId);
+    const revoked = keysAfter.find((k) => k.id === createdKeyId);
+    expect(revoked?.revokedAt).not.toBeNull();
+    expect(await verifyApiKey(db, rawGeneratedKey)).toBeNull();
+  });
+
+  it('should hard delete a revoked key', async () => {
+    const res = await deleteApiKey(db, orgId, createdKeyId);
+    expect(res.success).toBe(true);
     const keysAfter = await listApiKeys(db, orgId);
     expect(keysAfter.find((k) => k.id === createdKeyId)).toBeUndefined();
   });

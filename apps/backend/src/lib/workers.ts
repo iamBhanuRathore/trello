@@ -1,6 +1,10 @@
 import type { Database } from '../db/index';
 import { setupNotificationListeners } from '../modules/notifications/service';
 import { setupWebhookDispatcher } from '../modules/webhooks/service';
+import {
+  setupOutboundDispatcher,
+  startOutboundRunRetention,
+} from '../modules/integrations/outbound-engine';
 import { setupAutomationEngine } from '../modules/automations/service';
 import { setupProjectAutomationEngine } from '../modules/automations/project-engine';
 import { startRetentionJob } from '../modules/audit/retention';
@@ -36,6 +40,7 @@ export class WorkerService {
     // 1. Setup real-time event listeners & dispatchers
     setupNotificationListeners(database);
     setupWebhookDispatcher(database);
+    setupOutboundDispatcher(database);
     setupAutomationEngine(database);
     setupProjectAutomationEngine(database);
 
@@ -44,6 +49,7 @@ export class WorkerService {
     this.cleanupFns.push(startRefreshTokenCleanup(database));
     this.cleanupFns.push(startScanWorker(database));
     this.cleanupFns.push(startMediaGC(database));
+    this.cleanupFns.push(startOutboundRunRetention(database));
 
     logger.info({}, 'Background workers and event listeners initialized');
   }

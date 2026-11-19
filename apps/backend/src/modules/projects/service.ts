@@ -1,6 +1,7 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import type { Database } from '../../db/index';
 import { projects } from '../../db/schema/index';
+import { eventBus } from '../../lib/event-bus';
 import { httpError } from '../organizations/service';
 import {
   cachedWorkspaceRead,
@@ -58,6 +59,12 @@ export async function createProject(db: Database, input: CreateProjectInput) {
 
   await bumpWorkspaceCache(input.workspaceId);
   await bumpOrgCache(input.organizationId);
+  eventBus.emit('internal', {
+    event: 'project.created',
+    payload: { projectId: project!.id, workspaceId: input.workspaceId },
+    actorId: 'system',
+    organizationId: input.organizationId,
+  });
   return project;
 }
 
@@ -110,6 +117,8 @@ export async function updateProject(
     name?: string;
     status?: 'active' | 'on_hold' | 'completed' | 'archived';
     description?: string;
+    startDate?: string | null;
+    endDate?: string | null;
   }
 ) {
   const [project] = await db
@@ -118,6 +127,8 @@ export async function updateProject(
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.startDate !== undefined ? { startDate: input.startDate } : {}),
+      ...(input.endDate !== undefined ? { endDate: input.endDate } : {}),
       updatedAt: new Date(),
     })
     .where(
@@ -133,6 +144,12 @@ export async function updateProject(
   await bumpProjectCache(id);
   await bumpWorkspaceCache(project.workspaceId);
   await bumpOrgCache(organizationId);
+  eventBus.emit('internal', {
+    event: 'project.updated',
+    payload: { projectId: project.id, workspaceId: project.workspaceId },
+    actorId: 'system',
+    organizationId,
+  });
   return project;
 }
 
@@ -174,5 +191,11 @@ export async function deleteProject(db: Database, id: string, organizationId: st
   await bumpProjectCache(id);
   await bumpWorkspaceCache(project.workspaceId);
   await bumpOrgCache(organizationId);
+  eventBus.emit('internal', {
+    event: 'project.updated',
+    payload: { projectId: project.id, workspaceId: project.workspaceId },
+    actorId: 'system',
+    organizationId,
+  });
   return project;
 }

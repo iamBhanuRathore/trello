@@ -58,7 +58,7 @@ const PROVIDERS = [
   },
 ];
 
-export const Integrations: React.FC = () => {
+export const Integrations: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const queryClient = useQueryClient();
   const [connectingId, setConnectingId] = useState<IntegrationProvider | null>(null);
 
@@ -111,12 +111,14 @@ export const Integrations: React.FC = () => {
 
   return (
     <div className="space-y-6" aria-busy={isLoading && !integrations}>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Integrations</h1>
-        <p className="text-muted-foreground">
-          Connect your favorite tools to Boardly to supercharge your workflow.
-        </p>
-      </div>
+      {!embedded && (
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Integrations</h1>
+          <p className="text-muted-foreground">
+            Connect your favorite tools to Boardly to supercharge your workflow.
+          </p>
+        </div>
+      )}
 
       <GitHubReposPanel />
 

@@ -18,7 +18,7 @@ const AVAILABLE_EVENTS = [
   { id: 'card.labeled', label: 'Card Labeled' },
 ];
 
-export function WebhookSettings() {
+export function WebhookSettings({ embedded = false }: { embedded?: boolean } = {}) {
   const user = useAuthStore((state) => state.user);
   const [webhooks, setWebhooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,19 +105,44 @@ export function WebhookSettings() {
   });
 
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4" aria-busy={loading}>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Webhooks</h1>
-        <Button onClick={() => setIsAdding(!isAdding)}>
-          {isAdding ? (
-            'Cancel'
-          ) : (
-            <>
-              <Plus className="h-4 w-4 mr-2" /> Add Webhook
-            </>
-          )}
-        </Button>
-      </div>
+    <div
+      className={embedded ? 'space-y-4' : 'max-w-4xl mx-auto py-8 px-4 space-y-4'}
+      aria-busy={loading}
+    >
+      {!embedded && (
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Webhooks</h1>
+          <Button onClick={() => setIsAdding(!isAdding)}>
+            {isAdding ? (
+              'Cancel'
+            ) : (
+              <>
+                <Plus className="h-4 w-4 mr-2" /> Add Webhook
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+      {embedded && (
+        <div className="flex flex-col gap-3 rounded-2xl border bg-card/60 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-5">
+          <div className="min-w-0 space-y-1">
+            <h2 className="text-sm font-semibold">Event webhooks</h2>
+            <p className="text-xs text-muted-foreground">
+              Boardly POSTs signed event payloads (HMAC-SHA256) to your endpoints. Use these for
+              one-way notifications when you don't need field mapping.
+            </p>
+          </div>
+          <Button size="sm" className="shrink-0 text-xs" onClick={() => setIsAdding(!isAdding)}>
+            {isAdding ? (
+              'Cancel'
+            ) : (
+              <>
+                <Plus className="h-3.5 w-3.5 mr-1.5" /> Add webhook
+              </>
+            )}
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-4 min-h-[50vh]" aria-label="Loading webhooks">

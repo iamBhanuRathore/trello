@@ -12,6 +12,7 @@ export * from './components/searchable-select';
 export * from './components/select';
 export * from './components/sidebar';
 export * from './components/switch';
+export * from './components/tabs';
 export * from './components/tooltip';
 export * from './hooks/useDialogClose';
 export * from './hooks/useFocusReturn';

@@ -62,6 +62,7 @@ Checkable version of the Build Order from `docs/project-tech-stack.md` §5 + `do
 - [x] Native mobile app — Phase 1 (read/comment/push)
 - [x] Native mobile app — Phase 2 (full editing/offline)
 - [x] Plugin/App marketplace + public developer API
+- [x] Integration Hub: scoped public REST API (`/v1/public/*` for cards, boards, projects, comments) with per-module scopes, field allowlists and monthly quotas; inbound token receivers with idempotency; outbound field-mapped integrations (auth-token caching, date formats, success checks, retries, run history); unified admin tabs (2026-11-19)
 
 ---
 

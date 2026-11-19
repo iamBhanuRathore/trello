@@ -19,6 +19,7 @@
     "./select": "./src/components/select.tsx",
     "./sidebar": "./src/components/sidebar.tsx",
     "./switch": "./src/components/switch.tsx",
+    "./tabs": "./src/components/tabs.tsx",
     "./tooltip": "./src/components/tooltip.tsx",
     "./hooks/use-dialog-close": "./src/hooks/useDialogClose.ts",
     "./hooks/use-focus-return": "./src/hooks/useFocusReturn.ts"

@@ -79,6 +79,9 @@ export const baseEnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().optional(),
   CALENDAR_TOKEN_KEY: z.string().optional(),
+  // Dedicated AES-GCM key for Integration Hub secrets (inbound tokens,
+  // outbound auth/data config). Falls back to CALENDAR_TOKEN_KEY in dev.
+  INTEGRATION_SECRET_KEY: z.string().optional(),
 
   // Stripe (billing — optional at dev time)
   STRIPE_SECRET_KEY: z.string().optional(),

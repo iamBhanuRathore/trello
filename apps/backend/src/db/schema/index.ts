@@ -1448,8 +1448,131 @@ export const apiKeys = pgTable('api_keys', {
   scopes: jsonb('scopes').notNull().default('[]'),
   lastUsedAt: timestamp('last_used_at'),
   expiresAt: timestamp('expires_at'),
+  // Global monthly quota (null = unlimited) and its counter window.
+  hitLimit: integer('hit_limit'),
+  hits: bigint('hits', { mode: 'number' }).notNull().default(0),
+  hitsPeriodStart: timestamp('hits_period_start').notNull().defaultNow(),
+  // Soft revoke keeps the row visible in the dashboard while rejecting auth.
+  revokedAt: timestamp('revoked_at'),
   ...timestamps,
 });
+
+/**
+ * Per-module scopes for a public API key. `fields === null` means "every field
+ * the catalogue exposes"; `hitLimit === null` means unlimited.
+ */
+export const apiKeyModules = pgTable(
+  'api_key_modules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    apiKeyId: uuid('api_key_id')
+      .notNull()
+      .references(() => apiKeys.id, { onDelete: 'cascade' }),
+    module: varchar('module', { length: 32 }).notNull(),
+    canRead: boolean('can_read').notNull().default(false),
+    canWrite: boolean('can_write').notNull().default(false),
+    fields: jsonb('fields'),
+    hitLimit: integer('hit_limit'),
+    hits: bigint('hits', { mode: 'number' }).notNull().default(0),
+    hitsPeriodStart: timestamp('hits_period_start').notNull().defaultNow(),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('api_key_modules_key_module_idx').on(t.apiKeyId, t.module)]
+);
+
+// ─── Integration Hub: inbound webhook endpoints ─────────────────────────────
+export const inboundWebhookEndpoints = pgTable(
+  'inbound_webhook_endpoints',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    label: varchar('label', { length: 255 }).notNull(),
+    targetModule: varchar('target_module', { length: 32 }).notNull(),
+    defaultRefId: uuid('default_ref_id'),
+    tokenHash: varchar('token_hash', { length: 255 }).notNull().unique(),
+    tokenCiphertext: text('token_ciphertext').notNull(),
+    tokenPrefix: varchar('token_prefix', { length: 20 }).notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    hits: bigint('hits', { mode: 'number' }).notNull().default(0),
+    lastUsedAt: timestamp('last_used_at'),
+    lastStatusCode: integer('last_status_code'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    ...timestamps,
+  },
+  (t) => [index('inbound_webhook_endpoints_org_module_idx').on(t.organizationId, t.targetModule)]
+);
+
+export const inboundWebhookDeliveries = pgTable(
+  'inbound_webhook_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    endpointId: uuid('endpoint_id')
+      .notNull()
+      .references(() => inboundWebhookEndpoints.id, { onDelete: 'cascade' }),
+    idempotencyKey: varchar('idempotency_key', { length: 255 }),
+    statusCode: integer('status_code').notNull(),
+    entityType: varchar('entity_type', { length: 32 }),
+    entityId: uuid('entity_id'),
+    error: text('error'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('inbound_webhook_deliveries_idempotency_idx').on(t.endpointId, t.idempotencyKey),
+    index('inbound_webhook_deliveries_endpoint_idx').on(t.endpointId, t.createdAt),
+  ]
+);
+
+// ─── Integration Hub: outbound integrations ─────────────────────────────────
+export const outboundIntegrations = pgTable(
+  'outbound_integrations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    organizationId: uuid('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 255 }).notNull(),
+    sourceModule: varchar('source_module', { length: 32 }).notNull(),
+    triggerEvents: jsonb('trigger_events').notNull().default('[]'),
+    triggerFilter: jsonb('trigger_filter'),
+    authEnabled: boolean('auth_enabled').notNull().default(false),
+    authConfig: jsonb('auth_config'),
+    dataConfig: jsonb('data_config').notNull().default('{}'),
+    fieldMappings: jsonb('field_mappings').notNull().default('[]'),
+    successCheck: jsonb('success_check'),
+    isActive: boolean('is_active').notNull().default(true),
+    lastStatus: varchar('last_status', { length: 32 }),
+    lastStatusCode: integer('last_status_code'),
+    lastRunAt: timestamp('last_run_at'),
+    lastError: text('last_error'),
+    ...timestamps,
+  },
+  (t) => [index('outbound_integrations_org_active_idx').on(t.organizationId, t.isActive)]
+);
+
+export const outboundIntegrationRuns = pgTable(
+  'outbound_integration_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => outboundIntegrations.id, { onDelete: 'cascade' }),
+    organizationId: uuid('organization_id').notNull(),
+    event: varchar('event', { length: 64 }).notNull(),
+    entityType: varchar('entity_type', { length: 32 }).notNull(),
+    entityId: uuid('entity_id'),
+    status: varchar('status', { length: 16 }).notNull(),
+    stage: varchar('stage', { length: 16 }),
+    requestSummary: jsonb('request_summary'),
+    responseStatus: integer('response_status'),
+    responseBody: text('response_body'),
+    durationMs: integer('duration_ms'),
+    error: text('error'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('outbound_integration_runs_integration_idx').on(t.integrationId, t.createdAt)]
+);
 
 // ─── Marketplace Apps & Power-Ups ───────────────────────────────────────────
 export const marketplaceApps = pgTable('marketplace_apps', {

@@ -37,8 +37,7 @@
 
 ## Current State
 
-**Last updated:** 2026-10-04 — Performance pass complete: the auth hot path no longer writes to the permissions registry per request, the chat feed no longer re-renders every message per keystroke, the webhook dispatcher and search paths are indexed (migration `0042`), Stripe and bcrypt moved out of open transactions, and the presence/roles/git/rebalance/mention/clone N+1s are batched. Fix-only — no new features. Validation: backend 462 pass / 1 skip / 0 fail, dashboard 47 pass / 0 fail. See the Log entry at the end of this file.
-**Last updated:** 2026-10-03 — File Size Discipline rule added (AGENTS.md §10): new files over 400 lines require a stated reason, over 600 must split by concern.
+**Last updated:** 2026-11-19 — Integration Hub shipped: one admin surface (`/admin/integrations`) for Apps, scoped API keys, inbound token URLs, outbound mapping integrations and event webhooks; enforced public REST API under `/v1/public/*` (cards, boards, projects, comments) with per-module scopes, field allowlists, monthly quotas and org isolation; inbound `binw_` receivers with idempotency; outbound auth-call token caching, field mapping, success checks, retries and run history. See the Log entry at the end of this file + `docs/PUBLIC_API.md`.
 **Overall phase:** Phase 1 (MVP Core), Phase 2 (Growth), and Phase 3 (Enterprise, Knowledge & Native Mobile) FULLY COMPLETED. Phase 4 in progress — 4.2 Team Chat FULLY COMPLETED; 4.1 Calendar substantially done (views, time-blocking, Google 2-way sync, overlays; Outlook deferred); 4.3 Git automations DONE. Recent: sliding refresh-token families, URL-synced task dialog fix, My Tasks sidebar badge, automation builder UI, 5.5 Media + 4.6 triage inbox / inbound email, and backend entrypoint modularization + Redis/worker service singletons (see Roadmap). Next: 4.4 CRDT docs / 4.5 huddles, plus check-docs follow-ups below.
 
 ### What exists
@@ -61,7 +60,7 @@
   - Project Automation Engine backend (5.6): project-scoped WHEN/IF/THEN rules (`project_automation_rules`, per-(rule,action) RR `automation_rule_cursors`, `automation_rule_runs` skip audit log, migration 0032), locked round-robin Testing-handoff subtasks, label router, loop guard + `automation:{ruleId}` system actors, CRUD/toggle/runs/dry-run/context APIs under `automation.manage` (builder UI shipped 2026-09-29).
 - ✅ `apps/dashboard` — Vite + React + TypeScript + Tailwind v4 + Shadcn/UI
   - Boardly App Marketplace & Power-Ups Catalog (`/marketplace`) with category filtering, verified badges, and custom config modals
-  - Public Developer API Keys manager (`/admin/developer`) with scope selection and secret token generator
+  - Integration Hub (`/admin/integrations`): Apps, scoped public API keys (per-module read/write, field allowlists, monthly quotas), inbound token URLs, outbound field-mapped integrations, and event webhooks in one deep-linkable tabbed surface
   - Dedicated-Instance & DB-per-tenant isolation manager (standalone Super Admin SPA on :5174, `/tenants`)
   - Kanban board with drag-and-drop (`@dnd-kit`), real-time synchronization, rich CardModal, and live viewer presence halos (`PresenceAvatars.tsx`)
   - Enterprise Single Sign-On (SSO) & SCIM Directory Sync Admin Portal (`/admin/sso`) with IdP presets (Okta, Azure AD, Google SAML, OIDC), SCIM token generator, and connection tester
@@ -129,6 +128,13 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - Tests added:
 - What's next:
 ```
+
+### 2026-11-19 — Integration Hub (public API, inbound URLs, outbound engine)
+
+- What was done: New `/admin/integrations` hub with deep-linkable tabs (Apps, API Keys, Inbound, Outbound, Event Webhooks); `/admin/developer` and `/admin/webhooks` now redirect into the hub and their nav items are retired. Shared catalogue in `packages/shared-types/src/integration-hub.ts` drives both UI and backend validation. Added `api_key_modules` (+ global/per-module monthly quotas, soft revoke), `inbound_webhook_endpoints`/`deliveries`, `outbound_integrations`/`runs`; migration `0044_integration_hub.sql`. Public API `/v1/public/*` for cards, boards, projects and comments with scope + field-allowlist enforcement and org isolation; inbound `POST /v1/public/inbound/:token` (256 KB, optional `Idempotency-Key`); outbound dispatcher with auth-token cache, mapping (CRM/static/auth, date formats, array paths), success check, 2 retries on network/5xx, 30-day run history. Secrets sealed with AES-256-GCM (`lib/secret-box.ts`); SSRF guard extracted to `lib/ssrf.ts`. Internal `board.created/updated`, `project.created/updated`, `card.updated` and `commentId` emits added so outbound/webhooks see everything.
+- Decisions: reuse `integration.manage`/`webhook.manage` (no new RBAC key); revocation is soft (`revokedAt`) with hard delete separate; per-module counters carry `hitsPeriodStart`; public comments are attributed to the org owner (API keys have no user) or endpoint creator (inbound); public card moves route through `moveCard`; outbound auth/data configs are sealed but decrypted for authorized admins.
+- Tests added: `developer.test.ts` (rebased on soft revoke, module/field validation, scoping), `public-api.test.ts` (quota, scope denial, serializers, route-guard structure), `inbound.test.ts` (card/board/comment targets, idempotency, disabled/invalid tokens, org isolation), `outbound.test.ts` (mapping, auth cache, 5xx retry, success check, SSRF/validation), dashboard `scopeState.test.ts` + `outboundState.test.ts`. Typecheck green; DB-backed suites require the `:5433` test Postgres (Docker was down locally).
+- What's next: run the DB-backed suites against `bun run test` with the test database up; production deploy needs `INTEGRATION_SECRET_KEY` set.
 
 ### 2026-10-09 — Boot-migration ledger + Postgres notice suppression
 

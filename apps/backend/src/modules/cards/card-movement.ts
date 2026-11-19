@@ -152,7 +152,13 @@ export async function moveCard(
     eventBus.broadcast(`board:${boardId}`, 'card.moved', card);
     eventBus.emit('internal', {
       event: 'card.moved',
-      payload: { cardId: id, listId: newListId, boardId, eventId: randomUUID() },
+      payload: {
+        cardId: id,
+        listId: newListId,
+        fromListId: previous?.listId ?? null,
+        boardId,
+        eventId: randomUUID(),
+      },
       actorId: actorId || 'system',
       organizationId,
     });

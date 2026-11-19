@@ -6,6 +6,7 @@ import {
   generateApiKey,
   listApiKeys,
   revokeApiKey,
+  deleteApiKey,
   listMarketplaceApps,
   getMarketplaceApp,
   installMarketplaceApp,
@@ -13,12 +14,20 @@ import {
   uninstallMarketplaceApp,
 } from './service';
 
+const moduleScopeSchema = t.Object({
+  module: t.String(),
+  read: t.Optional(t.Boolean()),
+  write: t.Optional(t.Boolean()),
+  fields: t.Optional(t.Union([t.Array(t.String()), t.Null()])),
+  hitLimit: t.Optional(t.Union([t.Number(), t.Null()])),
+});
+
 export const developerRoutes = new Elysia()
   .use(authPlugin)
 
   // ── Developer API Keys ──────────────────────────────────────────────────────
   .group('/developer/keys', (app) =>
-    app.guard({ beforeHandle: requirePermission('org.update') }, (app) =>
+    app.guard({ beforeHandle: requirePermission('integration.manage') }, (app) =>
       app
         .get('/', async ({ user, set }) => {
           try {
@@ -40,13 +49,22 @@ export const developerRoutes = new Elysia()
             body: t.Object({
               name: t.String(),
               scopes: t.Optional(t.Array(t.String())),
+              moduleScopes: t.Optional(t.Array(moduleScopeSchema)),
+              hitLimit: t.Optional(t.Union([t.Number(), t.Null()])),
               expiresInDays: t.Optional(t.Number()),
             }),
           }
         )
-        .delete('/:id', async ({ params, user, set }) => {
+        .post('/:id/revoke', async ({ params, user, set }) => {
           try {
             return await revokeApiKey(db, user.organizationId, params.id);
+          } catch (err: unknown) {
+            return handleRouteError(err, set);
+          }
+        })
+        .delete('/:id', async ({ params, user, set }) => {
+          try {
+            return await deleteApiKey(db, user.organizationId, params.id);
           } catch (err: unknown) {
             return handleRouteError(err, set);
           }
