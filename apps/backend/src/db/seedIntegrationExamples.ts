@@ -76,6 +76,9 @@ export async function seedIntegrationExamples() {
   const db = drizzle(client, { schema });
   try {
     await run(db);
+  } catch (err) {
+    // Demo data must never block the real seed (or dev boot): log and continue.
+    console.warn('⚠️  Integration Hub demo seed skipped:', err);
   } finally {
     await client.end();
   }
