@@ -136,6 +136,7 @@ Append one entry per work session. Keep entries short — a few lines, not a ful
 - Tests added: `developer.test.ts` (rebased on soft revoke, module/field validation, scoping), `public-api.test.ts` (quota, scope denial, serializers, route-guard structure), `inbound.test.ts` (card/board/comment targets, idempotency, disabled/invalid tokens, org isolation), `outbound.test.ts` (mapping, auth cache, 5xx retry, success check, SSRF/validation), dashboard `scopeState.test.ts` + `outboundState.test.ts`. Typecheck green; DB-backed suites require the `:5433` test Postgres (Docker was down locally).
 - What's next: run the DB-backed suites against `bun run test` with the test database up; production deploy needs `INTEGRATION_SECRET_KEY` set.
 - Follow-up (same day): Vite resolves `@boardly/ui` subpaths through explicit prefix aliases, and the missing `@boardly/ui/tabs` entry made the hub page fail at dev/build time. Added the alias and verified `bun run build`; a catch-all alias cannot cover new subpaths.
+- Demo data: `db:seed` now seeds `seedIntegrationExamples.ts` after the Acme org — connected Slack app, a scoped API key (secret printed once), two live inbound URLs pre-bound to a list/card, one complete outbound CRM mapping, and one event-webhook subscription. Outbound/webhook examples ship inactive because they target `example.com`; idempotent by name/label/URL and skipped in production without `BOARDLY_SEED_PRODUCTION=1`.
 
 ### 2026-10-09 — Boot-migration ledger + Postgres notice suppression
 

@@ -1,5 +1,6 @@
 /**
- * Seed script — populates default roles, permissions, and plans.
+ * Seed script — populates default roles, permissions, plans, the Acme demo
+ * organization and one Integration Hub example per tab.
  * Run with: bun run db:seed
  *
  * Idempotent: safe to re-run; uses ON CONFLICT DO NOTHING.
@@ -241,7 +242,12 @@ console.log('✅  Base system seed complete.');
 
 // ─── 5. Seed Full Enterprise Organization ─────────────────────────────────────
 import { seedFullOrganization } from './seedOrganization';
+import { seedIntegrationExamples } from './seedIntegrationExamples';
 await seedFullOrganization();
+
+// Runs even when the Acme fast-path skipped the heavy seed, so an existing dev
+// database still gets the hub examples.
+await seedIntegrationExamples();
 
 await client.end();
 process.exit(0);

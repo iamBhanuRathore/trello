@@ -219,3 +219,37 @@ Event webhooks remain the simple signed fan-out: Boardly POSTs
 `{ event, payload, actorId, timestamp }` with an HMAC-SHA256 signature header to
 every subscribed URL. Use them for one-way notifications; use outbound
 integrations when you need auth, field mapping, or success checks.
+
+---
+
+## 5. Seeded demo data
+
+`bun run db:seed` seeds one connected example per hub tab into the Acme demo
+organization, so `/admin/integrations` is never an empty shell:
+
+| Tab            | Seeded example                                                            | Notes                                                                                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Apps           | Slack connected                                                           | Mock provider connector, same as the Connect button.                                                                                                                                              |
+| API Keys       | `Demo · Website & docs sync`                                              | Cards/comments read+write, boards/projects read; global and per-module monthly quotas. The raw `bk_live_…` secret is **printed once by the seed** and never stored; copy it from the seed output. |
+| Inbound        | `Demo · Website form → new card`, `Demo · Client feedback → card comment` | Live `binw_…` URLs shown in the tab, pre-bound to a seeded list/card.                                                                                                                             |
+| Outbound       | `Demo · New cards to your CRM (inactive)`                                 | Complete auth call, CRM/static/auth-token mapping, date format and success check. Replace the `example.com` URLs, then enable it.                                                                 |
+| Event webhooks | `https://example.com/webhooks/boardly-demo` (disabled)                    | Subscribed to `card.created` + `card.moved`. Replace the URL, then enable it.                                                                                                                     |
+
+Outbound and event-webhook examples are saved **inactive** on purpose: they
+point at `example.com`, which cannot accept deliveries, so enabling them would
+only fill run history with failures. API-key and inbound examples are fully
+functional immediately.
+
+The seeder is idempotent (checked by name/label/URL) and runs even when the
+Acme fast-path skips the heavy organization seed. It is skipped in production
+unless `BOARDLY_SEED_PRODUCTION=1` is set, like the rest of the demo data.
+
+```bash
+# Seeded key demo
+curl -H "Authorization: Bearer bk_live_…" "$API_URL/v1/public/whoami"
+
+# Seeded inbound card demo (URL copied from the Inbound tab)
+curl -X POST "$API_URL/v1/public/inbound/binw_…" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Hello from the demo"}'
+```
